@@ -1,33 +1,26 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import type { BadmintonSanction, BadmintonTap } from '@/domain/scoring/badmintonPad';
-import {
-  refusalLine,
-  refusing,
-  type PadLineWords,
-  type PadOutcome,
-} from '@/domain/scoring/padLine';
-import type { PadSide } from '@/domain/scoring/padView';
+import { refusing, type PadLineWords, type PadOutcome } from '@/domain/scoring/padLine';
 import type { MatchEvent } from '@/domain/scoring/scoringMatchState';
-import { viewOf, type MatchView } from '@/domain/scoring/scoringMatchView';
-import type { HalfFlash } from '@/domain/scoring/tapFlash';
+import { viewAs, type MatchPad, type MatchView } from '@/domain/scoring/scoringMatchView';
+import type { ScoringSport, SportTypes } from '@/domain/scoring/scoringSport';
 import { uuidV4 } from '@/domain/scoring/tapKey';
 import { browserTarget } from '@/hooks/browserTarget';
-import type { PadActions, PadScreenModel, ScoringMatch } from '@/hooks/padScreenModel';
+import type { ScoringMatch } from '@/hooks/padScreenModel';
 import { scoringHubOf } from '@/hooks/scoringHub';
 import type { RunnerSnapshot, ScoringRunner } from '@/hooks/scoringRunner';
-import { useBackCloses } from '@/hooks/useBackCloses';
-import { usePadSheets, type PadSheetDriver, type PadSheetSnapshot } from '@/hooks/usePadSheets';
-import { START_TAP, useGuardedTool, useSettle, useTaps } from '@/hooks/usePadTaps';
 import { usePorts, type Ports } from '@/hooks/usePorts';
-import { useBackToHome } from '@/hooks/useStreamLinks';
 import type { MessageKey } from '@/i18n/messages';
 import type { Logger } from '@/services/logger';
 
 /**
- * One scoring match for the pad screen (plan S2-1 Task 9): the pad as `PadScreenModel`, or the state that takes its
- * place. The hub gives the match one focused runner (`scoringHub.ts`), the runner holds its state (`scoringRunner.ts`,
- * over the pure reducer `scoringMatch.ts`), and this hook reads it with `useSyncExternalStore` and turns the scorer's
- * touches into events for it. Nothing here decides what a tap means.
+ * One scoring match for a sport's pad screen (plan S2-1 Task 9): the pad, as the sport's own hook makes it, or the state
+ * that takes its place. The hub gives the match one focused runner (`scoringHub.ts`), the runner holds its state
+ * (`scoringRunner.ts`, over the pure reducer `scoringMatch.ts`), and this hook reads it with `useSyncExternalStore`.
+ * Nothing here decides what a tap means.
+ *
+ * The same for every sport (owner, 2026-11-02: "pad per sport must"): a sport's screen names its sport and its pad hook
+ * (badminton's: `useBadmintonMatch`), and reads the match through that sport (`viewAs`), typed by it. The pad hook is
+ * handed the pad's facts only for a match of its own sport, so a sport's taps only ever reach that sport.
  */
 
 /** Where the update banner's first button goes: the app's own page in the store. */
@@ -38,9 +31,21 @@ const noSubscribe = (): (() => void) => () => undefined;
 const loadingSnapshot = (): RunnerSnapshot => LOADING;
 const NOT_NOW: PadOutcome = refusing('notNow');
 
-type PadFacts = Extract<MatchView, { kind: 'pad' }>;
+/**
+ * A sport's pad hook: its screen's model from the match's pad (null while the match is not a pad: loading, or a state
+ * of its own), and the runner it sends to. Called on every render, so it is the same hook every time.
+ */
+export type SportPadHook<S extends SportTypes, Pad> = (
+  ports: Ports,
+  runner: ScoringRunner | null,
+  pad: MatchPad<S> | null,
+) => Pad | null;
 
-export function useScoringMatch(fixtureId: string): ScoringMatch {
+export function useScoringMatch<S extends SportTypes, Pad>(
+  fixtureId: string,
+  sport: ScoringSport<S>,
+  usePad: SportPadHook<S, Pad>,
+): ScoringMatch<Pad> {
   const ports = usePorts();
   const runner = useFocus(ports, fixtureId);
   const snapshot = useSyncExternalStore(
@@ -48,8 +53,8 @@ export function useScoringMatch(fixtureId: string): ScoringMatch {
     runner?.snapshot ?? loadingSnapshot,
   );
   const view = useMemo(
-    () => (snapshot.kind === 'ready' ? viewOf(snapshot.state) : null),
-    [snapshot],
+    () => (snapshot.kind === 'ready' ? viewAs(sport, snapshot.state) : null),
+    [snapshot, sport],
   );
   const pad = usePad(ports, runner, view?.kind === 'pad' ? view : null);
   return resolved(snapshot, view, pad);
@@ -66,11 +71,11 @@ function useFocus(ports: Ports, fixtureId: string): ScoringRunner | null {
   return runner?.fixtureId === fixtureId ? runner : null;
 }
 
-function resolved(
+function resolved<S extends SportTypes, Pad>(
   snapshot: RunnerSnapshot,
-  view: MatchView | null,
-  pad: PadScreenModel | null,
-): ScoringMatch {
+  view: MatchView<S> | null,
+  pad: Pad | null,
+): ScoringMatch<Pad> {
   if (snapshot.kind === 'noLink') return { kind: 'linkGone' };
   if (snapshot.kind === 'unreadable') return { kind: 'unreadable', what: snapshot.what };
   if (view === null) return { kind: 'loading', offline: false };
@@ -103,21 +108,25 @@ function newTapKey(logger: Logger): string {
   return uuidV4(bytes);
 }
 
-type Sender = {
-  readonly tap: (made: BadmintonTap) => PadOutcome;
+/** What a sport's pad hook sends the match: a tap of that sport, Undo, and words for the line. */
+export type MatchSender<S extends SportTypes> = {
+  readonly tap: (made: S['tap']) => PadOutcome;
   readonly undo: (only?: 'sanction') => PadOutcome;
   readonly say: (words: PadLineWords) => void;
 };
 
 /** Hands events to the runner: what each tap came to, at once, or "not now" while there is no runner. */
-function useSender(ports: Ports, runner: ScoringRunner | null): Sender {
+export function useSender<S extends SportTypes>(
+  ports: Ports,
+  runner: ScoringRunner | null,
+): MatchSender<S> {
   const send = useCallback(
     (event: (key: string, at: string) => MatchEvent): PadOutcome =>
       runner?.dispatch(event(newTapKey(ports.logger), ports.clock().toISOString())) ?? NOT_NOW,
     [runner, ports],
   );
   const tap = useCallback(
-    (made: BadmintonTap) => send((key, at) => ({ kind: 'tap', tap: made, key, at })),
+    (made: S['tap']) => send((key, at) => ({ kind: 'tap', tap: made, key, at })),
     [send],
   );
   const undo = useCallback(
@@ -132,129 +141,11 @@ function useSender(ports: Ports, runner: ScoringRunner | null): Sender {
   return useMemo(() => ({ tap, undo, say }), [tap, undo, say]);
 }
 
-function usePad(
-  ports: Ports,
-  runner: ScoringRunner | null,
-  pad: PadFacts | null,
-): PadScreenModel | null {
-  const sender = useSender(ports, runner);
-  const [flash, setFlash] = useState<HalfFlash>(null);
-  const [cardNote, setCardNote] = useState<MessageKey | null>(null);
-  const settle = useSettle(sender.say);
-  const driver = useMemo(
-    () => ({
-      rally: (side: PadSide) => sender.tap({ kind: 'rally', side }),
-      undo: () => sender.undo(),
-    }),
-    [sender],
-  );
-  const taps = useTaps(driver, settle, sender.say, setFlash);
-  const sheets = useSheets(sender, taps.opening, pad);
-  const actions = useActions({ sender, runner, pad, taps, sheets, setCardNote });
-  useBackCloses(sheets.open, sheets.cancel);
-  return useMemo(
-    () =>
-      pad === null
-        ? null
-        : {
-            kind: 'pad',
-            view: pad.view,
-            sheet: sheets.view,
-            line: pad.line,
-            cardNote,
-            flash,
-            toss: pad.toss,
-            actions,
-          },
-    [pad, sheets.view, cardNote, flash, actions],
-  );
-}
-
-/** The sheets over the pad: closed at once when the link dies, since the bad-link card then shows (round 8 hardening). */
-function useSheets(
-  sender: Sender,
-  opening: ReturnType<typeof useTaps>['opening'],
-  pad: PadFacts | null,
-) {
-  const { tap, say } = sender;
-  const driver = useMemo<PadSheetDriver>(
-    () => ({
-      sanction: (sanction: BadmintonSanction) => tap({ kind: 'sanction', ...sanction }),
-      setScore: (first, second) => tap({ kind: 'setScore', first, second }),
-    }),
-    [tap],
-  );
-  const refuseScore = useCallback(() => say(refusalLine('scoring.refusal.invalidScore')), [say]);
-  const snapshot = useMemo<PadSheetSnapshot | null>(
-    () =>
-      pad === null ? null : { display: pad.display, history: pad.history, card: pad.view.card },
-    [pad],
-  );
-  const sheets = usePadSheets(driver, snapshot, opening, refuseScore);
-  const dead = pad?.view.card?.kind === 'linkInvalid';
-  const { open, cancel } = sheets;
-  useEffect(() => {
-    if (dead && open) cancel();
-  }, [dead, open, cancel]);
-  return sheets;
-}
-
-type Parts = {
-  readonly sender: Sender;
-  readonly runner: ScoringRunner | null;
-  readonly pad: PadFacts | null;
-  readonly taps: ReturnType<typeof useTaps>;
-  readonly sheets: ReturnType<typeof useSheets>;
-  readonly setCardNote: (note: MessageKey | null) => void;
-};
-
-function useActions(parts: Parts): PadActions {
-  const { taps, sheets } = parts;
-  const home = useBackToHome();
-  const start = useStart(parts);
-  const ending = useEnding(parts);
-  const links = useLinks(parts.runner, parts.setCardNote);
-  const tool = useGuardedTool(taps.secondTouch, sheets.actions.tool);
-  const { tapHalf, undo } = taps;
-  return useMemo(
-    () => ({ home, tapHalf, undo, ...sheets.actions, tool, ...ending, ...links, ...start }),
-    [home, tapHalf, undo, tool, sheets.actions, ending, links, start],
-  );
-}
-
-/** The Start screen: the pick goes to the match, and Start match is a tap carrying it, through the bounce memory. */
-function useStart({ sender, runner, pad, taps }: Parts) {
-  const toss = pad?.toss ?? null;
-  const { tap } = sender;
-  const { opening } = taps;
-  const pickServer = useCallback(
-    (side: PadSide) => void runner?.dispatch({ kind: 'pickServer', side }),
-    [runner],
-  );
-  const start = useCallback(() => {
-    if (toss !== null) opening(START_TAP, () => tap({ kind: 'start', server: toss }));
-  }, [opening, tap, toss]);
-  return useMemo(() => ({ pickServer, start }), [pickServer, start]);
-}
-
-/** The ending prompt's buttons: quiet in the bounce window of the prompt appearing, each an opening tap. */
-function useEnding({ sender, pad, taps, sheets }: Parts) {
-  const { tap, undo } = sender;
-  const { opening } = taps;
-  const { justShown } = sheets;
-  const waiting = pad?.display.awaitingEnding === true ? pad.display.sanctions.at(-1) : undefined;
-  const recordEnding = useCallback(() => {
-    if (waiting === undefined || justShown()) return;
-    opening('ending', () => tap({ kind: 'ending', side: waiting.side, person: waiting.person }));
-  }, [waiting, opening, tap, justShown]);
-  const voidSanction = useCallback(() => {
-    if (!justShown()) opening('void', () => undo('sanction'));
-  }, [opening, undo, justShown]);
-  return useMemo(() => ({ recordEnding, voidSanction }), [recordEnding, voidSanction]);
-}
-
 /** The banner's buttons, through the link port. A page that would not open says so on the banner; the URL never does. */
-function useLinks(runner: ScoringRunner | null, setCardNote: (note: MessageKey | null) => void) {
+export function useLinks(
+  runner: ScoringRunner | null,
+  setCardNote: (note: MessageKey | null) => void,
+) {
   const { link, hosts } = usePorts();
   const open = useCallback(
     (url: string) => {

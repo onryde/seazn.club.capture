@@ -10,7 +10,8 @@ import {
   type PadSync,
   type PadView,
 } from '@/domain/scoring/padView';
-import type { PadActions, PadScreenModel } from '@/hooks/padScreenModel';
+import type { PadActions } from '@/hooks/padScreenModel';
+import type { BadmintonPadModel } from '@/hooks/useBadmintonMatch';
 import { useBackCloses } from '@/hooks/useBackCloses';
 import { usePadSheets, type PadSheetView } from '@/hooks/usePadSheets';
 import {
@@ -51,10 +52,10 @@ export type PadPreviewActions = PadActions & {
 };
 
 /**
- * What the preview hands the screen is the real match's `PadScreenModel` (plan S2-1 Task 9), so Task 11 swaps one hook
- * for the other; `chosen` and `pick` are the preview row's own.
+ * What the preview hands the screen is the real match's model (`BadmintonPadModel`, plan S2-1 Task 9), so Task 11 swaps
+ * one hook for the other; `chosen` and `pick` are the preview row's own.
  */
-export type BadmintonPadPreview = PadScreenModel & {
+export type BadmintonPadPreview = BadmintonPadModel & {
   readonly chosen: { readonly card: PadStateCard['kind'] | 'pad'; readonly sample: PreviewSample };
   readonly actions: PadPreviewActions;
 };

@@ -1,5 +1,5 @@
-import { payloadForSend } from '@/domain/scoring/badmintonEvents';
 import type { QueuedEvent } from '@/domain/scoring/queue';
+import type { SportTypes } from '@/domain/scoring/scoringSport';
 import {
   type SyncState,
   markSending,
@@ -24,44 +24,48 @@ import {
  * rules and the bootstrap read again, the queue judged on the ledger, the next tap sent. Foreground only.
  */
 
-type Stage = (state: MatchState, now: number) => Part;
+type Stage = <S extends SportTypes>(state: MatchState<S>, now: number) => Part<S>;
 
 /** Runs each stage on the state the one before left, in order, collecting what they ask for. */
-function chain(state: MatchState, stages: readonly Stage[], now: number): Part {
-  return stages.reduce<Part>((acc, stage) => {
+function chain<S extends SportTypes>(
+  state: MatchState<S>,
+  stages: readonly Stage[],
+  now: number,
+): Part<S> {
+  return stages.reduce<Part<S>>((acc, stage) => {
     const next = stage(acc.state, now);
     return part(next.state, [...acc.effects, ...next.effects]);
   }, part(state));
 }
 
 /** Foreground only: in the background nothing is judged or sent, and the return calls this again. */
-export function pump(state: MatchState, now: number): Part {
+export function pump<S extends SportTypes>(state: MatchState<S>, now: number): Part<S> {
   if (!state.foreground) return part(state);
   return chain(state, [resaving, rulesRetry, rereading, revalidating, sending], now);
 }
 
 /** A failed save is tried again once it is due. */
-function resaving(state: MatchState, now: number): Part {
+function resaving<S extends SportTypes>(state: MatchState<S>, now: number): Part<S> {
   const owed = state.saveOwed;
   if (owed === null || owed.retryAt === null || now < owed.retryAt) return part(state);
   return part({ ...state, saveOwed: { ...owed, retryAt: null } }, [resave(state.sync.queue)]);
 }
 
 /** The bootstrap is read again once it is due (`bootstrapDueAt`): a card's poll, or a read a ping owed. */
-function rereading(state: MatchState, now: number): Part {
+function rereading<S extends SportTypes>(state: MatchState<S>, now: number): Part<S> {
   const due = bootstrapDueAt(state);
   return due === null || now < due ? part(state) : asking(state, now);
 }
 
 /** A rules read that failed is asked for again once due (`retryRules`), even with nothing queued. */
-function rulesRetry(state: MatchState, now: number): Part {
+function rulesRetry<S extends SportTypes>(state: MatchState<S>, now: number): Part<S> {
   return withSync(state, retryRules(state.sync, now));
 }
 
 type Judge = (queued: readonly QueuedEvent[]) => readonly string[];
 
 /** What can judge the queue: the fold, or (the background sender) nothing, which keeps every tap for the server to judge. */
-function judgeOf(state: MatchState): Judge | null {
+function judgeOf<S extends SportTypes>(state: MatchState<S>): Judge | null {
   if (state.judge === 'trust') return (queued) => queued.map((tap) => tap.key);
   const { pending } = state.sync.queue;
   const fold = foldOfState(state, undoneAway(pending));
@@ -83,7 +87,7 @@ const undoPairs = (pending: readonly QueuedEvent[]): readonly string[] =>
  * The queue judged on the ledger and rules as they stand, when sync asks (hold `revalidate`). A match that cannot be
  * folded is never judged: an empty `legalQueued` would drop the whole queue. The hold then stands, and the pad says why.
  */
-function revalidating(state: MatchState): Part {
+function revalidating<S extends SportTypes>(state: MatchState<S>): Part<S> {
   if (state.sync.hold !== 'revalidate') return part(state);
   const judge = judgeOf(state);
   if (judge === null) return part(state);
@@ -91,17 +95,18 @@ function revalidating(state: MatchState): Part {
 }
 
 /**
- * The next send, if one is due. The payload is decided BEFORE the attempt is marked (`payloadForSend`: the match's
- * first rally drops its `serving` if a rally already stands), and written into the queued head in the same step that
- * marks the attempt, so the fold and sync see what the server is sent. The save before the send is the step's own.
+ * The next send, if one is due. The payload is decided BEFORE the attempt is marked (the sport's `payloadForSend`:
+ * badminton's first rally drops its `serving` if a rally already stands), and written into the queued head in the same
+ * step that marks the attempt, so the fold and sync see what the server is sent. The save before the send is the
+ * step's own.
  */
-function sending(state: MatchState, now: number): Part {
+function sending<S extends SportTypes>(state: MatchState<S>, now: number): Part<S> {
   const { sync } = state;
   if (state.saving > 0 || deadOf(state) !== null || isOutdated(state)) return part(state);
   const body = nextSend(sync, now);
   const head = sync.queue.pending[0];
   if (body === null || head === undefined) return part(state);
-  const payload = payloadForSend(head, sync.ledger);
+  const payload = state.sport.payloadForSend(head, sync.ledger);
   const decided: SyncState =
     payload === head.payload
       ? sync
@@ -111,7 +116,7 @@ function sending(state: MatchState, now: number): Part {
         };
   const marked = markSending(decided, now).state;
   const sentTap = marked.queue.pending[0];
-  const next: MatchState = {
+  const next: MatchState<S> = {
     ...state,
     sync: marked,
     sent: { key: head.key, expectedSeq: body.expected_seq },

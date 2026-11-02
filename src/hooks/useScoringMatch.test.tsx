@@ -3,7 +3,7 @@ import { StrictMode, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PortsProvider } from '@/hooks/usePorts';
 import { LanguageProvider } from '@/hooks/useLanguage';
-import { useScoringMatch } from '@/hooks/useScoringMatch';
+import { useBadmintonMatch } from '@/hooks/useBadmintonMatch';
 import { SINGLES_SEED, createFakeScoringPort } from '@/services/fakeScoringPort';
 import { saveScoringLink } from '@/services/scoringLinkStore';
 import { SINGLES } from '../../test/badmintonLedger';
@@ -34,7 +34,7 @@ function mount(fakes: FakePorts, options: { strict?: boolean; id?: string } = {}
     );
     return options.strict ? <StrictMode>{tree}</StrictMode> : tree;
   }
-  return renderHook(() => useScoringMatch(id), { wrapper: Wrapper });
+  return renderHook(() => useBadmintonMatch(id), { wrapper: Wrapper });
 }
 
 async function rig(over: Parameters<typeof createFakePorts>[0] = {}): Promise<FakePorts> {
@@ -43,8 +43,8 @@ async function rig(over: Parameters<typeof createFakePorts>[0] = {}): Promise<Fa
   return fakes;
 }
 
-type Pad = Extract<ReturnType<typeof useScoringMatch>, { kind: 'pad' }>;
-function pad(match: ReturnType<typeof useScoringMatch>): Pad {
+type Pad = Extract<ReturnType<typeof useBadmintonMatch>, { kind: 'pad' }>;
+function pad(match: ReturnType<typeof useBadmintonMatch>): Pad {
   if (match.kind !== 'pad') throw new Error(`expected the pad, got ${match.kind}`);
   return match;
 }
@@ -806,7 +806,7 @@ describe('the screen leaving', () => {
     const seen: string[] = [];
     const view = renderHook(
       () => {
-        const match = useScoringMatch(id);
+        const match = useBadmintonMatch(id);
         seen.push(match.kind);
         return match;
       },

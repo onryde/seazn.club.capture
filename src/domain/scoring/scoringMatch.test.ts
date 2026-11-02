@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import {
-  ENGINE_EPOCH,
-  deadOf,
-  foldQueue,
-  ownIds,
-  type MatchState,
-} from '@/domain/scoring/scoringMatchState';
+import { badmintonSport } from '@/domain/scoring/badmintonSport';
+import { deadOf, foldQueue, ownIds, type MatchState } from '@/domain/scoring/scoringMatchState';
 import { openMatch, step, wakeAt } from '@/domain/scoring/scoringMatch';
 import type { QueuedEvent } from '@/domain/scoring/queue';
 import {
@@ -51,7 +46,7 @@ function tappedOnce(from: MatchState = ready(), key = 'k1') {
 
 describe('the engine epoch', () => {
   it('is the badminton fold epoch this build sends, 2', () => {
-    expect(ENGINE_EPOCH).toBe(2);
+    expect(badmintonSport.epoch).toBe(2);
   });
 });
 

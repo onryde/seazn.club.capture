@@ -97,12 +97,40 @@ const NO_COLOUR_LITERALS = [
   { selector: `JSXAttribute[name.name=${COLOUR_PROP}] ${NAMED_COLOUR}`, message: COLOUR_MESSAGE },
 ];
 
-/** The ui import rule, for a given list of services the files may not import. */
-function uiRestrictedImports(services, message) {
+/**
+ * Pad per sport (owner, 2026-11-02: "pad per sport must, instead of creating a single pad and adjusting and adding
+ * lots of conditions"). The match runtime and the kit are the same for every sport: a sport is its own module behind
+ * `ScoringSport` (src/domain/scoring/scoringSport.ts), listed by its key in `sports.ts`, with its own screen. So the
+ * generic files below may not name a sport's module, by value or by type: badminton's files (`badminton*`, and the
+ * hooks and services named `*Badminton*`) and its sheets (`usePadSheets`: Sanction and Set score). Tests are free to.
+ */
+const SPORT_MODULES = {
+  group: ['**/*badminton*', '**/usePadSheets'],
+  message:
+    'A generic scoring file names no sport (owner, 2026-11-02: pad per sport): ask the match’s sport (`ScoringSport`).',
+};
+
+/** The match runtime and its model, the same for every sport. The kit (`src/ui/components`) is held below, with the ui rule. */
+const SPORT_GENERIC_FILES = [
+  'src/domain/scoring/scoringMatch*.ts',
+  'src/domain/scoring/scoringSport.ts',
+  'src/domain/scoring/sync.ts',
+  'src/domain/scoring/queue.ts',
+  'src/domain/scoring/wire.ts',
+  'src/hooks/scoring*.ts',
+  'src/hooks/useScoringMatch.ts',
+  'src/hooks/padScreenModel.ts',
+];
+
+/** The ui import rule, for a given list of services the files may not import, and any further groups. */
+function uiRestrictedImports(services, message, ...more) {
   return [
     'error',
     {
-      patterns: [{ group: [...UI_NATIVE_IMPORTS, services], allowTypeImports: true, message }],
+      patterns: [
+        { group: [...UI_NATIVE_IMPORTS, services], allowTypeImports: true, message },
+        ...more,
+      ],
     },
   ];
 }
@@ -288,6 +316,31 @@ export default [
         'Screens reach native capabilities through ports (spec §9)',
       ),
     },
+  },
+  {
+    // The kit draws any sport's pad (padView.ts): it names no sport (SPORT_MODULES). Repeats the ui rule, since this
+    // block's `no-restricted-imports` replaces the one above for these files. PadPreviewRow is the badminton preview's
+    // own dev row (its chips are that preview's samples), and ShellFrame keeps its insets exception.
+    files: ['src/ui/components/**/*.{ts,tsx}'],
+    ignores: [
+      'src/ui/components/ShellFrame.tsx',
+      'src/ui/components/PadPreviewRow.tsx',
+      '**/*.test.ts',
+      '**/*.test.tsx',
+    ],
+    rules: {
+      'no-restricted-imports': uiRestrictedImports(
+        '@/services/*',
+        'Screens reach native capabilities through ports (spec §9)',
+        SPORT_MODULES,
+      ),
+    },
+  },
+  {
+    // The match runtime is the same for every sport (SPORT_MODULES). Tests may drive it with any sport's fixtures.
+    files: SPORT_GENERIC_FILES,
+    ignores: ['**/*.test.ts', '**/*.test.tsx'],
+    rules: { 'no-restricted-imports': ['error', { patterns: [SPORT_MODULES] }] },
   },
   {
     // Colour comes from the theme and nowhere else (AGENTS §5). Repeats NO_ANY:

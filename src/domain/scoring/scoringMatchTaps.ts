@@ -1,8 +1,7 @@
-import { badmintonEventFor } from '@/domain/scoring/badmintonEvents';
-import { type BadmintonFold, undoneTap } from '@/domain/scoring/badmintonFold';
 import { type PadRefusal, TAKEN, refusing } from '@/domain/scoring/padLine';
 import type { PadSide } from '@/domain/scoring/padView';
 import type { QueuedEvent } from '@/domain/scoring/queue';
+import type { SportFold, SportTypes } from '@/domain/scoring/scoringSport';
 import { discardQueued } from '@/domain/scoring/sync';
 import { type UndoTarget, undoEventFor } from '@/domain/scoring/undoTarget';
 import {
@@ -23,7 +22,12 @@ import {
 /**
  * The scorer's taps and Undo (plan S2-1 Task 9): what a tap queues, what Undo takes back (a queued tap leaves, an event is
  * voided, a tap whose fate is unknown gets a void that waits for its answer). Handlers of `scoringMatch.ts`'s `step`.
+ * What a tap is, and what the display says, are the match's sport's (`state.sport`).
  */
+
+type Folded<S extends SportTypes> = Extract<SportFold<S>, { kind: 'folded' }>;
+type TapEvent<S extends SportTypes> = Extract<MatchEvent<S>, { kind: 'tap' }>;
+type UndoEvent = Extract<MatchEvent, { kind: 'undo' }>;
 
 /** A new tap in the queue, made now under the rules the phone holds. */
 const queuedOf = (
@@ -40,7 +44,7 @@ const queuedOf = (
   attempts: 0,
 });
 
-const withTap = (state: MatchState, tap: QueuedEvent): MatchState => ({
+const withTap = <S extends SportTypes>(state: MatchState<S>, tap: QueuedEvent): MatchState<S> => ({
   ...state,
   sync: {
     ...state.sync,
@@ -49,30 +53,29 @@ const withTap = (state: MatchState, tap: QueuedEvent): MatchState => ({
 });
 
 /** Whether the fold takes `tap` on top of the queue, as the server would take it: the one judge of a tap (`legalQueued`). */
-function takes(state: MatchState, tap: QueuedEvent): boolean {
+function takes<S extends SportTypes>(state: MatchState<S>, tap: QueuedEvent): boolean {
   const fold = foldOfState(state, [...foldQueue(state), tap]);
   return fold !== null && fold.kind === 'folded' && fold.legalQueued.includes(tap.key);
 }
 
-export function onTap(state: MatchState, event: Extract<MatchEvent, { kind: 'tap' }>): Handled {
+export function onTap<S extends SportTypes>(state: MatchState<S>, event: TapEvent<S>): Handled<S> {
   const fold = padTakes(state) ? foldOfState(state) : null;
   if (fold === null || fold.kind !== 'folded' || state.bootstrap === null)
     return refused(state, 'notNow');
   const { tap } = event;
-  const made = badmintonEventFor(tap, { bootstrap: state.bootstrap, display: fold.display });
+  const { sport } = state;
+  const made = sport.eventFor(tap, { bootstrap: state.bootstrap, display: fold.display });
   if (made === null) return refused(state, 'notNow');
   const queued = queuedOf(state, made, event.key, event.at);
-  if (!takes(state, queued)) {
-    return refused(state, tap.kind === 'setScore' ? 'invalidScore' : 'notNow');
-  }
-  const toss = tap.kind === 'start' ? tap.server : state.toss;
+  if (!takes(state, queued)) return refused(state, sport.refusalFor(tap));
+  const toss = sport.tossOf(tap) ?? state.toss;
   const next = { ...withTap(state, queued), toss, line: null, undone: null };
   return handled(part(next), { outcome: TAKEN, pump: false });
 }
 
-export function onPick(state: MatchState, side: PadSide): Handled {
+export function onPick<S extends SportTypes>(state: MatchState<S>, side: PadSide): Handled<S> {
   const fold = foldOfState(state);
-  if (fold === null || fold.kind !== 'folded' || fold.display.phase !== 'notStarted') {
+  if (fold === null || fold.kind !== 'folded' || !state.sport.notStarted(fold.display)) {
     return handled(part(state));
   }
   return handled(part({ ...state, toss: side }));
@@ -90,13 +93,15 @@ function typeToUndo(state: MatchState, target: UndoTarget): string | null {
   return state.sync.queue.pending.find((tap) => tap.key === target.key)?.type ?? null;
 }
 
-export function onUndo(state: MatchState, event: Extract<MatchEvent, { kind: 'undo' }>): Handled {
+export function onUndo<S extends SportTypes>(state: MatchState<S>, event: UndoEvent): Handled<S> {
   const fold = padTakes(state) ? foldOfState(state) : null;
   if (fold === null || fold.kind !== 'folded' || state.bootstrap === null)
     return refused(state, 'notNow');
   const target = undoTargetOf(state, fold);
   if (target.kind === 'blocked') return refused(state, blockedRefusal(target.reason));
-  if (event.only === 'sanction' && !fold.display.awaitingEnding) return refused(state, 'notNow');
+  if (event.only === 'sanction' && !state.sport.awaitingEnding(fold.display)) {
+    return refused(state, 'notNow');
+  }
   const next = isStart(state, target) ? { ...state, toss: null } : state;
   return undoing(next, target, event, fold);
 }
@@ -105,12 +110,12 @@ export function onUndo(state: MatchState, event: Extract<MatchEvent, { kind: 'un
 const blockedRefusal = (reason: Extract<UndoTarget, { kind: 'blocked' }>['reason']): PadRefusal =>
   reason === 'nothing' ? 'nothingToUndo' : 'notNow';
 
-function undoing(
-  state: MatchState,
+function undoing<S extends SportTypes>(
+  state: MatchState<S>,
   target: Exclude<UndoTarget, { kind: 'blocked' }>,
-  event: Extract<MatchEvent, { kind: 'undo' }>,
-  fold: Extract<BadmintonFold, { kind: 'folded' }>,
-): Handled {
+  event: UndoEvent,
+  fold: Folded<S>,
+): Handled<S> {
   if (target.kind === 'awaitAnswer') return waiting(state, target.key, event);
   if (target.kind === 'queued') return discarding(state, target.key, fold);
   return voiding(state, target.eventId, event.key, event.at);
@@ -120,27 +125,26 @@ function undoing(
  * Undo of a tap that may be at the server already: a void that names it by key, queued behind it and saved at once, so
  * a kill or leaving the match keeps it. Its tap's answer gives the id (`resolveUndo`).
  */
-function waiting(
-  state: MatchState,
+function waiting<S extends SportTypes>(
+  state: MatchState<S>,
   tapKey: string,
-  event: Extract<MatchEvent, { kind: 'undo' }>,
-): Handled {
+  event: UndoEvent,
+): Handled<S> {
   const made = queuedOf(state, undoEventFor(''), event.key, event.at);
   const next = { ...withTap(state, { ...made, voidsKey: tapKey }), line: null, undone: null };
   return handled(part(next), { outcome: TAKEN, pump: false });
 }
 
 /** Undo of a tap still only queued: it leaves the queue, nothing is sent, and the line says it was undone. */
-function discarding(
-  state: MatchState,
+function discarding<S extends SportTypes>(
+  state: MatchState<S>,
   key: string,
-  fold: Extract<BadmintonFold, { kind: 'folded' }>,
-): Handled {
+  fold: Folded<S>,
+): Handled<S> {
   const stepped = discardQueued(state.sync, key);
-  const did = fold.display.lastTap;
-  const tap = did === null || did.kind === 'undone' ? null : undoneTap(did);
-  const moved: MatchState = { ...state, sync: stepped.state, line: null };
-  const next: MatchState = {
+  const tap = state.sport.undoneOf(fold.display);
+  const moved: MatchState<S> = { ...state, sync: stepped.state, line: null };
+  const next: MatchState<S> = {
     ...moved,
     undone: tap === null ? null : { tap, over: signatureOf(moved) },
   };
@@ -154,7 +158,12 @@ function discarding(
  * Undo of an accepted event: a `core.void` of it. `undoTarget` has named an event that still stands, so the void is
  * queued without a second look; a server that refuses it refuses that tap alone, and the line says so.
  */
-function voiding(state: MatchState, eventId: string, key: string, at: string): Handled {
+function voiding<S extends SportTypes>(
+  state: MatchState<S>,
+  eventId: string,
+  key: string,
+  at: string,
+): Handled<S> {
   const queued = queuedOf(state, undoEventFor(eventId), key, at);
   return handled(part({ ...withTap(state, queued), line: null, undone: null }), {
     outcome: TAKEN,
@@ -163,7 +172,7 @@ function voiding(state: MatchState, eventId: string, key: string, at: string): H
 }
 
 /** An Undo that waits for a tap that is no longer queued (refused, dropped) is nothing now: it goes with it. */
-export function withoutOrphanVoids(state: MatchState): MatchState {
+export function withoutOrphanVoids<S extends SportTypes>(state: MatchState<S>): MatchState<S> {
   const { pending } = state.sync.queue;
   const orphaned = (tap: QueuedEvent): boolean =>
     tap.voidsKey !== undefined && !pending.some((other) => other.key === tap.voidsKey);

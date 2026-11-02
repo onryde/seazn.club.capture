@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { foldMemo } from '@/domain/scoring/scoringMatchFold';
+import { foldBadminton } from '@/domain/scoring/badmintonFold';
+import { memoFold } from '@/domain/scoring/scoringMatchFold';
 import { SINGLES, ledgerOf, queuedOf, rally, start } from '../../../test/badmintonLedger';
 
 // The fold is remembered while its inputs have not moved (plan S2-1 Task 9). A hit is the same object a fresh fold would
@@ -12,6 +13,7 @@ const INPUT = {
   ownEventIds: [],
   toss: null,
 } as const;
+const foldMemo = memoFold(foldBadminton);
 
 describe('foldMemo', () => {
   it('answers the same fold, the same object, to the same input', () => {

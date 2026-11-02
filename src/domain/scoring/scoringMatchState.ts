@@ -1,5 +1,3 @@
-import type { BadmintonFold } from '@/domain/scoring/badmintonFold';
-import type { BadmintonTap, BadmintonUndoneTap } from '@/domain/scoring/badmintonPad';
 import {
   type PadLineWords,
   type PadOutcome,
@@ -8,7 +6,7 @@ import {
 } from '@/domain/scoring/padLine';
 import type { PadSide } from '@/domain/scoring/padView';
 import type { BootCache, MatchQueue, QueueDead, QueuedEvent } from '@/domain/scoring/queue';
-import { foldMemo } from '@/domain/scoring/scoringMatchFold';
+import type { ScoringSport, SportFold, SportTypes } from '@/domain/scoring/scoringSport';
 import { type SyncState, canDiscardQueued } from '@/domain/scoring/sync';
 import { type UndoTarget, undoEventFor, undoTarget } from '@/domain/scoring/undoTarget';
 import type {
@@ -19,19 +17,13 @@ import type {
   ReadFailure,
   Rules,
 } from '@/domain/scoring/wire';
-import { foldEpochOf } from '@seazn/engine/sport';
 
 /**
  * The state of one scoring match and what can be read off it (plan S2-1 Task 9): the types of the reducer in
  * `scoringMatch.ts`, its constants, and the accessors every handler shares (is the queue dead, what does the fold count,
- * what would Undo take back). Pure.
+ * what would Undo take back). Pure, and the same for every sport: `S` is the sport's types (`SportTypes`), and what the
+ * sport decides is asked of the match's own sport (`MatchState.sport`). `S` defaults to any sport: what a runner holds.
  */
-
-/** `foldEpochOf('badminton')`: the engine epoch this build folds with, sent with every tap. */
-export const ENGINE_EPOCH: number = foldEpochOf('badminton');
-
-/** The sport this build scores. A link for any other is a visible state, never folded by the badminton engine. */
-export const SPORT = 'badminton';
 
 /** The wait before a save that did not land is tried again. */
 export const SAVE_RETRY_MS = 5000;
@@ -53,7 +45,10 @@ export const NOT_YET = Number.NEGATIVE_INFINITY;
 export type InFlight = { readonly key: string; readonly expectedSeq: number };
 
 /** A discarded queued tap's "undone" line, which the ledger cannot say (no void exists): valid while the match is as it was left. */
-export type UndoneLine = { readonly tap: BadmintonUndoneTap; readonly over: string };
+export type UndoneLine<S extends SportTypes = SportTypes> = {
+  readonly tap: S['undone'];
+  readonly over: string;
+};
 
 /**
  * The queue file may differ from the queue: a save failed. `tap`: it was a tap's, whose "not recorded" waits for the
@@ -66,7 +61,12 @@ export type SaveOwed = {
   readonly after: number;
 };
 
-export type MatchState = {
+export type MatchState<S extends SportTypes = SportTypes> = {
+  /**
+   * The sport the match opened as (`sportOfMatch`), kept for its life: it folds the match, makes each tap's event and
+   * draws the pad. A bootstrap that names another sport is never folded by it (`unsupportedSport`).
+   */
+  readonly sport: ScoringSport<S>;
   readonly sync: SyncState;
   /** The bootstrap last read, its `cfg` and `rulesVersion` the rules adopted since; null until one is held. */
   readonly bootstrap: Bootstrap | null;
@@ -80,7 +80,7 @@ export type MatchState = {
   /** The bootstrap could not be read for want of a signal, and none is held. */
   readonly bootOffline: boolean;
   readonly sent: InFlight | null;
-  readonly undone: UndoneLine | null;
+  readonly undone: UndoneLine<S> | null;
   readonly line: PadLineWords;
   readonly saveOwed: SaveOwed | null;
   /** Queue saves asked for and not yet answered by `saved` or `saveFailed`: while any is out, nothing new is sent. */
@@ -94,8 +94,8 @@ export type MatchState = {
 };
 
 /** What the hook did last, and what is left of it: the queue and the match as they stand. */
-export type MatchStep = {
-  readonly state: MatchState;
+export type MatchStep<S extends SportTypes = SportTypes> = {
+  readonly state: MatchState<S>;
   readonly effects: readonly MatchEffect[];
   /** What a tap came to, for the bounce guard and the flash; null for every event that is no tap. */
   readonly outcome: PadOutcome | null;
@@ -126,8 +126,8 @@ export type SaveEffect = {
 /** What a handler asks for: a save has no number until `step` numbers it. */
 export type Planned = Exclude<MatchEffect, SaveEffect> | Omit<SaveEffect, 'n'>;
 
-export type MatchEvent =
-  | { readonly kind: 'tap'; readonly tap: BadmintonTap; readonly key: string; readonly at: string }
+export type MatchEvent<S extends SportTypes = SportTypes> =
+  | { readonly kind: 'tap'; readonly tap: S['tap']; readonly key: string; readonly at: string }
   | {
       readonly kind: 'undo';
       readonly key: string;
@@ -156,7 +156,9 @@ export type MatchEvent =
   | { readonly kind: 'say'; readonly words: PadLineWords };
 
 /** What is held when a match opens: the queue and ledger from disk, and what the boot cache kept. */
-export type MatchHeld = {
+export type MatchHeld<S extends SportTypes = SportTypes> = {
+  /** The sport the match opens as (`sportOfMatch`). */
+  readonly sport: ScoringSport<S>;
   readonly queue: MatchQueue;
   readonly ledger: readonly LedgerEvent[];
   readonly bootstrap: Bootstrap | null;
@@ -188,10 +190,22 @@ export const CARD_SCREENS: ReadonlySet<string> = new Set([
   'waiting',
 ]);
 
+/** Whether the match is scored as `sport`: it opened with that very sport, so its sport-typed parts are `S`'s. */
+export function scoredAs<S extends SportTypes>(
+  state: MatchState,
+  sport: ScoringSport<S>,
+): state is MatchState<S> {
+  return state.sport === sport;
+}
+
+/** The bootstrap names the sport the match is scored as: the one its fold, its taps and its pad are. */
+const ownSport = (state: MatchState): boolean =>
+  state.bootstrap !== null && state.bootstrap.sportKey === state.sport.key;
+
 /** Whether the pad takes a tap now. */
 export function padTakes(state: MatchState): boolean {
   const { bootstrap, sync } = state;
-  if (bootstrap === null || bootstrap.sportKey !== SPORT) return false;
+  if (bootstrap === null || !ownSport(state)) return false;
   if (deadOf(state) !== null || isOutdated(state) || sync.status === 'tooLarge') return false;
   return !CARD_SCREENS.has(bootstrap.screen);
 }
@@ -268,13 +282,13 @@ export function ownIds(state: MatchState): readonly string[] {
 }
 
 /** The match folded, the queue as `queued` says (the queue the fold counts, unless a caller judges another). */
-export function foldOfState(
-  state: MatchState,
+export function foldOfState<S extends SportTypes>(
+  state: MatchState<S>,
   queued: readonly QueuedEvent[] = foldQueue(state),
-): BadmintonFold | null {
+): SportFold<S> | null {
   const { bootstrap } = state;
-  if (bootstrap === null || bootstrap.sportKey !== SPORT) return null;
-  return foldMemo({
+  if (bootstrap === null || !ownSport(state)) return null;
+  return state.sport.fold({
     bootstrap,
     ledger: state.sync.ledger,
     queued,
@@ -284,7 +298,10 @@ export function foldOfState(
 }
 
 /** What Undo would take back now: the fold's legal queued taps and the ledger, the one rule (`undoTarget`). */
-export function undoTargetOf(state: MatchState, fold: BadmintonFold): UndoTarget {
+export function undoTargetOf<S extends SportTypes>(
+  state: MatchState<S>,
+  fold: SportFold<S>,
+): UndoTarget {
   const legal = fold.kind === 'folded' ? new Set(fold.legalQueued) : new Set<string>();
   const taps = foldQueue(state).filter((tap) => legal.has(tap.key));
   return undoTarget(state.sync.ledger, taps, ownIds(state), (key) =>
@@ -292,33 +309,47 @@ export function undoTargetOf(state: MatchState, fold: BadmintonFold): UndoTarget
   );
 }
 
-export type Part = { readonly state: MatchState; readonly effects: readonly Planned[] };
+export type Part<S extends SportTypes = SportTypes> = {
+  readonly state: MatchState<S>;
+  readonly effects: readonly Planned[];
+};
 
 /** What a handler decided. `pump: false`: a tap was added to the queue, which is saved before anything is sent. */
-export type Handled = Part & { readonly outcome: PadOutcome | null; readonly pump: boolean };
+export type Handled<S extends SportTypes = SportTypes> = Part<S> & {
+  readonly outcome: PadOutcome | null;
+  readonly pump: boolean;
+};
 
-export const part = (state: MatchState, effects: readonly Planned[] = []): Part => ({
+export const part = <S extends SportTypes>(
+  state: MatchState<S>,
+  effects: readonly Planned[] = [],
+): Part<S> => ({
   state,
   effects,
 });
 
-export const handled = (
-  p: Part,
+export const handled = <S extends SportTypes>(
+  p: Part<S>,
   extra: { outcome?: PadOutcome; pump?: boolean } = {},
-): Handled => ({
+): Handled<S> => ({
   ...p,
   outcome: extra.outcome ?? null,
   pump: extra.pump ?? true,
 });
 
-export const refused = (state: MatchState, refusal: PadRefusal): Handled =>
-  handled(part(state), { outcome: refusing(refusal), pump: false });
+export const refused = <S extends SportTypes>(
+  state: MatchState<S>,
+  refusal: PadRefusal,
+): Handled<S> => handled(part(state), { outcome: refusing(refusal), pump: false });
 
 /** The match as an "undone" line was said over it: the ledger's length and the queue's keys. Any change ends the line. */
 export const signatureOf = (state: MatchState): string =>
   `${state.sync.ledger.length}:${state.sync.queue.pending.map((tap) => tap.key).join(',')}`;
 
-export const withPending = (state: MatchState, pending: readonly QueuedEvent[]): MatchState => ({
+export const withPending = <S extends SportTypes>(
+  state: MatchState<S>,
+  pending: readonly QueuedEvent[],
+): MatchState<S> => ({
   ...state,
   sync: { ...state.sync, queue: { ...state.sync.queue, pending } },
 });

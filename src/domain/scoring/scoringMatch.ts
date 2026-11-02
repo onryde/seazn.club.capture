@@ -1,5 +1,6 @@
 import { type SyncState, openSync } from '@/domain/scoring/sync';
 import type { Bootstrap } from '@/domain/scoring/wire';
+import type { SportTypes } from '@/domain/scoring/scoringSport';
 import { abandon, onAnswered } from '@/domain/scoring/scoringMatchAnswers';
 import { pump } from '@/domain/scoring/scoringMatchPump';
 import {
@@ -18,7 +19,6 @@ import {
   savedOf,
 } from '@/domain/scoring/scoringMatchSaves';
 import {
-  ENGINE_EPOCH,
   LOAD_BOOTSTRAP,
   deadOf,
   handled,
@@ -41,7 +41,8 @@ import { onPick, onTap, onUndo, withoutOrphanVoids } from '@/domain/scoring/scor
  * hook then does (`scoringRunner.ts`).
  *
  * Not a second state machine of the capture session (AGENTS §2): the authority is the server's ledger, and the match is
- * a fold of it through @seazn/engine, as the web's pad does. What this adds to `sync.ts` (which judges answers) is the
+ * a fold of it through @seazn/engine, as the web's pad does. The same for every sport: the match's sport (`held.sport`,
+ * kept as `state.sport`) folds it, makes each tap's event and decides a send's payload (`scoringSport.ts`). What this adds to `sync.ts` (which judges answers) is the
  * orchestration around it: which fold judges a tap, what an Undo takes back, when `revalidate` runs, the payload a send
  * is made with, and what a save that failed means. It is split by what each part is about: the state, the taps, the
  * answers, the reads, the saves and the pump.
@@ -53,16 +54,17 @@ import { onPick, onTap, onUndo, withoutOrphanVoids } from '@/domain/scoring/scor
  * judged on it (hold `ledger`, a revalidation owed): the phone may have been closed while another scorer finished the
  * game. The ledger and the bootstrap are read at once, unless the queue is already dead.
  */
-export function openMatch(held: MatchHeld, now: number): MatchStep {
+export function openMatch<S extends SportTypes>(held: MatchHeld<S>, now: number): MatchStep<S> {
   const opened = openSync({
     queue: held.queue,
     ledger: held.ledger,
     rulesVersion: held.bootstrap?.rulesVersion ?? held.rulesVersion,
-    engineEpoch: ENGINE_EPOCH,
+    engineEpoch: held.sport.epoch,
   });
   const owing = held.queue.pending.length > 0 && held.queue.dead === null;
   const sync: SyncState = owing ? { ...opened, hold: 'ledger', revalidateOwed: true } : opened;
-  const state: MatchState = {
+  const state: MatchState<S> = {
+    sport: held.sport,
     sync,
     bootstrap: held.bootstrap,
     toss: held.toss,
@@ -108,7 +110,11 @@ export function wakeAt(state: MatchState, now: number): number | null {
   return ahead.length === 0 ? null : Math.min(...ahead);
 }
 
-export function step(state: MatchState, event: MatchEvent, now: number): MatchStep {
+export function step<S extends SportTypes>(
+  state: MatchState<S>,
+  event: MatchEvent<S>,
+  now: number,
+): MatchStep<S> {
   const result = handle(state, event, now);
   const settled = result.pump ? pump(result.state, now) : part(result.state);
   const final = withoutOrphanVoids(settled.state);
@@ -139,7 +145,11 @@ function numbered(
   return { effects, last };
 }
 
-function handle(state: MatchState, event: MatchEvent, now: number): Handled {
+function handle<S extends SportTypes>(
+  state: MatchState<S>,
+  event: MatchEvent<S>,
+  now: number,
+): Handled<S> {
   switch (event.kind) {
     case 'tap':
       return onTap(state, event);

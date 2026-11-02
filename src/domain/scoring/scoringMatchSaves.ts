@@ -2,6 +2,7 @@ import { matchLabelOf } from '@/domain/scoring/matchLabel';
 import { refusalLine } from '@/domain/scoring/padLine';
 import type { MatchQueue } from '@/domain/scoring/queue';
 import type { Bootstrap } from '@/domain/scoring/wire';
+import type { SportTypes } from '@/domain/scoring/scoringSport';
 import {
   SAVE_RETRY_MS,
   part,
@@ -53,7 +54,7 @@ export function namedQueue(queue: MatchQueue, bootstrap: Bootstrap | null): Matc
 }
 
 /** One queue save has been answered, whichever way. */
-export const landedSave = (state: MatchState): MatchState => ({
+export const landedSave = <S extends SportTypes>(state: MatchState<S>): MatchState<S> => ({
   ...state,
   saving: Math.max(0, state.saving - 1),
 });
@@ -62,7 +63,7 @@ export const landedSave = (state: MatchState): MatchState => ({
  * A queue save landed: whatever the file held that the queue does not is overwritten, if it was issued after the failure.
  * A tap's "not recorded" is now true.
  */
-export function savedOf(state: MatchState, n: number): MatchState {
+export function savedOf<S extends SportTypes>(state: MatchState<S>, n: number): MatchState<S> {
   if (state.saveOwed === null || n <= state.saveOwed.after) return state;
   const line = state.saveOwed.tap ? refusalLine('scoring.refusal.notSaved') : state.line;
   return { ...state, saveOwed: null, line };
@@ -74,14 +75,18 @@ export function savedOf(state: MatchState, n: number): MatchState {
  * (`tapQueueStore`), so a tap the scorer was told was not recorded could come back. "Not recorded" is said only once
  * that save has landed (`savedOf`); until then the line says it could not save.
  */
-export function onSaveFailed(state: MatchState, key: string | null, now: number): Part {
+export function onSaveFailed<S extends SportTypes>(
+  state: MatchState<S>,
+  key: string | null,
+  now: number,
+): Part<S> {
   const pending = state.sync.queue.pending.filter((tap) => tap.key !== key || tap.attempts > 0);
   const moved = pending.length !== state.sync.queue.pending.length;
   const sync = moved ? { ...state.sync, queue: { ...state.sync.queue, pending } } : state.sync;
   const tap = key !== null || state.saveOwed?.tap === true;
   const owed: SaveOwed = { tap, retryAt: now + SAVE_RETRY_MS, after: state.saveSeq };
   const line = key === null ? state.line : refusalLine('scoring.refusal.savePending');
-  const next: MatchState = { ...state, sync, line, saveOwed: owed };
+  const next: MatchState<S> = { ...state, sync, line, saveOwed: owed };
   const first = state.saveOwed === null || key !== null;
   return part(next, first && !moved ? [resave(sync.queue)] : []);
 }

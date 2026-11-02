@@ -8,6 +8,7 @@ import type {
   MatchState,
   SaveEffect,
 } from '@/domain/scoring/scoringMatchState';
+import { sportOfMatch } from '@/domain/scoring/sports';
 import type { LedgerEvent } from '@/domain/scoring/wire';
 import { createReads } from '@/hooks/scoringRunnerReads';
 import { createSaver } from '@/hooks/scoringRunnerSaves';
@@ -288,10 +289,14 @@ async function markNoLink(ports: RunnerPorts, fixtureId: string): Promise<void> 
   }
 }
 
-/** What the reducer opens a match from: the files, the judge this mode has, and whether the app is in the foreground. */
+/**
+ * What the reducer opens a match from: the sport (`sportOfMatch`), the files, the judge this mode has, and whether the
+ * app is in the foreground.
+ */
 function heldOf(loaded: Opened, mode: RunnerMode, foreground: boolean): MatchHeld {
   const rulesVersion = Math.max(1, ...loaded.queue.pending.map((tap) => tap.rulesVersion));
   return {
+    sport: sportOfMatch(loaded.boot),
     queue: loaded.queue,
     ledger: loaded.ledger,
     bootstrap: loaded.boot?.bootstrap ?? null,

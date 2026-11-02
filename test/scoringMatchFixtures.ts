@@ -1,13 +1,19 @@
+import { badmintonSport, type BadmintonTypes } from '@/domain/scoring/badmintonSport';
 import type { QueuedEvent, MatchQueue } from '@/domain/scoring/queue';
+import type { SportTypes } from '@/domain/scoring/scoringSport';
 import { openMatch, step } from '@/domain/scoring/scoringMatch';
 import type {
   MatchEffect,
-  MatchEvent,
-  MatchHeld,
-  MatchState,
-  MatchStep,
+  MatchEvent as AnyMatchEvent,
+  MatchHeld as AnyMatchHeld,
+  MatchState as AnyMatchState,
+  MatchStep as AnyMatchStep,
 } from '@/domain/scoring/scoringMatchState';
 import { SINGLES, ledgerOf, queuedOf, rally, start, type Spec } from './badmintonLedger';
+
+/** The reducer's types, for the badminton matches these fixtures open. */
+type MatchHeld = AnyMatchHeld<BadmintonTypes>;
+type MatchState = AnyMatchState<BadmintonTypes>;
 
 /**
  * Literal inputs for the match reducer's tests (plan S2-1 Task 9). A match is opened from what the disk would hold, and
@@ -26,6 +32,7 @@ export const queueOf = (over: Partial<MatchQueue> = {}): MatchQueue => ({
 });
 
 export const held = (over: Partial<MatchHeld> = {}): MatchHeld => ({
+  sport: badmintonSport,
   queue: queueOf(),
   ledger: ledgerOf([start()]),
   bootstrap: SINGLES,
@@ -57,13 +64,13 @@ export const tapped = (queue: readonly QueuedEvent[]): Partial<MatchHeld> => ({
 });
 
 /** Runs the events in order on the latest state; returns the state and every step's effects and outcome. */
-export function drive(
-  from: MatchState,
-  events: readonly MatchEvent[],
+export function drive<S extends SportTypes>(
+  from: AnyMatchState<S>,
+  events: readonly AnyMatchEvent<S>[],
   now = NOW,
-): { state: MatchState; steps: readonly MatchStep[] } {
+): { state: AnyMatchState<S>; steps: readonly AnyMatchStep<S>[] } {
   let state = from;
-  const steps: MatchStep[] = [];
+  const steps: AnyMatchStep<S>[] = [];
   for (const event of events) {
     const next = step(state, event, now);
     steps.push(next);

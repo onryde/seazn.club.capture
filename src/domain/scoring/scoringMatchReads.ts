@@ -6,6 +6,7 @@ import {
   onRules,
 } from '@/domain/scoring/sync';
 import type { Bootstrap, LedgerEvent, ReadFailure, Rules } from '@/domain/scoring/wire';
+import type { SportTypes } from '@/domain/scoring/scoringSport';
 import { withSync } from '@/domain/scoring/scoringMatchAnswers';
 import {
   BOOTSTRAP_PACE_MS,
@@ -29,7 +30,7 @@ import {
  * A ping, a poll, a return to the foreground: the ledger again. The bootstrap goes with it at once while the screen is
  * not the pad (a card, or none held yet), and, paced, when the match is decided: the ledger cannot say it was finalized.
  */
-export function wanting(state: MatchState, now: number): Part {
+export function wanting<S extends SportTypes>(state: MatchState<S>, now: number): Part<S> {
   if (state.sync.status === 'tooLarge' || deadOf(state) !== null) return part(state);
   const fetch: MatchEffect = { kind: 'fetch', since: state.sync.tip };
   if (state.judge !== 'fold') return part(state, [fetch]);
@@ -44,9 +45,9 @@ export function wanting(state: MatchState, now: number): Part {
 const showsNoPad = (state: MatchState): boolean =>
   state.bootstrap === null || CARD_SCREENS.has(state.bootstrap.screen);
 
-function isDecided(state: MatchState): boolean {
+function isDecided<S extends SportTypes>(state: MatchState<S>): boolean {
   const fold = foldOfState(state);
-  return fold !== null && fold.kind === 'folded' && fold.display.phase === 'decided';
+  return fold !== null && fold.kind === 'folded' && state.sport.decided(fold.display);
 }
 
 /** Whether the last read of the bootstrap is far enough back for another. */
@@ -54,7 +55,11 @@ const paced = (state: MatchState, now: number): boolean =>
   state.bootstrapAskedAt === null || now - state.bootstrapAskedAt >= BOOTSTRAP_PACE_MS;
 
 /** The bootstrap is asked for now: the time is kept, and what was owed is paid. */
-export function asking(state: MatchState, now: number, others: readonly MatchEffect[] = []): Part {
+export function asking<S extends SportTypes>(
+  state: MatchState<S>,
+  now: number,
+  others: readonly MatchEffect[] = [],
+): Part<S> {
   return part({ ...state, bootstrapAskedAt: now, bootstrapOwed: false }, [
     ...others,
     LOAD_BOOTSTRAP,
@@ -74,14 +79,18 @@ export function bootstrapDueAt(state: MatchState): number | null {
 }
 
 /** Events the ledger already holds are nothing new (a fetch that lost the race with another); the rest merge. */
-export function onFetched(state: MatchState, events: readonly LedgerEvent[], now: number): Part {
+export function onFetched<S extends SportTypes>(
+  state: MatchState<S>,
+  events: readonly LedgerEvent[],
+  now: number,
+): Part<S> {
   const fresh = events.filter((event) => event.seq > state.sync.tip);
   void now;
   return withSync(state, onLedger(state.sync, fresh));
 }
 
 /** The rules a read brought: the phone folds under them only when they are the version it holds now. */
-export function onRulesRead(state: MatchState, rules: Rules): Part {
+export function onRulesRead<S extends SportTypes>(state: MatchState<S>, rules: Rules): Part<S> {
   const sync = onRules(state.sync, rules);
   const { bootstrap } = state;
   const adopted =
@@ -96,7 +105,10 @@ export function onRulesRead(state: MatchState, rules: Rules): Part {
  * if they are no older than those held, and it clears what an earlier failed read said of the link. One read before the
  * seq of the one held (`lastSeq`) is a late answer and changes nothing: a stale "in play" must not reopen a finalized match.
  */
-export function onBootstrapRead(state: MatchState, read: Bootstrap): Part {
+export function onBootstrapRead<S extends SportTypes>(
+  state: MatchState<S>,
+  read: Bootstrap,
+): Part<S> {
   const held = state.bootstrap;
   if (held !== null && read.lastSeq < held.lastSeq) return part(state);
   const status = onBootstrapStatus(state.sync, read.status);
@@ -108,7 +120,7 @@ export function onBootstrapRead(state: MatchState, read: Bootstrap): Part {
     read.rulesVersion > status.state.rulesVersion
       ? onRules(status.state, { rulesVersion: read.rulesVersion })
       : status.state;
-  const next: MatchState = {
+  const next: MatchState<S> = {
     ...state,
     bootstrap,
     closed: closedByStatus(read.status),
@@ -118,15 +130,15 @@ export function onBootstrapRead(state: MatchState, read: Bootstrap): Part {
 }
 
 /** A read that did not come to its data: sync's word on it, and what it says of the link even with nothing queued. */
-export function onFailed(
-  state: MatchState,
+export function onFailed<S extends SportTypes>(
+  state: MatchState<S>,
   kind: 'fetchFailed' | 'rulesFailed' | 'bootstrapFailed',
   failure: ReadFailure,
   now: number,
-): Part {
+): Part<S> {
   const closed = closedBy(failure) ?? state.closed;
   const trouble =
     kind === 'bootstrapFailed' && state.bootstrap === null && closedBy(failure) === null;
-  const next: MatchState = { ...state, closed, bootOffline: trouble || state.bootOffline };
+  const next: MatchState<S> = { ...state, closed, bootOffline: trouble || state.bootOffline };
   return withSync(next, onReadFailed(state.sync, failure, now));
 }

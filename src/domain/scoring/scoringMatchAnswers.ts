@@ -1,5 +1,6 @@
 import { refusalLine } from '@/domain/scoring/padLine';
 import type { QueuedEvent } from '@/domain/scoring/queue';
+import type { SportTypes } from '@/domain/scoring/scoringSport';
 import { type SyncEffect, type SyncState, onAnswer } from '@/domain/scoring/sync';
 import type { AppendAnswer } from '@/domain/scoring/wire';
 import {
@@ -38,21 +39,21 @@ function effectsOf(effects: readonly SyncEffect[]): { effects: MatchEffect[]; re
 }
 
 /** The state after sync moved, and what it asked for; a tap that left the queue refused is said, once, on the line. */
-export function withSync(
-  state: MatchState,
+export function withSync<S extends SportTypes>(
+  state: MatchState<S>,
   step: { state: SyncState; effects: readonly SyncEffect[] },
-): Part {
+): Part<S> {
   const mapped = effectsOf(step.effects);
   const line = mapped.refused ? refusalLine('scoring.refusal.notCounted') : state.line;
   return part({ ...state, sync: step.state, line }, mapped.effects);
 }
 
-export function onAnswered(
-  state: MatchState,
+export function onAnswered<S extends SportTypes>(
+  state: MatchState<S>,
   sent: QueuedEvent,
   answer: AppendAnswer,
   now: number,
-): Handled {
+): Handled<S> {
   const accepted = answer.kind === 'accepted';
   const stepped = onAnswer(state.sync, sent, answer, accepted ? NOT_YET : now);
   const landed = state.sent?.key === sent.key ? { ...state, sent: null } : state;
@@ -67,7 +68,11 @@ export function onAnswered(
  * queue. The fold must take it (another scorer may have voided the tap already: then it is dropped); the background
  * sender judges nothing and keeps it, and the server judges it.
  */
-function resolveUndo(moved: Part, tapKey: string, eventId: string): Part {
+function resolveUndo<S extends SportTypes>(
+  moved: Part<S>,
+  tapKey: string,
+  eventId: string,
+): Part<S> {
   const { pending } = moved.state.sync.queue;
   const waiting = pending.find((tap) => tap.voidsKey === tapKey);
   if (waiting === undefined) return moved;
@@ -90,7 +95,11 @@ function resolveUndo(moved: Part, tapKey: string, eventId: string): Part {
 }
 
 /** A send that never went: its tap stays, its attempt counted, and the sender waits as it does for no network. */
-export function abandon(state: MatchState, key: string, now: number): Part {
+export function abandon<S extends SportTypes>(
+  state: MatchState<S>,
+  key: string,
+  now: number,
+): Part<S> {
   const tap = state.sync.queue.pending.find((queued) => queued.key === key);
   const landed = state.sent?.key === key ? { ...state, sent: null } : state;
   if (tap === undefined) return part(landed);
