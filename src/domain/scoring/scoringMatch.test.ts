@@ -3,12 +3,10 @@ import {
   ENGINE_EPOCH,
   deadOf,
   foldQueue,
-  openMatch,
   ownIds,
-  step,
-  wakeAt,
   type MatchState,
-} from '@/domain/scoring/scoringMatch';
+} from '@/domain/scoring/scoringMatchState';
+import { openMatch, step, wakeAt } from '@/domain/scoring/scoringMatch';
 import type { QueuedEvent } from '@/domain/scoring/queue';
 import {
   AWAY,

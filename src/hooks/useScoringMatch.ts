@@ -7,7 +7,7 @@ import {
   type PadOutcome,
 } from '@/domain/scoring/padLine';
 import type { PadSide } from '@/domain/scoring/padView';
-import type { MatchEvent } from '@/domain/scoring/scoringMatch';
+import type { MatchEvent } from '@/domain/scoring/scoringMatchState';
 import { viewOf, type MatchView } from '@/domain/scoring/scoringMatchView';
 import type { HalfFlash } from '@/domain/scoring/tapFlash';
 import { uuidV4 } from '@/domain/scoring/tapKey';

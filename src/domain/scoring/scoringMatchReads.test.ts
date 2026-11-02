@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { deadOf, step, wakeAt } from '@/domain/scoring/scoringMatch';
+import { deadOf } from '@/domain/scoring/scoringMatchState';
+import { step, wakeAt } from '@/domain/scoring/scoringMatch';
 import { viewOf } from '@/domain/scoring/scoringMatchView';
 import { PHONE_LINK, SINGLES, rally, start } from '../../../test/badmintonLedger';
 import { AT, NOW, kinds, opened, queueOf, ready } from '../../../test/scoringMatchFixtures';

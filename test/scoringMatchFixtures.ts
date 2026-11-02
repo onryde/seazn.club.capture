@@ -1,13 +1,12 @@
 import type { QueuedEvent, MatchQueue } from '@/domain/scoring/queue';
-import {
-  openMatch,
-  step,
-  type MatchEffect,
-  type MatchEvent,
-  type MatchHeld,
-  type MatchState,
-  type MatchStep,
-} from '@/domain/scoring/scoringMatch';
+import { openMatch, step } from '@/domain/scoring/scoringMatch';
+import type {
+  MatchEffect,
+  MatchEvent,
+  MatchHeld,
+  MatchState,
+  MatchStep,
+} from '@/domain/scoring/scoringMatchState';
 import { SINGLES, ledgerOf, queuedOf, rally, start, type Spec } from './badmintonLedger';
 
 /**

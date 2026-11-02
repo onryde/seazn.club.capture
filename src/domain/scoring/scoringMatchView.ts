@@ -22,7 +22,7 @@ import {
   signatureOf,
   undoTargetOf,
   type MatchState,
-} from '@/domain/scoring/scoringMatch';
+} from '@/domain/scoring/scoringMatchState';
 
 /**
  * What the screen shows of a match (plan S2-1 Task 9), read off its state: the pad, or one of the states that take its

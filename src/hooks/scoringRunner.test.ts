@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BadmintonTap } from '@/domain/scoring/badmintonPad';
-import type { MatchEvent } from '@/domain/scoring/scoringMatch';
+import type { MatchEvent } from '@/domain/scoring/scoringMatchState';
 import { createScoringRunner, type RunnerMode, type ScoringRunner } from '@/hooks/scoringRunner';
 import { SINGLES_SEED } from '@/services/fakeScoringPort';
 import { saveScoringLink } from '@/services/scoringLinkStore';
@@ -337,6 +337,31 @@ describe('a tap', () => {
     expect(bodies).toEqual(['k1', 'k2']);
     expect(await ledgerTypes(fakes)).toEqual(['core.start', 'badminton.rally']);
     expect(pendingKeys(runner)).toEqual([]);
+  });
+});
+
+describe('the saves of one match', () => {
+  it('land in the order they were asked for: a second tap’s save does not start before the first has landed', async () => {
+    const fakes = newFakes();
+    const { runner } = await rig(fakes);
+    fakes.scoring.goOffline(true);
+    let open: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    const real = fakes.tapQueue.save;
+    const started: string[][] = [];
+    vi.spyOn(fakes.tapQueue, 'save').mockImplementation(async (queue) => {
+      started.push(queue.pending.map((item) => item.key));
+      if (started.length === 1) await gate;
+      return real(queue);
+    });
+    runner.dispatch(tap(START, 'k1'));
+    runner.dispatch(tap(RALLY, 'k2'));
+    await flush();
+    expect(started).toEqual([['k1']]);
+    open();
+    await flush();
+    expect(started.slice(0, 2)).toEqual([['k1'], ['k1', 'k2']]);
+    expect(fakes.queueFiles.files.get(`${FIXTURE}.json`)).toContain('"key":"k2"');
   });
 });
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { step, wakeAt, type MatchState } from '@/domain/scoring/scoringMatch';
+import { step, wakeAt } from '@/domain/scoring/scoringMatch';
+import type { MatchState } from '@/domain/scoring/scoringMatchState';
 import { queuedOf, rally } from '../../../test/badmintonLedger';
 import {
   NOW,

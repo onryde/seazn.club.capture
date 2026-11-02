@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { QueuedEvent } from '@/domain/scoring/queue';
-import { foldQueue, step } from '@/domain/scoring/scoringMatch';
+import { foldQueue } from '@/domain/scoring/scoringMatchState';
+import { step } from '@/domain/scoring/scoringMatch';
 import { viewOf } from '@/domain/scoring/scoringMatchView';
 import {
   BROWSER_LINK,

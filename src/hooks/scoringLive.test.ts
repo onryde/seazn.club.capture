@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { MatchEvent } from '@/domain/scoring/scoringMatch';
+import type { MatchEvent } from '@/domain/scoring/scoringMatchState';
 import { startLive, type LiveRunner } from '@/hooks/scoringLive';
 import type { ScoringLink } from '@/services/scoringPort';
 import { FAKE_SCORING_SECRET } from '../../test/fakeScoringLinkPort';

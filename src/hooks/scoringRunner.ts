@@ -1,14 +1,16 @@
 import type { PadOutcome } from '@/domain/scoring/padLine';
 import type { BootCache, MatchQueue } from '@/domain/scoring/queue';
-import {
-  openMatch,
-  step,
-  wakeAt,
-  type MatchEffect,
-  type MatchEvent,
-  type MatchState,
-} from '@/domain/scoring/scoringMatch';
-import type { LedgerEvent, ReadFailure } from '@/domain/scoring/wire';
+import { openMatch, step, wakeAt } from '@/domain/scoring/scoringMatch';
+import type {
+  MatchEffect,
+  MatchEvent,
+  MatchHeld,
+  MatchState,
+  SaveEffect,
+} from '@/domain/scoring/scoringMatchState';
+import type { LedgerEvent } from '@/domain/scoring/wire';
+import { createReads } from '@/hooks/scoringRunnerReads';
+import { createSaver } from '@/hooks/scoringRunnerSaves';
 import type { Ports } from '@/hooks/usePorts';
 import { readScoringLink } from '@/services/scoringLinkStore';
 import type { ScoringLink } from '@/services/scoringPort';
@@ -40,7 +42,6 @@ export type RunnerSnapshot =
   | { readonly kind: 'ready'; readonly state: MatchState };
 
 const LOADING: RunnerSnapshot = { kind: 'loading' };
-const OFFLINE: ReadFailure = { kind: 'offline' };
 
 export type ScoringRunner = {
   readonly fixtureId: string;
@@ -64,14 +65,6 @@ type Options = {
   readonly onIdle?: () => void;
 };
 
-const emptyQueue = (fixtureId: string): MatchQueue => ({
-  fixtureId,
-  label: '',
-  pending: [],
-  ownEventIds: [],
-  dead: null,
-});
-
 export function createScoringRunner(ports: RunnerPorts, options: Options): ScoringRunner {
   const { fixtureId, mode } = options;
   let snapshot: RunnerSnapshot = LOADING;
@@ -80,10 +73,8 @@ export function createScoringRunner(ports: RunnerPorts, options: Options): Scori
   let stopped = false;
   let started = false;
   let idled = false;
-  let unsettled = 0;
-  let lastSave: Promise<boolean> = Promise.resolve(true);
-  const sending = new Set<Promise<void>>();
   let wakeTimer: { at: number; id: ReturnType<typeof setTimeout> } | null = null;
+  const sending = new Set<Promise<void>>();
   const listeners = new Set<() => void>();
   const leaving: Array<() => void> = [];
 
@@ -93,86 +84,59 @@ export function createScoringRunner(ports: RunnerPorts, options: Options): Scori
   };
   const now = (): number => ports.clock().getTime();
 
-  // --- effects --------------------------------------------------------------------------------------------------
+  // --- the reducer's step ------------------------------------------------------------------------------------------
 
   const dispatch = (event: MatchEvent): PadOutcome | null => {
     if (stopped || state === null) return null;
     const result = step(state, event, now());
     state = result.state;
     result.effects.forEach(run);
-    if (unsettled === 0) publish({ kind: 'ready', state });
+    if (saver.unsettled() === 0) publish({ kind: 'ready', state });
     arm(state);
     idleCheck(state);
     return result.outcome;
   };
 
   /** A headless sender with nothing left to send says so once: the hub lets it go. */
-  const idleCheck = (now_: MatchState): void => {
+  const idleCheck = (current: MatchState): void => {
     if (mode !== 'headless' || idled || options.onIdle === undefined) return;
-    const { queue } = now_.sync;
+    const { queue } = current.sync;
     if (queue.dead === null && queue.pending.length > 0) return;
     idled = true;
     options.onIdle();
   };
 
-  /** One save, in order behind the last: the queue (whose failure the reducer is told), then the two caches. */
-  const save = (effect: Extract<MatchEffect, { kind: 'save' }>): void => {
-    const owesTap = effect.tap !== null && effect.queue !== null;
-    if (owesTap) unsettled += 1;
-    const previous = lastSave;
-    lastSave = previous.then(() => persist(effect)).then((ok) => settled(effect, ok, owesTap));
-  };
+  // --- what the reducer asks for -----------------------------------------------------------------------------------
 
-  const persist = async (effect: Extract<MatchEffect, { kind: 'save' }>): Promise<boolean> => {
-    const { tapQueue, logger } = ports;
-    if (effect.boot !== null)
-      await cached(() => tapQueue.saveBoot(fixtureId, effect.boot as BootCache));
-    if (effect.ledger !== null) {
-      const ledger = effect.ledger;
-      await cached(() => tapQueue.saveLedger(fixtureId, ledger));
-    }
-    if (effect.queue === null) return true;
-    try {
-      await tapQueue.save(effect.queue);
-      return true;
-    } catch {
-      logger.warn('scoring.queue.saveFailed', {});
-      return false;
-    }
-  };
-
-  /** A cache that cannot be written costs the next reopen a network read, never a tap: said, not thrown. */
-  const cached = async (write: () => Promise<void>): Promise<void> => {
-    try {
-      await write();
-    } catch {
-      ports.logger.warn('scoring.cache.saveFailed', {});
-    }
-  };
-
-  const settled = (
-    effect: Extract<MatchEffect, { kind: 'save' }>,
-    ok: boolean,
-    owesTap: boolean,
-  ): boolean => {
-    if (owesTap) unsettled -= 1;
-    if (effect.queue !== null)
+  /** A queue save is done: the reducer is told; a save of the caches alone only lets the screen show what it holds. */
+  const landed = (effect: SaveEffect, ok: boolean): void => {
+    if (effect.queue !== null) {
       dispatch(ok ? { kind: 'saved', n: effect.n } : { kind: 'saveFailed', key: effect.tap });
-    else if (unsettled === 0 && state !== null && !stopped) publish({ kind: 'ready', state });
-    return ok;
+    } else if (saver.unsettled() === 0 && state !== null && !stopped) {
+      publish({ kind: 'ready', state });
+    }
   };
+  const saver = createSaver({ ports, fixtureId, landed });
+  const reads = createReads({
+    ports,
+    fixtureId,
+    link: () => link,
+    tip: () => state?.sync.tip ?? 0,
+    stopped: () => stopped,
+    dispatch,
+  });
 
   /** A send goes only after every save before it has landed, and never from a stopped runner or a backgrounded app. */
   const send = (effect: Extract<MatchEffect, { kind: 'send' }>): void => {
     const call = (async () => {
-      const landed = await lastSave;
+      const saved = await saver.pending();
       const held = link;
       if (stopped || held === null) return;
-      if (!landed || !ports.foreground.isForeground()) {
+      if (!saved || !ports.foreground.isForeground()) {
         dispatch({ kind: 'abandoned', key: effect.sent.key });
         return;
       }
-      const answer = await answered(() => ports.scoring.append(held, fixtureId, effect.body));
+      const answer = await reads.answered(() => ports.scoring.append(held, fixtureId, effect.body));
       if (answer === null) dispatch({ kind: 'abandoned', key: effect.sent.key });
       else dispatch({ kind: 'answered', sent: effect.sent, answer });
     })();
@@ -180,75 +144,20 @@ export function createScoringRunner(ports: RunnerPorts, options: Options): Scori
     void call.finally(() => sending.delete(call));
   };
 
-  /**
-   * A port call, its answer or null if it threw. The port's contract is that no call rejects; one that does (a native
-   * module that fell over) must still end as a failed call, never as a read or a send left in flight for good.
-   */
-  const answered = async <T>(call: () => Promise<T>): Promise<T | null> => {
-    try {
-      return await call();
-    } catch {
-      ports.logger.warn('scoring.call.threw', {});
-      return null;
+  const run = (effect: MatchEffect): void => {
+    switch (effect.kind) {
+      case 'save':
+        return saver.save(effect);
+      case 'send':
+        return send(effect);
+      case 'fetch':
+        return reads.fetchLedger();
+      case 'loadRules':
+        return reads.loadRules();
+      case 'loadBootstrap':
+        return reads.loadBootstrap();
     }
   };
-
-  /**
-   * A read that is asked for again while it is out is one more read after it, not one each. `read` does one read and
-   * hands the answer to the reducer; it comes back before the next starts. A stopped runner starts no more.
-   */
-  const coalesced = (read: () => Promise<void>): (() => void) => {
-    let out = false;
-    let again = false;
-    return () => {
-      if (out) {
-        again = true;
-        return;
-      }
-      out = true;
-      void (async () => {
-        try {
-          do {
-            again = false;
-            await read();
-          } while (again && !stopped);
-        } finally {
-          out = false;
-        }
-      })();
-    };
-  };
-
-  const readLedger = async (): Promise<void> => {
-    const held = link;
-    if (held === null) return;
-    const read = await answered(() => ports.scoring.events(held, fixtureId, state?.sync.tip ?? 0));
-    if (read === null) dispatch({ kind: 'fetchFailed', failure: OFFLINE });
-    else if ('kind' in read) dispatch({ kind: 'fetchFailed', failure: read });
-    else dispatch({ kind: 'fetched', events: read });
-  };
-
-  const readRules = async (): Promise<void> => {
-    const held = link;
-    if (held === null) return;
-    const read = await answered(() => ports.scoring.rules(held, fixtureId));
-    if (read === null) dispatch({ kind: 'rulesFailed', failure: OFFLINE });
-    else if ('cfg' in read) dispatch({ kind: 'rulesRead', rules: read });
-    else dispatch({ kind: 'rulesFailed', failure: read });
-  };
-
-  const readBootstrap = async (): Promise<void> => {
-    const held = link;
-    if (held === null) return;
-    const read = await answered(() => ports.scoring.bootstrap(held));
-    if (read === null) dispatch({ kind: 'bootstrapFailed', failure: OFFLINE });
-    else if (read.kind === 'ok') dispatch({ kind: 'bootstrapRead', bootstrap: read.bootstrap });
-    else dispatch({ kind: 'bootstrapFailed', failure: read });
-  };
-
-  const fetchLedger = coalesced(readLedger);
-  const loadRules = coalesced(readRules);
-  const loadBootstrap = coalesced(readBootstrap);
 
   /**
    * One timer, at the earliest wait still ahead in the state (`wakeAt`), set again after every step: a wait that comes
@@ -270,57 +179,10 @@ export function createScoringRunner(ports: RunnerPorts, options: Options): Scori
     wakeTimer = { at, id };
   };
 
-  const run = (effect: MatchEffect): void => {
-    switch (effect.kind) {
-      case 'save':
-        return save(effect);
-      case 'send':
-        return send(effect);
-      case 'fetch':
-        return fetchLedger();
-      case 'loadRules':
-        return loadRules();
-      case 'loadBootstrap':
-        return loadBootstrap();
-    }
-  };
-
-  // --- loading --------------------------------------------------------------------------------------------------
-
-  const load = async (): Promise<RunnerSnapshot | { kind: 'open'; open: Opened }> => {
-    const stored = await readScoringLink(ports.kv, fixtureId, ports.hosts[0] ?? '');
-    if (stored.kind === 'failed') return { kind: 'unreadable', what: 'link' };
-    if (stored.kind === 'none') return { kind: 'noLink' };
-    ports.logger.protectLink(stored.link.token);
-    link = stored.link;
-    const [queue, ledger, boot] = await Promise.all([
-      ports.tapQueue.load(fixtureId),
-      ports.tapQueue.loadLedger(fixtureId),
-      mode === 'focused' ? ports.tapQueue.loadBoot(fixtureId) : Promise.resolve(null),
-    ]);
-    if (queue === null && (await unreadableQueue(ports, fixtureId))) {
-      return { kind: 'unreadable', what: 'queue' };
-    }
-    return {
-      kind: 'open',
-      open: { queue: queue ?? emptyQueue(fixtureId), ledger: ledger ?? [], boot },
-    };
-  };
+  // --- starting and stopping ---------------------------------------------------------------------------------------
 
   const open = (loaded: Opened): void => {
-    const rulesVersion = Math.max(1, ...loaded.queue.pending.map((tap) => tap.rulesVersion));
-    const opened = openMatch(
-      {
-        queue: loaded.queue,
-        ledger: loaded.ledger,
-        bootstrap: loaded.boot?.bootstrap ?? null,
-        toss: loaded.boot?.toss ?? null,
-        judge: mode === 'focused' ? 'fold' : 'trust',
-        foreground: ports.foreground.isForeground(),
-        rulesVersion: loaded.boot?.bootstrap.rulesVersion ?? rulesVersion,
-      },
-      now(),
-    );
+    const opened = openMatch(heldOf(loaded, mode, ports.foreground.isForeground()), now());
     state = opened.state;
     opened.effects.forEach(run);
     publish({ kind: 'ready', state });
@@ -333,7 +195,9 @@ export function createScoringRunner(ports: RunnerPorts, options: Options): Scori
   const start = async (): Promise<void> => {
     if (started) return;
     started = true;
-    const loaded = await load().catch(unreadable);
+    const loaded = await loadMatch(ports, fixtureId, mode, (found) => (link = found)).catch(
+      unreadable,
+    );
     if (stopped) return;
     if (loaded.kind !== 'open') return publish(loaded);
     open(loaded.open);
@@ -344,7 +208,7 @@ export function createScoringRunner(ports: RunnerPorts, options: Options): Scori
     leaving.splice(0).forEach((leave) => leave());
     if (wakeTimer !== null) clearTimeout(wakeTimer.id);
     wakeTimer = null;
-    await Promise.all([lastSave, ...sending]);
+    await Promise.all([saver.pending(), ...sending]);
   };
 
   return {
@@ -367,6 +231,57 @@ type Opened = {
   readonly ledger: readonly LedgerEvent[];
   readonly boot: BootCache | null;
 };
+
+const emptyQueue = (fixtureId: string): MatchQueue => ({
+  fixtureId,
+  label: '',
+  pending: [],
+  ownEventIds: [],
+  dead: null,
+});
+
+/**
+ * The link, then the three files: what the match is before it is playing. The link's token is protected in the log
+ * before anything is read with it, and handed to `onLink` as soon as it is known (the live owner reads it back).
+ */
+async function loadMatch(
+  ports: RunnerPorts,
+  fixtureId: string,
+  mode: RunnerMode,
+  onLink: (link: ScoringLink) => void,
+): Promise<RunnerSnapshot | { kind: 'open'; open: Opened }> {
+  const stored = await readScoringLink(ports.kv, fixtureId, ports.hosts[0] ?? '');
+  if (stored.kind === 'failed') return { kind: 'unreadable', what: 'link' };
+  if (stored.kind === 'none') return { kind: 'noLink' };
+  ports.logger.protectLink(stored.link.token);
+  onLink(stored.link);
+  const [queue, ledger, boot] = await Promise.all([
+    ports.tapQueue.load(fixtureId),
+    ports.tapQueue.loadLedger(fixtureId),
+    mode === 'focused' ? ports.tapQueue.loadBoot(fixtureId) : Promise.resolve(null),
+  ]);
+  if (queue === null && (await unreadableQueue(ports, fixtureId))) {
+    return { kind: 'unreadable', what: 'queue' };
+  }
+  return {
+    kind: 'open',
+    open: { queue: queue ?? emptyQueue(fixtureId), ledger: ledger ?? [], boot },
+  };
+}
+
+/** What the reducer opens a match from: the files, the judge this mode has, and whether the app is in the foreground. */
+function heldOf(loaded: Opened, mode: RunnerMode, foreground: boolean): MatchHeld {
+  const rulesVersion = Math.max(1, ...loaded.queue.pending.map((tap) => tap.rulesVersion));
+  return {
+    queue: loaded.queue,
+    ledger: loaded.ledger,
+    bootstrap: loaded.boot?.bootstrap ?? null,
+    toss: loaded.boot?.toss ?? null,
+    judge: mode === 'focused' ? 'fold' : 'trust',
+    foreground,
+    rulesVersion: loaded.boot?.bootstrap.rulesVersion ?? rulesVersion,
+  };
+}
 
 /** A store that throws instead of answering (a native module that is missing) is a queue this phone cannot read: said, not silent. */
 const unreadable = (): RunnerSnapshot => ({ kind: 'unreadable', what: 'queue' });
