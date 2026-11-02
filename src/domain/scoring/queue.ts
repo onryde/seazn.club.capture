@@ -14,7 +14,10 @@ export type QueuedEvent = {
   /** The rules version the tap was made under (the pad's, when it was tapped). */
   readonly rulesVersion: number;
   readonly createdAt: string;
-  /** How many sends found no network, which the sync dot counts. */
+  /**
+   * How many sends of this tap were made without a definite answer: counted and saved when a send starts, kept on no
+   * answer, back to 0 on an answer that says it was not stored. More than 0, the tap may be in the ledger already.
+   */
   readonly attempts: number;
 };
 
