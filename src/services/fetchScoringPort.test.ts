@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AppendBody } from '@/domain/scoring/wire';
 import {
+  EVENTS_TIMEOUT_MS,
+  SCORING_MAX_BODY_BYTES,
   SCORING_TIMEOUT_MS,
   createFetchScoringPort,
   type ScoringFetch,
@@ -8,6 +10,7 @@ import {
 import type { FetchResponse } from '@/services/httpAsk';
 import { createLogger, type Logger } from '@/services/logger';
 import type { ScoringLink } from '@/services/scoringPort';
+import { SCRUBBED } from '@/services/scrub';
 import { createRingRecord, parseRecordLine } from '@/services/sessionRecord';
 import { FAKE_SCORING_SECRET } from '../../test/fakeScoringLinkPort';
 
@@ -44,7 +47,7 @@ const BOOTSTRAP = ok({
   view_only_reason: null,
   names: { competition: 'Spring Open 2026', division: null, round_label: null, ref: 'QF·1' },
   sides: { home: side('ent-home', 'A. Sharma'), away: side('ent-away', 'L. Chen') },
-  state: { status: 'in_progress', last_seq: 3 },
+  state: { status: 'in_play', last_seq: 3 },
 });
 
 const EVENT = {
@@ -71,7 +74,7 @@ const CREATED = ok({
   seq: 4,
   state_summary: {},
   outcome: null,
-  status: 'in_progress',
+  status: 'in_play',
   event_id: 'ev-4',
   rules_version: 2,
 });
@@ -383,21 +386,173 @@ describe('what is no answer from the server: offline, so a tap stays queued', ()
     expect(await pending).toEqual(offline);
   });
 
-  it('a body over 64 KiB: no answer, never one cut short', async () => {
+  it('append: a body over 64 KiB is no answer, never one cut short: the tap goes again with its key', async () => {
     const big = JSON.stringify(ok({ pad: 'x'.repeat(64 * 1024) }));
-    const { port } = portOver(answering(raw(201, big)));
+    const { port, entries } = portOver(answering(raw(201, big)));
     expect(await port.append(LINK, FIXTURE, BODY)).toEqual(offline);
-    const events = portOver(answering(raw(200, big)));
-    expect(await events.port.events(LINK, FIXTURE, 0)).toEqual(offline);
+    expect(entries()[0].fields).toMatchObject({
+      op: 'append',
+      kind: 'offline',
+      problem: 'too-large',
+    });
   });
 
-  it('a valid answer over 64 KiB is no answer either: the cap is on the size, not on what it holds', async () => {
+  it('append: a valid 201 over 64 KiB is no answer either: the cap is on the size, not on what it holds', async () => {
     const padding = ' '.repeat(64 * 1024);
     const accepted = portOver(answering(raw(201, `${JSON.stringify(CREATED)}${padding}`)));
     expect(await accepted.port.append(LINK, FIXTURE, BODY)).toEqual(offline);
-    const heavy = { ...EVENT, payload: { note: 'x'.repeat(64 * 1024) } };
-    const events = portOver(answering(raw(200, JSON.stringify(ok([heavy])))));
-    expect(await events.port.events(LINK, FIXTURE, 3)).toEqual(offline);
+  });
+
+  it('rules: over 64 KiB is tooLarge, not offline: the network is not what is wrong', async () => {
+    const big = JSON.stringify(
+      ok({ cfg: { pad: 'x'.repeat(64 * 1024) }, rules_version: 3, format_line: null }),
+    );
+    const { port, entries } = portOver(answering(raw(200, big)));
+    expect(await port.rules(LINK, FIXTURE)).toEqual({ kind: 'tooLarge' });
+    expect(entries()[0].fields).toMatchObject({
+      op: 'rules',
+      kind: 'tooLarge',
+      problem: 'too-large',
+    });
+  });
+
+  it('realtime grant: over 64 KiB is no grant, the larger cap is not its', async () => {
+    const text = JSON.stringify(
+      ok({ token: 'rt', channel: 'fixture:1', url: 'https://x.test', apikey: 'k' }),
+    );
+    const padded = `${text}${' '.repeat(64 * 1024)}`;
+    expect(
+      await portOver(answering(raw(200, padded))).port.realtimeToken(LINK, FIXTURE),
+    ).toBeNull();
+  });
+
+  it('the scoring cap is 1 MiB, for events and the bootstrap only', () => {
+    expect(SCORING_MAX_BODY_BYTES).toBe(1048576);
+  });
+
+  // A long match: 400 events of a real payload's size are well over the 64 KiB every other answer is held to.
+  it('events: a 400-event ledger (over 64 KiB) is read whole', async () => {
+    const ledger = Array.from({ length: 400 }, (_, i) => ({
+      ...EVENT,
+      id: `ev-${i + 1}`,
+      seq: i + 1,
+      payload: { wonBy: 'ent-home', note: 'x'.repeat(200) },
+    }));
+    const text = JSON.stringify(ok(ledger));
+    expect(text.length).toBeGreaterThan(64 * 1024);
+    const { port } = portOver(answering(raw(200, text)));
+    const events = await port.events(LINK, FIXTURE, 0);
+    expect(Array.isArray(events) && events.length).toBe(400);
+    expect(Array.isArray(events) && events[399].seq).toBe(400);
+  });
+
+  it('bootstrap: one over 64 KiB (a long cfg) is read', async () => {
+    const heavy = ok({
+      ...(BOOTSTRAP.data as Record<string, unknown>),
+      cfg: { pad: 'x'.repeat(100 * 1024) },
+    });
+    const { port } = portOver(answering(raw(200, JSON.stringify(heavy))));
+    expect(await port.bootstrap(LINK)).toMatchObject({ kind: 'ok' });
+  });
+
+  it('events and bootstrap: a body at 1 MiB exactly is read, one byte over is tooLarge', async () => {
+    const text = JSON.stringify(ok([]));
+    const exact = `${text}${' '.repeat(SCORING_MAX_BODY_BYTES - text.length)}`;
+    expect(exact.length).toBe(SCORING_MAX_BODY_BYTES);
+    expect(await portOver(answering(raw(200, exact))).port.events(LINK, FIXTURE, 0)).toEqual([]);
+    const over = portOver(answering(raw(200, `${exact} `)));
+    expect(await over.port.events(LINK, FIXTURE, 0)).toEqual({ kind: 'tooLarge' });
+    expect(await over.port.bootstrap(LINK)).toEqual({ kind: 'tooLarge' });
+    expect(over.entries()[0].fields).toMatchObject({
+      op: 'events',
+      kind: 'tooLarge',
+      problem: 'too-large',
+    });
+  });
+
+  it('the cap counts bytes, not characters', async () => {
+    const text = JSON.stringify(ok([]));
+    const pad = Math.ceil((SCORING_MAX_BODY_BYTES - text.length) / 3) + 1;
+    const wide = `${text}${'€'.repeat(pad)}`;
+    expect(wide.length).toBeLessThan(SCORING_MAX_BODY_BYTES);
+    expect(await portOver(answering(raw(200, wide))).port.events(LINK, FIXTURE, 0)).toEqual({
+      kind: 'tooLarge',
+    });
+  });
+
+  it('events have 15 s, the longest of the calls: the ledger of a long match is the big answer', async () => {
+    vi.useFakeTimers();
+    let signal: AbortSignal | undefined;
+    const { port } = portOver((_url, init) => {
+      signal = init.signal;
+      return new Promise<FetchResponse>(() => {});
+    });
+    const pending = port.events(LINK, FIXTURE, 0);
+    await vi.advanceTimersByTimeAsync(SCORING_TIMEOUT_MS);
+    expect(signal?.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(EVENTS_TIMEOUT_MS - SCORING_TIMEOUT_MS - 1);
+    expect(signal?.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await pending).toEqual(offline);
+    expect(signal?.aborted).toBe(true);
+    expect(EVENTS_TIMEOUT_MS).toBe(15000);
+  });
+
+  it('an events body that trickles is bounded at the 15 s too', async () => {
+    vi.useFakeTimers();
+    const { port } = portOver(async () => ({
+      status: 200,
+      headers: { get: () => null },
+      text: () => new Promise<string>(() => {}),
+    }));
+    const pending = port.events(LINK, FIXTURE, 0);
+    await vi.advanceTimersByTimeAsync(EVENTS_TIMEOUT_MS);
+    expect(await pending).toEqual(offline);
+  });
+
+  it('bootstrap, rules and the realtime grant keep the 8 s', async () => {
+    vi.useFakeTimers();
+    const { port } = portOver(() => new Promise<FetchResponse>(() => {}));
+    const pending = [
+      port.bootstrap(LINK),
+      port.rules(LINK, FIXTURE),
+      port.realtimeToken(LINK, FIXTURE),
+    ];
+    await vi.advanceTimersByTimeAsync(SCORING_TIMEOUT_MS);
+    expect(await pending[0]).toEqual(offline);
+    expect(await pending[1]).toEqual(offline);
+    expect(await pending[2]).toBeNull();
+  });
+
+  it('a build’s own timeout shortens every call, events too', async () => {
+    vi.useFakeTimers();
+    const { port } = portOver(() => new Promise<FetchResponse>(() => {}), { timeoutMs: 100 });
+    const pending = port.events(LINK, FIXTURE, 0);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(await pending).toEqual(offline);
+  });
+
+  // Nothing in a call may reject: the sender awaits it, and a rejection would stop the queue for good.
+  it('a body JSON cannot hold is offline with no request made, never a rejection', async () => {
+    const { port, calls, entries } = portOver(answering(respond(201, CREATED)));
+    const bad = { ...BODY, payload: { n: 10n } } as unknown as AppendBody;
+    await expect(port.append(LINK, FIXTURE, bad)).resolves.toEqual(offline);
+    expect(calls).toHaveLength(0);
+    expect(entries()[0].fields).toMatchObject({
+      op: 'append',
+      kind: 'offline',
+      problem: 'unexpected',
+    });
+  });
+
+  it('a fixture id encodeURIComponent cannot take (a lone surrogate) never rejects, for any call', async () => {
+    const { port, calls } = portOver(answering(respond(200, ok([]))));
+    const lone = '\uD800';
+    await expect(port.events(LINK, lone, 0)).resolves.toEqual(offline);
+    await expect(port.rules(LINK, lone)).resolves.toEqual(offline);
+    await expect(port.append(LINK, lone, BODY)).resolves.toEqual(offline);
+    await expect(port.realtimeToken(LINK, lone)).resolves.toBeNull();
+    expect(calls).toHaveLength(0);
   });
 
   it('a build can shorten the 8 s', async () => {
@@ -519,7 +674,13 @@ function spyLogger() {
     protectLink: vi.fn(),
     release: vi.fn(),
   };
-  const everything = () => JSON.stringify(Object.values(spies).map((spy) => spy.mock.calls));
+  // protectLink is handed the token on purpose: it is how the record learns to mask it.
+  const everything = () =>
+    JSON.stringify(
+      Object.entries(spies)
+        .filter(([name]) => name !== 'protectLink')
+        .map(([, spy]) => spy.mock.calls),
+    );
   return { logger: spies satisfies Logger, spies, everything };
 }
 
@@ -612,5 +773,146 @@ describe('the record', () => {
     const [entry] = entries();
     expect(entry.fields).toMatchObject({ op: 'append', kind: 'refused', status: 422 });
     expect(entry.fields).not.toHaveProperty('word');
+  });
+});
+
+describe('the record, in a run of the same failure', () => {
+  const lost = async (): Promise<FetchResponse> => {
+    throw new Error('Network request failed');
+  };
+  const answers = (entries: () => ReturnType<typeof parseRecordLine>[], event: string) =>
+    entries().filter((entry) => entry.event === event);
+
+  it('says the first failure, counts the repeats, and says the count when the run ends', async () => {
+    let reply: ScoringFetch = lost;
+    const { port, entries } = portOver((url, init) => reply(url, init));
+    for (let poll = 0; poll < 4; poll += 1) await port.events(LINK, FIXTURE, 0);
+    expect(answers(entries, 'scoring.answer')).toHaveLength(1);
+    expect(answers(entries, 'scoring.answer.repeat')).toHaveLength(0);
+    reply = answering(respond(200, ok([])));
+    await port.events(LINK, FIXTURE, 0);
+    const repeats = answers(entries, 'scoring.answer.repeat');
+    expect(repeats).toHaveLength(1);
+    expect(repeats[0].fields).toMatchObject({
+      op: 'events',
+      kind: 'offline',
+      problem: 'network',
+      count: 3,
+    });
+  });
+
+  it('a failure after the run is a new line, and a run of one has no count line', async () => {
+    let reply: ScoringFetch = lost;
+    const { port, entries } = portOver((url, init) => reply(url, init));
+    await port.events(LINK, FIXTURE, 0);
+    reply = answering(respond(200, ok([])));
+    await port.events(LINK, FIXTURE, 0);
+    reply = lost;
+    await port.events(LINK, FIXTURE, 0);
+    expect(answers(entries, 'scoring.answer')).toHaveLength(2);
+    expect(answers(entries, 'scoring.answer.repeat')).toHaveLength(0);
+  });
+
+  it('a different failure ends the run: the count first, then the new line', async () => {
+    let reply: ScoringFetch = lost;
+    const { port, entries } = portOver((url, init) => reply(url, init));
+    for (let call = 0; call < 3; call += 1) await port.append(LINK, FIXTURE, BODY);
+    reply = answering(respond(422, failure('WRONG_PHASE')));
+    await port.append(LINK, FIXTURE, BODY);
+    expect(entries().map((entry) => [entry.event, entry.fields.kind, entry.fields.count])).toEqual([
+      ['scoring.answer', 'offline', undefined],
+      ['scoring.answer.repeat', 'offline', 2],
+      ['scoring.answer', 'refused', undefined],
+    ]);
+  });
+
+  it('keeps a run for each call: a poll of events does not break the run of rules', async () => {
+    const { port, entries } = portOver(lost);
+    await port.events(LINK, FIXTURE, 0);
+    await port.rules(LINK, FIXTURE);
+    await port.events(LINK, FIXTURE, 0);
+    await port.rules(LINK, FIXTURE);
+    expect(answers(entries, 'scoring.answer').map((entry) => entry.fields.op)).toEqual([
+      'events',
+      'rules',
+    ]);
+  });
+
+  it('an accepted append ends the run too: a failure after it is said again', async () => {
+    let reply: ScoringFetch = lost;
+    const { port, entries } = portOver((url, init) => reply(url, init));
+    await port.append(LINK, FIXTURE, BODY);
+    await port.append(LINK, FIXTURE, BODY);
+    reply = answering(respond(201, CREATED));
+    await port.append(LINK, FIXTURE, BODY);
+    reply = lost;
+    await port.append(LINK, FIXTURE, BODY);
+    expect(entries().map((entry) => [entry.event, entry.fields.count])).toEqual([
+      ['scoring.answer', undefined],
+      ['scoring.answer.repeat', 1],
+      ['scoring.answer', undefined],
+    ]);
+  });
+
+  it('a refusal that repeats is counted like any other, with its word and status', async () => {
+    const { port, entries } = portOver(answering(respond(422, failure('WRONG_PHASE'))));
+    await port.append(LINK, FIXTURE, BODY);
+    await port.append(LINK, FIXTURE, BODY);
+    await port.append(LINK, FIXTURE, BODY);
+    const accepted = portOver(answering(respond(201, CREATED)));
+    expect(answers(entries, 'scoring.answer')).toHaveLength(1);
+    expect(accepted.entries()).toEqual([]);
+  });
+
+  it('the same failure with another status is another line', async () => {
+    let status = 422;
+    const { port, entries } = portOver(async () => respond(status, failure('WRONG_PHASE')));
+    await port.append(LINK, FIXTURE, BODY);
+    status = 409;
+    await port.append(LINK, FIXTURE, BODY);
+    expect(answers(entries, 'scoring.answer')).toHaveLength(2);
+  });
+});
+
+describe('the link’s token and the record', () => {
+  it('the logger is handed the token before every call, one it will not even make included', async () => {
+    const { logger, spies } = spyLogger();
+    const { port } = portOver(answering(respond(200, ok([]))), { logger });
+    await port.bootstrap(LINK);
+    await port.events(LINK, FIXTURE, 0);
+    await port.rules(LINK, FIXTURE);
+    await port.append(LINK, FIXTURE, BODY);
+    await port.realtimeToken(LINK, FIXTURE);
+    expect(spies.protectLink.mock.calls).toEqual([[TOKEN], [TOKEN], [TOKEN], [TOKEN], [TOKEN]]);
+    const foreign = { origin: 'https://evil.example', token: `${TOKEN}-foreign` };
+    await port.events(foreign, FIXTURE, 0);
+    expect(spies.protectLink).toHaveBeenLastCalledWith(`${TOKEN}-foreign`);
+  });
+
+  it('is handed it before the request is built: a call that throws while building has it too', async () => {
+    const { logger, spies } = spyLogger();
+    const { port } = portOver(answering(respond(200, ok([]))), { logger });
+    await port.events(LINK, '\uD800', 0);
+    expect(spies.protectLink).toHaveBeenCalledWith(TOKEN);
+  });
+
+  // A made-up token that is not `dl_`-shaped, so only protectLink (never the scrubber's own pattern) can mask it.
+  it('the record masks the token from the first call on, wherever else it turns up in text', async () => {
+    const token = 'zz-test-token-not-link-shaped-0123456789';
+    const record = createRingRecord();
+    const logger = createLogger({ record, now: () => 0 });
+    // A session in hand, so free text is masked by value and not whole (logger.test.ts does the same).
+    logger.protect({ secrets: ['tok-test-0000000000000'], streamIds: [] });
+    const probe = () => logger.info('probe', { message: `x ${token} y` });
+    probe();
+    const { port } = portOver(answering(respond(200, ok([]))), { logger });
+    await port.events({ origin: ORIGIN, token }, FIXTURE, 0);
+    probe();
+    const [before, after] = record
+      .lines()
+      .map(parseRecordLine)
+      .filter((entry) => entry.event === 'probe');
+    expect(before.fields.message).toBe(`x ${token} y`);
+    expect(after.fields.message).toBe(`x ${SCRUBBED} y`);
   });
 });

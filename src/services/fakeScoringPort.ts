@@ -56,6 +56,19 @@ export type FakeServerControls = {
   dropNextAnswer(): void;
   /** No network: every call is `offline` and nothing is written. */
   goOffline(on: boolean): void;
+  /**
+   * The organiser locks the result: a `core.finalize` from another scorer, then every new tap is 422 `ALREADY_DECIDED`
+   * (`LOCKED_FIXTURE_STATUSES`, before the seq is looked at). A replayed key is still answered. The engine must take
+   * the finalize, so a match nothing has decided throws.
+   */
+  finalize(): void;
+  /**
+   * Every new tap is refused 403 with this word, as the web does for `FORBIDDEN` (an organiser-only event, a finalized
+   * fixture's undo) and `RESULT_CARRIED_FORWARD`; null lifts it. A replayed key is still answered.
+   */
+  forbid(code: string | null): void;
+  /** The next call, of any kind, is the door's 429 and waits this long; the call after it is answered as before. */
+  rateLimit(retryAfterMs: number): void;
 };
 
 export type FakeScoringPort = ScoringPort & FakeServerControls;
@@ -84,6 +97,9 @@ type Server = {
   revoked: boolean;
   offline: boolean;
   dropNext: boolean;
+  finalized: boolean;
+  forbidden: string | null;
+  limitMs: number | null;
 };
 
 export function createFakeScoringPort(seed: FakeMatchSeed): FakeScoringPort {
@@ -99,6 +115,9 @@ export function createFakeScoringPort(seed: FakeMatchSeed): FakeScoringPort {
     revoked: false,
     offline: false,
     dropNext: false,
+    finalized: false,
+    forbidden: null,
+    limitMs: null,
   };
   for (const event of seed.events) writeOther(server, event.type, event.payload);
   return {
@@ -154,12 +173,27 @@ function controls(server: Server): FakeServerControls {
     goOffline: (on) => {
       server.offline = on;
     },
+    finalize: () => {
+      writeOther(server, 'core.finalize', {});
+      server.finalized = true;
+    },
+    forbid: (code) => {
+      server.forbidden = code;
+    },
+    rateLimit: (retryAfterMs) => {
+      server.limitMs = retryAfterMs;
+    },
   };
 }
 
-/** What stops a call before it reaches the match: no network, a dead link, another fixture. */
+/** What stops a call before it reaches the match: no network, a throttle, a dead link, another fixture. */
 function blocked(server: Server, fixtureId: string | null): Failure | null {
   if (server.offline) return OFFLINE;
+  if (server.limitMs !== null) {
+    const retryAfterMs = server.limitMs;
+    server.limitMs = null;
+    return { kind: 'rateLimited', retryAfterMs };
+  }
   if (server.revoked) return REVOKED;
   return fixtureId !== null && fixtureId !== server.seed.fixtureId ? NOT_FOUND : null;
 }
@@ -177,12 +211,20 @@ function judged(server: Server, fixtureId: string, body: AppendBody): AppendAnsw
   if (stopped !== null) return stopped;
   const replay = server.keys.get(body.idempotency_key);
   if (replay !== undefined) return accepted(server, replay.seq, replay.eventId);
-  const refusal = preflight(server, body);
+  const refusal = locked(server) ?? preflight(server, body);
   if (refusal !== null) return refusal;
   const written = write(server, body.type, body.payload, server.seed.linkId, body.idempotency_key);
-  if ('refused' in written)
-    return { kind: 'refused', status: statusOf(written.refused), code: written.refused };
+  if ('refused' in written) return { kind: 'refused', status: 422, code: written.refused };
   return accepted(server, written.seq, written.id);
+}
+
+/**
+ * What the web refuses before the epoch, the rules and the seq: a forbidden writer (403), a locked fixture (422
+ * `ALREADY_DECIDED`, as `appendEvent` does for `finalized` and `cancelled`).
+ */
+function locked(server: Server): Failure | null {
+  if (server.forbidden !== null) return { kind: 'refused', status: 403, code: server.forbidden };
+  return server.finalized ? { kind: 'refused', status: 422, code: 'ALREADY_DECIDED' } : null;
 }
 
 /** The epoch (the key is not consumed), the rules version (before the seq), then the seq. */
@@ -203,9 +245,6 @@ const accepted = (server: Server, seq: number, eventId: string): AppendAnswer =>
   eventId,
   rulesVersion: server.rulesVersion,
 });
-
-/** An engine refusal as the web maps it: a decided match is a conflict, every other word is unprocessable. */
-const statusOf = (code: string): number => (code === 'ALREADY_DECIDED' ? 409 : 422);
 
 /** Writes an event at the tip if the engine takes it: the event, or the engine's code. */
 function write(
@@ -288,8 +327,21 @@ function bootstrapOf(server: Server): Bootstrap {
     context: seed.context,
     sides: seed.sides,
     lastSeq: tip,
-    status: tip === 0 ? 'scheduled' : decided(server) ? 'completed' : 'in_progress',
+    status: statusOf(server),
   };
+}
+
+/** `fixtures.status` as the web derives it from the ledger (`fixtureStatusFromFold`): the first rule that matches. */
+function statusOf(server: Server): string {
+  if (server.finalized) return 'finalized';
+  const voided = new Set(
+    server.ledger.flatMap((event) => (event.voids === null ? [] : [event.voids])),
+  );
+  const has = (type: string) =>
+    server.ledger.some((event) => event.type === type && !voided.has(event.id));
+  if (has('core.forfeit')) return 'forfeited';
+  if (decided(server)) return 'decided';
+  return has('core.start') ? 'in_play' : 'scheduled';
 }
 
 const decided = (server: Server): boolean =>

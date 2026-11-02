@@ -95,7 +95,7 @@ describe('the fake reads like the server', () => {
     const port = createFakeScoringPort(FRESH);
     await port.append(LINK, 'fixture-1', start());
     const answer = await port.bootstrap(LINK);
-    expect(answer).toMatchObject({ kind: 'ok', bootstrap: { lastSeq: 1, status: 'in_progress' } });
+    expect(answer).toMatchObject({ kind: 'ok', bootstrap: { lastSeq: 1, status: 'in_play' } });
   });
 
   it('events: the ledger after a seq, in order, ids and numbers made by the server', async () => {
@@ -282,11 +282,12 @@ describe('append: the server’s order of questions', () => {
     });
   });
 
-  it('once the match is decided another rally is 409 ALREADY_DECIDED', async () => {
+  // apps/web/src/server/api-v1/http.ts ENGINE_HTTP: ALREADY_DECIDED is 422, like every engine word but SEQ_CONFLICT.
+  it('once the match is decided another rally is 422 ALREADY_DECIDED', async () => {
     const port = createFakeScoringPort(decided());
     expect(await port.append(LINK, 'fixture-1', rally(43, HOME))).toEqual({
       kind: 'refused',
-      status: 409,
+      status: 422,
       code: 'ALREADY_DECIDED',
     });
   });
@@ -466,15 +467,174 @@ describe('the link and the network', () => {
   });
 });
 
+const statusOf = async (port: ReturnType<typeof createFakeScoringPort>) => {
+  const answer = await port.bootstrap(LINK);
+  if (answer.kind !== 'ok') throw new Error('the bootstrap did not read');
+  return answer.bootstrap.status;
+};
+
+// fixtures.status as the web writes it (apps/web/src/lib/fixture-status.ts, append-event.ts fixtureStatusFromFold).
+describe('the match’s status words are the web’s', () => {
+  it('scheduled before the start, in_play after it', async () => {
+    const port = createFakeScoringPort(FRESH);
+    expect(await statusOf(port)).toBe('scheduled');
+    await port.append(LINK, 'fixture-1', start());
+    expect(await statusOf(port)).toBe('in_play');
+  });
+
+  it('a walkover that was undone is no longer one: the status follows the active ledger', async () => {
+    const port = createFakeScoringPort(FRESH);
+    port.addOtherScorerEvent('core.start', {});
+    const forfeit = port.addOtherScorerEvent('core.forfeit', { by: AWAY, reason: 'walkover' });
+    port.addOtherScorerEvent('core.void', { event_id: forfeit.id });
+    expect(await statusOf(port)).toBe('in_play');
+  });
+
+  it('decided once the engine has an outcome', async () => {
+    expect(await statusOf(createFakeScoringPort(decided()))).toBe('decided');
+  });
+
+  it('forfeited after a walkover or a disqualification’s ending', async () => {
+    const port = createFakeScoringPort(FRESH);
+    port.addOtherScorerEvent('core.start', {});
+    port.addOtherScorerEvent('core.forfeit', { by: AWAY, reason: 'walkover' });
+    expect(await statusOf(port)).toBe('forfeited');
+  });
+
+  it('finalized after the organiser locks it, and an undo of that is not modelled: it stays', async () => {
+    const port = createFakeScoringPort(decided());
+    port.finalize();
+    expect(await statusOf(port)).toBe('finalized');
+  });
+});
+
+describe('finalize: the lock (ALREADY_DECIDED, 422, before the seq is even looked at)', () => {
+  it('writes the organiser’s core.finalize into the ledger, with no link of the phone’s', async () => {
+    const port = createFakeScoringPort(decided());
+    port.finalize();
+    const ledger = await ledgerOf(port, 43);
+    expect(ledger).toHaveLength(1);
+    expect(ledger[0]).toMatchObject({
+      seq: 44,
+      type: 'core.finalize',
+      deviceLinkId: 'fake-other-scorer',
+    });
+  });
+
+  it('refuses every new tap 422 ALREADY_DECIDED, a stale seq or not, and writes nothing', async () => {
+    const port = createFakeScoringPort(decided());
+    port.finalize();
+    const refused = { kind: 'refused', status: 422, code: 'ALREADY_DECIDED' };
+    expect(await port.append(LINK, 'fixture-1', rally(44, HOME))).toEqual(refused);
+    expect(await port.append(LINK, 'fixture-1', rally(3, HOME))).toEqual(refused);
+    expect(await ledgerOf(port, 44)).toEqual([]);
+  });
+
+  it('still answers a replayed key from the ledger: the lost-ack retry of the deciding tap', async () => {
+    const port = createFakeScoringPort({
+      ...FRESH,
+      events: decided().events.slice(0, 42),
+    });
+    const deciding = rally(42, HOME);
+    const first = await port.append(LINK, 'fixture-1', deciding);
+    expect(first).toMatchObject({ kind: 'accepted', seq: 43 });
+    port.finalize();
+    expect(await port.append(LINK, 'fixture-1', deciding)).toEqual(first);
+  });
+
+  it('still serves the reads', async () => {
+    const port = createFakeScoringPort(decided());
+    port.finalize();
+    expect(await ledgerOf(port, 43)).toHaveLength(1);
+    expect(await port.rules(LINK, 'fixture-1')).toMatchObject({ rulesVersion: 2 });
+  });
+
+  it('is the test’s mistake, thrown, on a match the engine will not finalize (nothing is decided yet)', () => {
+    const port = createFakeScoringPort(FRESH);
+    expect(() => port.finalize()).toThrow(/core\.finalize/);
+  });
+});
+
+describe('forbid: a 403 that is not the link’s (FORBIDDEN, RESULT_CARRIED_FORWARD)', () => {
+  it('answers every new tap 403 with the word given, and writes nothing', async () => {
+    const port = createFakeScoringPort(FRESH);
+    port.forbid('RESULT_CARRIED_FORWARD');
+    const forbidden = { kind: 'refused', status: 403, code: 'RESULT_CARRIED_FORWARD' };
+    expect(await port.append(LINK, 'fixture-1', start())).toEqual(forbidden);
+    expect(await port.append(LINK, 'fixture-1', start())).toEqual(forbidden);
+    expect(await ledgerOf(port)).toEqual([]);
+  });
+
+  it('is plain FORBIDDEN when asked for it, and null lifts it', async () => {
+    const port = createFakeScoringPort(FRESH);
+    port.forbid('FORBIDDEN');
+    expect(await port.append(LINK, 'fixture-1', start())).toEqual({
+      kind: 'refused',
+      status: 403,
+      code: 'FORBIDDEN',
+    });
+    port.forbid(null);
+    expect(await port.append(LINK, 'fixture-1', start())).toMatchObject({ kind: 'accepted' });
+  });
+
+  it('a replayed key is still answered from the ledger: the web asks the ledger first', async () => {
+    const port = createFakeScoringPort(FRESH);
+    const first = start();
+    const accepted = await port.append(LINK, 'fixture-1', first);
+    port.forbid('RESULT_CARRIED_FORWARD');
+    expect(await port.append(LINK, 'fixture-1', first)).toEqual(accepted);
+  });
+
+  it('leaves the reads alone', async () => {
+    const port = createFakeScoringPort(FRESH);
+    port.forbid('FORBIDDEN');
+    expect(await port.events(LINK, 'fixture-1', 0)).toEqual([]);
+    expect(await statusOf(port)).toBe('scheduled');
+  });
+});
+
+describe('rateLimit: one 429 for the next call, whatever it is', () => {
+  it('answers the next append with the wait, then answers as before', async () => {
+    const port = createFakeScoringPort(FRESH);
+    port.rateLimit(7000);
+    expect(await port.append(LINK, 'fixture-1', start())).toEqual({
+      kind: 'rateLimited',
+      retryAfterMs: 7000,
+    });
+    expect(await ledgerOf(port)).toEqual([]);
+    expect(await port.append(LINK, 'fixture-1', start())).toMatchObject({ kind: 'accepted' });
+  });
+
+  it('is the next call’s, a read too, and a realtime grant is then none', async () => {
+    const port = createFakeScoringPort(FRESH);
+    port.rateLimit(2000);
+    expect(await port.events(LINK, 'fixture-1', 0)).toEqual({
+      kind: 'rateLimited',
+      retryAfterMs: 2000,
+    });
+    expect(await port.events(LINK, 'fixture-1', 0)).toEqual([]);
+    port.rateLimit(2000);
+    expect(await port.realtimeToken(LINK, 'fixture-1')).toBeNull();
+    expect(await port.realtimeToken(LINK, 'fixture-1')).not.toBeNull();
+  });
+
+  it('writes nothing: the tap it answered is not on the ledger', async () => {
+    const port = createFakeScoringPort(FRESH);
+    port.rateLimit(1000);
+    await port.append(LINK, 'fixture-1', start());
+    expect(await statusOf(port)).toBe('scheduled');
+  });
+});
+
 describe('a seed that cannot be', () => {
   it('a seed whose ledger the engine refuses is thrown at once, not served', () => {
     const bad = { ...FRESH, events: [{ type: 'badminton.rally', payload: { wonBy: HOME } }] };
     expect(() => createFakeScoringPort(bad)).toThrow(/WRONG_PHASE/);
   });
 
-  it('a decided match reads as completed', async () => {
+  it('a decided match reads as decided', async () => {
     const answer = await createFakeScoringPort(decided()).bootstrap(LINK);
-    expect(answer).toMatchObject({ kind: 'ok', bootstrap: { status: 'completed', lastSeq: 43 } });
+    expect(answer).toMatchObject({ kind: 'ok', bootstrap: { status: 'decided', lastSeq: 43 } });
   });
 });
 
