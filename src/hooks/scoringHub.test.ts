@@ -13,6 +13,7 @@ import { createFakePorts, timerClock, type FakePorts } from '../../test/fakePort
 // off `foreground.returnListeners()`: a focused match is 2, a headless sender 1, a stopped match 0.
 
 const FIXTURE = SINGLES_SEED.fixtureId;
+const HOST = 'stg.seazn.club';
 const LINK = { origin: 'https://stg.seazn.club', token: FAKE_SCORING_SECRET };
 const AT = '2026-11-02T09:00:00.000Z';
 const START: BadmintonTap = { kind: 'start', server: 'first' };
@@ -23,7 +24,7 @@ async function flush(): Promise<void> {
 
 async function rig(): Promise<FakePorts> {
   const fakes = createFakePorts({ clock: timerClock });
-  await saveScoringLink(fakes.kv, FIXTURE, LINK);
+  await saveScoringLink(fakes.kv, FIXTURE, LINK, HOST);
   return fakes;
 }
 
@@ -31,7 +32,7 @@ const listeners = (fakes: FakePorts): number => fakes.foreground.returnListeners
 
 /** A queue with one tap for a match that has a link saved, so a sender has something to do. */
 async function queued(fakes: FakePorts, id: string, over: Partial<MatchQueue> = {}): Promise<void> {
-  await saveScoringLink(fakes.kv, id, LINK);
+  await saveScoringLink(fakes.kv, id, LINK, HOST);
   await fakes.tapQueue.save({
     fixtureId: id,
     label: 'A. Sharma v L. Chen',
@@ -355,6 +356,43 @@ describe('resuming the senders (a launch, a return)', () => {
   });
 });
 
+describe('handing a match over while a send is out', () => {
+  it('never has two calls for one match at once: the next runner opens only after the last one’s call has come back', async () => {
+    const fakes = await rig();
+    const hub = scoringHubOf(fakes.ports);
+    const real = fakes.scoring.append;
+    let active = 0;
+    let most = 0;
+    const gates: Array<() => void> = [];
+    const append = vi.spyOn(fakes.scoring, 'append').mockImplementation(async (link, id, body) => {
+      active += 1;
+      most = Math.max(most, active);
+      await new Promise<void>((resolve) => gates.push(resolve));
+      active -= 1;
+      return real(link, id, body);
+    });
+    const first = hub.focus(FIXTURE);
+    await flush();
+    first.runner.dispatch({ kind: 'tap', tap: START, key: 'k1', at: AT });
+    await flush();
+    expect(append).toHaveBeenCalledTimes(1);
+    first.release();
+    const again = hub.focus(FIXTURE);
+    await flush();
+    expect(append).toHaveBeenCalledTimes(1);
+    gates.shift()?.();
+    await flush();
+    await vi.advanceTimersByTimeAsync(60_000);
+    while (gates.length > 0) {
+      gates.shift()?.();
+      await flush();
+    }
+    expect(most).toBe(1);
+    expect(await ledgerTypes(fakes)).toEqual(['core.start']);
+    again.release();
+  });
+});
+
 describe('dismissing a match', () => {
   it('stops its runner and deletes the queue, the ledger, the boot cache and the link', async () => {
     const fakes = await rig();
@@ -369,7 +407,7 @@ describe('dismissing a match', () => {
     ]);
     await scoringHubOf(fakes.ports).dismiss(FIXTURE);
     expect([...fakes.queueFiles.files.keys()]).toEqual([]);
-    expect(await readScoringLink(fakes.kv, FIXTURE)).toEqual({ kind: 'none' });
+    expect(await readScoringLink(fakes.kv, FIXTURE, HOST)).toEqual({ kind: 'none' });
     expect(handle.runner.dispatch({ kind: 'read' })).toBeNull();
     expect(listeners(fakes)).toBe(0);
     expect(fakes.realtime.subscriptions.map((one) => one.open)).toEqual([false]);
@@ -438,6 +476,57 @@ describe('dismissing a match', () => {
     expect([...fakes.queueFiles.files.keys()]).toEqual([]);
   });
 
+  it('starts no sender for it meanwhile: a resume that lists its queue while the dismiss is under way sends nothing', async () => {
+    const fakes = await rig();
+    await leftWithOneTap(fakes);
+    fakes.scoring.goOffline(false);
+    const append = vi.spyOn(fakes.scoring, 'append');
+    let open: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    const realDelete = fakes.kv.delete.bind(fakes.kv);
+    vi.spyOn(fakes.kv, 'delete').mockImplementation(async (key) => {
+      await gate;
+      return realDelete(key);
+    });
+    const hub = scoringHubOf(fakes.ports);
+    const dismissing = hub.dismiss(FIXTURE);
+    await flush();
+    await hub.resume();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(append).not.toHaveBeenCalled();
+    expect(listeners(fakes)).toBe(0);
+    open();
+    await dismissing;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(append).not.toHaveBeenCalled();
+    expect(listeners(fakes)).toBe(0);
+    expect(await ledgerTypes(fakes)).toEqual([]);
+    expect([...fakes.queueFiles.files.keys()]).toEqual([]);
+  });
+
+  it('is over when it returns: the same match scanned again is run again, its sender started', async () => {
+    const fakes = await rig();
+    await leftWithOneTap(fakes);
+    const hub = scoringHubOf(fakes.ports);
+    await hub.dismiss(FIXTURE);
+    expect(listeners(fakes)).toBe(0);
+    fakes.scoring.goOffline(true);
+    await queued(fakes, FIXTURE);
+    await hub.resume();
+    expect(listeners(fakes)).toBe(1);
+  });
+
+  it('forgets the link before it deletes the files: a stop half way leaves no queue a link could send', async () => {
+    const fakes = await rig();
+    await leftWithOneTap(fakes);
+    const forget = vi.spyOn(fakes.kv, 'delete');
+    const remove = vi.spyOn(fakes.tapQueue, 'remove');
+    await scoringHubOf(fakes.ports).dismiss(FIXTURE);
+    expect(forget).toHaveBeenCalledTimes(1);
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(forget.mock.invocationCallOrder[0]).toBeLessThan(remove.mock.invocationCallOrder[0]);
+  });
+
   it('a match nobody runs is deleted too, and a second dismiss is no failure', async () => {
     const fakes = createFakePorts({ clock: timerClock });
     await queued(fakes, 'm-old');
@@ -445,6 +534,6 @@ describe('dismissing a match', () => {
     await hub.dismiss('m-old');
     await hub.dismiss('m-old');
     expect([...fakes.queueFiles.files.keys()]).toEqual([]);
-    expect(await readScoringLink(fakes.kv, 'm-old')).toEqual({ kind: 'none' });
+    expect(await readScoringLink(fakes.kv, 'm-old', HOST)).toEqual({ kind: 'none' });
   });
 });

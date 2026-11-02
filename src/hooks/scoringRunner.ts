@@ -8,7 +8,7 @@ import {
   type MatchEvent,
   type MatchState,
 } from '@/domain/scoring/scoringMatch';
-import type { LedgerEvent } from '@/domain/scoring/wire';
+import type { LedgerEvent, ReadFailure } from '@/domain/scoring/wire';
 import type { Ports } from '@/hooks/usePorts';
 import { readScoringLink } from '@/services/scoringLinkStore';
 import type { ScoringLink } from '@/services/scoringPort';
@@ -27,7 +27,7 @@ import type { ScoringLink } from '@/services/scoringPort';
 
 export type RunnerPorts = Pick<
   Ports,
-  'scoring' | 'tapQueue' | 'kv' | 'foreground' | 'clock' | 'logger'
+  'scoring' | 'tapQueue' | 'kv' | 'foreground' | 'clock' | 'logger' | 'hosts'
 >;
 
 export type RunnerMode = 'focused' | 'headless';
@@ -40,6 +40,7 @@ export type RunnerSnapshot =
   | { readonly kind: 'ready'; readonly state: MatchState };
 
 const LOADING: RunnerSnapshot = { kind: 'loading' };
+const OFFLINE: ReadFailure = { kind: 'offline' };
 
 export type ScoringRunner = {
   readonly fixtureId: string;
@@ -81,8 +82,7 @@ export function createScoringRunner(ports: RunnerPorts, options: Options): Scori
   let idled = false;
   let unsettled = 0;
   let lastSave: Promise<boolean> = Promise.resolve(true);
-  let fetching = false;
-  let fetchAgain = false;
+  const sending = new Set<Promise<void>>();
   let wakeTimer: { at: number; id: ReturnType<typeof setTimeout> } | null = null;
   const listeners = new Set<() => void>();
   const leaving: Array<() => void> = [];
@@ -164,55 +164,91 @@ export function createScoringRunner(ports: RunnerPorts, options: Options): Scori
 
   /** A send goes only after every save before it has landed, and never from a stopped runner or a backgrounded app. */
   const send = (effect: Extract<MatchEffect, { kind: 'send' }>): void => {
-    void (async () => {
+    const call = (async () => {
       const landed = await lastSave;
-      if (stopped || link === null) return;
+      const held = link;
+      if (stopped || held === null) return;
       if (!landed || !ports.foreground.isForeground()) {
         dispatch({ kind: 'abandoned', key: effect.sent.key });
         return;
       }
-      const answer = await ports.scoring.append(link, fixtureId, effect.body);
-      dispatch({ kind: 'answered', sent: effect.sent, answer });
+      const answer = await answered(() => ports.scoring.append(held, fixtureId, effect.body));
+      if (answer === null) dispatch({ kind: 'abandoned', key: effect.sent.key });
+      else dispatch({ kind: 'answered', sent: effect.sent, answer });
     })();
+    sending.add(call);
+    void call.finally(() => sending.delete(call));
   };
 
-  /** One ledger read at a time: a ping that comes while one is out asks for one more after it, not for one each. */
-  const fetchLedger = (): void => {
-    if (fetching) {
-      fetchAgain = true;
-      return;
+  /**
+   * A port call, its answer or null if it threw. The port's contract is that no call rejects; one that does (a native
+   * module that fell over) must still end as a failed call, never as a read or a send left in flight for good.
+   */
+  const answered = async <T>(call: () => Promise<T>): Promise<T | null> => {
+    try {
+      return await call();
+    } catch {
+      ports.logger.warn('scoring.call.threw', {});
+      return null;
     }
-    fetching = true;
-    void (async () => {
-      do {
-        fetchAgain = false;
-        const since = state?.sync.tip ?? 0;
-        if (link === null) break;
-        const read = await ports.scoring.events(link, fixtureId, since);
-        if ('kind' in read) dispatch({ kind: 'fetchFailed', failure: read });
-        else dispatch({ kind: 'fetched', events: read });
-      } while (fetchAgain && !stopped);
-      fetching = false;
-    })();
   };
 
-  const loadRules = (): void => {
-    void (async () => {
-      if (link === null) return;
-      const read = await ports.scoring.rules(link, fixtureId);
-      if ('cfg' in read) dispatch({ kind: 'rulesRead', rules: read });
-      else dispatch({ kind: 'rulesFailed', failure: read });
-    })();
+  /**
+   * A read that is asked for again while it is out is one more read after it, not one each. `read` does one read and
+   * hands the answer to the reducer; it comes back before the next starts. A stopped runner starts no more.
+   */
+  const coalesced = (read: () => Promise<void>): (() => void) => {
+    let out = false;
+    let again = false;
+    return () => {
+      if (out) {
+        again = true;
+        return;
+      }
+      out = true;
+      void (async () => {
+        try {
+          do {
+            again = false;
+            await read();
+          } while (again && !stopped);
+        } finally {
+          out = false;
+        }
+      })();
+    };
   };
 
-  const loadBootstrap = (): void => {
-    void (async () => {
-      if (link === null) return;
-      const read = await ports.scoring.bootstrap(link);
-      if (read.kind === 'ok') dispatch({ kind: 'bootstrapRead', bootstrap: read.bootstrap });
-      else dispatch({ kind: 'bootstrapFailed', failure: read });
-    })();
+  const readLedger = async (): Promise<void> => {
+    const held = link;
+    if (held === null) return;
+    const read = await answered(() => ports.scoring.events(held, fixtureId, state?.sync.tip ?? 0));
+    if (read === null) dispatch({ kind: 'fetchFailed', failure: OFFLINE });
+    else if ('kind' in read) dispatch({ kind: 'fetchFailed', failure: read });
+    else dispatch({ kind: 'fetched', events: read });
   };
+
+  const readRules = async (): Promise<void> => {
+    const held = link;
+    if (held === null) return;
+    const read = await answered(() => ports.scoring.rules(held, fixtureId));
+    if (read === null) dispatch({ kind: 'rulesFailed', failure: OFFLINE });
+    else if ('cfg' in read) dispatch({ kind: 'rulesRead', rules: read });
+    else dispatch({ kind: 'rulesFailed', failure: read });
+  };
+
+  const readBootstrap = async (): Promise<void> => {
+    const held = link;
+    if (held === null) return;
+    const read = await answered(() => ports.scoring.bootstrap(held));
+    if (read === null) dispatch({ kind: 'bootstrapFailed', failure: OFFLINE });
+    else if (read.kind === 'ok') dispatch({ kind: 'bootstrapRead', bootstrap: read.bootstrap });
+    else dispatch({ kind: 'bootstrapFailed', failure: read });
+  };
+
+  const fetchLedger = coalesced(readLedger);
+  const loadRules = coalesced(readRules);
+  const loadBootstrap = coalesced(readBootstrap);
 
   /**
    * One timer, at the earliest wait still ahead in the state (`wakeAt`), set again after every step: a wait that comes
@@ -252,7 +288,7 @@ export function createScoringRunner(ports: RunnerPorts, options: Options): Scori
   // --- loading --------------------------------------------------------------------------------------------------
 
   const load = async (): Promise<RunnerSnapshot | { kind: 'open'; open: Opened }> => {
-    const stored = await readScoringLink(ports.kv, fixtureId);
+    const stored = await readScoringLink(ports.kv, fixtureId, ports.hosts[0] ?? '');
     if (stored.kind === 'failed') return { kind: 'unreadable', what: 'link' };
     if (stored.kind === 'none') return { kind: 'noLink' };
     ports.logger.protectLink(stored.link.token);
@@ -288,7 +324,6 @@ export function createScoringRunner(ports: RunnerPorts, options: Options): Scori
     state = opened.state;
     opened.effects.forEach(run);
     publish({ kind: 'ready', state });
-    arm(state);
     leaving.push(
       ports.foreground.subscribe(() => dispatch({ kind: 'foreground' })),
       ports.foreground.subscribeBackground(() => dispatch({ kind: 'background' })),
@@ -309,7 +344,7 @@ export function createScoringRunner(ports: RunnerPorts, options: Options): Scori
     leaving.splice(0).forEach((leave) => leave());
     if (wakeTimer !== null) clearTimeout(wakeTimer.id);
     wakeTimer = null;
-    await lastSave;
+    await Promise.all([lastSave, ...sending]);
   };
 
   return {

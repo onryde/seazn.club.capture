@@ -1,3 +1,4 @@
+import { isBuildOrigin } from '@/services/seaznHosts';
 import {
   parseAppendAnswer,
   parseBootstrap,
@@ -148,10 +149,6 @@ async function send(deps: Deps, link: ScoringLink, op: Op, build: Build): Promis
     () => ({ problem: 'unexpected' }),
   );
 }
-
-/** The origin exactly as the build's host makes it: no other scheme, port, path, userinfo or suffix. */
-const isBuildOrigin = (origin: string, host: string): boolean =>
-  host !== '' && origin === `https://${host}`;
 
 async function exchange(
   deps: Deps,

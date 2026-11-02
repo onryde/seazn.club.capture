@@ -1,16 +1,19 @@
 import { isRecord } from '@/domain/credentials/wire';
 import type { KeyValueStore } from '@/services/KeyValueStore';
+import { isBuildOrigin } from '@/services/seaznHosts';
 import type { ScoringLink } from '@/services/scoringPort';
 
 /**
  * A match's scoring link, `{origin, token}`, in the secure store under `scoring.link.{fixtureId}` (design §6.3; plan
  * S2-1 Task 5). The token lives nowhere else: not in the queue file, the boot cache, a log line or the record. Task 10
  * writes it when a code is saved; the match hook reads it; Dismiss forgets it with the queue.
+ *
+ * A link is kept and read only for the build's own host (`isBuildOrigin`, the rule the fetch port keeps at call time):
+ * a link for any other origin is no link, so its token is never sent, and never opened in a browser, anywhere else.
  */
 
 /** A fixture id is a key as well as a file name: letters, digits, `_` and `-` (the secure store takes no more). */
 const FIXTURE_ID = /^[A-Za-z0-9_-]{1,100}$/;
-const HTTPS_ORIGIN = /^https:\/\/[^/\s]+$/;
 
 export const scoringLinkKey = (fixtureId: string): string => `scoring.link.${fixtureId}`;
 
@@ -20,7 +23,11 @@ export type StoredLink =
   | { readonly kind: 'none' }
   | { readonly kind: 'failed' };
 
-export async function readScoringLink(kv: KeyValueStore, fixtureId: string): Promise<StoredLink> {
+export async function readScoringLink(
+  kv: KeyValueStore,
+  fixtureId: string,
+  host: string,
+): Promise<StoredLink> {
   if (!FIXTURE_ID.test(fixtureId)) return { kind: 'none' };
   let text: string | null;
   try {
@@ -28,11 +35,11 @@ export async function readScoringLink(kv: KeyValueStore, fixtureId: string): Pro
   } catch {
     return { kind: 'failed' };
   }
-  const link = text === null ? null : decode(text);
+  const link = text === null ? null : decode(text, host);
   return link === null ? { kind: 'none' } : { kind: 'link', link };
 }
 
-function decode(text: string): ScoringLink | null {
+function decode(text: string, host: string): ScoringLink | null {
   let raw: unknown;
   try {
     raw = JSON.parse(text);
@@ -41,19 +48,22 @@ function decode(text: string): ScoringLink | null {
   }
   if (!isRecord(raw) || typeof raw.origin !== 'string' || typeof raw.token !== 'string')
     return null;
-  return HTTPS_ORIGIN.test(raw.origin) && raw.token !== ''
+  return isBuildOrigin(raw.origin, host) && raw.token !== ''
     ? { origin: raw.origin, token: raw.token }
     : null;
 }
 
-/** Rejects when the store refuses, or the id is no key. */
+/** Rejects when the store refuses, the id is no key, or the link is for another host than the build's. */
 export async function saveScoringLink(
   kv: KeyValueStore,
   fixtureId: string,
   link: ScoringLink,
+  host: string,
 ): Promise<void> {
   if (!FIXTURE_ID.test(fixtureId))
     throw new Error('a scoring link is kept under a fixture id fit for a key');
+  if (!isBuildOrigin(link.origin, host))
+    throw new Error('a scoring link is kept only for the build’s own host');
   await kv.set(
     scoringLinkKey(fixtureId),
     JSON.stringify({ origin: link.origin, token: link.token }),

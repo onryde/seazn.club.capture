@@ -11,6 +11,14 @@ export function seaznHosts(env: string | undefined): readonly string[] {
   return env === 'production' ? ['seazn.club'] : ['stg.seazn.club'];
 }
 
+/**
+ * The origin exactly as the build's host makes it: no other scheme, port, path, userinfo or suffix. The one test a
+ * scoring link's token passes before it goes anywhere (the fetch port, the link store, the browser), so it is spelled
+ * once. A build with no host (`''`) trusts nothing.
+ */
+export const isBuildOrigin = (origin: string, host: string): boolean =>
+  host !== '' && origin === `https://${host}`;
+
 /** Where the phone API lives (D2, D3): the same production/staging split as the hosts, and the same safe default. */
 export function seaznOrigin(env: string | undefined): string {
   return env === 'production' ? 'https://seazn.club' : 'https://stg.seazn.club';

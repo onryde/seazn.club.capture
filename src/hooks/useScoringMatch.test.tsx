@@ -8,12 +8,13 @@ import { SINGLES_SEED, createFakeScoringPort } from '@/services/fakeScoringPort'
 import { saveScoringLink } from '@/services/scoringLinkStore';
 import { SINGLES } from '../../test/badmintonLedger';
 import { FAKE_SCORING_SECRET } from '../../test/fakeScoringLinkPort';
-import { createFakePorts, timerClock, type FakePorts } from '../../test/fakePorts';
+import { createFakePorts, readRecord, timerClock, type FakePorts } from '../../test/fakePorts';
 
 // The match hook (plan S2-1 Task 9): what the pad screen is drawn from, over the real runner, hub, queue store and
 // reducer, and the fake server. Copy is keys here (Task 11 draws the words); every expectation is a literal.
 
 const FIXTURE = SINGLES_SEED.fixtureId;
+const HOST = 'stg.seazn.club';
 const LINK = { origin: 'https://stg.seazn.club', token: FAKE_SCORING_SECRET };
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -38,7 +39,7 @@ function mount(fakes: FakePorts, options: { strict?: boolean; id?: string } = {}
 
 async function rig(over: Parameters<typeof createFakePorts>[0] = {}): Promise<FakePorts> {
   const fakes = createFakePorts({ clock: timerClock, ...over });
-  await saveScoringLink(fakes.kv, FIXTURE, LINK);
+  await saveScoringLink(fakes.kv, FIXTURE, LINK, HOST);
   return fakes;
 }
 
@@ -225,7 +226,7 @@ describe('the pad', () => {
   it('every tap has its own key, a v4 UUID', async () => {
     const fakes = await rig();
     const append = vi.spyOn(fakes.scoring, 'append');
-    const random = vi.spyOn(globalThis.crypto, 'getRandomValues');
+    const random = vi.spyOn(globalThis.crypto, 'randomUUID');
     const view = await started(fakes);
     await act(async () => {
       pad(view.result.current).actions.tapHalf('first');
@@ -240,6 +241,64 @@ describe('the pad', () => {
     expect(keys).toHaveLength(3);
     expect(new Set(keys).size).toBe(3);
     keys.forEach((key) => expect(key).toMatch(UUID_V4));
+    expect(readRecord(fakes.record).map((line) => line.event)).not.toContain('scoring.keyFallback');
+  });
+
+  it('a tap’s key is made of getRandomValues where the runtime has no randomUUID, and says nothing', async () => {
+    const real = globalThis.crypto;
+    const getRandomValues = vi.fn((bytes: Uint8Array<ArrayBuffer>) => real.getRandomValues(bytes));
+    vi.stubGlobal('crypto', { getRandomValues });
+    const fakes = await rig();
+    const append = vi.spyOn(fakes.scoring, 'append');
+    const view = await started(fakes);
+    await act(async () => {
+      pad(view.result.current).actions.tapHalf('first');
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(getRandomValues).toHaveBeenCalledTimes(2);
+    const keys = append.mock.calls.map((call) => call[2].idempotency_key);
+    expect(keys).toHaveLength(2);
+    keys.forEach((key) => expect(key).toMatch(UUID_V4));
+    expect(readRecord(fakes.record).map((line) => line.event)).not.toContain('scoring.keyFallback');
+  });
+
+  it('a tap’s key is the runtime’s own UUID where it has one, and says nothing', async () => {
+    const fakes = await rig();
+    const append = vi.spyOn(fakes.scoring, 'append');
+    const made = [
+      '6f0c5a52-3d1e-4a0b-8f55-0c2f6d7b9e10',
+      '0b3c2f51-9a77-4c1e-8d24-7a5e1f6c3b88',
+      '9d1e7c44-2b60-4f93-a0c5-5e8b2d7a1c19',
+    ];
+    const randomUUID = vi.fn(() => made.shift() as string);
+    vi.stubGlobal('crypto', { randomUUID, getRandomValues: undefined });
+    const view = await started(fakes);
+    await act(async () => {
+      pad(view.result.current).actions.tapHalf('first');
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(append.mock.calls.map((call) => call[2].idempotency_key)).toEqual([
+      '6f0c5a52-3d1e-4a0b-8f55-0c2f6d7b9e10',
+      '0b3c2f51-9a77-4c1e-8d24-7a5e1f6c3b88',
+    ]);
+    expect(readRecord(fakes.record).map((line) => line.event)).not.toContain('scoring.keyFallback');
+  });
+
+  it('with no crypto at all the keys still come, and the record says once that they are not strong', async () => {
+    vi.stubGlobal('crypto', undefined);
+    const fakes = await rig();
+    const view = await started(fakes);
+    await act(async () => {
+      pad(view.result.current).actions.tapHalf('first');
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    await act(async () => {
+      pad(view.result.current).actions.tapHalf('second');
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    const lines = readRecord(fakes.record).filter((line) => line.event === 'scoring.keyFallback');
+    expect(lines).toHaveLength(1);
+    expect(lines[0].level).toBe('warn');
   });
 
   it('offline the tap is shown at once as waiting, and drains when the network is back', async () => {
@@ -678,6 +737,33 @@ describe('the update banner', () => {
   });
 });
 
+describe('the update banner with no link to open', () => {
+  it('a link kept for another host is no link: the pad is the link-gone card, and nothing is opened', async () => {
+    const fakes = createFakePorts({ clock: timerClock });
+    await fakes.kv.set(
+      `scoring.link.${FIXTURE}`,
+      JSON.stringify({ origin: 'https://evil.example', token: FAKE_SCORING_SECRET }),
+    );
+    const view = mount(fakes);
+    await flush();
+    expect(view.result.current).toEqual({ kind: 'linkGone' });
+    expect(fakes.link.opened).toEqual([]);
+  });
+});
+
+describe('the update banner with a build that has lost its host', () => {
+  it('Score in the browser says it cannot open the page, and opens nothing', async () => {
+    const fakes = await rig();
+    const view = mount(fakes);
+    await flush();
+    // The defensive branch: a link was read for the build's host, and the build's hosts are empty by the time of the tap.
+    (fakes.ports.hosts as string[]).length = 0;
+    await act(async () => pad(view.result.current).actions.browser());
+    expect(fakes.link.opened).toEqual([]);
+    expect(pad(view.result.current).cardNote).toBe('scoring.card.cantOpen');
+  });
+});
+
 describe('the screen leaving', () => {
   it('releases the match: nothing keeps running, and the channel is closed', async () => {
     const fakes = await rig();
@@ -715,7 +801,7 @@ describe('the screen leaving', () => {
 
   it('another match is another runner: the first is released', async () => {
     const fakes = await rig();
-    await saveScoringLink(fakes.kv, 'm-other', LINK);
+    await saveScoringLink(fakes.kv, 'm-other', LINK, HOST);
     let id = FIXTURE;
     const seen: string[] = [];
     const view = renderHook(

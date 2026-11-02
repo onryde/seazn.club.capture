@@ -12,6 +12,7 @@ import { createFakePorts, timerClock, type FakePorts } from '../../test/fakePort
 // started, so its first tap is a start, then a rally by the first side; the server writes them as seq 1 and 2.
 
 const FIXTURE = SINGLES_SEED.fixtureId;
+const HOST = 'stg.seazn.club';
 const LINK = { origin: 'https://stg.seazn.club', token: FAKE_SCORING_SECRET };
 const AT = '2026-11-02T09:00:00.000Z';
 const START: BadmintonTap = { kind: 'start', server: 'first' };
@@ -44,7 +45,7 @@ async function rig(
   mode: RunnerMode = 'focused',
   options: { link?: boolean } = {},
 ): Promise<Rig> {
-  if (options.link !== false) await saveScoringLink(fakes.kv, FIXTURE, LINK);
+  if (options.link !== false) await saveScoringLink(fakes.kv, FIXTURE, LINK, HOST);
   const idle = vi.fn();
   const runner = createScoringRunner(fakes.ports, { fixtureId: FIXTURE, mode, onIdle: idle });
   await runner.start();
@@ -156,6 +157,55 @@ describe('opening a match', () => {
     const again = await rig(fakes);
     expect(pendingKeys(again.runner)).toEqual(['k1']);
   });
+
+  it('the reopened tap goes once the network is back, from a focused runner: one send of it, under its key', async () => {
+    const fakes = newFakes();
+    const first = await rig(fakes);
+    fakes.scoring.goOffline(true);
+    first.runner.dispatch(tap(START, 'k1'));
+    await flush();
+    await first.runner.stop();
+    const real = fakes.scoring.append;
+    const bodies: string[] = [];
+    vi.spyOn(fakes.scoring, 'append').mockImplementation(async (link, fixtureId, body) => {
+      bodies.push(body.idempotency_key);
+      return real(link, fixtureId, body);
+    });
+    const again = await rig(fakes, 'focused');
+    fakes.scoring.goOffline(false);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(bodies).toEqual(['k1']);
+    expect(await ledgerTypes(fakes)).toEqual(['core.start']);
+    expect(pendingKeys(again.runner)).toEqual([]);
+  });
+});
+
+describe('the link a build reads', () => {
+  it('is the one kept for its own host, whichever it is: a production build reads a production link', async () => {
+    const fakes = createFakePorts({ clock: timerClock, hosts: ['seazn.club'] });
+    await saveScoringLink(
+      fakes.kv,
+      FIXTURE,
+      { origin: 'https://seazn.club', token: FAKE_SCORING_SECRET },
+      'seazn.club',
+    );
+    const runner = createScoringRunner(fakes.ports, { fixtureId: FIXTURE, mode: 'focused' });
+    await runner.start();
+    await flush();
+    expect(runner.snapshot().kind).toBe('ready');
+    expect(runner.link()).toEqual({ origin: 'https://seazn.club', token: FAKE_SCORING_SECRET });
+  });
+
+  it('is none for a link kept for another host: a production build never sends a staging token', async () => {
+    const fakes = createFakePorts({ clock: timerClock, hosts: ['seazn.club'] });
+    await saveScoringLink(fakes.kv, FIXTURE, LINK, 'stg.seazn.club');
+    const events = vi.spyOn(fakes.scoring, 'events');
+    const runner = createScoringRunner(fakes.ports, { fixtureId: FIXTURE, mode: 'focused' });
+    await runner.start();
+    await flush();
+    expect(runner.snapshot()).toEqual({ kind: 'noLink' });
+    expect(events).not.toHaveBeenCalled();
+  });
 });
 
 describe('a tap', () => {
@@ -260,22 +310,33 @@ describe('a tap', () => {
     expect(pendingKeys(runner)).toEqual([]);
   });
 
-  it('a send that was cancelled by the app leaving is asked again on the return, under its own key', async () => {
+  it('a send already out when the app leaves has its answer taken, and the tap behind it waits for the return', async () => {
     const fakes = newFakes();
     const { runner } = await rig(fakes);
-    const bodies: string[] = [];
+    let answer: () => void = () => undefined;
     const real = fakes.scoring.append;
+    const bodies: string[] = [];
     vi.spyOn(fakes.scoring, 'append').mockImplementation(async (link, fixtureId, body) => {
       bodies.push(body.idempotency_key);
+      await new Promise<void>((resolve) => (answer = resolve));
       return real(link, fixtureId, body);
     });
     runner.dispatch(tap(START, 'k1'));
-    fakes.foreground.leave();
-    await flush();
-    fakes.foreground.fire();
     await flush();
     expect(bodies).toEqual(['k1']);
-    expect(await ledgerTypes(fakes)).toEqual(['core.start']);
+    fakes.foreground.leave();
+    runner.dispatch(tap(RALLY, 'k2'));
+    answer();
+    await flush();
+    expect(pendingKeys(runner)).toEqual(['k2']);
+    expect(bodies).toEqual(['k1']);
+    fakes.foreground.fire();
+    await flush();
+    answer();
+    await flush();
+    expect(bodies).toEqual(['k1', 'k2']);
+    expect(await ledgerTypes(fakes)).toEqual(['core.start', 'badminton.rally']);
+    expect(pendingKeys(runner)).toEqual([]);
   });
 });
 
@@ -367,6 +428,7 @@ describe('the waits', () => {
   it('each gets its timer: a 5 s re-save fires and its line shows, and the 15 s send asked for before it still goes', async () => {
     const fakes = newFakes();
     const { runner } = await rig(fakes);
+    const others = vi.getTimerCount();
     const real = fakes.scoring.append;
     const append = vi
       .spyOn(fakes.scoring, 'append')
@@ -375,6 +437,7 @@ describe('the waits', () => {
     runner.dispatch(tap(START, 'k1'));
     await flush();
     expect(append).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(others + 1);
     // k2's save is refused, and so is the save that takes it back out: that one asks for a 5 s wait.
     vi.spyOn(fakes.tapQueue, 'save')
       .mockRejectedValueOnce(new Error('the disk refused'))
@@ -386,6 +449,8 @@ describe('the waits', () => {
       return snapshot.kind === 'ready' ? snapshot.state.line : 'not ready';
     };
     expect(lineAt()).toEqual({ kind: 'refusal', key: 'scoring.refusal.savePending' });
+    // The earlier wait took the timer: the 15 s one is not left running beside it.
+    expect(vi.getTimerCount()).toBe(others + 1);
     await vi.advanceTimersByTimeAsync(5_100);
     expect(lineAt()).toEqual({ kind: 'refusal', key: 'scoring.refusal.notSaved' });
     expect(append).toHaveBeenCalledTimes(1);
@@ -480,6 +545,116 @@ describe('an Undo asked while its tap’s answer is lost', () => {
     await vi.advanceTimersByTimeAsync(60_000);
     expect(await ledgerTypes(fakes)).toEqual(['core.start', 'badminton.rally', 'core.void']);
     expect(pendingKeys(runner)).toEqual([]);
+  });
+});
+
+describe('a call that throws instead of answering', () => {
+  it('a ledger read that throws is a failed read: the next ping reads again, none is left in flight', async () => {
+    const fakes = newFakes();
+    const { runner } = await rig(fakes);
+    const events = vi
+      .spyOn(fakes.scoring, 'events')
+      .mockRejectedValueOnce(new Error('the native module fell over'));
+    runner.dispatch({ kind: 'read' });
+    await flush();
+    expect(events).toHaveBeenCalledTimes(1);
+    runner.dispatch({ kind: 'read' });
+    await flush();
+    expect(events).toHaveBeenCalledTimes(2);
+  });
+
+  it('a send whose call throws leaves the tap queued: it is asked again after the wait, under its own key', async () => {
+    const fakes = newFakes();
+    const { runner } = await rig(fakes);
+    const append = vi
+      .spyOn(fakes.scoring, 'append')
+      .mockRejectedValueOnce(new Error('the native module fell over'));
+    runner.dispatch(tap(START, 'k1'));
+    await flush();
+    expect(pendingKeys(runner)).toEqual(['k1']);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(append).toHaveBeenCalledTimes(2);
+    expect(append.mock.calls.map((call) => call[2].idempotency_key)).toEqual(['k1', 'k1']);
+    expect(await ledgerTypes(fakes)).toEqual(['core.start']);
+    expect(pendingKeys(runner)).toEqual([]);
+  });
+
+  it('a bootstrap read that throws is a failed read: the next ask reads again', async () => {
+    const fakes = newFakes();
+    const real = fakes.scoring.bootstrap;
+    const bootstrap = vi.spyOn(fakes.scoring, 'bootstrap').mockImplementation(async (link) => {
+      const read = await real(link);
+      return read.kind === 'ok'
+        ? { kind: 'ok', bootstrap: { ...read.bootstrap, screen: 'divisionNotStarted' } }
+        : read;
+    });
+    bootstrap.mockRejectedValueOnce(new Error('the native module fell over'));
+    const { runner } = await rig(fakes);
+    expect(bootstrap).toHaveBeenCalledTimes(1);
+    runner.dispatch({ kind: 'read' });
+    await flush();
+    expect(bootstrap).toHaveBeenCalledTimes(2);
+  });
+
+  it('a rules read that throws is a failed read: it is asked again 15 s later', async () => {
+    const fakes = newFakes();
+    const { runner } = await rig(fakes);
+    const realAppend = fakes.scoring.append;
+    vi.spyOn(fakes.scoring, 'append')
+      .mockResolvedValueOnce({ kind: 'rulesChanged', rulesVersion: 1 })
+      .mockImplementation(realAppend);
+    const rules = vi
+      .spyOn(fakes.scoring, 'rules')
+      .mockRejectedValueOnce(new Error('the native module fell over'));
+    runner.dispatch(tap(START, 'k1'));
+    await flush();
+    expect(rules).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(15_100);
+    expect(rules).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('a read asked for again while one is out', () => {
+  it('a bootstrap read is one in flight and one more after it, not one each', async () => {
+    const fakes = newFakes();
+    const real = fakes.scoring.bootstrap;
+    let release: () => void = () => undefined;
+    const bootstrap = vi.spyOn(fakes.scoring, 'bootstrap').mockImplementation(async (link) => {
+      await new Promise<void>((resolve) => (release = resolve));
+      const read = await real(link);
+      return read.kind === 'ok'
+        ? { kind: 'ok', bootstrap: { ...read.bootstrap, screen: 'divisionNotStarted' } }
+        : read;
+    });
+    const { runner } = await rig(fakes);
+    expect(bootstrap).toHaveBeenCalledTimes(1);
+    for (let i = 0; i < 5; i += 1) runner.dispatch({ kind: 'read' });
+    await flush();
+    expect(bootstrap).toHaveBeenCalledTimes(1);
+    release();
+    await flush();
+    expect(bootstrap).toHaveBeenCalledTimes(2);
+    release();
+    await flush();
+    expect(bootstrap).toHaveBeenCalledTimes(2);
+  });
+
+  it('a stopped runner reads no more: a ledger read in flight when it stops asks for no second one', async () => {
+    const fakes = newFakes();
+    const { runner } = await rig(fakes);
+    let release: () => void = () => undefined;
+    const real = fakes.scoring.events;
+    const events = vi.spyOn(fakes.scoring, 'events').mockImplementation(async (...args) => {
+      await new Promise<void>((resolve) => (release = resolve));
+      return real(...args);
+    });
+    for (let i = 0; i < 3; i += 1) runner.dispatch({ kind: 'read' });
+    await flush();
+    expect(events).toHaveBeenCalledTimes(1);
+    await runner.stop();
+    release();
+    await flush();
+    expect(events).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -583,6 +758,26 @@ describe('stopping', () => {
     expect(fakes.queueFiles.files.get(`${FIXTURE}.json`)).toContain('"key":"k1"');
   });
 
+  it('does not finish while a send is out, and finishes once its call has come back', async () => {
+    const fakes = newFakes();
+    const { runner } = await rig(fakes);
+    let answer: () => void = () => undefined;
+    const real = fakes.scoring.append;
+    vi.spyOn(fakes.scoring, 'append').mockImplementation(async (link, fixtureId, body) => {
+      await new Promise<void>((resolve) => (answer = resolve));
+      return real(link, fixtureId, body);
+    });
+    runner.dispatch(tap(START, 'k1'));
+    await flush();
+    const stopped = vi.fn();
+    const stopping = runner.stop().then(stopped);
+    await flush();
+    expect(stopped).not.toHaveBeenCalled();
+    answer();
+    await stopping;
+    expect(stopped).toHaveBeenCalled();
+  });
+
   it('clears its timer: an offline tap waiting to be asked again is not asked after the stop', async () => {
     const fakes = newFakes();
     const { runner } = await rig(fakes);
@@ -597,7 +792,7 @@ describe('stopping', () => {
 
   it('before the first read finished leaves nothing subscribed', async () => {
     const fakes = newFakes();
-    await saveScoringLink(fakes.kv, FIXTURE, LINK);
+    await saveScoringLink(fakes.kv, FIXTURE, LINK, HOST);
     const runner = createScoringRunner(fakes.ports, { fixtureId: FIXTURE, mode: 'focused' });
     const starting = runner.start();
     await runner.stop();

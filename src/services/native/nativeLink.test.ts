@@ -36,4 +36,25 @@ describe('the native link port', () => {
       'no app can open this link',
     );
   });
+
+  it.each([
+    ['plain http', 'http://stg.seazn.club/score/dl_SECRET'],
+    ['a script', 'javascript:alert(1)'],
+    ['an intent', 'intent://scan/#Intent;scheme=zxing;end'],
+    ['a store scheme', 'market://details?id=com.seazn.capture'],
+    ['a file', 'file:///data/data/com.seazn.capture/x'],
+    ['no scheme', 'stg.seazn.club/score/dl_SECRET'],
+    ['https with no host', 'https://'],
+    ['https with a path only', 'https:///dl_SECRET'],
+    ['https without its slashes', 'https:stg.seazn.club/dl_SECRET'],
+    ['an empty string', ''],
+  ])(
+    'refuses %s without handing it to the phone, and the error does not carry it',
+    async (_name, url) => {
+      const opened = createNativeLink().openUrl(url);
+      await expect(opened).rejects.toThrow('no app can open this link');
+      await opened.catch((error: Error) => expect(error.message).not.toContain('SECRET'));
+      expect(Linking.openURL).not.toHaveBeenCalled();
+    },
+  );
 });

@@ -9,6 +9,7 @@ import { wrapperFor } from '../../test/renderWithPorts';
 
 // The background sender's mount (plan S2-1 Task 9): taps left queued are looked for at launch and at every return.
 
+const HOST = 'stg.seazn.club';
 const LINK = { origin: 'https://stg.seazn.club', token: FAKE_SCORING_SECRET };
 
 async function flush(): Promise<void> {
@@ -16,7 +17,7 @@ async function flush(): Promise<void> {
 }
 
 async function leftQueued(fakes: FakePorts, id: string): Promise<void> {
-  await saveScoringLink(fakes.kv, id, LINK);
+  await saveScoringLink(fakes.kv, id, LINK, HOST);
   await fakes.tapQueue.save({
     fixtureId: id,
     label: 'A. Sharma v L. Chen',

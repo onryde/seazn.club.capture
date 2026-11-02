@@ -11,6 +11,7 @@ import type { MatchEvent } from '@/domain/scoring/scoringMatch';
 import { viewOf, type MatchView } from '@/domain/scoring/scoringMatchView';
 import type { HalfFlash } from '@/domain/scoring/tapFlash';
 import { uuidV4 } from '@/domain/scoring/tapKey';
+import { browserTarget } from '@/hooks/browserTarget';
 import type { PadActions, PadScreenModel, ScoringMatch } from '@/hooks/padScreenModel';
 import { scoringHubOf } from '@/hooks/scoringHub';
 import type { RunnerSnapshot, ScoringRunner } from '@/hooks/scoringRunner';
@@ -20,7 +21,7 @@ import { START_TAP, useGuardedTool, useSettle, useTaps } from '@/hooks/usePadTap
 import { usePorts, type Ports } from '@/hooks/usePorts';
 import { useBackToHome } from '@/hooks/useStreamLinks';
 import type { MessageKey } from '@/i18n/messages';
-import type { ScoringLink } from '@/services/scoringPort';
+import type { Logger } from '@/services/logger';
 
 /**
  * One scoring match for the pad screen (plan S2-1 Task 9): the pad as `PadScreenModel`, or the state that takes its
@@ -31,9 +32,6 @@ import type { ScoringLink } from '@/services/scoringPort';
 
 /** Where the update banner's first button goes: the app's own page in the store. */
 export const STORE_URL = 'https://play.google.com/store/apps/details?id=com.seazn.capture';
-
-/** The scoring link as a page in the browser: the web's own pad, for a scorer whose app is too old (owner ruling 8). */
-export const browserUrl = (link: ScoringLink): string => `${link.origin}/score/${link.token}`;
 
 const LOADING: RunnerSnapshot = { kind: 'loading' };
 const noSubscribe = (): (() => void) => () => undefined;
@@ -79,13 +77,29 @@ function resolved(
   return view.kind === 'pad' ? (pad ?? { kind: 'loading', offline: false }) : view;
 }
 
-/** A tap's key, made when it is tapped and never changed (design §7.3): a v4 UUID. */
-function newTapKey(): string {
+type Random = {
+  readonly randomUUID?: () => string;
+  readonly getRandomValues?: (to: Uint8Array) => Uint8Array;
+};
+
+/** Loggers that have said the runtime has no crypto: once each, however many taps follow. */
+const saidNoCrypto = new WeakSet<Logger>();
+
+/**
+ * A tap's key, made when it is tapped and never changed (design §7.3): a v4 UUID, from the runtime's own
+ * `randomUUID`, else sixteen of its `getRandomValues`. With neither, `Math.random` stands in (a key only has to be
+ * unique, and the server keys by link too) and the record says so once: a phone like that is worth knowing about.
+ */
+function newTapKey(logger: Logger): string {
+  const random = (globalThis as { crypto?: Random }).crypto;
+  if (random?.randomUUID !== undefined) return random.randomUUID();
   const bytes = new Uint8Array(16);
-  const random = (globalThis as { crypto?: { getRandomValues?: (to: Uint8Array) => Uint8Array } })
-    .crypto;
   if (random?.getRandomValues !== undefined) random.getRandomValues(bytes);
-  else bytes.forEach((_, i) => (bytes[i] = Math.floor(Math.random() * 256)));
+  else {
+    if (!saidNoCrypto.has(logger)) logger.warn('scoring.keyFallback', {});
+    saidNoCrypto.add(logger);
+    bytes.forEach((_, i) => (bytes[i] = Math.floor(Math.random() * 256)));
+  }
   return uuidV4(bytes);
 }
 
@@ -99,7 +113,7 @@ type Sender = {
 function useSender(ports: Ports, runner: ScoringRunner | null): Sender {
   const send = useCallback(
     (event: (key: string, at: string) => MatchEvent): PadOutcome =>
-      runner?.dispatch(event(newTapKey(), ports.clock().toISOString())) ?? NOT_NOW,
+      runner?.dispatch(event(newTapKey(ports.logger), ports.clock().toISOString())) ?? NOT_NOW,
     [runner, ports],
   );
   const tap = useCallback(
@@ -241,7 +255,7 @@ function useEnding({ sender, pad, taps, sheets }: Parts) {
 
 /** The banner's buttons, through the link port. A page that would not open says so on the banner; the URL never does. */
 function useLinks(runner: ScoringRunner | null, setCardNote: (note: MessageKey | null) => void) {
-  const { link } = usePorts();
+  const { link, hosts } = usePorts();
   const open = useCallback(
     (url: string) => {
       link.openUrl(url).then(
@@ -253,8 +267,9 @@ function useLinks(runner: ScoringRunner | null, setCardNote: (note: MessageKey |
   );
   const update = useCallback(() => open(STORE_URL), [open]);
   const browser = useCallback(() => {
-    const held = runner?.link() ?? null;
-    if (held !== null) open(browserUrl(held));
-  }, [runner, open]);
+    const target = browserTarget(hosts[0] ?? '', runner?.link() ?? null);
+    if (target === null) setCardNote('scoring.card.cantOpen');
+    else open(target);
+  }, [runner, hosts, open, setCardNote]);
   return useMemo(() => ({ update, browser }), [update, browser]);
 }

@@ -11,7 +11,8 @@ import { forgetScoringLink } from '@/services/scoringLinkStore';
  * - headless: the background sender for a match nobody is looking at (ruling 29). It sends the queue's taps in order
  *   and lets the server judge each; it never folds, never reads the bootstrap, never subscribes to Realtime (a second
  *   subscription would close the first). It lets itself go once its queue is empty or dead, or has no link.
- * Going to a match stops its headless sender first; leaving one with taps still queued starts a sender again.
+ * Going to a match stops its headless sender first; leaving one with taps still queued starts a sender again. A runner
+ * is stopped only once its saves and the call it has out have come back, so two runners never send one match at once.
  */
 export type FocusHandle = {
   readonly runner: ScoringRunner;
@@ -23,7 +24,7 @@ export type ScoringHub = {
   focus(fixtureId: string): FocusHandle;
   /** Starts a headless sender for every match with live taps queued that has no runner yet. Safe to call again. */
   resume(): Promise<void>;
-  /** Dismiss: stops this match's sender, then deletes its queue, ledger and boot cache and forgets its link. */
+  /** Dismiss: stops this match's runner, forgets its link, then deletes its queue, ledger and boot cache. */
   dismiss(fixtureId: string): Promise<void>;
 };
 
@@ -52,6 +53,8 @@ function createScoringHub(ports: Ports): ScoringHub {
   const headless = new Map<string, ScoringRunner>();
   /** The latest stop of a match's runner (done or not): whoever starts another for the match waits for its saves first. */
   const stopping = new Map<string, Promise<void>>();
+  /** Matches being dismissed: no sender is started for one, whoever lists its queue meanwhile. */
+  const dismissing = new Set<string>();
 
   const stopRunner = (id: string, runner: ScoringRunner): Promise<void> => {
     const done = runner.stop();
@@ -61,7 +64,7 @@ function createScoringHub(ports: Ports): ScoringHub {
 
   const startHeadless = async (id: string): Promise<void> => {
     await stopping.get(id);
-    if (focused.has(id) || headless.has(id)) return;
+    if (dismissing.has(id) || focused.has(id) || headless.has(id)) return;
     const runner: ScoringRunner = createScoringRunner(ports, {
       fixtureId: id,
       mode: 'headless',
@@ -126,6 +129,16 @@ function createScoringHub(ports: Ports): ScoringHub {
   };
 
   const dismiss = async (id: string): Promise<void> => {
+    dismissing.add(id);
+    try {
+      await dismissed(id);
+    } finally {
+      dismissing.delete(id);
+    }
+  };
+
+  /** Stops the runner, then forgets the link BEFORE the files go: a stop half way never leaves a queue a link could send. */
+  const dismissed = async (id: string): Promise<void> => {
     const held = focused.get(id);
     if (held !== undefined) {
       focused.delete(id);
@@ -138,8 +151,8 @@ function createScoringHub(ports: Ports): ScoringHub {
       await stopRunner(id, sender);
     }
     await stopping.get(id);
-    await ports.tapQueue.remove(id);
     await forgetScoringLink(ports.kv, id);
+    await ports.tapQueue.remove(id);
   };
 
   return { focus, resume, dismiss };
