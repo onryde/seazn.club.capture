@@ -16,7 +16,7 @@ const rally = (
   side: 'first' | 'second',
   game: number,
   after: readonly [number, number],
-  more: Partial<Pick<BadmintonHistoryEntry, 'own' | 'undone'>> & {
+  more: Partial<Pick<BadmintonHistoryEntry, 'own' | 'undone' | 'sending'>> & {
     readonly won?: 'none' | 'game' | 'match';
   } = {},
 ): BadmintonHistoryEntry => ({
@@ -25,6 +25,7 @@ const rally = (
   after: { first: after[0], second: after[1] },
   own: more.own ?? true,
   undone: more.undone ?? false,
+  sending: more.sending ?? false,
 });
 
 describe('badmintonHistory', () => {
@@ -42,6 +43,7 @@ describe('badmintonHistory', () => {
           after: { first: 0, second: 0 },
           own: true,
           undone: false,
+          sending: false,
         },
       ],
       SIDES,
@@ -52,6 +54,7 @@ describe('badmintonHistory', () => {
         score: null,
         by: 'thisPhone',
         undone: false,
+        sending: false,
       },
     ]);
   });
@@ -87,12 +90,14 @@ describe('badmintonHistory', () => {
         score: '21–19',
         by: 'thisPhone',
         undone: false,
+        sending: false,
       },
       {
         said: { key: 'scoring.badminton.last.rally', vars: { side: 'L. Chen' } },
         score: '0–1',
         by: 'otherScorer',
         undone: false,
+        sending: false,
       },
     ]);
   });
@@ -122,6 +127,7 @@ describe('badmintonHistory', () => {
         after: at,
         own: true,
         undone: false,
+        sending: false,
       },
       {
         did: { kind: 'sanction', side: 'first', level: 'disqualification', person: 'A. Sharma' },
@@ -129,6 +135,7 @@ describe('badmintonHistory', () => {
         after: at,
         own: true,
         undone: false,
+        sending: false,
       },
       {
         did: { kind: 'ending', side: 'first', person: 'A. Sharma' },
@@ -136,6 +143,7 @@ describe('badmintonHistory', () => {
         after: at,
         own: false,
         undone: false,
+        sending: false,
       },
     ];
     const [game2] = badmintonHistory(entries, SIDES);
@@ -145,6 +153,7 @@ describe('badmintonHistory', () => {
         score: null,
         by: 'otherScorer',
         undone: false,
+        sending: false,
       },
       {
         said: {
@@ -154,14 +163,45 @@ describe('badmintonHistory', () => {
         score: null,
         by: 'thisPhone',
         undone: false,
+        sending: false,
       },
       {
         said: { key: 'scoring.badminton.last.setScore', vars: { score: '9–4' } },
         score: null,
         by: 'thisPhone',
         undone: false,
+        sending: false,
       },
     ]);
+  });
+
+  // Design §6.4 (plan S2-1 Task 7): this phone's taps the server has not accepted yet show on top, marked as sending.
+  it('marks a tap still on its way as sending, on top of its game', () => {
+    const [game] = badmintonHistory(
+      [rally('first', 1, [1, 0]), rally('second', 1, [1, 1], { sending: true })],
+      SIDES,
+    );
+    expect(game?.rows.map((row) => [row.score, row.by, row.sending])).toEqual([
+      ['1–1', 'thisPhone', true],
+      ['1–0', 'thisPhone', false],
+    ]);
+  });
+
+  it('says a start whose first server is not known as "Match started" alone', () => {
+    const [game1] = badmintonHistory(
+      [
+        {
+          did: { kind: 'start', server: null },
+          game: 1,
+          after: { first: 0, second: 0 },
+          own: false,
+          undone: false,
+          sending: false,
+        },
+      ],
+      SIDES,
+    );
+    expect(game1?.rows[0]?.said).toEqual({ key: 'scoring.badminton.last.startUnknownServer' });
   });
 
   it('names a doubles side as the match label joins it, and the match won', () => {

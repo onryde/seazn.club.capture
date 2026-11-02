@@ -21,6 +21,7 @@ const START_ENTRY = {
   after: { first: 0, second: 0 },
   own: true,
   undone: false,
+  sending: false,
 } as const;
 const points = (pad: FakeBadmintonPad) => display(pad).points;
 const rallies = (pad: FakeBadmintonPad, ...sides: PadSide[]) => {
@@ -78,9 +79,8 @@ describe('the fake badminton pad: a preview of the S2 design, not scoring rules'
     const courts: string[] = [];
     for (const side of ['first', 'first', 'second', 'second', 'second', 'first'] as const) {
       rallies(pad, side);
-      courts.push(
-        `${display(pad).server}:${points(pad)[display(pad).server]}:${display(pad).court}`,
-      );
+      const { server, court } = display(pad);
+      courts.push(`${server}:${server === null ? '-' : points(pad)[server]}:${court}`);
     }
     expect(courts).toEqual([
       'first:1:left',
@@ -544,6 +544,7 @@ describe('the sheet History reads', () => {
         after: { first: 1, second: 0 },
         own: true,
         undone: false,
+        sending: false,
       },
       {
         did: { kind: 'rally', side: 'second', won: 'none', game: 1 },
@@ -551,6 +552,7 @@ describe('the sheet History reads', () => {
         after: { first: 1, second: 1 },
         own: true,
         undone: false,
+        sending: false,
       },
     ]);
   });
@@ -619,6 +621,7 @@ describe('the sheet History reads', () => {
       after: { first: 1, second: 0 },
       own: true,
       undone: false,
+      sending: false,
     });
   });
 

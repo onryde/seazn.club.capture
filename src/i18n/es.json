@@ -340,6 +340,7 @@
   "scoring.badminton.intervalNow": "Descanso",
   "scoring.badminton.start.ask": "¿Quién saca primero?",
   "scoring.badminton.last.start": "Partido iniciado: {side} saca primero",
+  "scoring.badminton.last.startUnknownServer": "Partido iniciado",
   "scoring.badminton.last.rally": "Jugada registrada: {side}",
   "scoring.badminton.last.game": "Jugada registrada: juego {game} para {side}",
   "scoring.badminton.last.match": "Jugada registrada: partido para {side}",

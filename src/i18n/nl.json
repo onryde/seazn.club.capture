@@ -340,6 +340,7 @@
   "scoring.badminton.intervalNow": "Pauze",
   "scoring.badminton.start.ask": "Wie serveert eerst?",
   "scoring.badminton.last.start": "Gestart: {side} serveert eerst",
+  "scoring.badminton.last.startUnknownServer": "Gestart",
   "scoring.badminton.last.rally": "Rally vastgelegd: {side}",
   "scoring.badminton.last.game": "Rally vastgelegd: game {game} voor {side}",
   "scoring.badminton.last.match": "Rally vastgelegd: wedstrijd voor {side}",

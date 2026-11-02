@@ -110,7 +110,13 @@ export const DOUBLES_SAMPLE: FakePadSample = {
 };
 
 /** The preview match's config, which the pad's strip and its Match details read (`BadmintonDisplay.rules`). */
-const RULES: BadmintonRules = { bestOf: 3, points: 21, winBy: 2, cap: 30, intervalPoint: 11 };
+const RULES = {
+  bestOf: 3,
+  points: 21,
+  winBy: 2,
+  cap: 30,
+  intervalPoint: 11,
+} satisfies BadmintonRules;
 
 const OK: FakeOutcome = { ok: true };
 const refused = (refusal: FakeRefusal): FakeOutcome => ({ ok: false, refusal });
@@ -340,6 +346,7 @@ function snapshotOf(sample: FakePadSample, ledger: Ledger): FakePadSnapshot {
       after,
       own,
       undone: voided,
+      sending: false,
     })),
   };
 }

@@ -57,9 +57,12 @@ export type BadmintonTap =
  */
 export type BadmintonUndoneTap = Exclude<BadmintonTap, { readonly kind: 'start' }>;
 
-/** What the last tap did: a rally says whether it won a game or the match; `undone` names the tap Undo took back. */
+/**
+ * What the last tap did: a rally says whether it won a game or the match; `undone` names the tap Undo took back. The
+ * start names its first server when the ledger or this phone's pick says it, else null (a match started elsewhere).
+ */
 export type BadmintonLastTap =
-  | { readonly kind: 'start'; readonly server: PadSide }
+  | { readonly kind: 'start'; readonly server: PadSide | null }
   | {
       readonly kind: 'rally';
       readonly side: PadSide;
@@ -103,7 +106,12 @@ export type BadmintonDisplay = {
    * recorded disqualification ended (owner ruling 18), at its points then.
    */
   readonly finished: readonly BadmintonGame[];
-  readonly server: PadSide;
+  /**
+   * The side due to serve, or null when the ledger does not say: a set score moved the points with no rally since (the
+   * engine's `score-jumped`), or the match was started elsewhere and has had no rally. Null draws no serving plate.
+   */
+  readonly server: PadSide | null;
+  /** The server's service court; nothing reads it while `server` is null. */
   readonly court: BadmintonCourt;
   /** The game under way, or about to start; the last one once decided. */
   readonly game: number;
@@ -135,6 +143,7 @@ export type BadmintonPadKey =
   | 'scoring.badminton.intervalNow'
   | 'scoring.badminton.start.ask'
   | 'scoring.badminton.last.start'
+  | 'scoring.badminton.last.startUnknownServer'
   | 'scoring.badminton.last.rally'
   | 'scoring.badminton.last.game'
   | 'scoring.badminton.last.match'
@@ -352,15 +361,17 @@ function strip(state: BadmintonDisplay): readonly PadStripItem<BadmintonPadKey>[
 
 /**
  * Before either side reaches the interval point, where it is; at the rally that took the server there first, the
- * interval itself (the rally's winner serves, so the side that just reached it is the server); after it, nothing.
+ * interval itself (the rally's winner serves, so the side that just reached it is the server); after it, nothing. With
+ * no server known, whether the interval is now cannot be told: nothing.
  */
 function interval(state: BadmintonDisplay): Text | null {
   const at = state.rules.intervalPoint;
-  const server = state.points[state.server];
-  const receiver = state.points[state.server === 'first' ? 'second' : 'first'];
-  if (Math.max(server, receiver) < at) {
+  if (Math.max(state.points.first, state.points.second) < at) {
     return { key: 'scoring.badminton.intervalAt', vars: { point: at } };
   }
+  if (state.server === null) return null;
+  const server = state.points[state.server];
+  const receiver = state.points[state.server === 'first' ? 'second' : 'first'];
   return server === at && receiver < at ? { key: 'scoring.badminton.intervalNow' } : null;
 }
 
@@ -408,7 +419,9 @@ export function doneSaid(sides: BadmintonDisplay['sides'], tap: BadmintonDone): 
   const side = (of: PadSide) => sideNames(sides[of]);
   switch (tap.kind) {
     case 'start':
-      return { key: 'scoring.badminton.last.start', vars: { side: side(tap.server) } };
+      return tap.server === null
+        ? { key: 'scoring.badminton.last.startUnknownServer' }
+        : { key: 'scoring.badminton.last.start', vars: { side: side(tap.server) } };
     case 'rally':
       if (tap.won === 'game') {
         return {

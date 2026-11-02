@@ -340,6 +340,7 @@
   "scoring.badminton.intervalNow": "Pause",
   "scoring.badminton.start.ask": "Qui sert en premier\u00a0?",
   "scoring.badminton.last.start": "Match lancé\u00a0: {side} sert en premier",
+  "scoring.badminton.last.startUnknownServer": "Match lancé",
   "scoring.badminton.last.rally": "Échange enregistré\u00a0: {side}",
   "scoring.badminton.last.game": "Échange enregistré\u00a0: jeu {game} pour {side}",
   "scoring.badminton.last.match": "Échange enregistré\u00a0: match pour {side}",

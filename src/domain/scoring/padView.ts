@@ -124,14 +124,16 @@ export type PadTool<K extends string> = {
 
 /**
  * One entry on the match's sheet, as History lists it (owner ruling 21, 2026-10-31; view only): what it did, in the
- * last-tap line's words; the score after it, top first, where it moved the score; who recorded it; and whether Undo took
- * it back, which leaves it in its place.
+ * last-tap line's words; the score after it, top first, where it moved the score; who recorded it; whether Undo took
+ * it back, which leaves it in its place; and whether it is this phone's tap the server has not accepted yet, shown on
+ * top as sending (design §6.4).
  */
 export type PadHistoryRow<K extends string> = {
   readonly said: PadText<K>;
   readonly score: string | null;
   readonly by: 'thisPhone' | 'otherScorer';
   readonly undone: boolean;
+  readonly sending: boolean;
 };
 
 /** A period's entries under its heading ("Game 2"), newest first; History lists the newest period first. */

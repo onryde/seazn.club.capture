@@ -11,8 +11,8 @@ export type BadmintonRules = {
   readonly points: number;
   /** …with a lead of this many… */
   readonly winBy: number;
-  /** …or at this many, whatever the lead. */
-  readonly cap: number;
+  /** …or at this many, whatever the lead; null when the config holds no cap, and the table has no Cap row. */
+  readonly cap: number | null;
   /** The interval, when the leading side reaches it in a game; the ends change at it in the deciding game. */
   readonly intervalPoint: number;
 };
@@ -37,13 +37,17 @@ export type BadmintonRuleKey =
  * a best of 1). `MatchCard` draws any sport's rows; it knows nothing of badminton.
  */
 export function badmintonRuleRows(rules: BadmintonRules): readonly PadRuleRow<BadmintonRuleKey>[] {
+  const cap =
+    rules.cap === null
+      ? []
+      : [row('cap', { key: 'scoring.badminton.rules.cap.value', vars: { cap: rules.cap } })];
   return [
     row('format', { key: 'scoring.badminton.rules.bestOf.other', count: rules.bestOf }),
     row('points', {
       key: 'scoring.badminton.rules.points.value',
       vars: { points: rules.points, winBy: rules.winBy },
     }),
-    row('cap', { key: 'scoring.badminton.rules.cap.value', vars: { cap: rules.cap } }),
+    ...cap,
     row('interval', {
       key: 'scoring.badminton.rules.interval.value',
       vars: { point: rules.intervalPoint },

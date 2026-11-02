@@ -329,8 +329,9 @@ describe('the last-tap line', () => {
         .map(({ key }) => `${lang} ${key}`),
     );
 
-  it('reads fourteen sentences in each language (anti-vacuity)', () => {
-    for (const [, dictionary] of LANGUAGES) expect(sentences(dictionary)).toHaveLength(14);
+  // Fifteen since S2-1 Task 7 added the start with no named server ("Match started").
+  it('reads fifteen sentences in each language (anti-vacuity)', () => {
+    for (const [, dictionary] of LANGUAGES) expect(sentences(dictionary)).toHaveLength(15);
   });
 
   it('holds every sentence and refusal whole at 360, in four languages', () => {

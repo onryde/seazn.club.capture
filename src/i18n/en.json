@@ -340,6 +340,7 @@
   "scoring.badminton.intervalNow": "Interval",
   "scoring.badminton.start.ask": "Who serves first?",
   "scoring.badminton.last.start": "Match started — {side} serves first",
+  "scoring.badminton.last.startUnknownServer": "Match started",
   "scoring.badminton.last.rally": "Rally recorded — {side}",
   "scoring.badminton.last.game": "Rally recorded — game {game} to {side}",
   "scoring.badminton.last.match": "Rally recorded — match to {side}",

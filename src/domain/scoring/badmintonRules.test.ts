@@ -43,6 +43,16 @@ describe('badmintonRuleRows: the rules table’s rows, as dictionary keys and fi
     });
   });
 
+  // Plan S2-1 Task 7: the engine's badminton config may hold no cap (`cap: null`); the table says nothing it does not hold.
+  it('drops the Cap row for a match with no cap, and keeps the other four in order', () => {
+    expect(badmintonRuleRows({ ...STANDARD, cap: null }).map((row) => row.label.key)).toEqual([
+      'scoring.badminton.rules.format.label',
+      'scoring.badminton.rules.points.label',
+      'scoring.badminton.rules.interval.label',
+      'scoring.badminton.rules.endsChange.label',
+    ]);
+  });
+
   it('reads each fact from its own field: a best of 5 to 11, by 1, capped at 15, the interval at 6', () => {
     expect(
       badmintonRuleRows({ bestOf: 5, points: 11, winBy: 1, cap: 15, intervalPoint: 6 }).map(

@@ -468,6 +468,18 @@ describe('badmintonPad: the last tap', () => {
     });
   });
 
+  // Plan S2-1 Task 7: the ledger names the first server only on the match's first rally (design §7.3), and the web pad
+  // leaves it out, so a match started elsewhere may never say it. The line then says the start alone.
+  it('says the start alone when its first server is not known: “Match started”', () => {
+    expect(lastOf({ kind: 'start', server: null })).toEqual({
+      key: 'scoring.badminton.last.startUnknownServer',
+    });
+    expect(lastOf({ kind: 'start', server: 'second' })).toEqual({
+      key: 'scoring.badminton.last.start',
+      vars: { side: 'L. Chen' },
+    });
+  });
+
   it('names the disqualified person when the ending is recorded', () => {
     expect(lastOf({ kind: 'ending', side: 'second', person: 'L. Chen' })).toEqual({
       key: 'scoring.badminton.last.ending',
@@ -503,6 +515,47 @@ describe('badmintonPad: the last tap', () => {
 
   it('offers no Undo while a disqualification waits for its ending: the prompt decides', () => {
     expect(badmintonPad({ ...live, awaitingEnding: true }).lastTap?.undo).toBe(false);
+  });
+});
+
+// Plan S2-1 Task 7: the engine names no server after a set score until the next rally (`score-jumped`), nor before the
+// match's first rally when this phone did not pick it. The pad draws no plate then, rather than guess (design §6.2).
+describe('badmintonPad: a server the ledger does not name', () => {
+  const unknown: BadmintonDisplay = {
+    ...live,
+    points: { first: 5, second: 3 },
+    finished: [{ points: { first: 21, second: 15 }, winner: 'first' }],
+    server: null,
+    game: 2,
+    phase: 'betweenGames',
+    lastTap: { kind: 'setScore', first: 5, second: 3 },
+  };
+
+  it('draws no serving plate on either half, and still takes a tap', () => {
+    const view = badmintonPad(unknown);
+    expect(view.halves.map((half) => [half.serving, half.tappable])).toEqual([
+      [null, true],
+      [null, true],
+    ]);
+  });
+
+  it('still says where the interval is while both sides are short of it', () => {
+    expect(badmintonPad(unknown).strip[1]).toEqual({
+      slot: 'interval',
+      text: { key: 'scoring.badminton.intervalAt', vars: { point: 11 } },
+    });
+  });
+
+  it('leaves the interval slot empty once a side has reached it: whether it is now cannot be told', () => {
+    for (const points of [
+      { first: 11, second: 5 },
+      { first: 7, second: 11 },
+    ]) {
+      expect(badmintonPad({ ...unknown, points }).strip[1]).toEqual({
+        slot: 'interval',
+        text: null,
+      });
+    }
   });
 });
 
