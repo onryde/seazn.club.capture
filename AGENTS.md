@@ -54,16 +54,18 @@ There is no login anywhere. See
 [the decision record](docs/specs/2026-09-29-multi-mode-app-decisions.md).
 
 Home is the only screen outside a mode but one: three tiles, a Continue card
-when a mode can be resumed, and the language picker. The one other is Stream
-Settings opened from the gear in the top-right corner of Home's Live Stream
-tile, without the Diagnostics card: R2 of the D3 findings design (owner,
-2026-10-11; `docs/specs/2026-10-11-s1-d3-findings-design.md` section 1). The
-owner made it a gear on 2026-10-12 ("Instead of text, can we have icon in right
-top corner?"); a screen reader names it "Stream settings". It holds the two
-phone settings, the battery row and the record row, reachable before a scan.
-The gear shows only while no card stands above the tiles (the D3 fixes plan's
-ruling P6, the controller's:
-`docs/superpowers/plans/2026-10-11-s1-d3-fixes.md`). Scanning is the phone's
+when a mode can be resumed, and a gear in its top-right corner. The one other
+is the app's Settings, which that gear opens (owner, 2026-11-02: "we should
+have common setting in a top gear?", then "yes do it now"); a screen reader
+names the gear "Settings", and it always shows, cards or not. Settings has two
+sections of short rows, a label and a value, with no explanatory sentences
+(owner, same day: "make sure that it is clean display instead of printing
+text"): General (the language, the battery row and the record row) and Live
+Stream (its two phone settings). This supersedes the gear on the Live Stream
+tile that opened Stream Settings (R2 of the D3 findings design, owner,
+2026-10-11, made a gear on 2026-10-12) and the rule that hid it while a card
+stood above the tiles (the D3 fixes plan's ruling P6). The language picker
+left Home with it. Scanning is the phone's
 own code scanner, not a screen of ours.
 
 **Live Stream** keeps the four-screen shape of its own: **Scan** → **Paired** →
@@ -144,7 +146,7 @@ page in the main repo, not here. Do not grow the app to accommodate them.
 app/               # Expo Router routes. Thin: they import ui, hooks and packages only.
   _layout.tsx      # the composition root: ports, language, reopen gate, orientation gate
   index.tsx        # Home
-  stream-settings.tsx  # Stream Settings from Home, no Diagnostics (R2 of the D3 findings design)
+  settings.tsx     # the app's Settings, from Home's gear (owner, 2026-11-02)
   stream/          # Live Stream (landscape)
   scoring/         # Remote Scoring (portrait): the sport's pad screen, from a table; S4 adds dashboard/
 src/
@@ -455,27 +457,28 @@ Three rules travel with these tokens:
   (`app/stream/`), so on air it is only *leaving the mode* that is blocked:
   Home is hidden and Back says how to stop. A broadcast started remotely moves
   the app to Live Stream from wherever it is (A2).
-- **Stream Settings from Home** (R2 of the D3 findings design; owner,
-  2026-10-11) is the same screen with `from="home"`: no Diagnostics card
-  (nothing is paired), no LIVE plate, no on-air rules, and Back returns to
-  Home. Both variants carry the battery row (Android only; R5 of the D3
-  findings design; owner, 2026-10-11) and the record row: Share record,
-  outside the Diagnostics card so a phone sent Home by Replaced can still hand
-  its record over (N33), and Send record to Seazn when `FEATURES.recordSend`
-  is on, as it is (the owner's "On now (Recommended)", 2026-10-12, §1). From
-  Arming on, Send record is disabled with "Send it after the broadcast", so an
-  upload of up to 1 MB never starts on the broadcast's uplink; one started just
-  before Arming may finish on air, within the upload's 15 s bound. Share
-  record stays enabled (the controller's ruling, 2026-10-12). The battery row
-  reads the app's battery mode in Android's own words, _Unrestricted_,
-  _Optimized_ or _Restricted_, and its _App settings_ button opens this app's
-  App info page
-  (`ACTION_APPLICATION_DETAILS_SETTINGS`), where Battery is one tap away; a
-  path line under it says "Battery → Unrestricted" (R12 of the D3 findings
-  design; the controller's, 2026-10-12). It never prompts or nags. Its button
-  is the row's on-air protection: from Arming on it is disabled with "Change it
-  after the broadcast", because App info is one tap from Force stop (R13 of
-  the D3 findings design; the controller's, 2026-10-12).
+- **The app's Settings** (Home's gear; owner, 2026-11-02, §1) has no
+  Diagnostics card, no LIVE plate and no on-air rules of its own, and Back
+  returns to Home. The reopen gate leaves it in place while a stream is paired
+  and not armed; arming or going live moves the app to Live Stream (A2). It
+  and Live Stream's own Settings both carry the battery row (Android only; R5
+  of the D3 findings design; owner, 2026-10-11) and the record row: Share
+  record, outside the Diagnostics card so a phone sent Home by Replaced can
+  still hand its record over (N33), and Send record to Seazn when
+  `FEATURES.recordSend` is on, as it is (the owner's "On now (Recommended)",
+  2026-10-12, §1). From Arming on, Send record is disabled with "Send it after
+  the broadcast", so an upload of up to 1 MB never starts on the broadcast's
+  uplink; one started just before Arming may finish on air, within the
+  upload's 15 s bound. Share record stays enabled (the controller's ruling,
+  2026-10-12). The battery row reads the app's battery mode in Android's own
+  words, _Unrestricted_, _Optimized_ or _Restricted_, and opens this app's App
+  info page (`ACTION_APPLICATION_DETAILS_SETTINGS`), where Battery is one tap
+  away; a path line says "Battery → Unrestricted" (R12 of the D3 findings
+  design; the controller's, 2026-10-12). It never prompts or nags. From Arming
+  on it is disabled, because App info is one tap from Force stop (R13 of the
+  D3 findings design; the controller's, 2026-10-12): Live Stream's Settings
+  says "Change it after the broadcast" on its _App settings_ button, the app's
+  Settings "After the broadcast" on the row.
 - The audio meter is permanent, not in Settings. Nothing downstream
   normalises — a quiet mic reaches YouTube quiet.
 - One persistent status line that always says something true. Never an
@@ -567,7 +570,7 @@ thermal member. Only transport trouble degrades a session.
   phone stops beating within one to a few minutes of locking (D3 Task 2b, and
   2026-10-11 22:06–22:09Z); not a clean threshold. The foreground service and
   the wake lock do not prevent it. The operator may choose _Unrestricted_ from
-  the battery row in Stream Settings (R5 of the D3 findings design; owner,
+  the battery row in Settings (R5 of the D3 findings design; owner,
   2026-10-11); the app never asks for `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`.
   A start while the Live Stream view is not showing must still deliver video
   (N28). Keep-awake with the idle dim stays the default path for a remote Go
