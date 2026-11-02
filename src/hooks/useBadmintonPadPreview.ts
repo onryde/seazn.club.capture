@@ -1,13 +1,7 @@
-import {
-  useCallback,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type RefObject,
-} from 'react';
+import { useCallback, useMemo, useState, useSyncExternalStore } from 'react';
+import { badmintonHistory } from '@/domain/scoring/badmintonHistory';
 import { badmintonPad, type BadmintonPadKey } from '@/domain/scoring/badmintonPad';
-import { isBounce } from '@/domain/scoring/bounce';
+import { refusalLine, type PadLineWords } from '@/domain/scoring/padLine';
 import type { HalfFlash } from '@/domain/scoring/tapFlash';
 import {
   withCard,
@@ -16,8 +10,18 @@ import {
   type PadSync,
   type PadView,
 } from '@/domain/scoring/padView';
+import type { PadActions, PadScreenModel } from '@/hooks/padScreenModel';
 import { useBackCloses } from '@/hooks/useBackCloses';
 import { usePadSheets, type PadSheetView } from '@/hooks/usePadSheets';
+import {
+  START_TAP,
+  useGuardedTool,
+  useSettle,
+  useTaps,
+  type Opening,
+  type Say,
+  type SetFlash,
+} from '@/hooks/usePadTaps';
 import { usePorts, type Ports } from '@/hooks/usePorts';
 import { useBackToHome } from '@/hooks/useStreamLinks';
 import type { MessageKey } from '@/i18n/messages';
@@ -26,9 +30,7 @@ import {
   DOUBLES_SAMPLE,
   SINGLES_SAMPLE,
   type FakeBadmintonPad,
-  type FakeOutcome,
   type FakePadSample,
-  type FakeRefusal,
 } from '@/services/fakeBadmintonPad';
 
 export type { PadSheetView } from '@/hooks/usePadSheets';
@@ -41,64 +43,23 @@ export type PreviewSample = 'singles' | 'doubles';
  */
 export type PreviewChoice = 'pad' | PadStateCard['kind'] | PreviewSample | 'sync' | 'start';
 
-/**
- * What the last-tap line says beside the last tap's sentence: a refusal (in caution, in the sentence's place: the tap
- * did not count) or a note (under the sentence, which stays: a bounced repeat that counted once).
- */
-export type PadLineWords =
-  | { readonly kind: 'refusal'; readonly key: MessageKey }
-  | { readonly kind: 'note'; readonly key: MessageKey }
-  | null;
+export type { PadLineWords };
 
-export type PadPreviewActions = {
-  readonly home: () => void;
-  readonly tapHalf: (side: PadSide) => void;
-  readonly undo: () => void;
-  readonly tool: (id: string) => void;
-  readonly choose: (id: string) => void;
-  readonly cancel: () => void;
-  /** Match details' Close and dim: quiet in the bounce window of the sheet opening (review M2, `usePadSheets`). */
-  readonly dismiss: () => void;
-  readonly saveScore: (first: string, second: string) => void;
-  readonly recordEnding: () => void;
-  readonly voidSanction: () => void;
-  /** The update banner's two buttons: in the preview they open nothing, and say so on the banner. */
-  readonly update: () => void;
-  readonly browser: () => void;
-  /** Match details (owner ruling 15, then 2026-11-01): where the match sits and its rules, in a sheet over the pad. */
-  readonly details: () => void;
-  /** History (owner ruling 21): every entry on the sheet, newest first, in a cover over the pad; view only. */
-  readonly history: () => void;
-  /** The Start screen (owner, 2026-11-01, option A): who serves first, picked; then Start match, a tap. */
-  readonly pickServer: (side: PadSide) => void;
-  readonly start: () => void;
+/** The pad's actions, and the preview row's `pick`. */
+export type PadPreviewActions = PadActions & {
   readonly pick: (choice: PreviewChoice) => void;
 };
 
-export type BadmintonPadPreview = {
-  readonly view: PadView<BadmintonPadKey>;
-  readonly sheet: PadSheetView | null;
-  readonly line: PadLineWords;
-  /** What the update banner's buttons said: the preview opens no store and no browser. */
-  readonly cardNote: MessageKey | null;
-  /** The last tap on a half that counted, for its flash (owner ruling 14; `flashCue`). */
-  readonly flash: HalfFlash;
-  /** The Start screen's pick of who serves first; none until the scorer picks, and none once the match starts. */
-  readonly toss: PadSide | null;
+/**
+ * What the preview hands the screen is the real match's `PadScreenModel` (plan S2-1 Task 9), so Task 11 swaps one hook
+ * for the other; `chosen` and `pick` are the preview row's own.
+ */
+export type BadmintonPadPreview = PadScreenModel & {
   readonly chosen: { readonly card: PadStateCard['kind'] | 'pad'; readonly sample: PreviewSample };
   readonly actions: PadPreviewActions;
 };
 
-type Say = (words: PadLineWords) => void;
-type SetFlash = (flash: HalfFlash) => void;
-
-const REFUSAL: Readonly<Record<FakeRefusal, MessageKey>> = {
-  notNow: 'scoring.refusal.notNow',
-  invalidScore: 'scoring.refusal.invalidScore',
-  nothingToUndo: 'scoring.refusal.nothingToUndo',
-};
-const COUNTED_ONCE: PadLineWords = { kind: 'note', key: 'scoring.pad.countedOnce' };
-const INVALID_SCORE: PadLineWords = { kind: 'refusal', key: REFUSAL.invalidScore };
+const INVALID_SCORE: PadLineWords = refusalLine('scoring.refusal.invalidScore');
 
 const SAMPLES = { singles: SINGLES_SAMPLE, doubles: DOUBLES_SAMPLE } as const;
 
@@ -134,7 +95,15 @@ export function useBadmintonPadPreview(): BadmintonPadPreview {
   const settle = useSettle(say);
   const taps = useTaps(pad, settle, say, setFlash);
   const refuseScore = useCallback(() => say(INVALID_SCORE), []);
-  const sheets = usePadSheets(pad, snapshot, taps.opening, refuseScore);
+  const sheetSnapshot = useMemo(
+    () => ({
+      display: snapshot.display,
+      card: snapshot.card,
+      history: badmintonHistory(snapshot.history, snapshot.display.sides),
+    }),
+    [snapshot],
+  );
+  const sheets = usePadSheets(pad, sheetSnapshot, taps.opening, refuseScore);
   const starting = useStart(pad, taps.opening);
   const clears = { say, setCardNote, setFlash, clearToss: starting.clearToss };
   const pick = usePick(pad, sample, startSample, sheets.cancel, clears);
@@ -146,7 +115,7 @@ export function useBadmintonPadPreview(): BadmintonPadPreview {
   );
   const chosen = { card: snapshot.card?.kind ?? 'pad', sample } as const;
   const { toss } = starting;
-  return { view, sheet: sheets.view, line, cardNote, flash, toss, chosen, actions };
+  return { kind: 'pad', view, sheet: sheets.view, line, cardNote, flash, toss, chosen, actions };
 }
 
 /** What the screen's actions are built from. */
@@ -197,110 +166,6 @@ function keptFor(ports: Ports): Held {
   const fresh: Held = { sample: 'singles', pad: createFakeBadmintonPad(SINGLES_SAMPLE) };
   kept.set(ports, fresh);
   return fresh;
-}
-
-/** A recorded tap clears what the line said; a refused one says why. */
-function useSettle(say: Say): (outcome: FakeOutcome) => void {
-  return useCallback(
-    (outcome: FakeOutcome) =>
-      say(outcome.ok ? null : { kind: 'refusal', key: REFUSAL[outcome.refusal] }),
-    [say],
-  );
-}
-
-/** Start match's tap in the bounce memory. */
-const START_TAP = 'start';
-
-/** A tap the pad counted: which, when, and whether its control left the screen with it (`opening`). */
-type Counted = { readonly tap: string; readonly at: number; readonly opens: boolean };
-type Once = (tap: string, make: () => FakeOutcome, opens?: boolean) => boolean;
-/** A tap whose control leaves the screen with it, through the bounce memory (`useTaps`): whether it counted. */
-type Opening = (tap: string, make: () => FakeOutcome) => boolean;
-
-/**
- * A tap on a half and Undo: each counts once for a repeat within the bounce window (`bounce.ts`) of its own last
- * recorded tap, and the line says "Counted once" under the sentence of the tap that counted. A rally on the other half
- * is a different tap and always counts. A tap whose control leaves the screen with it (`opening`: Start match, and a
- * sheet's button that records: a sanction, Set score, Record the ending, Void) opens the window for every tap: the
- * second touch of a double tap on it lands on what was under it, a half, Undo or a tool (hardening and review I1,
- * 2026-11-01), and counts once with it; a tool then opens nothing (`secondTouch`).
- */
-function useTaps(
-  pad: FakeBadmintonPad,
-  settle: (outcome: FakeOutcome) => void,
-  say: Say,
-  setFlash: SetFlash,
-) {
-  const { clock } = usePorts();
-  const last = useRef<Counted | null>(null);
-  const once = useOnce(last, settle, say);
-  const tapHalf = useTapHalf(once, pad, setFlash);
-  const undo = useCallback(() => void once('undo', () => pad.undo()), [once, pad]);
-  const opening = useCallback<Opening>((tap, make) => once(tap, make, true), [once]);
-  const secondTouch = useCallback((): boolean => {
-    const prior = last.current;
-    if (prior === null || !prior.opens || !isBounce(clock().getTime() - prior.at)) return false;
-    say(COUNTED_ONCE);
-    return true;
-  }, [clock, say]);
-  return useMemo(
-    () => ({ tapHalf, undo, opening, secondTouch }),
-    [tapHalf, undo, opening, secondTouch],
-  );
-}
-
-/**
- * Counts a tap once (`useTaps`): a repeat within the window of the last tap counted, or any tap within the window of
- * an opening one, is not made, and the line says "Counted once". A refused tap arms nothing.
- */
-function useOnce(
-  last: RefObject<Counted | null>,
-  settle: (outcome: FakeOutcome) => void,
-  say: Say,
-): Once {
-  const { clock } = usePorts();
-  return useCallback(
-    (tap, make, opens = false) => {
-      const at = clock().getTime();
-      const prior = last.current;
-      const repeat = prior !== null && (prior.tap === tap || prior.opens);
-      if (repeat && isBounce(at - prior.at)) {
-        say(COUNTED_ONCE);
-        return false;
-      }
-      const outcome = make();
-      settle(outcome);
-      if (outcome.ok) last.current = { tap, at, opens };
-      return outcome.ok;
-    },
-    [last, clock, settle, say],
-  );
-}
-
-/**
- * A tap on a half: the rally, once (`useOnce`), and the half's flash, numbered on from the last one (owner ruling 14).
- * A bounce or a refusal flashes nothing.
- */
-function useTapHalf(once: Once, pad: FakeBadmintonPad, setFlash: SetFlash) {
-  const flashes = useRef(0);
-  return useCallback(
-    (side: PadSide) => {
-      if (!once(side, () => pad.rally(side))) return;
-      flashes.current += 1;
-      setFlash({ side, seq: flashes.current });
-    },
-    [once, pad, setFlash],
-  );
-}
-
-/** A tool's sheet, unless the tap is an opening tap's second touch (`useTaps`' `secondTouch`): then it opens nothing. */
-function useGuardedTool(secondTouch: () => boolean, open: (id: string) => void) {
-  return useCallback(
-    (id: string) => {
-      if (!secondTouch()) open(id);
-    },
-    [secondTouch, open],
-  );
 }
 
 /**

@@ -21,6 +21,7 @@ import type { EndedNotice } from '@/services/endedNotice';
 import type { KeyValueStore } from '@/services/KeyValueStore';
 import type { Logger } from '@/services/logger';
 import type { ModeStore } from '@/services/modeStore';
+import type { LinkPort } from '@/services/linkPort';
 import type { PhotoPort } from '@/services/photoPort';
 import type { ProbeFlight } from '@/services/probeFlight';
 import type { RealtimePort } from '@/services/realtimePort';
@@ -79,6 +80,8 @@ export type Ports = {
   readonly share: SharePort;
   /** Spec §8: a still to the gallery (one of the two calls that answer, Q2). */
   readonly photo: PhotoPort;
+  /** S2: a page outside the app: the store's listing and a scoring link in the browser (plan Task 9). */
+  readonly link: LinkPort;
   /** Spec §10: the match's Remote scoring link (the second call that answers). */
   readonly scoringLink: ScoringLinkPort;
   /** S2: Remote scoring's calls to the web (bootstrap, ledger, rules, append, realtime grant), plain fetch. */

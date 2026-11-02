@@ -1,12 +1,12 @@
 import { useCallback, useMemo, useState } from 'react';
 import { isBounce } from '@/domain/scoring/bounce';
-import { badmintonHistory } from '@/domain/scoring/badmintonHistory';
 import {
   badmintonDetails,
   parseBadmintonTool,
   sideNames,
   type BadmintonDisplay,
   type BadmintonPadKey,
+  type BadmintonSanction,
 } from '@/domain/scoring/badmintonPad';
 import {
   chooseSanction,
@@ -15,10 +15,23 @@ import {
   type SanctionSheet,
   type SanctionStep,
 } from '@/domain/scoring/badmintonSanction';
-import type { PadHistoryGroup, PadMatchDetails } from '@/domain/scoring/padView';
+import type { PadOutcome } from '@/domain/scoring/padLine';
+import type { PadHistoryGroup, PadMatchDetails, PadStateCard } from '@/domain/scoring/padView';
 import { parseWholeNumber } from '@/domain/scoring/wholeNumber';
 import { usePorts } from '@/hooks/usePorts';
-import type { FakeBadmintonPad, FakeOutcome, FakePadSnapshot } from '@/services/fakeBadmintonPad';
+
+/** What a sanction and a set score do, and what each came to at once: the fake's counters, or a tap for the match's reducer. */
+export type PadSheetDriver = {
+  readonly sanction: (sanction: BadmintonSanction) => PadOutcome;
+  readonly setScore: (first: number, second: number) => PadOutcome;
+};
+
+/** What the sheets are drawn from: the display, History as grouped for the sheet, and the card over the pad. */
+export type PadSheetSnapshot = {
+  readonly display: BadmintonDisplay;
+  readonly history: readonly PadHistoryGroup<BadmintonPadKey>[];
+  readonly card: PadStateCard | null;
+};
 
 /**
  * What is over the pad: a sanction's step, the Set score fields, a disqualification's ending prompt, Match details
@@ -52,7 +65,7 @@ const HISTORY: Sheet = { kind: 'history' };
  * A sheet's button that records, through the taps' bounce memory (`useBadmintonPadPreview`'s `opening`): the sheet
  * leaves with it, and a second touch on what was under it counts once (review I1, 2026-11-01). Whether it counted.
  */
-type Recording = (tap: string, make: () => FakeOutcome) => boolean;
+type Recording = (tap: string, make: () => PadOutcome) => boolean;
 type SetSheet = (sheet: Sheet) => void;
 
 /**
@@ -63,8 +76,8 @@ type SetSheet = (sheet: Sheet) => void;
  * score, the ending prompt and Match details' Close and dim take no tap in the bounce window of appearing (`justShown`).
  */
 export function usePadSheets(
-  pad: FakeBadmintonPad,
-  snapshot: FakePadSnapshot,
+  pad: PadSheetDriver,
+  snapshot: PadSheetSnapshot | null,
   record: Recording,
   refuseScore: () => void,
 ) {
@@ -78,7 +91,9 @@ export function usePadSheets(
   const dismiss = useCallback(() => {
     if (!justShown()) cancel();
   }, [justShown, cancel]);
-  const choose = useChoose(sheet, setSheet, snapshot.display, record, justShown, pad);
+  const choose = useChoose(sheet, setSheet, snapshot?.display ?? null, record, justShown, pad);
+  // No pad to put a sheet over (the match is loading, or is a state of its own): no sheet stays open behind it.
+  if (snapshot === null && sheet !== null) setSheet(null);
   const saveScore = useSaveScore(pad, record, refuseScore, cancel, justShown);
   const actions = useMemo(
     () => ({ tool, details, history, choose, cancel, dismiss, saveScore }),
@@ -91,15 +106,15 @@ export function usePadSheets(
 function useChoose(
   sheet: Sheet,
   setSheet: SetSheet,
-  display: BadmintonDisplay,
+  display: BadmintonDisplay | null,
   record: Recording,
   justShown: () => boolean,
-  pad: FakeBadmintonPad,
+  pad: PadSheetDriver,
 ) {
-  const { sides } = display;
+  const sides = display?.sides;
   return useCallback(
     (id: string) => {
-      if (sheet?.kind !== 'sanction' || justShown()) return;
+      if (sheet?.kind !== 'sanction' || sides === undefined || justShown()) return;
       const move = chooseSanction(sheet.step, id, sides);
       if (move.kind === 'step') return setSheet({ kind: 'sanction', step: move.step });
       setSheet(null);
@@ -140,7 +155,7 @@ function useJustShown(step: string | null): () => boolean {
  * Quiet in the bounce window of the sheet appearing: the second touch of a double tap on the tool lands on Confirm.
  */
 function useSaveScore(
-  pad: FakeBadmintonPad,
+  pad: PadSheetDriver,
   record: Recording,
   refuse: () => void,
   close: () => void,
@@ -166,7 +181,9 @@ function sheetFor(id: string): Sheet {
     : { kind: 'setScore' };
 }
 
-function sheetView(sheet: Sheet, { display, history, card }: FakePadSnapshot): PadSheetView | null {
+function sheetView(sheet: Sheet, snapshot: PadSheetSnapshot | null): PadSheetView | null {
+  if (snapshot === null) return null;
+  const { display, history, card } = snapshot;
   // Under a card the pad takes no tap (`withCard`): the ending prompt goes with the tools while the ending waits, and is
   // back on the pad (hardening, 2026-11-01). Match details and History still open under the card.
   if (display.awaitingEnding && card === null) {
@@ -174,7 +191,7 @@ function sheetView(sheet: Sheet, { display, history, card }: FakePadSnapshot): P
   }
   if (sheet === null) return null;
   if (sheet.kind === 'history') {
-    return { kind: 'history', groups: badmintonHistory(history, display.sides) };
+    return { kind: 'history', groups: history };
   }
   if (sheet.kind === 'sanction') {
     return { kind: 'sanction', sheet: sanctionSheet(sheet.step, display.sides) };

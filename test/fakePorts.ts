@@ -36,6 +36,7 @@ import { createRingRecord, parseRecordLine, type SessionRecord } from '@/service
 import { createStreamSettingsStore } from '@/services/streamSettingsStore';
 import { createTapQueueStore, type TapQueueStore } from '@/services/tapQueueStore';
 import type { UploadCredentialStore } from '@/services/uploadCredentialStore';
+import { createFakeLinkPort, type FakeLinkPort } from './fakeLinkPort';
 import { createFakePhotoPort, type FakePhotoPort } from './fakePhotoPort';
 import { createFakeScoringLinkPort, type FakeScoringLinkPort } from './fakeScoringLinkPort';
 import { createFakeSurfaces, type FakeSurfaces } from './fakeSurfaces';
@@ -82,6 +83,8 @@ export type FakePorts = {
   readonly share: SharePort & { readonly shared: string[]; refuse(): void };
   /** `hold()`/`release()` pend a take; `calls` counts. */
   readonly photo: FakePhotoPort;
+  /** The store listing and the browser: `opened` lists each URL asked for, `refuse()` makes every later one fail. */
+  readonly link: FakeLinkPort;
   /** `hold()`/`release()` pend a request; `calls` counts. */
   readonly scoringLink: FakeScoringLinkPort;
   /**
@@ -140,6 +143,7 @@ export function createFakePorts(
     record,
     share: fakeShare(),
     photo: createFakePhotoPort(),
+    link: createFakeLinkPort(),
     scoringLink: createFakeScoringLinkPort(),
     scoring: createFakeScoringPort(SINGLES_SEED),
     tapQueue: createTapQueueStore({ files: queueFiles, logger }),

@@ -22,6 +22,7 @@ import { createScanFlight } from '@/services/scanFlight';
 import { createExpoRouterNavigation } from '@/services/native/expoRouterNavigation';
 import { createNativeBack } from '@/services/native/nativeBack';
 import { createNativeForeground } from '@/services/native/nativeForeground';
+import { createNativeLink } from '@/services/native/nativeLink';
 import { createNativeMotion } from '@/services/native/nativeMotion';
 import { createNativeOrientationLock } from '@/services/native/nativeOrientationLock';
 import { createExpoQueueFiles } from '@/services/native/expoQueueFiles';
@@ -121,6 +122,8 @@ export function createNativePorts(
     // A development build with the fake engine and a native module still calls the real `takePhoto`, which
     // fails with no camera open: the line says so, truthfully. There is no second gate to keep.
     photo: photoPortFor(native),
+    // S2: the update banner's two buttons (plan Task 9); the browser's URL holds the scoring link's token.
+    link: createNativeLink(),
     scoringLink: scoringLinkPortFor(native, { logger, hosts }),
     // S2: plain fetch (AGENTS §8), to the build's host only. Nothing calls it until the match hook (plan Task 9).
     scoring: scoringPortFor({ fetch: (url, init) => fetch(url, init), logger, hosts }),
