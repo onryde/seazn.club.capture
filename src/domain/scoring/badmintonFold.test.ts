@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { badmintonEventFor } from '@/domain/scoring/badmintonEvents';
+import { badmintonEventFor, payloadForSend } from '@/domain/scoring/badmintonEvents';
 import { foldBadminton, type BadmintonFoldInput } from '@/domain/scoring/badmintonFold';
 import { badmintonPad, type BadmintonDisplay } from '@/domain/scoring/badmintonPad';
 import type { PadSide } from '@/domain/scoring/padView';
@@ -631,19 +631,46 @@ describe('foldBadminton: the start and the first rally', () => {
     });
   });
 
-  // Review item 3 (2026-11-02): once the server's ledger holds a rally, even one undone since, the pick is never drawn:
-  // its first send would carry no `serving` (`payloadForSend`), so a plate for it would be a guess.
-  it('draws no picked server once the ledger holds a rally, even one undone since', () => {
+  // The controller's ruling (2026-11-02): an undone rally does not count as played. Undoing the match's first rally (a
+  // common mis-tap) brings the pick back at 0–0, and the rally tapped again carries it as `serving`.
+  it('draws the pick again when the match’s first rally is undone, and the rally tapped again sends it', () => {
     const undone = [start(), rally('H'), voiding(2)];
-    expect(display(undone, { toss: 'first' })).toMatchObject({
+    const shown = display(undone, { toss: 'first' });
+    expect(shown).toMatchObject({
       points: { first: 0, second: 0 },
       phase: 'pre',
-      server: null,
-      serverPicked: false,
-    });
-    expect(display([start()], { toss: 'first' })).toMatchObject({
       server: 'first',
       serverPicked: true,
+    });
+    const again = badmintonEventFor(
+      { kind: 'rally', side: 'second' },
+      { bootstrap: SINGLES, display: shown },
+    );
+    expect(again).toEqual({
+      type: 'badminton.rally',
+      payload: { wonBy: 'ent-away', serving: 'ent-home', scorer: 'p-chen' },
+    });
+    if (again === null) throw new Error('no event');
+    expect(payloadForSend(queuedOf('k', again), ledgerOf(undone))).toBe(again.payload);
+  });
+
+  // The same while this phone's undo is still queued: the rally stands in the server's ledger, but not in the match the
+  // pad shows, and the undo goes ahead of the rally tapped again, so the ledger has it by that rally's first send.
+  it('draws the pick again while this phone’s undo of the first rally is still on its way', () => {
+    const ledger = [start(), { ...rally('H', 'H'), link: PHONE_LINK }];
+    expect(
+      display(ledger, {
+        own: [eventId(2)],
+        queued: [queuedOf('k-undo', voiding(2))],
+        toss: 'first',
+      }),
+    ).toMatchObject({ points: { first: 0, second: 0 }, server: 'first', serverPicked: true });
+  });
+
+  it('draws no pick once a rally stands: the engine names the server', () => {
+    expect(display([start(), rally('A')], { toss: 'first' })).toMatchObject({
+      server: 'second',
+      serverPicked: false,
     });
   });
 

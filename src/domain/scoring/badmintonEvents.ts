@@ -110,16 +110,22 @@ const RALLY = 'badminton.rally';
 
 /**
  * The payload to send for a queued tap (the controller's ruling, 2026-11-02): the match's first rally (the one tap
- * that carries `serving`, `badmintonEventFor`) drops it at its first send if the server's ledger already holds a rally
- * (a co-scorer's landed first, even one undone since): the engine would ignore it there, and its drift check would
- * then name no server for the rest of game 1. A tap with an attempt keeps what it was first sent with, since the server
+ * that carries `serving`, `badmintonEventFor`) drops it at its first send if a rally already stands in the server's
+ * ledger (a co-scorer's landed first): the engine would ignore it there, and its drift check would then name no server
+ * for the rest of game 1. An undone rally does not count as played (the controller's ruling, 2026-11-02). A tap with an attempt keeps what it was first sent with, since the server
  * may hold it under its key already (a tap in flight has one: `markSending` counts it as the send starts). Every other
  * tap goes as queued. The key never changes.
  */
 export function payloadForSend(queued: QueuedEvent, ledger: readonly LedgerEvent[]): unknown {
   const { payload } = queued;
   if (queued.attempts > 0 || !isRecord(payload)) return payload;
-  if (!('serving' in payload) || !ledger.some((event) => event.type === RALLY)) return payload;
+  if (!('serving' in payload) || !rallyStands(ledger)) return payload;
   const { serving: _dropped, ...rest } = payload;
   return rest;
+}
+
+/** A rally stands in the ledger: one no other ledger event voids. */
+function rallyStands(ledger: readonly LedgerEvent[]): boolean {
+  const voided = new Set(ledger.flatMap((event) => (event.voids === null ? [] : [event.voids])));
+  return ledger.some((event) => event.type === RALLY && !voided.has(event.id));
 }

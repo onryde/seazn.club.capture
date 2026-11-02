@@ -131,7 +131,7 @@ export function foldBadminton(input: BadmintonFoldInput): BadmintonFold {
   const undoable =
     undoTarget(input.ledger, legalTaps, input.ownEventIds, () => true).kind !== 'blocked';
   const serve = setBasedServeContext(badminton, folded.state, stream.envelopes);
-  const picked = pickedServer(folded.state, serve, input);
+  const picked = pickedServer(folded.state, serve, input.toss);
   const recorded = recordedOf(match, stream, folded, picked);
   const display = displayOf(match, stream, folded, { serve, picked, undoable, recorded });
   const history = ledgerHistory(
@@ -405,18 +405,18 @@ function serverOf(serve: SetBasedServeContext, picked: PadSide | null): PadSide 
 /**
  * This phone's pick on the Start screen while it is the server to show, else null (the controller's rulings,
  * 2026-11-02): only at the match's 0–0, started, with the engine naming nobody because nothing has said who serves
- * (`undeclared`), and only while the server's ledger holds no rally at all, an undone one included: the first send of
- * the first rally drops its `serving` then (`payloadForSend`). After a set score the engine still says `undeclared`,
- * so it is the 0–0 that rules the pick out there: a `serving` at 5–3 would be a false fact in the ledger.
+ * (`undeclared`). An undone rally does not count as played, so undoing the first rally brings the pick back; a rally
+ * still standing has scored, so the 0–0 rules the pick out then, as it does after a set score (the engine still says
+ * `undeclared` there: a `serving` at 5–3 would be a false fact in the ledger).
  */
 function pickedServer(
   state: SetBasedState,
   serve: SetBasedServeContext,
-  input: BadmintonFoldInput,
+  toss: PadSide | null,
 ): PadSide | null {
+  // At a started 0–0 with no standing rally the engine can give no other reason: an equivalent mutant (task7.txt, R9).
   if (state.phase !== 'live' || serve.unknownBecause !== 'undeclared') return null;
-  if (state.sets.some((set) => set.home > 0 || set.away > 0)) return null;
-  return input.ledger.some((event) => event.type === RALLY) ? null : input.toss;
+  return state.sets.some((set) => set.home > 0 || set.away > 0) ? null : toss;
 }
 
 /**

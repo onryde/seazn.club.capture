@@ -343,8 +343,13 @@ describe('payloadForSend', () => {
     });
   });
 
-  it('drops it for a rally since undone too', () => {
-    expect(payloadForSend(FIRST, ledgerOf([start(), rally('A'), voiding(2)]))).toEqual({
+  // The controller's ruling (2026-11-02): an undone rally does not count as played.
+  it('sends the pick when the only rally in the ledger was undone', () => {
+    expect(payloadForSend(FIRST, ledgerOf([start(), rally('A'), voiding(2)]))).toBe(FIRST.payload);
+  });
+
+  it('drops it when a rally still stands beside one undone', () => {
+    expect(payloadForSend(FIRST, ledgerOf([start(), rally('A'), voiding(2), rally('H')]))).toEqual({
       wonBy: 'ent-home',
       scorer: 'p-sharma',
     });
