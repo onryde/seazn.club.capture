@@ -10,6 +10,7 @@ import {
 import { contextSaid, divisionAndRound, type MatchContext } from '@/domain/scoring/matchContext';
 import { SIDES } from '@/domain/session/matchLabel';
 import { useT } from '@/hooks/useLanguage';
+import { NameText } from '@/ui/components/NameText';
 import { Text } from '@/ui/components/Text';
 import { colour, layout, radius, space } from '@/ui/theme/tokens';
 
@@ -111,9 +112,9 @@ const Side = memo(function Side({
   return (
     <View testID="match-card-side" style={styles.side}>
       <View {...barMarker(side)} style={side === 'first' ? firstBar : secondBar} />
-      <Text testID="match-card-name" variant="matchName" style={styles.name}>
+      <NameText testID="match-card-name" variant="matchName" style={styles.name}>
         {name}
-      </Text>
+      </NameText>
     </View>
   );
 });

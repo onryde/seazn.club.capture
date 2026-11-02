@@ -11,6 +11,7 @@ import {
 import type { PadHalf, PadPeriodScore, PadSide } from '@/domain/scoring/padView';
 import { usePadText } from '@/hooks/usePadText';
 import type { MessageKey } from '@/i18n/messages';
+import { NameText } from '@/ui/components/NameText';
 import { TapFlash } from '@/ui/components/TapFlash';
 import { Text } from '@/ui/components/Text';
 import { scoreRole } from '@/ui/theme/scoreRole';
@@ -89,9 +90,9 @@ const HalfHead = memo(function HalfHead({ half }: { readonly half: PadHalf<Messa
   const words = usePadText();
   return (
     <View style={styles.head}>
-      <Text variant="label" numberOfLines={layout.padNameLines} style={styles.names}>
+      <NameText variant="label" lines={layout.padNameLines} style={styles.names}>
         {half.label}
-      </Text>
+      </NameText>
       {half.serving === null ? null : <ServingPlate words={words(half.serving.shown)} />}
     </View>
   );

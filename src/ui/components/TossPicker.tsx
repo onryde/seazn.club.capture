@@ -1,6 +1,7 @@
 import { memo, useCallback } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import type { PadSide, PadStartSide } from '@/domain/scoring/padView';
+import { NameText } from '@/ui/components/NameText';
 import { Text } from '@/ui/components/Text';
 import { colour, layout, plateInk, radius, space } from '@/ui/theme/tokens';
 
@@ -17,7 +18,8 @@ type TossPickerProps = {
  * big buttons, the names as typed, one choice. The picked one is the lime plate with night ink (AGENTS §5). The
  * question is a heading, drawn as the Rules subheading is; to a screen reader the buttons are a radio group it names,
  * each side a radio, checked or not. The buttons stand side by side while
- * the row holds two of `padTossMin`, and stack when it does not; a long name wraps in its button and is never cut.
+ * the row holds two of `padTossMin`, and stack when it does not; a name with gaps wraps in its button and is never
+ * cut, and one long word is shrunk to one line (`NameText`).
  */
 export const TossPicker = memo(function TossPicker({
   ask,
@@ -64,9 +66,9 @@ const TossSide = memo(function TossSide({
       onPress={pick}
       style={checked ? pickedStyle : styles.side}
     >
-      <Text variant="label" style={checked ? styles.namePicked : styles.name}>
+      <NameText variant="label" style={checked ? styles.namePicked : styles.name}>
         {side.label}
-      </Text>
+      </NameText>
     </Pressable>
   );
 });
