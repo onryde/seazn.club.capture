@@ -249,6 +249,24 @@ Committed without a `_review` marker, as the rest of S2's copy.
 | Sending (a History row)                             | Enviando                                                | Envoi                                                     | Verzenden                                                     | A tap the server has not answered yet.                                                       |
 | {points}, win by {winBy}, game {game} to {deciding} | {points}, {winBy} de ventaja, juego {game} a {deciding} | {points}, {winBy} points d'écart, jeu {game} à {deciding} | {points}, {winBy} punten verschil, game {game} tot {deciding} | The Points row when the deciding game's target differs.                                      |
 
+## App settings (2026-11-02)
+
+The app's own Settings, from the gear in Home's top-right corner (owner, 2026-11-02: "we should have common setting in a top
+gear?", then "yes do it now"; and "make sure that it is clean display instead of printing text"). Rows are a short label
+and a value; no explanatory sentences. Committed without a `_review` marker.
+
+| English                      | Español                  | Français                  | Nederlands                  | Notes                                                                     |
+| ---------------------------- | ------------------------ | ------------------------- | --------------------------- | ------------------------------------------------------------------------- |
+| Settings                     | Ajustes                  | Paramètres                | Instellingen                | `settings.app.title`, and `home.settings`: the gear's screen-reader name. |
+| General                      | General                  | Général                   | Algemeen                    | `settings.section.general`. Language, battery, record.                    |
+| Live Stream                  | Emisión en directo       | Diffusion en direct       | Livestream                  | `settings.section.stream`. The mode's name as on its Home tile.           |
+| Language                     | Idioma                   | Langue                    | Taal                        | `settings.language.label`.                                                |
+| Battery                      | Batería                  | Batterie                  | Batterij                    | `settings.battery.label`. The value is Android's own word.                |
+| After the broadcast          | Tras la emisión          | Après le direct           | Na de uitzending            | `settings.battery.onAir`. The battery row's reason while armed or live.   |
+| Start and stop automatically | Inicio y fin automáticos | Début et fin automatiques | Automatisch starten/stoppen | `settings.automatic.row`.                                                 |
+| Controls                     | Controles                | Commandes                 | Bediening                   | `settings.side.row`: which side the viewfinder's controls sit.            |
+| Left / Right                 | Izquierda / Derecha      | Gauche / Droite           | Links / Rechts              | `settings.side.rowLeft` / `rowRight`.                                     |
+
 ## Translation review
 
 - **New or changed English copy.** Add the key to es, fr and nl in the same
