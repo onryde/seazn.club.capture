@@ -445,7 +445,8 @@ The Sonnet per-task and Opus batch reviews of Tasks 3–6 found what the hook mu
 - Retry waits and merge-before-send are enforced by sync itself (`nextSend(state, now)` and the hold):
   the hook passes a real clock, calls `revalidate` on a `revalidate` hold, and `onReadFailed` for every
   failed read; every bootstrap read goes through `onBootstrapStatus`, and the hook runs the
-  `reloadBootstrap` effect.
+  `reloadBootstrap` effect. Before every `nextSend` the hook calls `retryRules(state, now)` (a failed rules read is
+  re-asked every 15 s, even with nothing queued).
 - Effects run in order; a send goes only after the `persist` before it has resolved (Review Focus 1
   holds only then).
 - An unresolved head (sent, no definitive answer; also one reopened after a kill) is resent with its key;
