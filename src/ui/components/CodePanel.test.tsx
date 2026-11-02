@@ -2,6 +2,10 @@ import { fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { ModeCode } from '@/domain/mode/Mode';
 import type { PanelOutcome, PanelUnpairReason } from '@/hooks/useHome';
+import en from '@/i18n/en.json';
+import es from '@/i18n/es.json';
+import fr from '@/i18n/fr.json';
+import nl from '@/i18n/nl.json';
 import { CodePanel } from '@/ui/components/CodePanel';
 import { colour } from '@/ui/theme/tokens';
 import { fillOf, heldOnGround } from '../../../test/pressState';
@@ -181,6 +185,75 @@ describe('CodePanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Scan again' }));
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect([h.onScanAgain.mock.calls.length, h.onClose.mock.calls.length]).toEqual([1, 1]);
+  });
+
+  // A scoring link is not a stream code: the scan panel for one says "link" (the Batch D review), in every language, while
+  // the stream's keep their own words.
+  describe('a scoring link’s scan says link, not code', () => {
+    const DICTIONARIES = { en, es, fr, nl } as const;
+    const scoringCode = {
+      mode: 'scoring',
+      raw: 'https://stg.seazn.club/score/dl_madeUpTokenForPanelTests01',
+      token: 'dl_madeUpTokenForPanelTests01',
+    } as const satisfies ModeCode;
+
+    it.each(['en', 'es', 'fr', 'nl'] as const)('says it is checking the link, in %s', (lang) => {
+      const h = handlers();
+      renderWithPorts(
+        <CodePanel outcome={{ kind: 'checking', tapped: 'scoring' }} time={null} {...h} />,
+        { deviceLanguages: [lang] },
+      );
+      expect(screen.getByText(DICTIONARIES[lang]['home.scoring.checking.title'])).toBeTruthy();
+      expect(screen.queryByText(DICTIONARIES[lang]['panel.checking.title'])).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Scan again' })).toBeNull();
+    });
+
+    it.each(['en', 'es', 'fr', 'nl'] as const)(
+      'says it cannot check the link with no connection, and offers Try again, in %s',
+      (lang) => {
+        const h = handlers();
+        renderWithPorts(
+          <CodePanel
+            outcome={{
+              kind: 'codeError',
+              tapped: 'scoring',
+              error: { kind: 'offline' },
+              code: scoringCode,
+            }}
+            time={null}
+            {...h}
+          />,
+          { deviceLanguages: [lang] },
+        );
+        const words = DICTIONARIES[lang];
+        expect(screen.getByText(words['panel.descriptor.offline.title'])).toBeTruthy();
+        // Testing Library collapses the no-break space French sets before a colon: so does the expectation.
+        const said = (key: 'home.scoring.offline.body' | 'panel.descriptor.offline.body') =>
+          words[key].replace(/\s+/g, ' ');
+        expect(screen.getByText(said('home.scoring.offline.body'))).toBeTruthy();
+        expect(screen.queryByText(said('panel.descriptor.offline.body'))).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: words['panel.tryAgain'] }));
+        expect(h.onTryAgain).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it('leaves the stream’s words as they were, and the words of an answer that names no code', () => {
+      const h = handlers();
+      renderWithPorts(
+        <CodePanel
+          outcome={{
+            kind: 'codeError',
+            tapped: 'scoring',
+            error: { kind: 'rate-limited', retryAfterS: 12 },
+            code: scoringCode,
+          }}
+          time={null}
+          {...h}
+        />,
+      );
+      expect(screen.getByText('Server busy')).toBeTruthy();
+      expect(screen.getByText('Busy — trying again in 12s')).toBeTruthy();
+    });
   });
 
   describe('the dismiss question (owner ruling B, 2026-11-02)', () => {

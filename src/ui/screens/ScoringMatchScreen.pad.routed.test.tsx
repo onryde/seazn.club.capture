@@ -8,7 +8,13 @@ import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
 import { STORE_KEYS } from '@/services/modeStore';
 import { TEST_NOW } from '../../../test/fakePorts';
-import { FAKE_LABEL, FAKE_MATCH, LINK, linkKey } from '../../../test/scoringHomeFixtures';
+import {
+  FAKE_LABEL,
+  FAKE_MATCH,
+  LINK,
+  STORED_LINK,
+  linkKey,
+} from '../../../test/scoringHomeFixtures';
 import { screenIsHeld, type HoldLog } from '../../../test/heldScreen';
 import { backgroundAndBack, flush, launchApp, type LaunchedApp } from '../../../test/routedApp';
 
@@ -41,7 +47,7 @@ const SAVED: SavedCode = {
 const IN_MATCH = {
   [STORE_KEYS.active]: 'scoring',
   [STORE_KEYS.code('scoring')]: encodeSavedCode(SAVED),
-  [linkKey(FAKE_MATCH)]: JSON.stringify(LINK),
+  [linkKey(FAKE_MATCH)]: STORED_LINK,
 };
 /** A phone on Home with the match saved, to walk to the match by hand. */
 const SAVED_ON_HOME = { ...IN_MATCH, [STORE_KEYS.active]: 'stream' };
@@ -135,6 +141,8 @@ describe('a match from the Start screen to its end', () => {
     ]);
     expect(half('first').getAttribute('aria-disabled')).toBe('true');
     expect(syncSaid()).toBe(en['scoring.sync.synced']);
+    // A recorded result is still the scorer's to undo a mistake in: the screen stays on.
+    expect(screenIsHeld(holds)).toBe(true);
 
     // The organiser finalises it: seen at the next look (a return to the foreground), the pad is view only.
     app.scoring.finalize();
@@ -143,6 +151,8 @@ describe('a match from the Start screen to its end', () => {
     expect(screen.getByTestId('pad-card').textContent).toContain(en['scoring.card.viewOnly.title']);
     expect(screen.getByTestId('pad-card').textContent).toContain(en['scoring.card.viewOnly.body']);
     expect(half('first').getAttribute('aria-disabled')).toBe('true');
+    // The organiser's lock ends the scorer's part (the controller's ruling, 2026-11-02): the phone may sleep.
+    expect(screenIsHeld(holds)).toBe(false);
     // Undo stays on the line but takes nothing now: the result is the organiser's.
     expect(
       screen.getByRole('button', { name: en['scoring.pad.undo'] }).getAttribute('aria-disabled'),
@@ -363,6 +373,18 @@ describe('the pad, routed', () => {
     act(() => app.engine.scene('live'));
     await flush();
     expect(app.nav.current()).toBe('stream');
+  });
+
+  it('lets the screen go when the link dies under a tap: the bad-link card ends the scorer’s part', async () => {
+    const app = await startedMatch();
+    expect(screenIsHeld(holds)).toBe(true);
+    app.scoring.revoke();
+    await rally(app, 'first');
+    await flush(2_000);
+    expect(screen.getByTestId('pad-card').textContent).toContain(
+      en['scoring.card.linkInvalid.title'],
+    );
+    expect(screenIsHeld(holds)).toBe(false);
   });
 
   // Owner ruling 9 (2026-10-31): the screen stays on while the pad shows. The pad's screen holds it (`KeepScreenOn`,

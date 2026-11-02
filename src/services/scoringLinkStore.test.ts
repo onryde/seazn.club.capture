@@ -43,15 +43,6 @@ describe('the scoring link store', () => {
     });
   });
 
-  it('reads a link kept before the sport was as a badminton match’s, the one sport this phone scored then', async () => {
-    const kv = createMemoryKeyValueStore({ [scoringLinkKey(FIXTURE)]: JSON.stringify(LINK) });
-    expect(await readScoringLink(kv, FIXTURE, HOST)).toEqual({
-      kind: 'link',
-      link: LINK,
-      sportKey: 'badminton',
-    });
-  });
-
   it('a second save of the match keeps the sport of the last, as a fresh scan does', async () => {
     const kv = createMemoryKeyValueStore();
     await saveScoringLink(kv, FIXTURE, LINK, HOST, 'badminton');
@@ -86,6 +77,9 @@ describe('the scoring link store', () => {
       JSON.stringify({ origin: 'http://stg.seazn.club', token: LINK.token }),
     ],
     ['a token that is no string', JSON.stringify({ origin: LINK.origin, token: 7 })],
+    // A link with no sport was only ever written by builds of the Remote Scoring branch before 2026-11-02 (never merged,
+    // never released): it is not guessed to be badminton's, it is read as no link and scanned again.
+    ['no sport at all', JSON.stringify(LINK)],
     ['a sport that is no string', JSON.stringify({ ...LINK, sportKey: 7 })],
     ['a sport that is null', JSON.stringify({ ...LINK, sportKey: null })],
     ['an empty sport', JSON.stringify({ ...LINK, sportKey: '' })],
@@ -133,7 +127,7 @@ describe('the scoring link store', () => {
     'reads a link kept for %s as no link: the token goes only to the build’s own host',
     async (_name, origin) => {
       const kv = createMemoryKeyValueStore({
-        [scoringLinkKey(FIXTURE)]: JSON.stringify({ origin, token: LINK.token }),
+        [scoringLinkKey(FIXTURE)]: JSON.stringify({ origin, token: LINK.token, sportKey: SPORT }),
       });
       expect(await readScoringLink(kv, FIXTURE, HOST)).toEqual({ kind: 'none' });
     },
@@ -164,7 +158,9 @@ describe('the scoring link store', () => {
   it('trusts no host when the build has none', async () => {
     const kv = createMemoryKeyValueStore();
     await expect(saveScoringLink(kv, FIXTURE, LINK, '', SPORT)).rejects.toThrow();
-    const stored = createMemoryKeyValueStore({ [scoringLinkKey(FIXTURE)]: JSON.stringify(LINK) });
+    const stored = createMemoryKeyValueStore({
+      [scoringLinkKey(FIXTURE)]: JSON.stringify({ ...LINK, sportKey: SPORT }),
+    });
     expect(await readScoringLink(stored, FIXTURE, '')).toEqual({ kind: 'none' });
   });
 });

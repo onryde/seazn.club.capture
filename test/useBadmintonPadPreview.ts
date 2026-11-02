@@ -81,8 +81,9 @@ type Held = { readonly sample: PreviewSample; readonly pad: FakeBadmintonPad };
 const kept = new WeakMap<Ports, Held>();
 
 /**
- * The S2 design preview of the badminton pad, on a fake that keeps simple counters (`fakeBadmintonPad.ts`): no engine,
- * no network, no code. The match lives in the fake; this hook holds what is on screen over it (a sheet, what the line
+ * The badminton pad's fake model, for the pad's screen tests (`padPreviewHarness.tsx`; it was the S2 design preview until
+ * plan S2-1 Task 11 put the real route in its place), on a fake that keeps simple counters (`fakeBadmintonPad.ts`): no
+ * engine, no network, no code. The match lives in the fake; this hook holds what is on screen over it (a sheet, what the line
  * says) and turns the scorer's taps into the fake's calls. A rally or an Undo repeated within the bounce window
  * (`bounce.ts`) counts once, and says so. Back closes a sheet, and otherwise returns Home, the ending prompt included.
  */
@@ -202,7 +203,7 @@ function useEndingAndCard(
   const voidSanction = useCallback(() => {
     if (!justShown()) opening('void', () => pad.voidSanction());
   }, [pad, opening, justShown]);
-  const update = useCallback(() => setCardNote('scoring.preview.noop'), [setCardNote]);
+  const update = useCallback(() => setCardNote('scoring.card.cantOpen'), [setCardNote]);
   return useMemo(
     () => ({ recordEnding, voidSanction, update, browser: update }),
     [recordEnding, voidSanction, update],

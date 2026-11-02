@@ -7,7 +7,14 @@ import es from '@/i18n/es.json';
 import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
 import { ScoringStateScreen } from '@/ui/screens/ScoringStateScreen';
-import { FAKE_MATCH, LINK, leave, linkKey, queueHolding } from '../../../test/scoringHomeFixtures';
+import {
+  FAKE_MATCH,
+  LINK,
+  STORED_LINK,
+  leave,
+  linkKey,
+  queueHolding,
+} from '../../../test/scoringHomeFixtures';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
 // Plan S2-1 Task 11: a match that is not a pad, for any sport: the card in the pad's place, a Back to Home, and the
@@ -37,7 +44,7 @@ async function show(state: ScoringState = GONE, setup: Setup = {}): Promise<View
   const view = renderWithPorts(<ScoringStateScreen fixtureId={FAKE_MATCH} state={state} />, {
     deviceLanguages: [lang],
   });
-  if (link) await view.kv.set(linkKey(FAKE_MATCH), JSON.stringify(LINK));
+  if (link) await view.kv.set(linkKey(FAKE_MATCH), STORED_LINK);
   if (taps > 0) await leave(view, queueHolding(FAKE_MATCH, taps, { label: 'Match 4' }), null);
   act(() => view.navigation.go('scoring'));
   await settle();

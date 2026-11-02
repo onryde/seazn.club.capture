@@ -7,6 +7,8 @@ import type { FakePorts } from './fakePorts';
 export const TOKEN = 'dl_madeUpTokenForHomeTests01';
 export const RAW = `https://stg.seazn.club/score/${TOKEN}`;
 export const LINK: ScoringLink = { origin: 'https://stg.seazn.club', token: TOKEN };
+/** A link as the secure store keeps it: with its match's sport (a link with none reads as no link). */
+export const STORED_LINK = JSON.stringify({ ...LINK, sportKey: 'badminton' });
 
 /** The fake server's match (`SINGLES_SEED`): what a bootstrap on the fake names, and what Home calls it. */
 export const FAKE_MATCH = 'fake-singles';
@@ -37,6 +39,9 @@ export async function leave(
 ): Promise<void> {
   await fakes.tapQueue.save(queue);
   if (link !== null) {
-    await fakes.kv.set(linkKey(queue.fixtureId), JSON.stringify(link));
+    await fakes.kv.set(
+      linkKey(queue.fixtureId),
+      JSON.stringify({ ...link, sportKey: 'badminton' }),
+    );
   }
 }

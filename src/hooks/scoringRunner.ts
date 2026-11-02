@@ -263,13 +263,16 @@ async function loadMatch(
   const stored = await readScoringLink(ports.kv, fixtureId, ports.hosts[0] ?? '');
   if (stored.kind === 'failed') return { kind: 'unreadable', what: 'link' };
   if (stored.kind === 'none') {
-    await markNoLink(ports, fixtureId);
+    await markUnsendable(ports, fixtureId);
     return { kind: 'noLink' };
   }
   ports.logger.protectLink(stored.link.token);
   onLink(stored.link);
   const sport = sportFor(stored.sportKey);
-  if (sport === null) return { kind: 'unsupportedSport', sportKey: stored.sportKey };
+  if (sport === null) {
+    await markUnsendable(ports, fixtureId);
+    return { kind: 'unsupportedSport', sportKey: stored.sportKey };
+  }
   const [queue, ledger, boot] = await Promise.all([
     ports.tapQueue.load(fixtureId),
     ports.tapQueue.loadLedger(fixtureId),
@@ -285,18 +288,20 @@ async function loadMatch(
 }
 
 /**
- * Taps queued on a match with no link to send them on (lost, another host's, or never kept) can never go, so the queue
- * is marked dead on its link, which is what makes Home offer Dismiss (behind its confirm) and what a fresh scan of the
- * match revives (plan S2-1 Task 10 review, fix 1). A queue with nothing in it, or dead already, is left as it is. The
- * disk refusing the mark is recorded and nothing more: the runner still says `noLink`.
+ * Taps queued on a match this build cannot send, for want of a link (lost, another host's, or never kept) or of the
+ * sport (a sport it does not score), can never go: the queue is marked dead on its link, which is what makes Home offer
+ * Dismiss (behind its confirm) instead of counting them as sending, and what a fresh scan of the match revives (plan
+ * S2-1 Task 10 review, fix 1; Batch D review, fix 5). A queue with nothing in it, or dead already, is left as it is. The
+ * disk refusing the mark is recorded and nothing more: the runner still says what it found. A secure store that does not
+ * answer is not this: that says nothing of the link, and nothing is marked.
  */
-async function markNoLink(ports: RunnerPorts, fixtureId: string): Promise<void> {
+async function markUnsendable(ports: RunnerPorts, fixtureId: string): Promise<void> {
   try {
     const queue = await ports.tapQueue.load(fixtureId);
     if (queue === null || queue.pending.length === 0 || queue.dead !== null) return;
     await ports.tapQueue.save({ ...queue, dead: 'LINK_INVALID' });
   } catch {
-    ports.logger.warn('scoring.no-link-mark-refused', {});
+    ports.logger.warn('scoring.queue-mark-refused', {});
   }
 }
 

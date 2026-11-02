@@ -223,6 +223,16 @@ export function matchKnown(card: PadStateCard | null): boolean {
 }
 
 /**
+ * Whether the pad keeps the phone's screen on under this card (owner ruling 9, the screen stays on while the pad shows;
+ * applied by the controller on 2026-11-02): on the pad and under every card the scorer is still waiting on (the match not
+ * open yet, a recorded result they may undo a mistake in, an app to update with taps unsent), off under the two that end
+ * their part: the organiser's lock (view only) and a dead link, which have nothing left to wait for.
+ */
+export function holdsScreen(card: PadStateCard | null): boolean {
+  return card?.kind !== 'viewOnly' && card?.kind !== 'linkInvalid';
+}
+
+/**
  * Any sport's pad under a card: the halves stop taking taps and the tools go. Undo stays only under a recorded result,
  * whose card tells the scorer to use it on a mistake in this phone's own taps (the web's `device.resultRecorded`); a
  * view-only match keeps the last tap with no Undo, and a card in place of the pad or of the controls drops the last

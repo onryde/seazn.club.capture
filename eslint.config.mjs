@@ -100,8 +100,8 @@ const NO_COLOUR_LITERALS = [
 /**
  * Pad per sport (owner, 2026-11-02: "pad per sport must, instead of creating a single pad and adjusting and adding
  * lots of conditions"). The match runtime and the kit are the same for every sport: a sport is its own module behind
- * `ScoringSport` (src/domain/scoring/scoringSport.ts), listed by its key in `sports.ts`, with its own screen. So the
- * generic files below may not name a sport's module, by value or by type: badminton's files (`badminton*`, and the
+ * `ScoringSport` (src/domain/scoring/scoringSport.ts), listed by its key in `sports.ts`, with its own screen. So a
+ * generic scoring file may not name a sport's module, by value or by type: badminton's files (`badminton*`, and the
  * hooks and services named `*Badminton*`) and its sheets (`usePadSheets`: Sanction and Set score). Tests are free to.
  */
 const SPORT_MODULES = {
@@ -110,28 +110,39 @@ const SPORT_MODULES = {
     'A generic scoring file names no sport (owner, 2026-11-02: pad per sport): ask the match’s sport (`ScoringSport`).',
 };
 
-/** The match runtime and its model, the same for every sport. The kit (`src/ui/components`) is held below, with the ui rule. */
+/**
+ * Every scoring file, by where it lives, so a file added tomorrow is held without anyone remembering to list it (the
+ * Batch D review): the match runtime and its model, the hooks that drive them, the home's cards, the route and the
+ * screens every sport shares. The kit (`src/ui/components`) is held below, with the ui rule. What is NOT generic is the
+ * sport's own, listed in `SPORT_OWN_FILES`.
+ */
 const SPORT_GENERIC_FILES = [
-  'src/domain/scoring/scoringMatch*.ts',
-  'src/domain/scoring/scoringSport.ts',
-  'src/domain/scoring/sync.ts',
-  'src/domain/scoring/queue.ts',
-  'src/domain/scoring/wire.ts',
-  'src/hooks/scoring*.ts',
-  'src/hooks/useScoringMatch.ts',
-  'src/hooks/useScoringSport.ts',
-  'src/hooks/useScoringStateActions.ts',
+  'src/domain/scoring/**/*.ts',
+  'src/domain/mode/scoringHome.ts',
+  'src/hooks/*coring*.ts',
+  'src/hooks/*coring*.tsx',
+  'src/hooks/usePad*.ts',
   'src/hooks/padScreenModel.ts',
   // The route and the screens that pick a sport's screen or draw the states every sport shares (plan S2-1 Task 11); the
   // table they read (`scoringScreens.ts`) is the one place that names the sports' screens, as `sports.ts` names the sports.
   'app/scoring/**/*.tsx',
 ];
 
-/** The screens every sport shares: the sport picker and the states. Held to the ui import rule as well (see below). */
-const SPORT_GENERIC_SCREENS = [
-  'src/ui/screens/ScoringMatchScreen.tsx',
-  'src/ui/screens/ScoringStateScreen.tsx',
+/**
+ * A sport's own files, free to name its modules: whatever is named for it (`badminton*`, `*Badminton*`: globs are case
+ * sensitive here, so both), its sheets (`usePadSheets`: Sanction and Set score are badminton's), and the table that
+ * lists the sports by key. (The table of their screens, `src/ui/screens/scoringScreens.ts`, is no generic file either: the
+ * globs above match `Scoring*` with a capital, which it has not.)
+ */
+const SPORT_OWN_FILES = [
+  '**/*badminton*',
+  '**/*Badminton*',
+  'src/hooks/usePadSheets.ts',
+  'src/domain/scoring/sports.ts',
 ];
+
+/** The screens every sport shares: the sport picker and the states. Held to the ui import rule as well (see below). */
+const SPORT_GENERIC_SCREENS = ['src/ui/screens/Scoring*.{ts,tsx}'];
 
 /** The ui import rule, for a given list of services the files may not import, and any further groups. */
 function uiRestrictedImports(services, message, ...more) {
@@ -333,7 +344,12 @@ export default [
     // block's `no-restricted-imports` replaces the one above for these files. ShellFrame keeps its insets exception. The
     // screens every sport shares (the sport picker, the states) are held the same way.
     files: ['src/ui/components/**/*.{ts,tsx}', ...SPORT_GENERIC_SCREENS],
-    ignores: ['src/ui/components/ShellFrame.tsx', '**/*.test.ts', '**/*.test.tsx'],
+    ignores: [
+      'src/ui/components/ShellFrame.tsx',
+      '**/*.test.ts',
+      '**/*.test.tsx',
+      ...SPORT_OWN_FILES,
+    ],
     rules: {
       'no-restricted-imports': uiRestrictedImports(
         '@/services/*',
@@ -345,7 +361,7 @@ export default [
   {
     // The match runtime is the same for every sport (SPORT_MODULES). Tests may drive it with any sport's fixtures.
     files: SPORT_GENERIC_FILES,
-    ignores: ['**/*.test.ts', '**/*.test.tsx'],
+    ignores: ['**/*.test.ts', '**/*.test.tsx', ...SPORT_OWN_FILES],
     rules: { 'no-restricted-imports': ['error', { patterns: [SPORT_MODULES] }] },
   },
   {

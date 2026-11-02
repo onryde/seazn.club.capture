@@ -9,6 +9,7 @@ import {
   FAKE_LABEL,
   FAKE_MATCH,
   LINK,
+  STORED_LINK,
   RAW,
   leave,
   linkKey,
@@ -31,7 +32,7 @@ const match = (): SavedCode => ({
 const inMatch = {
   [STORE_KEYS.active]: 'scoring',
   [STORE_KEYS.code('scoring')]: encodeSavedCode(match()),
-  [linkKey(FAKE_MATCH)]: JSON.stringify(LINK),
+  [linkKey(FAKE_MATCH)]: STORED_LINK,
 };
 
 const scoringTile = () => screen.getByRole('button', { name: /Remote Scoring/ });
@@ -123,10 +124,51 @@ describe('Remote Scoring, routed', () => {
   });
 });
 
+/**
+ * The route with no match saved goes Home through the navigation port (the Batch D review): a bare `<Redirect>` moved the
+ * router behind the port's back, so the port still said `scoring`, and its next `go('scoring')` was taken for a move
+ * to where it already was and did nothing.
+ */
+describe('the Remote Scoring route with no match saved', () => {
+  it('goes Home with one move, and the port knows it is Home', async () => {
+    const app = await launchApp();
+    const go = vi.spyOn(app.ports.navigation, 'go');
+    act(() => app.ports.navigation.go('scoring'));
+    await flush();
+    expect(app.nav.current()).toBe('home');
+    expect(app.ports.navigation.current()).toBe('home');
+    expect(app.nav.history).toEqual(['scoring', 'home']);
+    expect(go.mock.calls).toEqual([['scoring'], ['home']]);
+    expect(matchScreen()).toBeNull();
+  });
+
+  it('a go(scoring) after a match is saved opens the pad: the earlier trip Home did not leave the port believing it was on the route', async () => {
+    const app = await launchApp();
+    act(() => app.ports.navigation.go('scoring'));
+    await flush();
+    expect(app.nav.current()).toBe('home');
+    app.scanner.queue({ outcome: 'scanned', raw: RAW });
+    act(() => scoringTile().click());
+    await flush(200);
+    expect(app.nav.current()).toBe('scoring');
+    expect(matchScreen()).not.toBeNull();
+    expect(app.nav.history).toEqual(['scoring', 'home', 'scoring']);
+  });
+
+  it('moves the router once: a return to the foreground at Home moves nothing more', async () => {
+    const app = await launchApp();
+    act(() => app.ports.navigation.go('scoring'));
+    await flush();
+    await backgroundAndBack(app);
+    await flush(200);
+    expect(app.nav.history).toEqual(['scoring', 'home']);
+  });
+});
+
 describe('the background sender, mounted at the root', () => {
   it('sends the taps a match left queued at launch, with nobody looking at the match', async () => {
     const app = await launchApp({
-      kvSeed: { [linkKey(FAKE_MATCH)]: JSON.stringify(LINK) },
+      kvSeed: { [linkKey(FAKE_MATCH)]: STORED_LINK },
       seed: (fakes) => leave(fakes, queueHolding(FAKE_MATCH, 2, { label: FAKE_LABEL }), null),
     });
     await flush(2000);
@@ -137,7 +179,7 @@ describe('the background sender, mounted at the root', () => {
   });
 
   it('looks again at every return to the foreground', async () => {
-    const app = await launchApp({ kvSeed: { [linkKey(FAKE_MATCH)]: JSON.stringify(LINK) } });
+    const app = await launchApp({ kvSeed: { [linkKey(FAKE_MATCH)]: STORED_LINK } });
     await leave(app, queueHolding(FAKE_MATCH, 2, { label: FAKE_LABEL }), null);
     await backgroundAndBack(app);
     await flush(2000);

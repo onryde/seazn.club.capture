@@ -62,14 +62,14 @@ const DETAILS: Sheet = { kind: 'details' };
 const HISTORY: Sheet = { kind: 'history' };
 
 /**
- * A sheet's button that records, through the taps' bounce memory (`useBadmintonPadPreview`'s `opening`): the sheet
+ * A sheet's button that records, through the taps' bounce memory (`useTaps`' `opening`, in `usePadTaps.ts`): the sheet
  * leaves with it, and a second touch on what was under it counts once (review I1, 2026-11-01). Whether it counted.
  */
 type Recording = (tap: string, make: () => PadOutcome) => boolean;
 type SetSheet = (sheet: Sheet) => void;
 
 /**
- * The sheet over the badminton preview's pad: a tool, Match details or History opens one, a sanction's steps move
+ * The sheet over the badminton pad: a tool, Match details or History opens one, a sanction's steps move
  * through it, Cancel, Close and Back close it. A second Match details or History tap opens nothing more: one Back
  * still closes it. The ending prompt is not a sheet the scorer opens: it shows for as long as a disqualification waits,
  * on the pad (none under a card). History is view only: it reads the sheet and records nothing. A sanction's step, Set

@@ -22,12 +22,6 @@ const FIXTURE_ID = /^[A-Za-z0-9_-]{1,100}$/;
 
 export const scoringLinkKey = (fixtureId: string): string => `scoring.link.${fixtureId}`;
 
-/**
- * The sport of a link kept before the sport was kept with it (before 2026-11-02): a badminton match, the one sport this
- * phone scored then. Read here and nowhere else; a link saved since always names its sport.
- */
-const SPORT_BEFORE_IT_WAS_KEPT = 'badminton';
-
 /** `none`: no link, or one that does not read; `failed`: the store did not answer, which says nothing of the link. */
 export type StoredLink =
   | { readonly kind: 'link'; readonly link: ScoringLink; readonly sportKey: string }
@@ -61,7 +55,7 @@ function decode(text: string, host: string): Kept | null {
   }
   if (!isRecord(raw) || typeof raw.origin !== 'string' || typeof raw.token !== 'string')
     return null;
-  const sportKey = 'sportKey' in raw ? raw.sportKey : SPORT_BEFORE_IT_WAS_KEPT;
+  const { sportKey } = raw;
   if (typeof sportKey !== 'string' || sportKey === '') return null;
   return isBuildOrigin(raw.origin, host) && raw.token !== ''
     ? { link: { origin: raw.origin, token: raw.token }, sportKey }

@@ -245,7 +245,7 @@ describe('taps queued on a match with no link to send them on', () => {
     expect(await fakes.tapQueue.load(FIXTURE)).toBeNull();
     // Nothing to mark is not a refused mark: a missing guard would throw into the catch and leave this line instead.
     expect(readRecord(fakes.record).map((line) => line.event)).not.toContain(
-      'scoring.no-link-mark-refused',
+      'scoring.queue-mark-refused',
     );
   });
 
@@ -271,7 +271,7 @@ describe('taps queued on a match with no link to send them on', () => {
     const { runner } = await rig(fakes, 'focused', { link: false });
     expect(runner.snapshot()).toEqual({ kind: 'noLink' });
     expect(readRecord(fakes.record).map((line) => line.event)).toContain(
-      'scoring.no-link-mark-refused',
+      'scoring.queue-mark-refused',
     );
   });
 });

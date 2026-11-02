@@ -753,7 +753,11 @@ describe('the update banner with no link to open', () => {
     const fakes = createFakePorts({ clock: timerClock });
     await fakes.kv.set(
       `scoring.link.${FIXTURE}`,
-      JSON.stringify({ origin: 'https://evil.example', token: FAKE_SCORING_SECRET }),
+      JSON.stringify({
+        origin: 'https://evil.example',
+        token: FAKE_SCORING_SECRET,
+        sportKey: 'badminton',
+      }),
     );
     const view = mount(fakes);
     await flush();

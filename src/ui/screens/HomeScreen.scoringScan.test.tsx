@@ -14,6 +14,7 @@ import {
   FAKE_LABEL,
   FAKE_MATCH,
   LINK,
+  STORED_LINK,
   RAW,
   TOKEN,
   leave,
@@ -142,11 +143,12 @@ describe('a scoring link scanned from Home', () => {
       return bootstrap(link);
     });
     scanScoring(home);
-    await screen.findByText('Checking code…');
+    await screen.findByText('Checking the link…');
     expect(home.kv.entries.has(STORE_KEYS.code('scoring'))).toBe(false);
     expect(home.kv.entries.has(linkKey(FAKE_MATCH))).toBe(false);
     release();
     await waitFor(() => expect(home.navigation.current()).toBe('scoring'));
+    expect(screen.queryByText('Checking the link…')).toBeNull();
     expect(screen.queryByText('Checking code…')).toBeNull();
   });
 
@@ -155,6 +157,9 @@ describe('a scoring link scanned from Home', () => {
     home.scoring.goOffline(true);
     scanScoring(home);
     await screen.findByText('No connection');
+    // A link is checked, not a code: the panel says so (the Batch D review).
+    expect(screen.getByText("Can't check this link — no connection. Try again.")).toBeTruthy();
+    expect(screen.queryByText(/this code/)).toBeNull();
     expect(home.kv.entries.has(STORE_KEYS.code('scoring'))).toBe(false);
     expect(home.kv.entries.has(linkKey(FAKE_MATCH))).toBe(false);
     expect(home.navigation.current()).toBe('home');
@@ -169,7 +174,7 @@ describe('a scoring link scanned from Home', () => {
     vi.spyOn(home.scoring, 'bootstrap').mockRejectedValue(new Error('module missing'));
     scanScoring(home);
     await screen.findByText('No connection');
-    expect(screen.queryByText('Checking code…')).toBeNull();
+    expect(screen.queryByText('Checking the link…')).toBeNull();
     expect(home.kv.entries.has(STORE_KEYS.code('scoring'))).toBe(false);
   });
 
@@ -403,7 +408,7 @@ describe('which match is let go when another is scanned', () => {
 
   it('an old match with no queue at all is let go even while a third match holds taps', async () => {
     const { fakes, dismiss } = await openOver(FAKE_MATCH, async (f) => {
-      await f.kv.set(linkKey(FAKE_MATCH), JSON.stringify(LINK));
+      await f.kv.set(linkKey(FAKE_MATCH), STORED_LINK);
       await leave(f, queueHolding('fx-third', 2, { label: 'Match 9' }));
     });
     expect(dismiss).toHaveBeenCalledWith(FAKE_MATCH);
@@ -531,6 +536,7 @@ describe('refused writes at the scan', () => {
       [linkKey(FAKE_MATCH)]: JSON.stringify({
         origin: LINK.origin,
         token: 'dl_theOldTokenForHomeTests',
+        sportKey: 'badminton',
       }),
     });
     const home = await renderHome({ kv, modeStore: createModeStore(kv) });
@@ -612,10 +618,10 @@ describe('refused writes at the scan', () => {
 
 describe('the words, in every language', () => {
   it.each([
-    ['en', 'Remote Scoring', 'Checking code…', 'Link not valid'],
-    ['es', 'Anotación remota', 'Comprobando el código…', 'Enlace no válido'],
-    ['fr', 'Score à distance', 'Vérification du code…', 'Lien non valide'],
-    ['nl', 'Scoren op afstand', 'Code controleren…', 'Link ongeldig'],
+    ['en', 'Remote Scoring', 'Checking the link…', 'Link not valid'],
+    ['es', 'Anotación remota', 'Comprobando el enlace…', 'Enlace no válido'],
+    ['fr', 'Score à distance', 'Vérification du lien…', 'Lien non valide'],
+    ['nl', 'Scoren op afstand', 'Link controleren…', 'Link ongeldig'],
   ])(
     '%s: the tile scans, the check shows, a dead link is named',
     async (lang, tile, checking, dead) => {

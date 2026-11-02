@@ -41,6 +41,57 @@ function bodyOf(source: string, name: string): string {
 }
 const body = (file: string, name: string) => bodyOf(readFileSync(join(root, file), 'utf8'), name);
 
+/** A file's code with its comments gone, by the compiler's printer (as `bodyOf`): a hook in a comment is not mounted. */
+function codeOf(source: string): string {
+  const file = ts.createSourceFile(
+    'screen.tsx',
+    source,
+    ts.ScriptTarget.Latest,
+    false,
+    ts.ScriptKind.TSX,
+  );
+  return ts.createPrinter({ removeComments: true }).printFile(file);
+}
+const code = (file: string) => codeOf(readFileSync(join(root, file), 'utf8'));
+
+/** `import { A, B } from '@/ui/screens/File'` in a file's code: the screen files it draws through, by name. */
+const SCREEN_IMPORT = /import\s*\{([^}]*)\}\s*from\s*['"]@\/ui\/screens\/([A-Za-z]+)['"]/g;
+function screensImported(source: string): Map<string, string> {
+  const named = new Map<string, string>();
+  for (const match of source.matchAll(SCREEN_IMPORT)) {
+    for (const name of (match[1] ?? '').split(',')) {
+      if (name.trim() !== '')
+        named.set(name.trim().replace(/^type\s+/, ''), `src/ui/screens/${match[2]}.tsx`);
+    }
+  }
+  return named;
+}
+
+/**
+ * Every file a sport draws through, from the screens `scoringScreens.ts` names: the screen, and the screens it imports,
+ * followed. The states every sport shares (`ScoringStateScreen`) are the generic ones, pinned on their own.
+ */
+const GENERIC_SCREENS = ['src/ui/screens/ScoringStateScreen.tsx'];
+function sportScreenFiles(): readonly string[] {
+  const table = code('src/ui/screens/scoringScreens.ts');
+  const imported = screensImported(table);
+  const entries = [...table.matchAll(/new Map[^[]*\[([\s\S]*?)\]\);/g)].flatMap((map) =>
+    [...(map[1] ?? '').matchAll(/\[[^,\]]+,\s*([A-Za-z]+)\s*\]/g)].map((entry) => entry[1] ?? ''),
+  );
+  const seen = new Set<string>();
+  const visit = (file: string) => {
+    if (seen.has(file) || GENERIC_SCREENS.includes(file)) return;
+    seen.add(file);
+    for (const next of screensImported(code(file)).values()) visit(next);
+  };
+  for (const name of entries) {
+    const file = imported.get(name);
+    if (file === undefined) throw new Error(`scoringScreens.ts names ${name} with no import`);
+    visit(file);
+  }
+  return [...seen];
+}
+
 describe('the test shell matches the app shell', () => {
   const shell = body('app/_layout.tsx', 'Shell');
   const routed = body('test/routedApp.tsx', 'RoutedApp');
@@ -220,37 +271,53 @@ describe('every path the navigation moves to has its route file, and each Settin
    * are read here. It shows the saved match, drawn by its sport's own screen, else it goes Home. It holds nothing on:
    * whether the screen stays on is the screens' (owner ruling 9, applied 2026-11-02), pinned below.
    */
-  it('shows the saved match, else goes Home, and does not hold the screen on itself', () => {
+  it('shows the saved match, else goes Home through the port, and does not hold the screen on itself', () => {
     const route = body('app/scoring/index.tsx', 'ScoringRoute');
     expect(route).toMatch(
-      /if \(fixtureId !== null\)\s*return <ScoringMatchScreen fixtureId=\{fixtureId\} ?\/>;\s*return <Redirect href="\/" ?\/>;/,
+      /if \(fixtureId === null\)\s*navigation\.go\(["']home["']\);[\s\S]*return <ScoringMatchScreen fixtureId=\{fixtureId\} ?\/>;/,
     );
-    expect(readFileSync(join(root, 'app/scoring/index.tsx'), 'utf8')).not.toContain(
-      'useScreenAwake',
-    );
+    const source = code('app/scoring/index.tsx');
+    expect(source).not.toContain('useScreenAwake');
+    // A <Redirect> moves the router behind the port's back, which then believes it is still on /scoring.
+    expect(source).not.toContain('Redirect');
   });
 
   /**
-   * The screen is held on by the pad (every card it draws is the pad's) and by the wait before it, and by nothing else: the
-   * states that need a person to act let it sleep. Each is one mounted `KeepScreenOn`, so what is pinned is where.
+   * The screen is held on by a sport's pad and by the wait before it, and by nothing else: the states that need a person to
+   * act let it sleep. A sport's pad mounts one `KeepScreenOn`, behind `holdsScreen(card)` so the cards that end the scorer's
+   * part (view only, a dead link) let it go (the controller's ruling, 2026-11-02). Which files are a sport's is read from
+   * the route's table (`scoringScreens.ts`), so a second sport's pad is held to it without this test being edited.
    */
-  it('mounts KeepScreenOn in the pad, and in the state screen only while loading', () => {
-    const pad = readFileSync(join(root, 'src/ui/screens/BadmintonPadScreen.tsx'), 'utf8');
-    expect(pad.match(/<KeepScreenOn \/>/g)).toHaveLength(1);
-    const states = readFileSync(join(root, 'src/ui/screens/ScoringStateScreen.tsx'), 'utf8');
-    expect(states).toContain("{state.kind === 'loading' ? <KeepScreenOn /> : null}");
+  it('reads the sport screens from the route’s table (anti-vacuity)', () => {
+    expect(sportScreenFiles()).toEqual([
+      'src/ui/screens/BadmintonMatchScreen.tsx',
+      'src/ui/screens/BadmintonPadScreen.tsx',
+    ]);
+  });
+
+  it('mounts KeepScreenOn once in each sport’s pad, behind holdsScreen(card)', () => {
+    const mounting = sportScreenFiles().filter((file) => code(file).includes('KeepScreenOn'));
+    expect(mounting).toEqual(['src/ui/screens/BadmintonPadScreen.tsx']);
+    for (const file of mounting) {
+      expect(code(file).match(/<KeepScreenOn \/>/g)).toHaveLength(1);
+      expect(code(file)).toMatch(/holdsScreen\([\w.]+\) \? <KeepScreenOn \/> : null/);
+    }
+  });
+
+  it('mounts KeepScreenOn in the state screen only while loading', () => {
+    const states = code('src/ui/screens/ScoringStateScreen.tsx');
+    expect(states).toMatch(/\{state\.kind === ['"]loading['"] \? <KeepScreenOn \/> : null\}/);
     expect(states.match(/KeepScreenOn \/>/g)).toHaveLength(1);
   });
 
   /**
-   * The mirror in `routedApp` is the route file's function, hook for hook and return for return: the route's Redirect is
-   * the one thing it cannot run (no router), and stands as `null`. A hook in one and not the other fails here.
+   * The mirror in `routedApp` is the route file's function, hook for hook and return for return, run over the router
+   * double through the navigation port. A hook in one and not the other fails here.
    */
   it('has the routed mirror run what the route file runs', () => {
     const asMirror = body('app/scoring/index.tsx', 'ScoringRoute')
       .trim()
-      .replace('function ScoringRoute(', 'function ScoringRouted(')
-      .replace(/<Redirect href="\/"\s*\/>/, 'null');
+      .replace('function ScoringRoute(', 'function ScoringRouted(');
     expect(body('test/routedApp.tsx', 'ScoringRouted').trim()).toBe(asMirror);
   });
 

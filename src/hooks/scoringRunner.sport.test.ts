@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { QueuedEvent } from '@/domain/scoring/queue';
+import { scoringHome } from '@/domain/mode/scoringHome';
 import { createScoringRunner, type RunnerMode } from '@/hooks/scoringRunner';
 import { SINGLES_SEED } from '@/services/fakeScoringPort';
 import { saveScoringLink, scoringLinkKey } from '@/services/scoringLinkStore';
@@ -110,14 +111,14 @@ describe('a match kept as another sport', () => {
     },
   );
 
-  it('kept before the sport was (no sport in the link) is badminton’s, as every match then was', async () => {
+  it('kept with no sport is not guessed to be badminton’s: it reads as no link, and its taps are marked dead', async () => {
     const fakes = await kept('first3');
     await fakes.kv.set(scoringLinkKey(FIXTURE), JSON.stringify(LINK));
     const runner = createScoringRunner(fakes.ports, { fixtureId: FIXTURE, mode: 'headless' });
     await runner.start();
     await flush();
-    const snapshot = runner.snapshot();
-    expect(snapshot.kind === 'ready' ? snapshot.state.sport.key : snapshot.kind).toBe('badminton');
+    expect(runner.snapshot()).toEqual({ kind: 'noLink' });
+    expect((await fakes.tapQueue.load(FIXTURE))?.dead).toBe('LINK_INVALID');
   });
 });
 
@@ -137,8 +138,58 @@ describe('a match kept as a sport this build does not score', () => {
       expect(runner.snapshot()).toEqual({ kind: 'unsupportedSport', sportKey: 'tennis' });
       expect(reads.map((read) => read.mock.calls.length)).toEqual([0, 0, 0]);
       expect(fakes.scoring.append).not.toHaveBeenCalled();
-      expect((await fakes.tapQueue.load(FIXTURE))?.pending).toEqual([POINT]);
+      // Nothing is changed but the word: the taps stay for a build that scores the sport, or for Dismiss.
+      const queue = await fakes.tapQueue.load(FIXTURE);
+      expect(queue?.pending).toEqual([POINT]);
+      expect(queue?.dead).toBe('LINK_INVALID');
       expect(runner.dispatch({ kind: 'read' })).toBeNull();
     },
   );
+
+  it('marks the queue dead so Home offers Dismiss: the taps can never be sent by this build', async () => {
+    const fakes = await kept('tennis');
+    const runner = createScoringRunner(fakes.ports, { fixtureId: FIXTURE, mode: 'headless' });
+    await runner.start();
+    await flush();
+    const rows = await fakes.tapQueue.list();
+    const home = scoringHome(null, rows);
+    expect(home.leftovers).toEqual([
+      { kind: 'dead', fixtureId: FIXTURE, label: 'Match 4', unsent: 1 },
+    ]);
+  });
+
+  it('leaves a queue with nothing in it as it was', async () => {
+    const fakes = await kept('tennis');
+    await fakes.tapQueue.save({ ...(await fakes.tapQueue.load(FIXTURE))!, pending: [] });
+    await createScoringRunner(fakes.ports, { fixtureId: FIXTURE, mode: 'headless' }).start();
+    await flush();
+    expect((await fakes.tapQueue.load(FIXTURE))?.dead).toBeNull();
+  });
+
+  it('keeps the word a queue already died of', async () => {
+    const fakes = await kept('tennis');
+    await fakes.tapQueue.save({ ...(await fakes.tapQueue.load(FIXTURE))!, dead: 'finalized' });
+    await createScoringRunner(fakes.ports, { fixtureId: FIXTURE, mode: 'headless' }).start();
+    await flush();
+    expect((await fakes.tapQueue.load(FIXTURE))?.dead).toBe('finalized');
+  });
+
+  it('a mark the disk refuses is recorded and never raised: the runner still says so', async () => {
+    const fakes = await kept('tennis');
+    vi.spyOn(fakes.tapQueue, 'save').mockRejectedValue(new Error('disk full'));
+    const runner = createScoringRunner(fakes.ports, { fixtureId: FIXTURE, mode: 'focused' });
+    await runner.start();
+    await flush();
+    expect(runner.snapshot()).toEqual({ kind: 'unsupportedSport', sportKey: 'tennis' });
+  });
+
+  it('marks nothing when the secure store does not answer: that says nothing of the link or its sport', async () => {
+    const fakes = await kept('tennis');
+    vi.spyOn(fakes.kv, 'get').mockRejectedValue(new Error('keystore locked'));
+    const runner = createScoringRunner(fakes.ports, { fixtureId: FIXTURE, mode: 'focused' });
+    await runner.start();
+    await flush();
+    expect(runner.snapshot()).toEqual({ kind: 'unreadable', what: 'link' });
+    expect((await fakes.tapQueue.load(FIXTURE))?.dead).toBeNull();
+  });
 });

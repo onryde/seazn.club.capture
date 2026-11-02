@@ -6,7 +6,7 @@ build, fast enough, and whether zod runs there at all. The O9 check proved the b
 runs. A crash is a blocker (ruling 26: S2 pauses for an engine fix release); a fold slower than one frame
 (16.7 ms at 60 Hz) for a badminton match is a finding, not a blocker.
 
-Status: **laptop done; device pending** (Step 7 is the controller's).
+Status: **laptop done; device passed** (2026-11-02, the OnePlus NE2211; see "Device: passed" below).
 
 ## What is installed
 

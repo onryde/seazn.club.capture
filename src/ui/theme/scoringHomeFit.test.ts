@@ -381,3 +381,64 @@ describe('the dismiss question at 320 and 360 dp, in four languages', () => {
       }
   });
 });
+
+// The scan panel for a scoring link (the Batch D review): the stream check's sheet with the link's own words, "Checking
+// the link…" for its title and "Can't check this link — no connection. Try again." for the offline answer's body. The same
+// sheet as the Dismiss question's (padded 16, the kicker, the `title` in caps, the `body`), and what stands in its place
+// is the stream's own sentence, so the new words may take no more lines than that one in any language.
+describe('the scoring link’s scan panel at 320 and 360 dp, in four languages', () => {
+  const geist400 = loadFont('geist-400');
+  const titleWidth = (text: string): number =>
+    barlow700.width(text.toUpperCase(), typeScale.title.fontSize) +
+    typeScale.title.letterSpacing * text.length;
+  const bodyWidth = (text: string): number => geist400.width(text, typeScale.body.fontSize);
+  const inner = (width: number): number => width - 2 * space.md;
+  const PAIRS = [
+    ['home.scoring.checking.title', 'panel.checking.title', titleWidth],
+    ['home.scoring.offline.body', 'panel.descriptor.offline.body', bodyWidth],
+  ] as const;
+
+  it('takes the lines pinned: one for the title, two for the body, in every width and language', () => {
+    const lines: Record<string, number> = {};
+    for (const width of WIDTHS)
+      for (const lang of LANGS)
+        for (const [key, , measure] of PAIRS)
+          lines[`${width} ${lang} ${key}`] = linesOf(word(lang, key), inner(width), measure);
+    expect(lines).toEqual({
+      '320 en home.scoring.checking.title': 1,
+      '320 en home.scoring.offline.body': 2,
+      '320 es home.scoring.checking.title': 1,
+      '320 es home.scoring.offline.body': 2,
+      '320 fr home.scoring.checking.title': 1,
+      '320 fr home.scoring.offline.body': 2,
+      '320 nl home.scoring.checking.title': 1,
+      '320 nl home.scoring.offline.body': 2,
+      '360 en home.scoring.checking.title': 1,
+      '360 en home.scoring.offline.body': 2,
+      '360 es home.scoring.checking.title': 1,
+      '360 es home.scoring.offline.body': 2,
+      '360 fr home.scoring.checking.title': 1,
+      '360 fr home.scoring.offline.body': 2,
+      '360 nl home.scoring.checking.title': 1,
+      '360 nl home.scoring.offline.body': 2,
+    });
+  });
+
+  it('takes no more lines than the stream’s own words for the same answer', () => {
+    for (const width of WIDTHS)
+      for (const lang of LANGS)
+        for (const [key, streamKey, measure] of PAIRS)
+          expect(
+            linesOf(word(lang, key), inner(width), measure),
+            `${width} ${lang} ${key}`,
+          ).toBeLessThanOrEqual(linesOf(word(lang, streamKey), inner(width), measure));
+  });
+
+  it('has no word wider than the sheet’s inner width', () => {
+    for (const width of WIDTHS)
+      for (const lang of LANGS)
+        for (const [key, , measure] of PAIRS)
+          for (const piece of word(lang, key).split(/[\s ]+/))
+            expect(measure(piece), `${width} ${lang} ${piece}`).toBeLessThanOrEqual(inner(width));
+  });
+});

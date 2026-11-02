@@ -73,7 +73,9 @@ function panelCopy(outcome: HomePanel, translator: Translator, time: string | nu
       return settled(t('panel.foreign.title'), t('panel.foreign.body'));
     case 'checking':
       return {
-        title: t('panel.checking.title'),
+        title: t(
+          outcome.tapped === 'scoring' ? 'home.scoring.checking.title' : 'panel.checking.title',
+        ),
         body: null,
         open: null,
         retry: false,
@@ -162,8 +164,12 @@ function codeCopy(error: CodeError, t: Translator['t'], tapped: Mode): Copy {
         ? plain('scoring.card.linkInvalid.title', 'scoring.card.linkInvalid.body')
         : plain('panel.codeInvalid.title', 'panel.codeInvalid.body');
     case 'offline':
+      // A scoring link is checked, not a code: its own words say so (the Batch D review).
       return {
-        ...plain('panel.descriptor.offline.title', 'panel.descriptor.offline.body'),
+        ...plain(
+          'panel.descriptor.offline.title',
+          tapped === 'scoring' ? 'home.scoring.offline.body' : 'panel.descriptor.offline.body',
+        ),
         retry: true,
       };
     case 'rate-limited':

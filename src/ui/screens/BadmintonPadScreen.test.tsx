@@ -1,5 +1,5 @@
 import { act, fireEvent, screen, within } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useLanguage } from '@/hooks/useLanguage';
 import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
@@ -7,6 +7,7 @@ import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
 import { colour, layout, space } from '@/ui/theme/tokens';
 import { TEST_NOW, type FakePorts } from '../../../test/fakePorts';
+import { screenIsHeld, type HoldLog } from '../../../test/heldScreen';
 import { layOut } from '../../../test/layOut';
 import { linesAllowed } from '../../../test/linesAllowed';
 import { edgeOf } from '../../../test/pressState';
@@ -14,6 +15,16 @@ import { CHIP, PadWithPreviewChips } from '../../../test/padPreviewHarness';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 import { restoreWindowSize, setWindowSize } from '../../../test/windowSize';
 
+/** Which screens hold the phone's screen on, recorded where the pad asks (`test/heldScreen.ts`). */
+const holds = vi.hoisted((): HoldLog => []);
+vi.mock('@/hooks/keepAwake', async () => {
+  const { recordingHold } = await import('../../../test/heldScreen');
+  return { holdScreenOn: recordingHold(holds) };
+});
+
+beforeEach(() => {
+  holds.length = 0;
+});
 afterEach(restoreWindowSize);
 
 type Pad = ReturnType<typeof renderWithPorts>;
@@ -674,11 +685,11 @@ describe('BadmintonPadScreen: the preview row', () => {
       press(CHIP.updateNeeded);
       press(name);
       const banner = screen.getByTestId('update-banner');
-      expect(within(banner).getByText(en['scoring.preview.noop'])).toBeTruthy();
+      expect(within(banner).getByText(en['scoring.card.cantOpen'])).toBeTruthy();
       expect(pad.navigation.current()).toBe('scoring');
       press(CHIP.pad);
       press(CHIP.updateNeeded);
-      expect(screen.queryByText(en['scoring.preview.noop'])).toBeNull();
+      expect(screen.queryByText(en['scoring.card.cantOpen'])).toBeNull();
     },
   );
 
@@ -1956,5 +1967,38 @@ describe('BadmintonPadScreen: the match card’s four questions (hardening)', ()
     act(() => fireEvent.click(screen.getByText('pick-fr')));
     expect(rowsIn(sheetCard())).toEqual(rowsSaid(fr));
     expect(within(sheetCard()).getByRole('heading').textContent).toBe(fr['scoring.rules.heading']);
+  });
+});
+
+describe('BadmintonPadScreen: keeping the screen on', () => {
+  // Owner ruling 9, applied by the controller on 2026-11-02: held on the pad and under a card the scorer is still
+  // waiting on, let go under the two that end their part. Whether the phone's screen really stays lit is the device's.
+  it('holds it from the Start screen and on the pad', () => {
+    renderStart();
+    expect(screenIsHeld(holds)).toBe(true);
+    press(CHIP.pad);
+    expect(screenIsHeld(holds)).toBe(true);
+  });
+
+  it.each([
+    ['the match not open yet', CHIP.notStarted],
+    ['a recorded result', CHIP.result],
+    ['an app to update', CHIP.updateNeeded],
+  ] as const)('holds it under %s', (_what, chip) => {
+    renderPad();
+    press(chip);
+    expect(screenIsHeld(holds)).toBe(true);
+  });
+
+  it.each([
+    ['the organiser’s lock', CHIP.viewOnly],
+    ['a link that is not valid', CHIP.linkInvalid],
+  ] as const)('lets it go under %s, and holds it again on the pad', (_what, chip) => {
+    renderPad();
+    expect(screenIsHeld(holds)).toBe(true);
+    press(chip);
+    expect(screenIsHeld(holds)).toBe(false);
+    press(CHIP.pad);
+    expect(screenIsHeld(holds)).toBe(true);
   });
 });

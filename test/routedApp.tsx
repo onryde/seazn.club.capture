@@ -1,8 +1,9 @@
 import { act, render, screen, type RenderResult } from '@testing-library/react';
-import { useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { vi } from 'vitest';
 import { useEngineFollow } from '@/hooks/useEngineFollow';
 import { useEngineSync } from '@/hooks/useEngineSync';
+import { usePorts } from '@/hooks/usePorts';
 import { useProtectCode } from '@/hooks/useProtectCode';
 import { routeTarget, useOrientationGate } from '@/hooks/useOrientationGate';
 import { useReopenGate } from '@/hooks/useReopenGate';
@@ -129,13 +130,17 @@ function Screens({ route }: { route: Route }) {
 }
 
 /**
- * `app/scoring/index.tsx` by hand: the same function and the same hook, but for the route's Redirect, which has no
- * router here (the test says so by finding the screen gone). The drift test compares it with the route file's.
+ * `app/scoring/index.tsx` by hand: the same function, hook for hook, run over the router double through the navigation
+ * port. The drift test compares it with the route file's.
  */
 function ScoringRouted() {
   const fixtureId = useScoringFixture();
-  if (fixtureId !== null) return <ScoringMatchScreen fixtureId={fixtureId} />;
-  return null;
+  const { navigation } = usePorts();
+  useEffect(() => {
+    if (fixtureId === null) navigation.go('home');
+  }, [fixtureId, navigation]);
+  if (fixtureId === null) return null;
+  return <ScoringMatchScreen fixtureId={fixtureId} />;
 }
 
 /** The root layout's gate (`app/_layout.tsx`): the route's target, the hook's card over the screens. */

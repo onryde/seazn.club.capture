@@ -36,8 +36,8 @@ export interface ForegroundPort {
 /**
  * Settings (with Diagnostics inside it, spec §6) sits inside Live Stream (AGENTS §6): on air, only leaving the mode is
  * blocked. `homeSettings` is the same screen opened from Home's Live Stream tile, outside any mode (R2, P8).
- * `scoring` is Remote Scoring (plan S2-1 Task 10): a match scanned from Home's Remote Scoring tile. Until Task 11 the dev
- * twin's S2 pad preview (a fake, no code) is on the same path, shown when no match is saved.
+ * `scoring` is Remote Scoring (plan S2-1 Tasks 10 and 11): the match scanned from Home's Remote Scoring tile, drawn by
+ * its sport's pad. A path that reaches it with no match saved goes Home.
  */
 export type Route = 'home' | 'stream' | 'streamSettings' | 'homeSettings' | 'scoring';
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   cardPlacement,
+  holdsScreen,
   matchKnown,
   withCard,
   type PadStateCard,
@@ -98,6 +99,22 @@ describe('matchKnown', () => {
       ['notStarted', true],
       ['resultRecorded', true],
       ['viewOnly', true],
+      ['linkInvalid', false],
+      ['updateNeeded', true],
+    ]);
+  });
+});
+
+describe('holdsScreen', () => {
+  // Owner ruling 9 (the screen stays on while the pad shows), applied by the controller on 2026-11-02: a pad the scorer
+  // is waiting to score on, or to undo a mistake on, holds the screen; a terminal card (the organiser's lock, a dead
+  // link) has nothing left to wait for, and the phone sleeps as it would anywhere.
+  it('holds the screen on the pad and under every card but the two that end the scorer’s part', () => {
+    expect(holdsScreen(null)).toBe(true);
+    expect(CARDS.map((card) => [card.kind, holdsScreen(card)])).toEqual([
+      ['notStarted', true],
+      ['resultRecorded', true],
+      ['viewOnly', false],
       ['linkInvalid', false],
       ['updateNeeded', true],
     ]);

@@ -1,8 +1,8 @@
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { useBadmintonPadPreview } from '@/hooks/useBadmintonPadPreview';
-import { createFakePorts, TEST_NOW, type FakePorts } from '../../test/fakePorts';
-import { wrapperFor } from '../../test/renderWithPorts';
+import { createFakePorts, TEST_NOW, type FakePorts } from './fakePorts';
+import { wrapperFor } from './renderWithPorts';
+import { useBadmintonPadPreview } from './useBadmintonPadPreview';
 
 /**
  * The preview's hook, its match started as the Start screen starts it, the first side serving (owner, 2026-11-01:

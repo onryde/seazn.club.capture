@@ -13,6 +13,7 @@ import {
   FAKE_LABEL,
   FAKE_MATCH,
   LINK,
+  STORED_LINK,
   leave,
   linkKey,
   queueHolding,
@@ -48,7 +49,7 @@ const saved: SavedCode = {
 const IN_MATCH = {
   [STORE_KEYS.active]: 'scoring',
   [STORE_KEYS.code('scoring')]: encodeSavedCode(saved),
-  [linkKey(FAKE_MATCH)]: JSON.stringify(LINK),
+  [linkKey(FAKE_MATCH)]: STORED_LINK,
 };
 
 type Patch = Record<string, unknown>;

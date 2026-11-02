@@ -6,8 +6,8 @@ import type {
   BadmintonPadModel,
   useBadmintonMatch,
 } from '@/hooks/useBadmintonMatch';
-import type { BadmintonPadPreview } from '@/hooks/useBadmintonPadPreview';
 import type { MatchSender } from '@/hooks/useScoringMatch';
+import type { BadmintonPadPreview } from '../../test/useBadmintonPadPreview';
 
 /**
  * Pad per sport (owner, 2026-11-02): every sport's pad shares only what every pad has, and a sport's own buttons are in

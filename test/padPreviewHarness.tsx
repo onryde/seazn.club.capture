@@ -1,8 +1,8 @@
 import { useCallback, useMemo } from 'react';
-import { Pressable, ScrollView, StyleSheet } from 'react-native';
-import { useBadmintonPadPreview, type PreviewChoice } from '@/hooks/useBadmintonPadPreview';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from '@/ui/components/Text';
 import { BadmintonPadScreen } from '@/ui/screens/BadmintonPadScreen';
+import { useBadmintonPadPreview, type PreviewChoice } from './useBadmintonPadPreview';
 
 /**
  * The badminton pad's own screen suite drives the pad through a fake model (`useBadmintonPadPreview`): the pad, Start, the
@@ -38,16 +38,17 @@ const CHIPS: readonly { readonly choice: PreviewChoice; readonly label: string }
   { choice: 'sync', label: CHIP.sync },
 ];
 
-/** The real pad screen on the fake model, with the chips in its footer. */
+/** The real pad screen on the fake model, with the chips in a row under it (outside the pad, as a test's own controls). */
 export function PadWithPreviewChips() {
   const preview = useBadmintonPadPreview();
   const { chosen, actions } = preview;
   const picked = useMemo(() => [chosen.card, chosen.sample], [chosen.card, chosen.sample]);
-  const footer = useMemo(
-    () => <ChipRow chosen={picked} onPick={actions.pick} />,
-    [picked, actions.pick],
+  return (
+    <View style={styles.harness}>
+      <BadmintonPadScreen model={preview} />
+      <ChipRow chosen={picked} onPick={actions.pick} />
+    </View>
   );
-  return <BadmintonPadScreen model={preview} footer={footer} />;
 }
 
 function ChipRow({
@@ -96,4 +97,4 @@ function Chip({
   );
 }
 
-const styles = StyleSheet.create({ scroller: { flexGrow: 0 } });
+const styles = StyleSheet.create({ harness: { flex: 1 }, scroller: { flexGrow: 0 } });

@@ -68,8 +68,8 @@ describe('UpdateBanner', () => {
   });
 
   it('says the note under the buttons', () => {
-    show({ note: en['scoring.preview.noop'] });
-    expect(banner().textContent?.endsWith(en['scoring.preview.noop'])).toBe(true);
+    show({ note: en['scoring.card.cantOpen'] });
+    expect(banner().textContent?.endsWith(en['scoring.card.cantOpen'])).toBe(true);
   });
 
   it('says it in Spanish', () => {

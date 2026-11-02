@@ -13,6 +13,7 @@ import {
   FAKE_LABEL,
   FAKE_MATCH,
   LINK,
+  STORED_LINK,
   leave,
   linkKey,
   queueHolding,
@@ -33,7 +34,7 @@ const inMatch = {
     stream: null,
     scoring: { fixtureId: FAKE_MATCH, label: FAKE_LABEL },
   }),
-  [linkKey(FAKE_MATCH)]: JSON.stringify(LINK),
+  [linkKey(FAKE_MATCH)]: STORED_LINK,
 };
 
 async function homeWith(

@@ -462,7 +462,7 @@ describe('the update banner (owner ruling 8)', () => {
 
   /**
    * Its height at its tallest, in any language at 320 or 360: padding (2 × 8), the sentence, a gap, the count at 99 taps,
-   * a gap and the button row (48: two lines of 19, 2 × 4 padding, 2 × 1 border); the preview's note (a gap and a line)
+   * a gap and the button row (48: two lines of 19, 2 × 4 padding, 2 × 1 border); the pad's note, "Couldn't open it" (a gap and a line)
    * on top. `control` and `controlInk` are 18 a line.
    */
   const tallest = (key: string, vars = {}) =>
@@ -478,9 +478,9 @@ describe('the update banner (owner ruling 8)', () => {
     tallest('scoring.card.updateNeeded.unsent.other', { count: '99' }) * 18 +
     space.sm +
     48;
-  const NOTE = space.sm + tallest('scoring.preview.noop') * 18;
+  const NOTE = space.sm + tallest('scoring.card.cantOpen') * 18;
 
-  it('is 152 tall at most (two lines, two lines, the buttons), and 178 with the preview’s note', () => {
+  it('is 152 tall at most (two lines, two lines, the buttons), and 178 with the note under it', () => {
     expect(typeScale.control.lineHeight).toBe(18);
     expect(typeScale.controlInk.lineHeight).toBe(18);
     expect(

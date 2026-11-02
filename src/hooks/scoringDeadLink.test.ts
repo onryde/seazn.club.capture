@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { watchDeadLink } from '@/hooks/scoringDeadLink';
 import type { RunnerSnapshot, ScoringRunner } from '@/hooks/scoringRunner';
 import { createFakePorts } from '../../test/fakePorts';
-import { LINK, linkKey } from '../../test/scoringHomeFixtures';
+import { LINK, STORED_LINK, linkKey } from '../../test/scoringHomeFixtures';
 
 // The watch on a focused runner (plan S2-1 Task 10; design §4.3), on its own, over a runner that says what it is told.
 // The hub test drives it over a real runner; this one pins the three things only a stub can order.
@@ -44,7 +44,7 @@ async function settle(): Promise<void> {
 
 async function rig() {
   const fakes = createFakePorts();
-  await fakes.kv.set(linkKey(MATCH), JSON.stringify(LINK));
+  await fakes.kv.set(linkKey(MATCH), STORED_LINK);
   return fakes;
 }
 

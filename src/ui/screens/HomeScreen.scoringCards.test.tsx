@@ -18,6 +18,7 @@ import {
   FAKE_LABEL,
   FAKE_MATCH,
   LINK,
+  STORED_LINK,
   leave,
   linkKey,
   queueHolding,
@@ -40,7 +41,7 @@ const savedMatch = (fixtureId = FAKE_MATCH, label = FAKE_LABEL): string =>
 const inMatch = (fixtureId = FAKE_MATCH, label = FAKE_LABEL) => ({
   [STORE_KEYS.active]: 'scoring',
   [STORE_KEYS.code('scoring')]: savedMatch(fixtureId, label),
-  [linkKey(fixtureId)]: JSON.stringify(LINK),
+  [linkKey(fixtureId)]: STORED_LINK,
 });
 
 /** Home over fake ports: the disk and the store seeded first, as a launch finds them. */
@@ -189,7 +190,10 @@ describe('the saved match on Home', () => {
     expect(home.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
     expect(home.kv.entries.get(STORE_KEYS.active)).toBe('scoring');
     // The link the match was saved under is still the one it reads with.
-    expect(JSON.parse(home.kv.entries.get(linkKey(FAKE_MATCH)) ?? 'null')).toEqual(LINK);
+    expect(JSON.parse(home.kv.entries.get(linkKey(FAKE_MATCH)) ?? 'null')).toEqual({
+      ...LINK,
+      sportKey: 'badminton',
+    });
   });
 });
 
@@ -493,7 +497,7 @@ describe('a leftover that sends while Home is open', () => {
     vi.useFakeTimers();
     try {
       const fakes = createFakePorts({
-        kvSeed: { [linkKey('fake-singles')]: JSON.stringify(LINK) },
+        kvSeed: { [linkKey('fake-singles')]: STORED_LINK },
       });
       await leave(fakes, queueHolding('fake-singles', 2, { label: 'Match 7' }), LINK);
       render(<HomeScreen />, { wrapper: wrapperFor(fakes) });

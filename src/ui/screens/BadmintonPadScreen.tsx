@@ -1,9 +1,10 @@
-import { memo, useMemo, type ReactNode } from 'react';
+import { memo, useMemo } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import type { BadmintonPadKey } from '@/domain/scoring/badmintonPad';
 import type { SanctionSheet } from '@/domain/scoring/badmintonSanction';
 import {
   cardPlacement,
+  holdsScreen,
   matchKnown,
   type PadHistoryGroup,
   type PadHistoryRow,
@@ -51,21 +52,15 @@ import { colour, layout, space } from '@/ui/theme/tokens';
  * result, view only) stands above them; the update banner stands where the last-tap line and the tools were
  * (`cardPlacement`). Sheets and History cover the pad, which is hidden from a screen reader while they show. Until the
  * match starts, the Start screen stands where the halves are, with no last-tap line and no tools (owner, 2026-11-01,
- * option A). `footer` is the row of state chips the pad's own tests put under it (`test/padPreviewHarness.tsx`); the real match has none.
+ * option A).
  */
-export function BadmintonPadScreen({
-  model,
-  footer = null,
-}: {
-  readonly model: BadmintonPadModel;
-  readonly footer?: ReactNode;
-}) {
+export function BadmintonPadScreen({ model }: { readonly model: BadmintonPadModel }) {
   const { view, sheet, line, cardNote, flash, toss, actions } = model;
   const covered = sheet !== null;
   const known = matchKnown(view.card);
   return (
     <View style={styles.screen}>
-      <KeepScreenOn />
+      {holdsScreen(view.card) ? <KeepScreenOn /> : null}
       <View
         testID="pad-content"
         aria-hidden={covered}
@@ -80,7 +75,6 @@ export function BadmintonPadScreen({
           <StartPanel start={view.start} details={view.details} toss={toss} actions={actions} />
         )}
         <PadControls view={view} line={line} cardNote={cardNote} actions={actions} />
-        {footer}
       </View>
       <PadSheet sheet={sheet} actions={actions} />
     </View>
