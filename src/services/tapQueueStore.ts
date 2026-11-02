@@ -1,15 +1,23 @@
 import { isRecord } from '@/domain/credentials/wire';
 import {
   QUEUE_DEAD_WORDS,
+  type BootCache,
   type MatchQueue,
   type QueueDead,
   type QueuedEvent,
 } from '@/domain/scoring/queue';
-import { readList, readText, readWhole, type LedgerEvent } from '@/domain/scoring/wire';
+import {
+  bootstrapToWire,
+  parseBootstrap,
+  readList,
+  readText,
+  readWhole,
+  type LedgerEvent,
+} from '@/domain/scoring/wire';
 import type { Logger } from '@/services/logger';
 
 /** The queue's shapes live in the domain, which `sync.ts` reads; callers may take them from here too. */
-export type { MatchQueue, QueueDead, QueuedEvent } from '@/domain/scoring/queue';
+export type { BootCache, MatchQueue, QueueDead, QueuedEvent } from '@/domain/scoring/queue';
 
 /**
  * The queue's durable store (design §6.3, plan S2-1 Task 5): one small JSON file per match, so a tap made at once
@@ -65,7 +73,10 @@ export interface TapQueueStore {
    * could not be written, so the caller never shows a tap as stored that is not.
    */
   save(queue: MatchQueue): Promise<void>;
-  /** Deletes a match's queue and its ledger (Dismiss). Rejects when the disk refuses; a match with none is not a failure. */
+  /**
+   * Deletes everything of a match: its queue, its ledger and its boot cache (Dismiss). Rejects when the disk refuses;
+   * a match with none is not a failure.
+   */
   remove(fixtureId: string): Promise<void>;
   /** The ledger last fetched for a match, from seq 1, or null: none cached or it cannot be read (reported once). */
   loadLedger(fixtureId: string): Promise<readonly LedgerEvent[] | null>;
@@ -73,6 +84,15 @@ export interface TapQueueStore {
   saveLedger(fixtureId: string, events: readonly LedgerEvent[]): Promise<void>;
   /** Deletes a match's cached ledger. Rejects when the disk refuses; none is not a failure. */
   removeLedger(fixtureId: string): Promise<void>;
+  /**
+   * The bootstrap last read for a match and the Start screen's pick (plan S2-1 Task 9), so a reopened match shows with
+   * no signal; null when none is cached or it cannot be read (reported once). Kept as the endpoint's own envelope.
+   */
+  loadBoot(fixtureId: string): Promise<BootCache | null>;
+  /** Replaces a match's boot cache, written the same way as a queue. Rejects on a bootstrap that is not this match's, or that names a link's secret, and on the disk's refusal. */
+  saveBoot(fixtureId: string, cache: BootCache): Promise<void>;
+  /** Deletes a match's boot cache. Rejects when the disk refuses; none is not a failure. */
+  removeBoot(fixtureId: string): Promise<void>;
 }
 
 const FILE_VERSION = 1;
@@ -90,6 +110,8 @@ const tempName = (fixtureId: string): string => `${fileName(fixtureId)}.tmp`;
 const asideName = (fixtureId: string): string => `${fileName(fixtureId)}.bad`;
 const ledgerName = (fixtureId: string): string => `${fixtureId}.ledger.json`;
 const ledgerTempName = (fixtureId: string): string => `${ledgerName(fixtureId)}.tmp`;
+const bootName = (fixtureId: string): string => `${fixtureId}.boot.json`;
+const bootTempName = (fixtureId: string): string => `${bootName(fixtureId)}.tmp`;
 
 /** One durable file and what a read does about its troubles. */
 type Slot<T> = {
@@ -98,7 +120,8 @@ type Slot<T> = {
   /** Where a garbled main file goes, whole, before anything can overwrite it; none for a cache that is fetched again. */
   readonly aside: string | null;
   /** The record line a trouble is said under. */
-  readonly event: 'scoring.queue.unreadable' | 'scoring.ledger.unreadable';
+  readonly event:
+    'scoring.queue.unreadable' | 'scoring.ledger.unreadable' | 'scoring.boot.unreadable';
   readonly decode: (text: string) => T | null;
 };
 
@@ -119,6 +142,14 @@ const ledgerSlot = (fixtureId: string): Slot<readonly LedgerEvent[]> => ({
   aside: null,
   event: 'scoring.ledger.unreadable',
   decode: (text) => decodeLedger(text, fixtureId),
+});
+
+const bootSlot = (fixtureId: string): Slot<BootCache> => ({
+  main: bootName(fixtureId),
+  temp: bootTempName(fixtureId),
+  aside: null,
+  event: 'scoring.boot.unreadable',
+  decode: (text) => decodeBoot(text, fixtureId),
 });
 
 export function createTapQueueStore(deps: { files: QueueFiles; logger: Logger }): TapQueueStore {
@@ -152,10 +183,13 @@ export function createTapQueueStore(deps: { files: QueueFiles; logger: Logger })
           asideName(fixtureId),
           ledgerName(fixtureId),
           ledgerTempName(fixtureId),
+          bootName(fixtureId),
+          bootTempName(fixtureId),
         ])
           await files.remove(name);
         readable(fileName(fixtureId));
         readable(ledgerName(fixtureId));
+        readable(bootName(fixtureId));
       }),
     loadLedger: (fixtureId) =>
       guarded(fixtureId, null, () => recover(reading, ledgerSlot(fixtureId))),
@@ -169,6 +203,18 @@ export function createTapQueueStore(deps: { files: QueueFiles; logger: Logger })
         await files.remove(ledgerName(fixtureId));
         await files.remove(ledgerTempName(fixtureId));
         readable(ledgerName(fixtureId));
+      }),
+    loadBoot: (fixtureId) => guarded(fixtureId, null, () => recover(reading, bootSlot(fixtureId))),
+    saveBoot: (fixtureId, cache) =>
+      inOrder(async () => {
+        await writeBoot(files, fixtureId, cache);
+        readable(bootName(fixtureId));
+      }),
+    removeBoot: (fixtureId) =>
+      guarded(fixtureId, undefined, async () => {
+        await files.remove(bootName(fixtureId));
+        await files.remove(bootTempName(fixtureId));
+        readable(bootName(fixtureId));
       }),
   };
 }
@@ -317,6 +363,17 @@ async function writeLedger(
   );
 }
 
+async function writeBoot(files: QueueFiles, fixtureId: string, cache: BootCache): Promise<void> {
+  if (!FIXTURE_ID.test(fixtureId))
+    throw new Error('a boot cache needs a fixture id fit for a file name');
+  await writeThenMove(
+    files,
+    encodeBoot(fixtureId, cache),
+    bootTempName(fixtureId),
+    bootName(fixtureId),
+  );
+}
+
 /** The temp file whole first, then moved onto the name: a write cut short never touches the file that is there. */
 async function writeThenMove(
   files: QueueFiles,
@@ -455,3 +512,42 @@ function readLedgerEvent(raw: unknown): LedgerEvent | undefined {
 /** `null` is none; a non-empty string is itself; anything else is garbled (`undefined`). */
 const readNullableText = (value: unknown): string | null | undefined =>
   value === null ? null : readText(value);
+
+// ---------------------------------------------------------------------------------------------------------------
+// The boot cache: the bootstrap as the endpoint sent it, and the Start screen's pick
+// ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * The text of a boot cache, or a refusal. The bootstrap is written in the endpoint's own envelope, so `parseBootstrap`
+ * reads it back and there is no second parser of that shape. Refused: one that is not this match's, one naming a
+ * link's secret anywhere, and one this store could not read back.
+ */
+function encodeBoot(fixtureId: string, cache: BootCache): string {
+  if (cache.bootstrap.fixtureId !== fixtureId)
+    throw new Error('a boot cache holds its own match’s bootstrap');
+  const text = JSON.stringify({
+    v: FILE_VERSION,
+    fixtureId,
+    toss: cache.toss,
+    bootstrap: bootstrapToWire(cache.bootstrap),
+  });
+  if (LINK_SECRET.test(text)) throw new Error('a boot cache never carries a scoring link secret');
+  if (decodeBoot(text, fixtureId) === null)
+    throw new Error('a boot cache that would not read back');
+  return text;
+}
+
+function decodeBoot(text: string, fixtureId: string): BootCache | null {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!isRecord(raw) || raw.v !== FILE_VERSION || raw.fixtureId !== fixtureId) return null;
+  const toss =
+    raw.toss === 'first' || raw.toss === 'second' || raw.toss === null ? raw.toss : undefined;
+  const bootstrap = parseBootstrap(raw.bootstrap);
+  if (toss === undefined || bootstrap === null || bootstrap.fixtureId !== fixtureId) return null;
+  return { bootstrap, toss };
+}

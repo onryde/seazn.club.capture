@@ -329,9 +329,10 @@ describe('the last-tap line', () => {
         .map(({ key }) => `${lang} ${key}`),
     );
 
-  // Fifteen since S2-1 Task 7 added the start with no named server ("Match started").
-  it('reads fifteen sentences in each language (anti-vacuity)', () => {
-    for (const [, dictionary] of LANGUAGES) expect(sentences(dictionary)).toHaveLength(15);
+  // Fifteen since S2-1 Task 7 added the start with no named server ("Match started"); eighteen since Task 9 added three
+  // refusals the hook says: the match moved on, this phone could not save the tap, and the save is being retried.
+  it('reads eighteen sentences in each language (anti-vacuity)', () => {
+    for (const [, dictionary] of LANGUAGES) expect(sentences(dictionary)).toHaveLength(18);
   });
 
   it('holds every sentence and refusal whole at 360, in four languages', () => {
@@ -354,14 +355,21 @@ describe('the last-tap line', () => {
 
   // A repeat within the bounce window says "Counted once" under the sentence of the tap that counted (review item 3):
   // one line of `controlInk` (Geist 500 at 14, as `control`), and the sentence gives up a line for it.
-  it('holds "Counted once" on one line beside Undo at 320 and 360, in four languages', () => {
-    for (const [, dictionary] of LANGUAGES) {
-      const note = dictionary['scoring.pad.countedOnce'] ?? '';
-      expect(note).not.toBe('');
-      for (const width of WIDTHS)
-        expect(linesOf(note, lineRoom(width, dictionary), controlWidth)).toBe(1);
-    }
-  });
+  // The other note, "Another scorer has scored since" (Task 9), stands under the last tap while Undo is off for that
+  // reason: one line too, in the same ink.
+  it.each(['scoring.pad.countedOnce', 'scoring.pad.otherScorerSince'] as const)(
+    'holds the note %s on one line beside Undo at 320 and 360, in four languages',
+    (key) => {
+      for (const [lang, dictionary] of LANGUAGES) {
+        const note = dictionary[key] ?? '';
+        expect(note).not.toBe('');
+        for (const width of WIDTHS) {
+          const lines = linesOf(note, lineRoom(width, dictionary), controlWidth);
+          expect({ lang, width, lines }).toEqual({ lang, width, lines: 1 });
+        }
+      }
+    },
+  );
 
   /** The sentences a note can sit under: a rally that counted (a point, a game, the match) and any Undo. */
   const NOTED = /^scoring\.badminton\.(last\.(rally|game|match)|undone\.)/;

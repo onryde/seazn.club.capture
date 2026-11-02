@@ -627,6 +627,16 @@ export function onReadFailed(state: SyncState, failure: ReadFailure, now: number
   }
 }
 
+/**
+ * What a failed read says about the link: the word that closes the match to this phone, or null for a read that merely
+ * did not land. `onReadFailed` marks a queue dead only with taps queued; the hook uses this for the bad-link card of a
+ * match with none (plan S2-1 Task 9).
+ */
+export function closedBy(failure: ReadFailure): QueueDead | null {
+  if (failure.kind === 'linkDead') return failure.code;
+  return failure.kind === 'refused' ? closes(failure.status, failure.code, null) : null;
+}
+
 /** A read closed the queue: with taps queued it is dead and saved; with none there is nothing to keep. */
 function closed(state: SyncState, dead: QueueDead): SyncStep {
   if (state.queue.pending.length === 0) return step(state, []);

@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { MatchQueue, QueuedEvent } from '@/domain/scoring/queue';
+import type { BootCache, MatchQueue, QueuedEvent } from '@/domain/scoring/queue';
 import type { LedgerEvent } from '@/domain/scoring/wire';
 import { createLogger } from '@/services/logger';
 import { createRingRecord, parseRecordLine } from '@/services/sessionRecord';
 import { createTapQueueStore, type QueueEntry } from '@/services/tapQueueStore';
 import { FAKE_SCORING_SECRET } from '../../test/fakeScoringLinkPort';
+import { DOUBLES, SINGLES } from '../../test/badmintonLedger';
 import { createMemoryQueueFiles } from '../../test/memoryQueueFiles';
 
 const FIXTURE = '6f0c5a52-3d1e-4a0b-8f55-0c2f6d7b9e10';
@@ -974,5 +975,130 @@ describe('the ledger beside the queue', () => {
     expect(await store.loadLedger(FIXTURE)).toBeNull();
     expect(ledgerUnreadable(entries)).toHaveLength(1);
     expect(await store.loadLedger(FIXTURE)).toEqual(LEDGER);
+  });
+});
+
+describe('the bootstrap cache beside the queue (plan S2-1 Task 9)', () => {
+  const bootOf = (fixtureId: string) => `${fixtureId}.boot.json`;
+  const cacheOf = (fixtureId: string, toss: BootCache['toss'] = 'second'): BootCache => ({
+    bootstrap: { ...SINGLES, fixtureId },
+    toss,
+  });
+  const CACHE = cacheOf(FIXTURE);
+  const bootUnreadable = (entries: () => ReturnType<typeof parseRecordLine>[]) =>
+    entries().filter((entry) => entry.event === 'scoring.boot.unreadable');
+
+  it('round-trips a bootstrap and the Start screen’s pick, a pick of none included', async () => {
+    const { store } = storeOver();
+    await store.saveBoot(FIXTURE, CACHE);
+    expect(await store.loadBoot(FIXTURE)).toEqual(CACHE);
+    const doubles = { bootstrap: { ...DOUBLES, fixtureId: OTHER }, toss: null };
+    await store.saveBoot(OTHER, doubles);
+    expect(await store.loadBoot(OTHER)).toEqual(doubles);
+  });
+
+  it('is null for a match with none, the empty input', async () => {
+    expect(await storeOver().store.loadBoot(FIXTURE)).toBeNull();
+  });
+
+  it('is a file of its own: no queue in the list, the queue and the ledger untouched', async () => {
+    const files = createMemoryQueueFiles();
+    const { store } = storeOver(files);
+    await store.saveBoot(FIXTURE, CACHE);
+    expect(entryIds(await store.list())).toEqual([]);
+    await store.save(queue());
+    await store.saveLedger(FIXTURE, LEDGER);
+    expect(await store.load(FIXTURE)).toEqual(queue());
+    expect(await store.loadLedger(FIXTURE)).toEqual(LEDGER);
+    expect(await store.loadBoot(FIXTURE)).toEqual(CACHE);
+  });
+
+  it('a second save replaces the first whole and leaves no temp file', async () => {
+    const files = createMemoryQueueFiles();
+    const { store } = storeOver(files);
+    await store.saveBoot(FIXTURE, CACHE);
+    await store.saveBoot(FIXTURE, cacheOf(FIXTURE, 'first'));
+    expect(await store.loadBoot(FIXTURE)).toEqual(cacheOf(FIXTURE, 'first'));
+    expect([...files.files.keys()]).toEqual([bootOf(FIXTURE)]);
+  });
+
+  it('survives the app being killed, and a save cut inside its move is promoted from the temp file', async () => {
+    const files = createMemoryQueueFiles();
+    await storeOver(files).store.saveBoot(FIXTURE, CACHE);
+    expect(await storeOver(files).store.loadBoot(FIXTURE)).toEqual(CACHE);
+    files.failNext('moveAfterDelete');
+    await expect(
+      storeOver(files).store.saveBoot(FIXTURE, cacheOf(FIXTURE, 'first')),
+    ).rejects.toThrow();
+    expect([...files.files.keys()]).toEqual([`${bootOf(FIXTURE)}.tmp`]);
+    expect(await storeOver(files).store.loadBoot(FIXTURE)).toEqual(cacheOf(FIXTURE, 'first'));
+  });
+
+  const wired = (over: Record<string, unknown>) =>
+    JSON.stringify({ v: 1, fixtureId: FIXTURE, toss: null, ...over });
+  it.each([
+    ['text that is not JSON', 'not json'],
+    ['a file of another version', wired({ v: 2 })],
+    ['a file of another match', wired({ fixtureId: OTHER })],
+    ['a pick that is no side', wired({ toss: 'both', bootstrap: {} })],
+    ['no bootstrap', wired({})],
+    ['a bootstrap the endpoint’s parser refuses', wired({ bootstrap: { ok: true, data: {} } })],
+  ])('%s is no cache: null, said once, left on disk', async (_name, content) => {
+    const files = createMemoryQueueFiles();
+    const { store, entries } = storeOver(files);
+    files.files.set(bootOf(FIXTURE), content);
+    expect(await store.loadBoot(FIXTURE)).toBeNull();
+    expect(await store.loadBoot(FIXTURE)).toBeNull();
+    expect(bootUnreadable(entries)).toHaveLength(1);
+    expect(files.files.get(bootOf(FIXTURE))).toBe(content);
+  });
+
+  it('refuses to write a bootstrap that names the link’s secret anywhere: nothing is written', async () => {
+    const files = createMemoryQueueFiles();
+    const { store } = storeOver(files);
+    const leaking = { bootstrap: { ...CACHE.bootstrap, cfg: { note: TOKEN } }, toss: null };
+    await expect(store.saveBoot(FIXTURE, leaking)).rejects.toThrow();
+    expect(files.written.join('')).not.toContain(TOKEN);
+    expect(files.files.size).toBe(0);
+  });
+
+  it('refuses a bootstrap of another match, and an id unfit for a file name', async () => {
+    const { store, files } = storeOver();
+    await expect(store.saveBoot(OTHER, CACHE)).rejects.toThrow();
+    await expect(store.saveBoot('../x', cacheOf('../x'))).rejects.toThrow();
+    expect(await store.loadBoot('../x')).toBeNull();
+    await expect(store.removeBoot('../x')).resolves.toBeUndefined();
+    expect(files.ops).toEqual([]);
+  });
+
+  it('removeBoot deletes it and its temp file, and only its own', async () => {
+    const files = createMemoryQueueFiles();
+    const { store } = storeOver(files);
+    await store.saveBoot(FIXTURE, CACHE);
+    await store.saveBoot(OTHER, cacheOf(OTHER));
+    files.files.set(`${bootOf(FIXTURE)}.tmp`, 'half');
+    await store.removeBoot(FIXTURE);
+    expect([...files.files.keys()]).toEqual([bootOf(OTHER)]);
+  });
+
+  it('remove (Dismiss) deletes the boot cache with the queue and the ledger', async () => {
+    const files = createMemoryQueueFiles();
+    const { store } = storeOver(files);
+    await store.save(queue());
+    await store.saveLedger(FIXTURE, LEDGER);
+    await store.saveBoot(FIXTURE, CACHE);
+    files.files.set(`${bootOf(FIXTURE)}.tmp`, 'half');
+    await store.remove(FIXTURE);
+    expect([...files.files.keys()]).toEqual([]);
+  });
+
+  it('a read the disk refuses is null, once reported, never thrown', async () => {
+    const files = createMemoryQueueFiles();
+    const { store, entries } = storeOver(files);
+    await store.saveBoot(FIXTURE, CACHE);
+    files.failNext('read');
+    expect(await store.loadBoot(FIXTURE)).toBeNull();
+    expect(bootUnreadable(entries)).toHaveLength(1);
+    expect(await store.loadBoot(FIXTURE)).toEqual(CACHE);
   });
 });

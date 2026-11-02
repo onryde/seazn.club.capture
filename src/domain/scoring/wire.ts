@@ -268,6 +268,49 @@ export function parseBootstrap(body: unknown): Bootstrap | null {
 }
 
 /**
+ * A bootstrap as the endpoint's own envelope holds it: what the boot cache keeps (plan S2-1 Task 9), so that
+ * `parseBootstrap` stays the one reader of the shape (AGENTS §4) and the cache needs none of its own. Anything
+ * `parseBootstrap` reads, this writes back whole.
+ */
+export function bootstrapToWire(bootstrap: Bootstrap): unknown {
+  const { context, sides } = bootstrap;
+  const screen = [...SCREENS].find(([, known]) => known === bootstrap.screen)?.[0];
+  return {
+    ok: true,
+    data: {
+      fixture_id: bootstrap.fixtureId,
+      link_id: bootstrap.linkId,
+      sport_key: bootstrap.sportKey,
+      module_version: bootstrap.moduleVersion,
+      cfg: bootstrap.cfg,
+      rules_version: bootstrap.rulesVersion,
+      engine_epoch_required: bootstrap.epochRequired,
+      screen,
+      view_only_reason: bootstrap.viewOnlyReason,
+      names: {
+        competition: context.competition,
+        division: context.division,
+        round_label: context.round,
+        ref: context.match,
+      },
+      sides: { home: seatToWire(sides.home), away: seatToWire(sides.away) },
+      state: { last_seq: bootstrap.lastSeq, status: bootstrap.status },
+    },
+  };
+}
+
+function seatToWire(seat: BootstrapSide | null): unknown {
+  if (seat === null) return null;
+  return {
+    entrant_id: seat.entrantId,
+    name: seat.name,
+    kind: seat.kind,
+    members: seat.members.map((m) => ({ person_id: m.personId, full_name: m.fullName })),
+    lineup: seat.lineup.map((slot) => ({ person_id: slot.personId, pair_order: slot.pairOrder })),
+  };
+}
+
+/**
  * The pad's match context for a bootstrap: the names as typed and the sides' names, top first. Null while a seat has
  * no entrant, so a side is never made up for it.
  */

@@ -1,3 +1,6 @@
+import type { PadSide } from '@/domain/scoring/padView';
+import type { Bootstrap } from '@/domain/scoring/wire';
+
 /**
  * What a phone holds for a match it is scoring (design §6.3, plan S2-1 Task 5): the taps not yet accepted, which of
  * the ledger's events are its own, and why it can send no more. Types only: the durable store is `tapQueueStore` and
@@ -57,4 +60,15 @@ export type MatchQueue = {
   /** The event ids the server returned for this phone's accepted taps: "This phone" in History, and what Undo reaches. */
   readonly ownEventIds: readonly string[];
   readonly dead: QueueDead | null;
+};
+
+/**
+ * What a reopened match needs before the network answers (plan S2-1 Task 9): the bootstrap last read, with the rules
+ * the phone has adopted since (`cfg` and `rulesVersion` are the current ones), and the side the scorer picked to
+ * serve first, which the match's first rally carries until a rally stands. No secret: the link's token is the secure
+ * store's.
+ */
+export type BootCache = {
+  readonly bootstrap: Bootstrap;
+  readonly toss: PadSide | null;
 };

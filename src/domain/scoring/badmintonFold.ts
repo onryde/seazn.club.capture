@@ -471,7 +471,8 @@ function undoneOf(did: BadmintonDone): BadmintonLastTap | null {
   return tap === null ? null : { kind: 'undone', tap };
 }
 
-function undoneTap(did: BadmintonDone): BadmintonUndoneTap | null {
+/** The tap Undo takes back, as the last-tap line names it, or null for the start (whose Undo shows no line). */
+export function undoneTap(did: BadmintonDone): BadmintonUndoneTap | null {
   switch (did.kind) {
     case 'start':
       return null;
