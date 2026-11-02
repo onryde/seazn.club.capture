@@ -84,10 +84,15 @@ onryde/seazn.club.capture`).
    (run 41089365907), which queued EAS build `39c9d2f7` (1.0.0, build number
    689, keystore `ycrj1dLXkY`) and then stopped at the submit, as step 5
    explains. Its app bundle is uploaded by hand, as above.
-8. **Engine token** (_owner_, before the next release; plan S2-1 Task 1). The
-   app installs `@onryde/seazn-engine` from GitHub Packages, so EAS needs a
-   secret `NODE_AUTH_TOKEN` that can read it, and its install a user-level
-   credential line: pnpm ignores one in the project's `.npmrc` (it says why).
+8. **Engine token** (_owner_, before the next release; plan S2-1 Task 1).
+   Create the EAS secret `NODE_AUTH_TOKEN`, a token that can read
+   `@onryde/seazn-engine` on GitHub Packages. The pre-install hook does the
+   rest, and stops the build, saying why, if the secret is missing. Verified:
+   an OAuth token from `gh` with `write:packages` (which includes reading)
+   installs it. Assumed from GitHub's docs, not tried: a classic personal
+   access token with `read:packages`, from an account that can read the
+   `onryde` package. A fine-grained token is not expected to work: GitHub's
+   docs list the npm registry among those that take classic tokens only.
 
 ## Each release
 

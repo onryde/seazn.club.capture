@@ -112,9 +112,10 @@ function uiRestrictedImports(services, message) {
  *
  * `domain/` must stay pure TypeScript so its tests run in milliseconds with no
  * React Native preset. That purity is enforced here, not by convention: the
- * domain policy below grants one external-module allowance, `qrcode-generator`
- * (a pure JS encoder), and no other, so any import of react, react-native or
- * expo from src/domain fails the build.
+ * domain policy below grants two external-module allowances, `qrcode-generator`
+ * (a pure JS encoder) and `@seazn/engine` at its phone subpaths (pure TS over
+ * zod), and no other, so any import of react, react-native or expo from
+ * src/domain fails the build.
  */
 export default [
   {
@@ -167,13 +168,13 @@ export default [
           checkAllOrigins: true,
           policies: [
             {
-              // One external allowance, `qrcode-generator` below, and no other: this is the
-              // domain purity rule.
+              // Two external allowances, `qrcode-generator` and `@seazn/engine`'s phone subpaths
+              // below, and no other: this is the domain purity rule.
               from: { element: { type: 'domain' } },
               allow: [
                 { to: { element: { type: 'domain' } } },
                 { to: { element: { type: 'contracts' } } },
-                // The one external package domain may name: a pure JS encoder with no react or
+                // The first external package domain may name: a pure JS encoder with no react or
                 // react-native in it (the Seazn QR's modules, src/domain/qr). Named by source, so
                 // `react` and the rest stay refused.
                 { to: { module: { origin: 'external', source: 'qrcode-generator' } } },

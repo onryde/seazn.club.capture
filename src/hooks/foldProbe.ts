@@ -21,7 +21,8 @@ const hundredths = (ms: number): number => Math.round(ms * 100) / 100;
  * R4 on the phone (plan S2-1 Task 1 Step 6): folds the probe's 76-event match `runs` times and records
  * `scoring.foldProbe` with the reading. The engine is loaded here, on the tap, so an engine that cannot load or fold
  * under Hermes (zod reaching `new Function` is the worry) reads as a failure on the chip and a warning in the record
- * instead of taking the dev twin down at launch. Never rejects. `load` and `runs` are passed in by tests only.
+ * instead of taking the dev twin down at launch. It rejects only if the logger throws on that warning too, which
+ * `useFoldProbe` answers. `load` and `runs` are passed in by tests only.
  */
 export async function runFoldProbe(
   logger: Logger,

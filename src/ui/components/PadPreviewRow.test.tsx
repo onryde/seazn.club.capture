@@ -1,5 +1,5 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import en from '@/i18n/en.json';
 import fr from '@/i18n/fr.json';
 import { parseRecordLine, type SessionRecord } from '@/services/sessionRecord';
@@ -47,7 +47,7 @@ describe('the Fold probe on the preview row', { timeout: 30_000 }, () => {
     ]);
   });
 
-  // A second tap while a run is in flight is the same run; once it has read, a tap runs it again.
+  // A second tap while the engine loads is ignored; once it has read, a tap runs it again.
   it('runs once for a double tap, and again for a later tap', async () => {
     const view = renderWithPorts(<PadPreviewRow chosen={[]} onPick={pick} />);
     const probe = screen.getByRole('button', { name: PROBE });
@@ -63,6 +63,33 @@ describe('the Fold probe on the preview row', { timeout: 30_000 }, () => {
     expect(probeLines(view.record)).toHaveLength(1);
     fireEvent.click(probe);
     await waitFor(() => expect(probeLines(view.record)).toHaveLength(2), loaded);
+  });
+
+  // The runner answers a throw with a warning; a record that refuses that too must not leave the chip on "…" or the
+  // probe locked.
+  it('shows a failure, not "…", when the record itself throws, and runs again on a later tap', async () => {
+    const view = renderWithPorts(<PadPreviewRow chosen={[]} onPick={pick} />);
+    const refuse = () => {
+      throw new Error('record refused');
+    };
+    const info = vi.spyOn(view.ports.logger, 'info').mockImplementation(refuse);
+    const warn = vi.spyOn(view.ports.logger, 'warn').mockImplementation(refuse);
+    const probe = screen.getByRole('button', { name: PROBE });
+    fireEvent.click(probe);
+    await waitFor(
+      () =>
+        expect(screen.getByTestId('fold-probe-line').textContent).toBe(
+          'failed: Error: record refused',
+        ),
+      loaded,
+    );
+    info.mockRestore();
+    warn.mockRestore();
+    fireEvent.click(probe);
+    await waitFor(
+      () => expect(screen.getByTestId('fold-probe-line').textContent).toMatch(READ),
+      loaded,
+    );
   });
 
   it('names the probe in the operator’s language', () => {

@@ -15,10 +15,16 @@ Status: **laptop done; device pending** (Step 7 is the controller's).
 | `@seazn/engine` (alias)   | `npm:@onryde/seazn-engine@1.1.0`, exact | 1.1.0     |
 | `zod` (the engine's peer) | `4.4.3`, exact: the peer range's floor  | 4.4.3     |
 
-- The engine's peers are `zod ^4.4.3`, and `vitest ^4.1.11` and `fast-check ^3`, both optional
-  (`peerDependenciesMeta`). pnpm warns that vitest 5.0.0 does not meet `^4.1.11`; the phone never imports the
-  `testkit` subpath that needs it, and lint refuses it in domain (below). pnpm also installed `fast-check`
-  3.23.2 and `pure-rand` 6.1.0 for that optional peer: JavaScript only, never imported by the app.
+- zod 4.4.3 is the version the web and the engine resolve: each lockfile holds one zod, 4.4.3 (web `main`
+  at `3e20c75ecd`, engine `main` at `081f7de`, read 2026-11-02). So the phone folds with the zod the
+  engine's own tests ran on.
+- The engine's peers are `zod ^4.4.3`, `vitest ^4.1.11` and `fast-check ^3`. The engine's `package.json`
+  marks `vitest` and `fast-check` optional (`peerDependenciesMeta`), but the registry's metadata for 1.1.0,
+  which is what pnpm resolves from, has no `peerDependenciesMeta` (GitHub Packages' packument, read
+  2026-11-02), and neither has the lockfile's entry. So pnpm treats all three as required: it warns that
+  vitest 5.0.0 does not meet `^4.1.11`, and it installed `fast-check` 3.23.2 and `pure-rand` 6.1.0 for the
+  missing peer. They are JavaScript only and never imported by the app. The phone never imports the
+  `testkit` subpath that needs vitest, and lint refuses that subpath in domain (below).
 - Declaring zod 4.4.3 moved the tree's other zod 4 users (eas-cli's `@expo/*` packages,
   `eslint-plugin-react-hooks`) from 4.6.2 to 4.4.3, inside their own ranges.
 - **Nothing autolinks.** None of the four new packages has `android/`, `ios/`, a podspec,
@@ -43,8 +49,13 @@ install worked only because the store and the metadata cache already held 1.1.0.
   `packages: read`, `actions/setup-node`'s `registry-url` and `scope` (which write the same line to a
   user-level `.npmrc`), and `NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}` on the install step. Whether this
   repository's `GITHUB_TOKEN` may read the `onryde` package is **unverified until a push runs CI**.
-- EAS (the next release): `docs/release.md` Once 8. EAS needs a `NODE_AUTH_TOKEN` secret, and its install
-  needs the credential line at user level too, which nothing writes yet.
+- EAS (the next release): the `eas-build-pre-install` hook (`scripts/eas-build-pre-install.sh`), which EAS
+  runs before its install, appends the line to the worker's user config (`~/.npmrc`, or the file
+  `NPM_CONFIG_USERCONFIG` names) once, on every platform. It keeps what that file held: EAS's builders ship
+  one with their npm cache's `registry=` (Expo's "Using private npm packages"). With no `NODE_AUTH_TOKEN` it
+  stops the build at once, saying why (`test/easProfile.test.ts` runs it with a scratch `HOME`). The owner's
+  part is the EAS secret, `docs/release.md` Once 8. The hook's run on a real worker is **unverified until
+  the next release tag builds**.
 
 ## The probe
 

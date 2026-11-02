@@ -1,4 +1,7 @@
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { seaznEnvironment, seaznHosts, seaznOrigin } from '@/services/seaznHosts';
@@ -88,5 +91,61 @@ describe('the Android platform on an EAS worker (package.json eas-build-pre-inst
     expect(read('scripts/eas-build-pre-install.sh')).toContain(
       `'platforms;android-${compileSdk}.0'`,
     );
+  });
+});
+
+/**
+ * `@seazn/engine` is on GitHub Packages (plan S2-1 Task 1), and pnpm 10.34.5 ignores an `${NODE_AUTH_TOKEN}` credential
+ * in the project's .npmrc. So the hook writes that line, literally, to the user config the worker's pnpm reads, before
+ * EAS installs, for every platform; with no `NODE_AUTH_TOKEN` secret it stops the build at once and says why. Run here
+ * as a script with a scratch HOME and a made-up token, on the iOS path so it never reaches `sdkmanager`.
+ */
+describe('the engine registry credential on an EAS worker (eas-build-pre-install)', () => {
+  const CREDENTIAL = '//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}';
+  const FAKE_TOKEN = 'not-a-real-token-0123';
+  const script = fileURLToPath(new URL('../scripts/eas-build-pre-install.sh', import.meta.url));
+
+  function hook(env: Record<string, string>) {
+    return spawnSync('bash', [script], {
+      encoding: 'utf8',
+      env: { PATH: process.env.PATH ?? '', NODE_ENV: 'test', EAS_BUILD_PLATFORM: 'ios', ...env },
+    });
+  }
+
+  it('writes the credential line, as written, to ~/.npmrc, once however often it runs', () => {
+    const home = mkdtempSync(join(tmpdir(), 'eas-hook-'));
+    const first = hook({ HOME: home, NODE_AUTH_TOKEN: FAKE_TOKEN });
+    const second = hook({ HOME: home, NODE_AUTH_TOKEN: FAKE_TOKEN });
+    expect([first.status, second.status]).toEqual([0, 0]);
+    const lines = readFileSync(join(home, '.npmrc'), 'utf8').split('\n');
+    expect(lines.filter((line) => line === CREDENTIAL)).toHaveLength(1);
+    expect(`${first.stdout}${first.stderr}${second.stdout}${second.stderr}`).not.toContain(
+      FAKE_TOKEN,
+    );
+  });
+
+  it('keeps what the user config held and writes to the file NPM_CONFIG_USERCONFIG names', () => {
+    const home = mkdtempSync(join(tmpdir(), 'eas-hook-'));
+    const config = join(home, 'elsewhere.npmrc');
+    writeFileSync(config, 'fund=false');
+    expect(
+      hook({ HOME: home, NODE_AUTH_TOKEN: FAKE_TOKEN, NPM_CONFIG_USERCONFIG: config }).status,
+    ).toBe(0);
+    expect(readFileSync(config, 'utf8').split('\n')).toEqual(['fund=false', CREDENTIAL, '']);
+    expect(existsSync(join(home, '.npmrc'))).toBe(false);
+  });
+
+  it('stops the build, saying why, when the NODE_AUTH_TOKEN secret is missing', () => {
+    const home = mkdtempSync(join(tmpdir(), 'eas-hook-'));
+    const missing: readonly Record<string, string>[] = [
+      { HOME: home },
+      { HOME: home, NODE_AUTH_TOKEN: '' },
+    ];
+    for (const env of missing) {
+      const run = hook(env);
+      expect(run.status).not.toBe(0);
+      expect(run.stderr).toContain('NODE_AUTH_TOKEN');
+    }
+    expect(existsSync(join(home, '.npmrc'))).toBe(false);
   });
 });

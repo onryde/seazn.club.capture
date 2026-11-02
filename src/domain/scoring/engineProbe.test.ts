@@ -3,6 +3,9 @@ import { badminton } from '@seazn/engine/sports/setbased';
 import { describe, expect, it } from 'vitest';
 import { foldReading, syntheticBadmintonMatch, timeFold } from '@/domain/scoring/engineProbe';
 
+/** The engine's refusal of an event after the decision (`EngineError`, @seazn/engine 1.1.0 `core/errors`). */
+const ALREADY_DECIDED = expect.objectContaining({ name: 'EngineError', code: 'ALREADY_DECIDED' });
+
 /**
  * R4's ledger (plan S2-1 Task 1): a decided best-of-3, the home side winning 21–15 21–18, as the phone will fold it.
  * The cfg and the lineups are built here from the engine's own API, not taken from the probe, so the fold below checks
@@ -55,7 +58,7 @@ describe('syntheticBadmintonMatch', () => {
     const extra: EventEnvelope = { ...events[75], id: 'probe-extra', seq: 77 };
     expect(() =>
       foldMatch(badminton, cfg, lineups, [...events, extra], { strictFromSeq: 1 }),
-    ).toThrow();
+    ).toThrow(ALREADY_DECIDED);
   });
 });
 
@@ -91,7 +94,7 @@ describe('timeFold', () => {
   it('lets a refused fold throw', () => {
     const events = syntheticBadmintonMatch();
     const extra: EventEnvelope = { ...events[75], id: 'probe-extra', seq: 77 };
-    expect(() => timeFold([...events, extra], 1)).toThrow();
+    expect(() => timeFold([...events, extra], 1)).toThrow(ALREADY_DECIDED);
   });
 
   // The probe times the strict path, every event validated, as the phone's own queued taps will be. Badminton records
