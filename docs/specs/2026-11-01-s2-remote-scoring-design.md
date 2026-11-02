@@ -105,7 +105,7 @@ follows the session's record.
    (S0's reopen gate) and the Continue card can name it.
 2. **Bootstrap.** The app asks the web what the link is (§7.1): the match, its rules, the sides, the
    state of the division, and whether the link still works. While it asks, the screen says so in one
-   line. No signal: the last bootstrap saved for this link is used, and the sync dot says offline.
+   line. No signal: the last bootstrap saved for this link is used, and the send badge says offline.
 3. **The card or the screen it leads to:**
    - link not valid → the bad-link card (the existing `PadStateCard` `linkInvalid`); the saved link
      is forgotten, and its unsent taps, if any, are handled as §6.3's leftovers;
@@ -121,7 +121,7 @@ follows the session's record.
 5. **Score.** Tap a half to give that side the rally. The half flashes; the last-tap line says what
    was recorded, with Undo. Undo works while this phone's tap is the latest in the match; once
    another scorer has scored since, it is disabled with "Another scorer has scored since" (ruling 28). Sanction per side; Set score before a game's first rally; the ⓘ and ↺
-   icons; the sync dot.
+   icons; the send badge.
 6. **The end.** The engine ends the game and the match. The pad shows the result card; the organiser
    finalizes on the web; the pad turns view only. A disqualification asks to record the ending or
    void the sanction (the existing `EndingPrompt`).
@@ -133,15 +133,25 @@ follows the session's record.
 The kit and the badminton screen exist on `feat/s2-pad-ui` and are the design of record. A builder
 reads the components rather than this section for pixel detail; this section names what S2 keeps.
 
-**Top bar** (every state but the bad-link card): Back; the games won, "1:0" top:bottom, LED lime 30 dp
-(`tally` role; a disqualified game counts for nobody); ⓘ Match details and ↺ History, 48 dp round icon
-buttons; the sync dot and its word (Synced, Sending N, Offline · N unsent, Update needed).
+**Top bar** (every state but the bad-link card): Back; the games won, "1:0" top:bottom, LED lime 46 dp
+(`tally` role, the header's own 48 dp line; a disqualified game counts for nobody); ⓘ Match details and
+↺ History, 48 dp round icon buttons; the send badge (owner, 2026-11-02: "remove sending word and have a
+symbol/icon like green uparrow for sending", "1 yes" on the proposal, and "can we incrase the size of 0:0
+fit in that space"): no words, an up arrow and the count in a 48 dp outlined badge, lime arrow in a quiet
+outline while taps are on their way, and when they cannot go (offline, a dead link, a server that keeps
+refusing: `stallOf`) the same badge in caution orange with a heavier outline and the arrow stopped under a
+bar, so it does not rest on telling lime from orange. Nothing waiting is no badge, though its 56 dp slot
+stays so the icons stand still. "99+" is the widest it draws. A tap opens History; a screen reader hears
+the words ("8 taps can't be sent") and the History hint.
 
 **Strip**, one line: "Game N of M" at the left, the interval ("Interval at 11", "Interval") at the far
 right.
 
 **Halves** (`ScoreHalf`), the whole half is the button: the side's names as typed; the SERVING plate
-with the court (SERVING · RIGHT); the score centred, `scoreLarge` 128, else `score` 96, else
+with the court (SERVING · RIGHT); the bar at the half's left edge, lit lime on the serving side and lilac
+on the other, moving at once when the serve changes (owner, 2026-11-02: "lime color changes who is
+serving"; the sport decides it, `PadHalf.bar`, so none is lit while no server is known, before the match
+starts or once it is over; decorative, the plate says who serves); the score centred, `scoreLarge` 128, else `score` 96, else
 `scoreCompact` 64, by the half's measured height (`scoreRole`); the bottom row with the finished games'
 boxes (the winner's lime digits and hairline, a DQ box in caution) and the hint "Tap: rally to
 {side}"; the lime flash (`TapFlash`, ~300 ms, none under reduce motion).
@@ -240,14 +250,30 @@ design surface.
     the web pipeline does);
   - 426 `ENGINE_OUTDATED` (the app's engine epoch is behind the server's) → the Update needed state;
     the queue is kept and counted;
-  - 409 `FIXTURE_RULES_CHANGED` (the organiser corrected the match's format; the `rules_version` the
-    phone sent is stale) → reload the rules (`GET /api/v1/fixtures/{id}/rules`), fold again, and send
-    the queue again with the new `rules_version`. The queue is kept: a correction never drops a tap.
-    An event the new rules make illegal is refused as below;
+  - 409 `FIXTURE_RULES_CHANGED` (the `rules_version` the phone sent is not the match's: the web refuses
+    any version but its own, `!==`, before it looks at the seq) → reload the rules
+    (`GET /api/v1/fixtures/{id}/rules`), fold again, and send the queue again with the version the read
+    gives. The queue is kept: a correction never drops a tap. An event the new rules make illegal is
+    refused as below. Two rules, both from the 2026-11-02 device stall (a staging match the phone
+    guessed at version 1 for, which the web held at its default 0, so every send was refused for good):
+    - **The default is 0.** A match nobody has corrected is at `rules_version` 0 (the web's column
+      default, `min(0)`), so the phone holds 0 until a rules read tells it otherwise, and never guesses
+      a version it has not read. The fake server starts at 0 as the web does.
+    - **A lower version is taken when the refusal named it.** A read normally only ever raises the
+      phone's version, since a lower one is a lagging read. But a refusal that names a version _below_
+      the one held says the phone is ahead of the server, which only a guess can be, so the rules read
+      of that same named version is taken though it is lower (`rulesSaid` in `sync.ts`). Any other lower
+      read is still no news. _Caveat, replica lag:_ the rule trusts a read that agrees with the
+      refusal, never a read alone; a rules read served from a lagging replica names an older version
+      than the one the refusal named, so it is not adopted, and the phone keeps sending under what it
+      holds and is refused again. If no read ever agrees with the server, that is a **stall**, not a
+      loop to wait out: the sixth refusal in a row, of either kind (a conflict or new rules), puts one
+      `scoring.stalled` line in the record and the send badge in its can't-send colour, and the pause
+      between tries grows from 15 s to 60 s until a tap is taken or the queue empties;
   - any other refusal (4xx) → that event leaves the queue, the last-tap line says the tap did not
     count, the ledger is fetched again;
   - no network, timeout, 5xx → stay queued, retry with backoff, with the same `idempotency_key`, so a
-    tap the server accepted before the answer was lost is not counted twice; the sync dot says offline and counts.
+    tap the server accepted before the answer was lost is not counted twice; the send badge says offline and counts.
 - Undo of a tap still in the queue removes it from the queue; nothing is sent (_the controller's_).
 - Other scorers' events arrive in real time, as on the web (ruling 27): the web's Supabase Realtime
   channel carries a "something changed" ping with no payload (`use-fixture-stream.ts`), its token from
