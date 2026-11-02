@@ -51,15 +51,17 @@ export type QueueEntry =
 /** What Home's Continue card and the match hook keep of unsent taps. Methods never reject but `save*` and `remove*`. */
 export interface TapQueueStore {
   /**
-   * Every match with a queue, by fixture id, in a stable order. A queue that cannot be read is named, never skipped:
-   * an `unreadable` entry (its file is kept aside as `.bad`) stands until the match is removed or saved again.
+   * Every match with a queue, by fixture id, in a stable order. A match is never skipped: one whose files exist but
+   * whose queue cannot be read is an `unreadable` entry. That is a garbled file (kept aside as `.bad`), and also a read
+   * the disk refused (the main file, or a temp file that may be the only copy) or a garbled file that could not be set
+   * aside. It stands until the match is removed or saved again, or, for a refused read, until the next list reads it.
    */
   list(): Promise<readonly QueueEntry[]>;
   /** A match's queue, or null when it has none or it cannot be read (reported once, never thrown). */
   load(fixtureId: string): Promise<MatchQueue | null>;
   /**
-   * Atomic as far as the platform allows: the whole queue is written to a temporary file and moved over the old one, so a save cut short leaves
-   * the old file whole, and one cut inside the move leaves the temp file, which a read promotes. Rejects when it
+   * Atomic as far as the platform allows: the whole queue is written to a temporary file and moved over the old one,
+   * so a save cut short leaves the old file whole, and one cut inside the move leaves the temp file, which a read promotes. Rejects when it
    * could not be written, so the caller never shows a tap as stored that is not.
    */
   save(queue: MatchQueue): Promise<void>;
@@ -198,9 +200,10 @@ async function listEntries(reading: Reading): Promise<readonly QueueEntry[]> {
   const ids = [...new Set(names.flatMap((name) => QUEUE_FILE.exec(name)?.[1] ?? []))].sort();
   const entries: QueueEntry[] = [];
   for (const id of ids) {
-    const queue = await recover(reading, queueSlot(id));
-    if (queue !== null) entries.push({ kind: 'queue', queue });
-    else if (await isAside(reading.files, id)) entries.push({ kind: 'unreadable', fixtureId: id });
+    const { value, trouble } = await recoverSlot(reading, queueSlot(id));
+    if (value !== null) entries.push({ kind: 'queue', queue: value });
+    else if (trouble || (await isAside(reading.files, id)))
+      entries.push({ kind: 'unreadable', fixtureId: id });
   }
   return entries;
 }
@@ -224,34 +227,51 @@ async function peek(files: QueueFiles, name: string): Promise<string | null | ty
   }
 }
 
+type Recovered<T> = {
+  readonly value: T | null;
+  /**
+   * A match whose queue could not be read, that no `.bad` file names: a read the disk refused (the main file, or a
+   * temp file that may be the only copy) or a garble that could not be set aside. A garble that WAS set aside is named by
+   * its `.bad` file (`isAside`).
+   */
+  readonly trouble: boolean;
+};
+
+async function recover<T>(reading: Reading, slot: Slot<T>): Promise<T | null> {
+  return (await recoverSlot(reading, slot)).value;
+}
+
 /**
  * What a slot holds, and what that costs the files. A main file that decodes is the answer, whatever a temp file says
  * (the temp is a save that never finished). Without one, a temp file that decodes is the answer and is promoted: a kill
  * inside a save's move leaves it as the only copy. A garbled main file is first set aside (never overwritten), then
- * said once. Never throws.
+ * said once. `trouble` says a match is there that cannot be read, for `list` to name. Never throws.
  */
-async function recover<T>({ files, report, readable }: Reading, slot: Slot<T>): Promise<T | null> {
+async function recoverSlot<T>(
+  { files, report, readable }: Reading,
+  slot: Slot<T>,
+): Promise<Recovered<T>> {
   const main = await peek(files, slot.main);
   if (main === REFUSED) {
     report(slot, slot.main, 'read');
-    return null;
+    return { value: null, trouble: true };
   }
   const found = main === null ? null : slot.decode(main);
   if (found !== null) {
     readable(slot.main);
-    return found;
+    return { value: found, trouble: false };
   }
   const spare = await peek(files, slot.temp);
   if (spare === REFUSED) report(slot, slot.temp, 'read');
   const promoted = typeof spare === 'string' ? slot.decode(spare) : null;
   if (main !== null && slot.aside !== null && !(await setAside(files, slot.main, slot.aside))) {
     report(slot, slot.main, 'aside');
-    return promoted;
+    return { value: promoted, trouble: true };
   }
   if (promoted === null) {
     if (main !== null) report(slot, slot.main, 'garbled');
     else if (typeof spare === 'string') report(slot, slot.temp, 'garbled');
-    return null;
+    return { value: null, trouble: spare === REFUSED };
   }
   try {
     await files.move(slot.temp, slot.main);
@@ -259,7 +279,7 @@ async function recover<T>({ files, report, readable }: Reading, slot: Slot<T>): 
   } catch {
     report(slot, slot.temp, 'promote');
   }
-  return promoted;
+  return { value: promoted, trouble: false };
 }
 
 async function setAside(files: QueueFiles, from: string, to: string): Promise<boolean> {

@@ -88,6 +88,7 @@ describe('save and load', () => {
       'forbidden',
       'gone',
       'payment',
+      'cancelled',
     ] as const;
     for (const dead of words) {
       const { store } = storeOver();
@@ -372,6 +373,59 @@ describe('list', () => {
     files.read = async (name) =>
       name === badOf(OTHER) ? Promise.reject(new Error('refused')) : read(name);
     expect(await storeOver(files).store.list()).toEqual([{ kind: 'unreadable', fixtureId: OTHER }]);
+  });
+
+  // list never skips a match it cannot read: a match that is only absent from Home is a match lost.
+  it('names a match whose main file the disk refuses to read: no .bad exists, and it is still listed', async () => {
+    const files = createMemoryQueueFiles();
+    const { store } = storeOver(files);
+    await store.save(queue());
+    const read = files.read;
+    files.read = async (name) =>
+      name === nameOf(FIXTURE) ? Promise.reject(new Error('refused')) : read(name);
+    expect(await storeOver(files).store.list()).toEqual([
+      { kind: 'unreadable', fixtureId: FIXTURE },
+    ]);
+  });
+
+  it('names a match whose only copy is a temp file the disk refuses to read', async () => {
+    const files = createMemoryQueueFiles();
+    files.files.set(tmpOf(FIXTURE), asFile(queue()));
+    const read = files.read;
+    files.read = async (name) =>
+      name === tmpOf(FIXTURE) ? Promise.reject(new Error('refused')) : read(name);
+    const { store } = storeOver(files);
+    expect(await store.list()).toEqual([{ kind: 'unreadable', fixtureId: FIXTURE }]);
+    files.read = read;
+    expect(await store.list()).toEqual(queues([queue()]));
+  });
+
+  it('names a garbled match that could not be set aside, and no older .bad exists', async () => {
+    const files = createMemoryQueueFiles();
+    files.files.set(nameOf(FIXTURE), '{"v":1,');
+    const { store } = storeOver(files);
+    files.failNext('move');
+    expect(await store.list()).toEqual([{ kind: 'unreadable', fixtureId: FIXTURE }]);
+    expect(files.files.has(badOf(FIXTURE))).toBe(false);
+  });
+
+  it('a refused read does not name a match that reads well the next time', async () => {
+    const files = createMemoryQueueFiles();
+    const { store } = storeOver(files);
+    await store.save(queue());
+    const read = files.read;
+    let refuse = true;
+    files.read = async (name) =>
+      refuse && name === nameOf(FIXTURE) ? Promise.reject(new Error('refused')) : read(name);
+    expect(await store.list()).toEqual([{ kind: 'unreadable', fixtureId: FIXTURE }]);
+    refuse = false;
+    expect(await store.list()).toEqual(queues([queue()]));
+  });
+
+  it('a torn temp file alone is no match: it was never a queue', async () => {
+    const files = createMemoryQueueFiles();
+    files.files.set(tmpOf(FIXTURE), '{"v":1,');
+    expect(await storeOver(files).store.list()).toEqual([]);
   });
 
   it('a queue saved over an unreadable one is a queue again, and Dismiss clears the aside file too', async () => {

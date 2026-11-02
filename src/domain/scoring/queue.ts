@@ -23,12 +23,20 @@ export type QueuedEvent = {
 
 /**
  * Why a queue can send no more, and nothing else discards a tap: the link is gone (the three codes the door answers 401
- * with), the match is finalized (the organiser locked it, or RESULT_CARRIED_FORWARD), this link may not write it
- * (another 403), the match is gone (404) or the account behind it needs paying (402). A tap the engine refuses is
+ * with), the match is finalized (the organiser locked it, or RESULT_CARRIED_FORWARD) or cancelled (the bootstrap's
+ * status says either), this link may not write it (another 403), the match is gone (404) or the account behind it
+ * needs paying (402). A tap the engine refuses is
  * refused alone, one tap, and the queue goes on (`sync.ts`).
  */
 export type QueueDead =
-  'LINK_INVALID' | 'LINK_REVOKED' | 'LINK_EXPIRED' | 'finalized' | 'forbidden' | 'gone' | 'payment';
+  | 'LINK_INVALID'
+  | 'LINK_REVOKED'
+  | 'LINK_EXPIRED'
+  | 'finalized'
+  | 'forbidden'
+  | 'gone'
+  | 'payment'
+  | 'cancelled';
 
 export const QUEUE_DEAD_WORDS: readonly QueueDead[] = [
   'LINK_INVALID',
@@ -38,6 +46,7 @@ export const QUEUE_DEAD_WORDS: readonly QueueDead[] = [
   'forbidden',
   'gone',
   'payment',
+  'cancelled',
 ];
 
 export type MatchQueue = {
