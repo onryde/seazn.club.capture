@@ -16,6 +16,7 @@ export function savedStreamCode(overrides: Partial<SavedCode> = {}): SavedCode {
       codeUrl: codeUrl('https://stg.seazn.club', FIXTURE_CODE),
       tapToPair: false,
     },
+    scoring: null,
     ...overrides,
   };
 }

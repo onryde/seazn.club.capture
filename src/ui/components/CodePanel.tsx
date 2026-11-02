@@ -1,7 +1,7 @@
 import { memo, useCallback } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import type { CodeError } from '@/domain/credentials/waitingFields';
-import type { ModeCode } from '@/domain/mode/Mode';
+import type { Mode, ModeCode } from '@/domain/mode/Mode';
 import type { HomePanel, PanelUnpairReason } from '@/hooks/useHome';
 import { useT } from '@/hooks/useLanguage';
 import type { MessageKey } from '@/i18n/messages';
@@ -25,6 +25,8 @@ type Copy = {
   readonly scanAgain: boolean;
   /** A7's sheet only: the button that keeps the pairing. The dim means it too, under its name. */
   readonly cancel: string | null;
+  /** A dead scoring link with unsent taps stuck on it: lets the match go (design §4.3). */
+  readonly dismiss: string | null;
 };
 
 /** A panel that has said its piece: Scan again, and the dim closes it. */
@@ -36,6 +38,7 @@ const settled = (title: string, body: string | null, open: string | null = null)
   closable: true,
   scanAgain: true,
   cancel: null,
+  dismiss: null,
 });
 
 /** Every outcome, in the operator's words (decisions 3 and 10). Never "Invalid code". */
@@ -70,9 +73,10 @@ function panelCopy(outcome: HomePanel, t: Translator['t'], time: string | null):
         closable: false,
         scanAgain: false,
         cancel: null,
+        dismiss: null,
       };
     case 'codeError':
-      return codeCopy(outcome.error, t);
+      return withDismiss(codeCopy(outcome.error, t, outcome.tapped), outcome.dismiss, t);
     case 'unpaired':
       return settled(t(UNPAIRED[outcome.reason].title), t(UNPAIRED[outcome.reason].body));
     // A7's sheet has the spec's two answers and no others (review C5 I-3): no
@@ -87,6 +91,7 @@ function panelCopy(outcome: HomePanel, t: Translator['t'], time: string | null):
         closable: true,
         scanAgain: false,
         cancel: t('sheet.unpair.cancel'),
+        dismiss: null,
       };
     }
   }
@@ -105,13 +110,16 @@ const UNPAIRED: Readonly<Record<PanelUnpairReason, { title: MessageKey; body: Me
  * answer names no end reason, so an ended code reads as one that does not work
  * (amendment §2: "the two 410 lines go").
  */
-function codeCopy(error: CodeError, t: Translator['t']): Copy {
+function codeCopy(error: CodeError, t: Translator['t'], tapped: Mode): Copy {
   const plain = (title: MessageKey, body: MessageKey): Copy => settled(t(title), t(body));
   switch (error.kind) {
     case 'invalid':
     case 'not-found':
     case 'ended':
-      return plain('panel.codeInvalid.title', 'panel.codeInvalid.body');
+      // A scoring link that does not work has its own words: "streaming" is not what it was for (design §6.3).
+      return tapped === 'scoring'
+        ? plain('scoring.card.linkInvalid.title', 'scoring.card.linkInvalid.body')
+        : plain('panel.codeInvalid.title', 'panel.codeInvalid.body');
     case 'offline':
       return {
         ...plain('panel.descriptor.offline.title', 'panel.descriptor.offline.body'),
@@ -125,6 +133,11 @@ function codeCopy(error: CodeError, t: Translator['t']): Copy {
   }
 }
 
+/** A bad-link panel that names a stuck match carries its Dismiss. */
+function withDismiss(copy: Copy, fixtureId: string | undefined, t: Translator['t']): Copy {
+  return fixtureId === undefined ? copy : { ...copy, dismiss: t('home.scoring.dismiss') };
+}
+
 type CodePanelProps = {
   outcome: HomePanel;
   time: string | null;
@@ -136,6 +149,8 @@ type CodePanelProps = {
   onConfirmUnpair: () => void;
   /** A7's sheet: Cancel. */
   onCancelUnpair: () => void;
+  /** A bad scoring link's Dismiss: the match whose unsent taps it names is let go. */
+  onDismiss: (fixtureId: string) => void;
 };
 
 /**
@@ -147,12 +162,15 @@ type CodePanelProps = {
  */
 export const CodePanel = memo(function CodePanel(props: CodePanelProps) {
   const { t } = useT();
-  const { outcome, onOpen, onConfirmUnpair } = props;
+  const { outcome, onOpen, onConfirmUnpair, onDismiss } = props;
   const copy = panelCopy(outcome, t, props.time);
   const open = useCallback(() => {
     if (outcome.kind === 'otherMode') onOpen(outcome.code);
     if (outcome.kind === 'unpairConfirm') onConfirmUnpair();
   }, [outcome, onOpen, onConfirmUnpair]);
+  const dismiss = useCallback(() => {
+    if (outcome.kind === 'codeError' && outcome.dismiss !== undefined) onDismiss(outcome.dismiss);
+  }, [outcome, onDismiss]);
   return (
     <View style={styles.overlay}>
       <Pressable
@@ -176,6 +194,7 @@ export const CodePanel = memo(function CodePanel(props: CodePanelProps) {
         {copy.scanAgain ? (
           <GhostButton label={t('panel.scanAgain')} onPress={props.onScanAgain} />
         ) : null}
+        {copy.dismiss === null ? null : <GhostButton label={copy.dismiss} onPress={dismiss} />}
       </SlideUpSheet>
     </View>
   );

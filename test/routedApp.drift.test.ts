@@ -10,7 +10,13 @@ import { describe, expect, it } from 'vitest';
  * a seam: one mounted in the layout and not here (or the reverse) is tested
  * nowhere, or shipped untested. Task 30 added `useEngineSync` to both.
  */
-const SHELL_HOOKS = ['useReopenGate(', 'useEngineFollow()', 'useEngineSync()', 'useProtectCode()'];
+const SHELL_HOOKS = [
+  'useReopenGate(',
+  'useEngineFollow()',
+  'useEngineSync()',
+  'useProtectCode()',
+  'useScoringBackground()',
+];
 
 const root = join(__dirname, '..');
 
@@ -39,8 +45,8 @@ describe('the test shell matches the app shell', () => {
   const shell = body('app/_layout.tsx', 'Shell');
   const routed = body('test/routedApp.tsx', 'RoutedApp');
 
-  it('checks four shell hooks (PV12: zero is a failure)', () => {
-    expect(SHELL_HOOKS).toHaveLength(4);
+  it('checks five shell hooks (PV12: zero is a failure)', () => {
+    expect(SHELL_HOOKS).toHaveLength(5);
   });
 
   it('does not count a hook that is only in a comment', () => {
@@ -56,7 +62,13 @@ describe('the test shell matches the app shell', () => {
       '}',
     ].join('\n');
     const shell = bodyOf(source, 'Shell');
-    expect(SHELL_HOOKS.map((hook) => shell.includes(hook))).toEqual([true, true, false, false]);
+    expect(SHELL_HOOKS.map((hook) => shell.includes(hook))).toEqual([
+      true,
+      true,
+      false,
+      false,
+      false,
+    ]);
   });
 
   it.each(SHELL_HOOKS)('mounts %s in both', (hook) => {
@@ -204,13 +216,17 @@ describe('every path the navigation moves to has its route file, and each Settin
   });
 
   /**
-   * S2's design preview (the controller's brief, 2026-10-31): `routedApp` renders the pad screen bare, so the route's
-   * own two jobs are read here. It shows the pad only on the dev twin's word, and holds the screen on while it does.
+   * Remote Scoring (plan S2-1 Task 10): `routedApp` renders the route's screens by hand, so the route's own jobs are
+   * read here. It shows the saved match with the screen held on, else the dev twin's preview (also held on), else it
+   * goes Home. Task 11 removes the preview.
    */
-  it('shows the Remote scoring preview only in the dev twin, with the screen held on', () => {
-    expect(body('app/scoring/index.tsx', 'ScoringPreviewRoute')).toMatch(
-      /return previewScoring \? <PadShown ?\/> : <Redirect href="\/" ?\/>;/,
+  it('shows the saved match, else the dev twin’s preview, else goes Home, each with the screen held on', () => {
+    expect(body('app/scoring/index.tsx', 'ScoringRoute')).toMatch(
+      /if \(fixtureId !== null\)\s*return <MatchShown fixtureId=\{fixtureId\} ?\/>;\s*return previewScoring \? <PadShown ?\/> : <Redirect href="\/" ?\/>;/,
     );
+    const match = body('app/scoring/index.tsx', 'MatchShown');
+    expect(match).toContain('useScreenAwake()');
+    expect(match).toMatch(/return <ScoringMatchScreen fixtureId=\{fixtureId\} ?\/>;/);
     const shown = body('app/scoring/index.tsx', 'PadShown');
     expect(shown).toContain('useScreenAwake()');
     expect(shown).toMatch(/return <BadmintonPadPreviewScreen ?\/>;/);

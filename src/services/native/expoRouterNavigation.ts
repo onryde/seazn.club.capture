@@ -14,7 +14,7 @@ const PATH: Readonly<Record<Route, Path>> = {
   stream: '/stream',
   streamSettings: '/stream/settings',
   homeSettings: '/stream-settings',
-  scoringPreview: '/scoring',
+  scoring: '/scoring',
 };
 
 /**

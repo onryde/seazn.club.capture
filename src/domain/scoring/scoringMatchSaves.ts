@@ -1,5 +1,7 @@
+import { matchLabelOf } from '@/domain/scoring/matchLabel';
 import { refusalLine } from '@/domain/scoring/padLine';
 import type { MatchQueue } from '@/domain/scoring/queue';
+import type { Bootstrap } from '@/domain/scoring/wire';
 import {
   SAVE_RETRY_MS,
   part,
@@ -38,6 +40,16 @@ export function saveOf(prev: MatchState, next: MatchState): Omit<SaveEffect, 'n'
     ledger: ledgerMoved ? next.sync.ledger : null,
     tap: added?.key ?? null,
   };
+}
+
+/**
+ * The queue as it goes to its file (plan S2-1 Task 10): it names its match as Home calls it ("Match 4"), so the
+ * Continue card can say "4 taps from Match 4 not sent yet" for a match nobody is looking at. Only a held bootstrap can
+ * name it; a sender without one, or an organiser who typed nothing, keeps the name the file had.
+ */
+export function namedQueue(queue: MatchQueue, bootstrap: Bootstrap | null): MatchQueue {
+  const label = bootstrap === null ? '' : matchLabelOf(bootstrap);
+  return label === '' || label === queue.label ? queue : { ...queue, label };
 }
 
 /** One queue save has been answered, whichever way. */

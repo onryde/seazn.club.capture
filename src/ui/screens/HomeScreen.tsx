@@ -13,6 +13,7 @@ import { useHomeLinks } from '@/hooks/useStreamLinks';
 import logo from '@/ui/assets/logo-wide-night.png';
 import { CodePanel } from '@/ui/components/CodePanel';
 import { ContinueCard } from '@/ui/components/ContinueCard';
+import { ScoringContinueCard, ScoringLeftoverCard } from '@/ui/components/ScoringCards';
 import type { CardShape } from '@/ui/components/cardShape';
 import { DevPaste } from '@/ui/components/DevPaste';
 import { DevProbe } from '@/ui/components/DevProbe';
@@ -53,6 +54,7 @@ export function HomeScreen() {
           onTryAgain={actions.retryCheck}
           onConfirmUnpair={actions.confirmUnpair}
           onCancelUnpair={actions.cancelUnpair}
+          onDismiss={actions.dismissScoring}
         />
       )}
     </View>
@@ -83,7 +85,9 @@ function HomeContent({
   // Settings from Home assumes none (AGENTS §6); the in-mode Settings, after Continue re-pairs, has the same rows.
   // Sideways the gear's band would also make Home scroll with the Continue card at 800 × 360; the ended card leaves
   // 1 dp (homeFit.test.ts).
-  const gear = ended === null && view.continueCode === null ? streamSettings : null;
+  const scoringCards = view.scoring.current !== null || view.scoring.leftovers.length > 0;
+  const gear =
+    ended === null && view.continueCode === null && !scoringCards ? streamSettings : null;
   const landscape = layout === 'landscape';
   const shape = landscape ? 'row' : 'stacked';
   const behindPanel = view.panel !== null;
@@ -109,6 +113,7 @@ function HomeContent({
       )}
       <EndedSlot card={ended} shape={shape} />
       <ContinueSlot view={view} actions={actions} shape={shape} />
+      <ScoringSlot view={view} actions={actions} shape={shape} />
       <ModeTiles onPress={actions.tapTile} layout={layout} streamSettings={gear} />
       {devTools ? <DevPaste onUse={actions.useRaw} /> : null}
       {devTools ? <DevProbe /> : null}
@@ -181,9 +186,45 @@ function ContinueSlot({
 }
 
 /**
+ * Remote Scoring's cards (plan S2-1 Task 10): the saved match, then every other match whose taps are still queued. A
+ * card stands above the tiles, so the Stream settings gear steps aside for them as it does for Continue (P6).
+ */
+function ScoringSlot({
+  view,
+  actions,
+  shape,
+}: {
+  view: HomeView;
+  actions: HomeActions;
+  shape: CardShape;
+}) {
+  const { current, leftovers } = view.scoring;
+  return (
+    <>
+      {current === null ? null : (
+        <ScoringContinueCard
+          current={current}
+          layout={shape}
+          onContinue={actions.continueScoring}
+          onRemove={actions.dismissScoring}
+        />
+      )}
+      {leftovers.map((leftover) => (
+        <ScoringLeftoverCard
+          key={leftover.fixtureId}
+          leftover={leftover}
+          layout={shape}
+          onDismiss={actions.dismissScoring}
+        />
+      ))}
+    </>
+  );
+}
+
+/**
  * The three tiles; the Live Stream tile carries the Stream settings gear when Home gives one (R2, as the owner
- * presented it on 2026-10-12; P6). Its name for a screen reader is `home.streamSettings`. In the dev twin
- * (`previewScoring`) Remote scoring opens the S2 pad preview; the store build keeps it coming soon.
+ * presented it on 2026-10-12; P6). Its name for a screen reader is `home.streamSettings`. Remote Scoring scans in
+ * every build (plan S2-1 Task 10); the Dashboard is still coming soon.
  */
 const ModeTiles = memo(function ModeTiles({
   onPress,
@@ -195,7 +236,6 @@ const ModeTiles = memo(function ModeTiles({
   streamSettings: (() => void) | null;
 }) {
   const { t } = useT();
-  const { previewScoring } = usePorts();
   // Memoised so the memoised tile is not handed a new object on every pass.
   const gear = useMemo(
     () =>
@@ -210,19 +250,15 @@ const ModeTiles = memo(function ModeTiles({
         <Tile
           key={mode}
           mode={mode}
-          available={BUILT_MODES.includes(mode) || (mode === 'scoring' && previewScoring)}
+          available={BUILT_MODES.includes(mode)}
           onPress={onPress}
           layout={layout}
           settings={mode === 'stream' ? gear : undefined}
-          hint={mode === 'scoring' && previewScoring ? SCORING_PREVIEW_HINT : undefined}
         />
       ))}
     </View>
   );
 });
-
-/** The dev twin's Remote scoring tile opens the S2 pad preview with no code (the controller's brief, 2026-10-31). */
-const SCORING_PREVIEW_HINT = 'home.tile.scoring.preview';
 
 const styles = StyleSheet.create({
   screen: { flex: 1, padding: space.md, backgroundColor: colour.ground },

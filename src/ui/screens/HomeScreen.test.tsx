@@ -88,10 +88,10 @@ const IDLE = 'Tap a mode, then scan its code.';
 const SAVE_FAILED = "Couldn't save on this phone. Try again.";
 
 describe('Home', () => {
-  it('shows three tiles, two of them coming soon', async () => {
+  it('shows three tiles, one of them coming soon', async () => {
     await renderHome();
     expect(liveStreamTile()).toBeTruthy();
-    expect(screen.getAllByText('Coming soon')).toHaveLength(2);
+    expect(screen.getAllByText('Coming soon')).toHaveLength(1);
     expect(screen.getByText(IDLE)).toBeTruthy();
   });
 
@@ -130,12 +130,13 @@ describe('Home', () => {
     expect(home.engine.intents.at(-1)?.kind).toBe('pair');
   });
 
-  it('names a scoring code and says it is coming soon, then scans again', async () => {
+  it('names a scoring code scanned from another tile and offers to open it, then scans again', async () => {
     const home = await renderHome();
     home.scanner.queue({ outcome: 'scanned', raw: 'https://stg.seazn.club/score/abc123' });
     fireEvent.click(liveStreamTile());
     await screen.findByText('This is a Remote Scoring code');
-    expect(screen.getByText('Remote Scoring is coming soon.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Open Remote Scoring' })).toBeTruthy();
+    expect(screen.queryByText('Remote Scoring is coming soon.')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Scan again' }));
     await waitFor(() => expect(home.scanner.scans).toBe(2));
     expect(home.navigation.current()).toBe('home');
@@ -1359,7 +1360,7 @@ describe('Home: checking a stream code with the server (spec §1)', () => {
     expect(memory.entries.has(STORE_KEYS.code('stream'))).toBe(false);
   });
 
-  it('never asks the server about a scoring code', async () => {
+  it('never asks the stream code check about a scoring code', async () => {
     const home = await renderHome();
     home.scanner.queue({ outcome: 'scanned', raw: 'https://stg.seazn.club/score/abc123' });
     fireEvent.click(liveStreamTile());
@@ -1411,7 +1412,7 @@ describe('useHome: every open goes through the check', () => {
 
   const scoring = { mode: 'scoring', raw: 'https://stg.seazn.club/score/t', token: 't' } as const;
 
-  it('saves a scoring code opened from the panel without asking the server', async () => {
+  it('saves a scoring code opened from the panel after reading it from the scoring server, not the stream code check', async () => {
     const home = await homeHook();
     home.scanner.queue({ outcome: 'scanned', raw: scoring.raw });
     act(() => home.hook.result.current.actions.tapTile('stream'));

@@ -33,6 +33,8 @@ const scoring = {
   raw: 'https://stg.seazn.club/score/abc_123-XYZ',
   token: 'abc_123-XYZ',
 } as const satisfies ModeCode;
+/** The match the fake server names for any link (`SINGLES_SEED`): what the scan's check hands the sheet to open. */
+const MATCH = { fixtureId: 'fake-singles', label: 'Match 4' };
 const SAVE_FAILED = "Couldn't save on this phone. Try again.";
 
 const flush = (ms = 10) => act(() => vi.advanceTimersByTimeAsync(ms));
@@ -44,8 +46,8 @@ const saved = (fakes: FakePorts) => {
 
 /**
  * Home's hook over fake ports with the stream code saved and, when `paired`,
- * native holding it. In S1 a scoring code reaches `openCode` only through
- * `openFromPanel` (CD41): `scanOutcome` answers "coming soon" for it.
+ * native holding it. A scoring code is opened from the panel here (`openFromPanel`), as the "Open Remote Scoring"
+ * button of a scan from another tile does: its link is read first, and the sheet carries the match it named.
  */
 async function home(options: { paired: boolean; fakes?: FakePorts }) {
   const fakes = options.fakes ?? createFakePorts({ kvSeed: inStream });
@@ -69,7 +71,12 @@ describe('Home: another mode while paired (A7)', () => {
   it('asks first, and unpairs nothing yet', async () => {
     const h = await home({ paired: true });
     await openScoring(h);
-    expect(view(h).panel).toEqual({ kind: 'unpairConfirm', tapped: 'scoring', code: scoring });
+    expect(view(h).panel).toEqual({
+      kind: 'unpairConfirm',
+      tapped: 'scoring',
+      code: scoring,
+      scoring: MATCH,
+    });
     expect(kinds(h)).toEqual(['pair']);
     expect(saved(h)?.active).toBe('stream');
   });
@@ -194,7 +201,12 @@ describe('Home: another mode while paired (A7)', () => {
     expect(h.engine.getSnapshot().state.kind).toBe('paired');
     expect(saved(h)?.codes.stream).toBeUndefined();
     expect(saved(h)?.codes.scoring).toBeUndefined();
-    expect(view(h).panel).toEqual({ kind: 'unpairConfirm', tapped: 'scoring', code: scoring });
+    expect(view(h).panel).toEqual({
+      kind: 'unpairConfirm',
+      tapped: 'scoring',
+      code: scoring,
+      scoring: MATCH,
+    });
   });
 
   it('opens the other mode at once with nothing paired', async () => {
@@ -214,6 +226,7 @@ const panelHandlers = () => ({
   onTryAgain: vi.fn(),
   onConfirmUnpair: vi.fn(),
   onCancelUnpair: vi.fn(),
+  onDismiss: vi.fn(),
 });
 
 /**
@@ -319,6 +332,7 @@ describe('HomeScreen’s unpair sheet', () => {
         panelTime: null,
         continueCode: null,
         continueCopy: null,
+        scoring: { current: null, leftovers: [] },
       },
       actions: {
         tapTile: vi.fn(),
@@ -331,6 +345,8 @@ describe('HomeScreen’s unpair sheet', () => {
         useRaw: vi.fn(),
         confirmUnpair: vi.fn(),
         cancelUnpair: vi.fn(),
+        dismissScoring: vi.fn(),
+        continueScoring: vi.fn(),
       },
     };
     const real = vi.mocked(useHome).getMockImplementation();

@@ -3,6 +3,7 @@ import {
   expiredModes,
   orphanedSession,
   reopenTarget,
+  reopensScoring,
   resumesAtColdStart,
   type ReopenTarget,
   type SavedState,
@@ -77,7 +78,9 @@ function useSettingsLoaded(): boolean {
  * The amendment (Process death and reopen): at cold start only, an Idle engine
  * with the active stream code saved, unexpired, not `tapToPair` and not named
  * by `unpaired` is re-paired with claim `resume`, and /stream opens on it. A
- * foreground never pairs: closing the permission dialog reads as one.
+ * foreground never pairs: closing the permission dialog reads as one. Remote
+ * Scoring reopens its match the same way, at cold start only and with nothing
+ * to pair; a foreground on the pad, or on Home, stays where the scorer is.
  *
  * N4 and I1 (final review): the gate clears a session no saved code owns
  * (`orphanedSession`): an ended one is reset, a paired one unpaired
@@ -101,13 +104,16 @@ function useSettle(): (coldStart: boolean) => void {
       const resumed =
         coldStart && stream !== undefined && resumesAtColdStart({ ...facts, unpaired, now });
       if (resumed) pair(stream, 'resume');
-      const target = reopenTarget({ ...facts, now, resumed });
+      // Remote Scoring (plan S2-1 Task 10): at a cold start only, into the match saved, as the last mode.
+      const scoring = reopensScoring({ saved: current.saved, coldStart });
+      const target = reopenTarget({ ...facts, now, resumed, scoring });
       // N4, I1: a session whose code is gone is cleared on the way Home. F-S4-2: not the dev probe's,
       // whose made-up code no saved code owns; its own clean-up unpairs it.
       if (orphanedSession({ ...facts, now }) && !probeFlight.active()) unpair('orphan');
       expireOnTheWay(modeStore, current.saved, target, now, logger);
       // M22: Settings, with its Diagnostics card, is inside Live Stream; going there is staying. P8: Stream Settings
-      // opened from Home is Home's, so a return from App info stays on it.
+      // opened from Home is Home's, so a return from App info stays on it, and so is the Remote Scoring pad: it holds
+      // no broadcast, and a foreground leaves the scorer where they are.
       const here = navigation.current();
       const staying =
         (target.go === 'stream' && isStreamSubRoute(here)) ||

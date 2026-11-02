@@ -59,6 +59,14 @@ export const QUEUE_DEAD_WORDS: readonly QueueDead[] = [
   'cancelled',
 ];
 
+/**
+ * The queue is dead because its LINK is: a fresh link for the same match makes it sendable again. The other words
+ * (finalized, forbidden, gone, payment, cancelled) are about the match or the writer, and no new link changes them.
+ */
+export function isLinkDead(dead: QueueDead | null): boolean {
+  return dead === 'LINK_INVALID' || dead === 'LINK_REVOKED' || dead === 'LINK_EXPIRED';
+}
+
 export type MatchQueue = {
   readonly fixtureId: string;
   /** What Home's Continue card names the match by, as typed by the organiser. */

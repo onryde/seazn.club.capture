@@ -36,10 +36,10 @@ export interface ForegroundPort {
 /**
  * Settings (with Diagnostics inside it, spec §6) sits inside Live Stream (AGENTS §6): on air, only leaving the mode is
  * blocked. `homeSettings` is the same screen opened from Home's Live Stream tile, outside any mode (R2, P8).
- * `scoringPreview` is the S2 pad on a fake, opened from Home's Remote scoring tile in the dev twin only (the
- * controller's brief, 2026-10-31): no code, no mode, so it is Home's too.
+ * `scoring` is Remote Scoring (plan S2-1 Task 10): a match scanned from Home's Remote Scoring tile. Until Task 11 the dev
+ * twin's S2 pad preview (a fake, no code) is on the same path, shown when no match is saved.
  */
-export type Route = 'home' | 'stream' | 'streamSettings' | 'homeSettings' | 'scoringPreview';
+export type Route = 'home' | 'stream' | 'streamSettings' | 'homeSettings' | 'scoring';
 
 /**
  * Live Stream's sub-screens, pushed over the mounted viewfinder (D19). Named
@@ -51,12 +51,13 @@ export function isStreamSubRoute(route: Route): boolean {
 }
 
 /**
- * R2, P8: the screens outside a mode that are not Home itself: Stream Settings from Home, and the Remote scoring preview
- * (dev twin only). The reopen gate treats them as Home, so a return to the foreground stays on them, and a broadcast
- * moves them to Live Stream as it moves Home (A2).
+ * R2, P8: the screens that are Home's own, not a mode's: Stream Settings from Home, and Remote Scoring, which has no
+ * broadcast to protect (ruling 10: Back goes Home freely, and Home stays where it was put). The reopen gate treats
+ * them as Home, so a return to the foreground stays on them, and a broadcast moves them to Live Stream as it moves
+ * Home (A2).
  */
 export function isHomeSubRoute(route: Route): boolean {
-  return route === 'homeSettings' || route === 'scoringPreview';
+  return route === 'homeSettings' || route === 'scoring';
 }
 
 /**

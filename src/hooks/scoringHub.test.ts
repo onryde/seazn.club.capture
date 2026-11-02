@@ -6,7 +6,7 @@ import { SINGLES_SEED } from '@/services/fakeScoringPort';
 import { readScoringLink, saveScoringLink } from '@/services/scoringLinkStore';
 import { queuedOf, rally } from '../../test/badmintonLedger';
 import { FAKE_SCORING_SECRET } from '../../test/fakeScoringLinkPort';
-import { createFakePorts, timerClock, type FakePorts } from '../../test/fakePorts';
+import { createFakePorts, readRecord, timerClock, type FakePorts } from '../../test/fakePorts';
 
 // Who runs which match (plan S2-1 Task 9) over the real runners, the real queue store on an in-memory folder and the
 // fake server. A runner subscribes to the foreground once, and the live owner once more, so "who is running" is read
@@ -535,5 +535,109 @@ describe('dismissing a match', () => {
     await hub.dismiss('m-old');
     expect([...fakes.queueFiles.files.keys()]).toEqual([]);
     expect(await readScoringLink(fakes.kv, 'm-old', HOST)).toEqual({ kind: 'none' });
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// A link that dies under the pad (plan S2-1 Task 10; design §4.3)
+// ---------------------------------------------------------------------------------------------------------------
+
+describe('a link that dies with nothing queued', () => {
+  const savedMatch = (fixtureId: string) => ({
+    mode: 'scoring' as const,
+    raw: '',
+    slot: null,
+    savedAt: new Date('2026-11-02T09:00:00.000Z'),
+    expiresAt: null,
+    stream: null,
+    scoring: { fixtureId, label: 'Match 4' },
+  });
+
+  /** A phone that has the match saved (its code and its link), as a scan left it. */
+  async function savedRig(fixtureId = FIXTURE): Promise<FakePorts> {
+    const fakes = await rig();
+    await fakes.ports.modeStore.load();
+    await fakes.ports.modeStore.open(savedMatch(fixtureId));
+    return fakes;
+  }
+  const saved = (fakes: FakePorts) => {
+    const snapshot = fakes.ports.modeStore.getSnapshot();
+    return snapshot.status === 'ready' ? snapshot.saved.codes.scoring : undefined;
+  };
+  const link = (fakes: FakePorts) => readScoringLink(fakes.kv, FIXTURE, HOST);
+
+  it('forgets the link and the saved match: the pad shows its bad-link card, Home has nothing to continue', async () => {
+    const fakes = await savedRig();
+    fakes.scoring.revoke();
+    scoringHubOf(fakes.ports).focus(FIXTURE);
+    await flush();
+    expect(await link(fakes)).toEqual({ kind: 'none' });
+    expect(saved(fakes)).toBeUndefined();
+    expect(fakes.kv.entries.has('code.scoring')).toBe(false);
+  });
+
+  it('keeps both while a tap is queued: the taps are the leftover Home shows, and the link is how a fresh scan finds them', async () => {
+    const fakes = await savedRig();
+    await queued(fakes, FIXTURE);
+    fakes.scoring.revoke();
+    scoringHubOf(fakes.ports).focus(FIXTURE);
+    await flush();
+    expect((await link(fakes)).kind).toBe('link');
+    expect(saved(fakes)).toBeDefined();
+  });
+
+  it('keeps them while the link is alive', async () => {
+    const fakes = await savedRig();
+    scoringHubOf(fakes.ports).focus(FIXTURE);
+    await flush();
+    expect((await link(fakes)).kind).toBe('link');
+    expect(saved(fakes)).toBeDefined();
+  });
+
+  it('keeps them when the match is over, not the link: a new link would not change that', async () => {
+    const fakes = await savedRig();
+    const read = await fakes.scoring.bootstrap(LINK);
+    if (read.kind !== 'ok') throw new Error('the fake serves the match');
+    vi.spyOn(fakes.scoring, 'bootstrap').mockResolvedValue({
+      kind: 'ok',
+      bootstrap: { ...read.bootstrap, status: 'finalized' },
+    });
+    scoringHubOf(fakes.ports).focus(FIXTURE);
+    await flush();
+    expect((await link(fakes)).kind).toBe('link');
+    expect(saved(fakes)).toBeDefined();
+  });
+
+  it('forgets the code only if it is this match’s: another saved match is left alone', async () => {
+    const fakes = await savedRig('fx-other');
+    fakes.scoring.revoke();
+    scoringHubOf(fakes.ports).focus(FIXTURE);
+    await flush();
+    expect(await link(fakes)).toEqual({ kind: 'none' });
+    expect(saved(fakes)?.scoring?.fixtureId).toBe('fx-other');
+  });
+
+  it('a second focus of the dead match forgets nothing more and throws nothing', async () => {
+    const fakes = await savedRig();
+    fakes.scoring.revoke();
+    const hub = scoringHubOf(fakes.ports);
+    hub.focus(FIXTURE);
+    await flush();
+    const del = vi.spyOn(fakes.kv, 'delete');
+    hub.focus(FIXTURE);
+    await flush();
+    expect(del).not.toHaveBeenCalled();
+  });
+
+  it('a store that refuses the forget is recorded, never thrown, and the pad goes on', async () => {
+    const fakes = await savedRig();
+    fakes.scoring.revoke();
+    vi.spyOn(fakes.kv, 'delete').mockRejectedValue(new Error('keystore locked'));
+    const { runner } = scoringHubOf(fakes.ports).focus(FIXTURE);
+    await flush();
+    expect(runner.snapshot().kind).toBe('ready');
+    expect(readRecord(fakes.record)).toContainEqual(
+      expect.objectContaining({ event: 'scoring.dead-link-forget-refused' }),
+    );
   });
 });

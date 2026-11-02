@@ -1,3 +1,4 @@
+import { watchDeadLink } from '@/hooks/scoringDeadLink';
 import { startLive } from '@/hooks/scoringLive';
 import { createScoringRunner, type ScoringRunner } from '@/hooks/scoringRunner';
 import type { Ports } from '@/hooks/usePorts';
@@ -7,7 +8,8 @@ import { forgetScoringLink } from '@/services/scoringLinkStore';
  * Who runs which match (plan S2-1 Task 9), one hub per `Ports` (one per launch, one per test). A match has at most ONE
  * runner at a time, so one sender and one fold:
  * - `focus`: the pad is on screen. A focused runner folds and judges the match, and has the live owner (`startLive`),
- *   the match's only Realtime subscription. Several screens may focus one match; the last to release stops it.
+ *   the match's only Realtime subscription, and a watch on its link (`watchDeadLink`: a link that dies with nothing
+ *   queued is forgotten, design §4.3). Several screens may focus one match; the last to release stops it.
  * - headless: the background sender for a match nobody is looking at (ruling 29). It sends the queue's taps in order
  *   and lets the server judge each; it never folds, never reads the bootstrap, never subscribes to Realtime (a second
  *   subscription would close the first). It lets itself go once its queue is empty or dead, or has no link.
@@ -28,7 +30,12 @@ export type ScoringHub = {
   dismiss(fixtureId: string): Promise<void>;
 };
 
-type Focused = { readonly runner: ScoringRunner; refs: number; stopLive: () => void };
+type Focused = {
+  readonly runner: ScoringRunner;
+  refs: number;
+  stopLive: () => void;
+  stopWatch: () => void;
+};
 
 const hubs = new WeakMap<Ports, ScoringHub>();
 
@@ -110,6 +117,7 @@ function createScoringHub(ports: Ports): ScoringHub {
       if (entry.refs > 0) return;
       if (focused.get(id) === entry) focused.delete(id);
       entry.stopLive();
+      entry.stopWatch();
       void stopRunner(id, entry.runner).then(resume);
     };
     return { runner: entry.runner, release };
@@ -122,7 +130,12 @@ function createScoringHub(ports: Ports): ScoringHub {
       return handleOf(id, held);
     }
     const runner = createScoringRunner(ports, { fixtureId: id, mode: 'focused' });
-    const entry: Focused = { runner, refs: 1, stopLive: () => undefined };
+    const entry: Focused = {
+      runner,
+      refs: 1,
+      stopLive: () => undefined,
+      stopWatch: watchDeadLink(ports, runner),
+    };
     focused.set(id, entry);
     void begin(id, entry);
     return handleOf(id, entry);
@@ -143,6 +156,7 @@ function createScoringHub(ports: Ports): ScoringHub {
     if (held !== undefined) {
       focused.delete(id);
       held.stopLive();
+      held.stopWatch();
       await stopRunner(id, held.runner);
     }
     const sender = headless.get(id);

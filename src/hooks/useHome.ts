@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type { CodeError } from '@/domain/credentials/waitingFields';
 import { continueCard, type ContinueCopy } from '@/domain/mode/continueCard';
 import type { Mode, ModeCode } from '@/domain/mode/Mode';
@@ -9,9 +9,11 @@ import {
   savedCodeFrom,
   venueZone,
   type SavedCode,
+  type SavedScoring,
   type SavedStream,
 } from '@/domain/mode/savedCode';
 import { scanOutcome, type ScanOutcome } from '@/domain/mode/scanOutcome';
+import { scoringHome, type QueueRow, type ScoringHome } from '@/domain/mode/scoringHome';
 import type { CaptureEnginePort } from '@/engine/CaptureEnginePort';
 import type { UnpairReason } from '@/domain/session/Pairing';
 import {
@@ -33,15 +35,19 @@ import {
   type OpenOrCheck,
   type SetPanel,
 } from '@/hooks/useCodeCheck';
+import type { ScoringCode } from '@/hooks/useScoringCheck';
 import { useUnpair } from '@/hooks/useUnpair';
 import { useFormatTime } from '@/hooks/useFormatTime';
 import { useT } from '@/hooks/useLanguage';
 import { usePairing } from '@/hooks/usePairing';
-import { usePorts } from '@/hooks/usePorts';
+import { keepScoringLink, letGoOfScoring } from '@/hooks/scoringOpen';
+import { useContinueScoring, useDismissScoring, useScoringRows } from '@/hooks/useScoringHome';
+import { usePorts, type Ports } from '@/hooks/usePorts';
 import type { MessageKey } from '@/i18n/messages';
 import { MODE_NAME } from '@/i18n/modeNames';
 import type { Translator } from '@/i18n/translate';
 import type { CodeScannerPort, ScanResult, ScanUnavailableReason } from '@/scanner/CodeScannerPort';
+import type { Logger } from '@/services/logger';
 import type { ModeStore, ModeStoreSnapshot } from '@/services/modeStore';
 
 /** A scan that did not simply open: what the panel explains. */
@@ -64,11 +70,19 @@ export type HomePanel =
       readonly kind: 'codeError';
       readonly tapped: Mode;
       readonly error: CodeError;
-      readonly code: StreamCode;
+      readonly code: StreamCode | ScoringCode;
+      /** A dead scoring link that a queue of unsent taps is stuck on: the match Dismiss lets go (design §4.3). */
+      readonly dismiss?: string;
     }
   | { readonly kind: 'unpaired'; readonly tapped: 'stream'; readonly reason: PanelUnpairReason }
   /** A7: another mode while paired asks first; its confirm unpairs, forgets, then opens. */
-  | { readonly kind: 'unpairConfirm'; readonly tapped: Mode; readonly code: ModeCode };
+  | {
+      readonly kind: 'unpairConfirm';
+      readonly tapped: Mode;
+      readonly code: ModeCode;
+      /** A scoring code's match, named by its scan; confirm opens it as the scan would have. */
+      readonly scoring?: SavedScoring;
+    };
 
 export type HomeView = {
   readonly statusText: string;
@@ -77,6 +91,8 @@ export type HomeView = {
   readonly continueCode: SavedCode | null;
   /** What the Continue card says (amendment §2, Home); null with no card. */
   readonly continueCopy: ContinueCopy | null;
+  /** Remote Scoring's cards (design §5): the saved match, and every other match whose taps are still queued. */
+  readonly scoring: ScoringHome;
 };
 
 export type HomeActions = {
@@ -88,21 +104,25 @@ export type HomeActions = {
   retryCheck(): void;
   continueStream(): void;
   forgetStream(): void;
+  /** The saved match's Continue: opens the pad (A7 first while Live Stream holds a pairing). */
+  continueScoring(): void;
   /** Development builds only: a pasted code, handled as if scanned from Live Stream. */
   useRaw(raw: string): void;
   /** A7's sheet: unpair, forget the stream code, then open the other mode. */
   confirmUnpair(): void;
   /** A7's sheet: keep the pairing; nothing is sent. */
   cancelUnpair(): void;
+  /** A bad scoring link's Dismiss: the match whose unsent taps are stuck on it is let go (design §4.3). */
+  dismissScoring(fixtureId: string): void;
 };
 
 /** Home's own line of news: a scanner reason, or a refused save. Cleared by the next tap. */
-type SetStatusKey = (key: MessageKey | null) => void;
+export type SetStatusKey = (key: MessageKey | null) => void;
 type HandleScan = (tapped: Mode, result: ScanResult) => Promise<void>;
 type ReadyStore = Extract<ModeStoreSnapshot, { status: 'ready' }>;
 /** Which of Home's writes the phone refused, as the record names it. */
 type SaveAction = 'open' | 'continue' | 'forget';
-type SaveFailed = (action: SaveAction) => void;
+export type SaveFailed = (action: SaveAction) => void;
 
 const SCANNER_MESSAGE: Readonly<Record<ScanUnavailableReason, MessageKey>> = {
   noPlayServices: 'scanner.noPlayServices',
@@ -137,11 +157,14 @@ export function useHome(): { view: HomeView; actions: HomeActions } {
   const { openOrCheck, retryCheck } = useCodeCheck(openCode, panel, setPanel);
   const handle = useHandleScan(openOrCheck, setPanel, setStatusKey);
   const tapTile = useTapTile(handle, setPanel, setStatusKey);
-  const view = useHomeView(snapshot, panel, statusKey);
+  const { rows, refresh } = useScoringRows();
+  const view = useHomeView(snapshot, panel, statusKey, rows);
   const panelActions = usePanelActions(panel, tapTile, openOrCheck, setPanel);
   const continueStream = useContinue(setStatusKey, saveFailed);
   const forgetStream = useForget(setStatusKey, saveFailed);
   const pasteRaw = usePaste(handle);
+  const dismissScoring = useDismissScoring(setPanel, saveFailed, refresh);
+  const continueScoring = useContinueScoring(setStatusKey, saveFailed, setPanel);
   const actions = {
     tapTile,
     ...panelActions,
@@ -151,6 +174,8 @@ export function useHome(): { view: HomeView; actions: HomeActions } {
     useRaw: pasteRaw,
     confirmUnpair,
     cancelUnpair,
+    dismissScoring,
+    continueScoring,
   };
   return { view, actions };
 }
@@ -183,28 +208,62 @@ function useOpenCode(
   saveFailed: SaveFailed,
   setPanel: SetPanel,
 ): OpenCode {
-  const { modeStore, clock, navigation, engine } = usePorts();
+  const ports = usePorts();
+  const { modeStore, clock, navigation, engine, logger } = ports;
   const pair = usePairing();
   return useCallback(
-    async (code: ModeCode, stream: SavedStream | null) => {
+    async (code: ModeCode, stream: SavedStream | null, scoring: SavedScoring | null = null) => {
       if (!isReady(modeStore)) return;
       // A7: another mode while paired asks first; the sheet's confirm opens it.
       if (asksBeforeOpening(code.mode, selectEngineStatus(engine.getSnapshot()))) {
-        return setPanel({ kind: 'unpairConfirm', tapped: code.mode, code });
+        const part = scoring === null ? {} : { scoring };
+        return setPanel({ kind: 'unpairConfirm', tapped: code.mode, code, ...part });
       }
-      const saved = savedCodeFrom(code, clock(), stream);
+      const replaced = savedScoringId(modeStore);
+      const saved = savedCodeFrom(code, clock(), stream, scoring);
       try {
+        // The link first, then the code that names it (design §4 step 1): a refused write opens nothing. A resume of
+        // the saved match has no token to keep (`useContinueScoring`).
+        if (code.mode === 'scoring' && scoring !== null && code.token !== '')
+          await keepScoringLink(ports, code.token, scoring);
         await modeStore.open(saved);
       } catch {
         return saveFailed('open');
       }
       setStatusKey(null);
+      if (code.mode === 'scoring') return openScoring(ports, replaced, scoring, logger);
       if (code.mode !== 'stream') return;
       navigation.go('stream');
       pair(saved, 'new');
     },
-    [modeStore, clock, navigation, engine, pair, setStatusKey, saveFailed, setPanel],
+    [ports, modeStore, clock, navigation, engine, logger, pair, setStatusKey, saveFailed, setPanel],
   );
+}
+
+/** The match the saved scoring code names, read before an open replaces it. */
+function savedScoringId(store: ModeStore): string | null {
+  const snapshot = store.getSnapshot();
+  return snapshot.status === 'ready'
+    ? (snapshot.saved.codes.scoring?.scoring?.fixtureId ?? null)
+    : null;
+}
+
+/**
+ * A scoring match is open: the pad, and the match it replaced let go if nothing of it is left to send (design §4.3; a
+ * leftover with taps stays, and Home shows it). The letting go is behind the navigation, so a slow disk never holds
+ * the scorer back, and a refusal is recorded, never raised.
+ */
+function openScoring(
+  ports: Ports,
+  replaced: string | null,
+  scoring: SavedScoring | null,
+  logger: Logger,
+): void {
+  ports.navigation.go('scoring');
+  if (scoring === null) return;
+  letGoOfScoring(ports, replaced, scoring.fixtureId).catch(() => {
+    logger.warn('scoring.let-go-refused', {});
+  });
 }
 
 /**
@@ -238,7 +297,7 @@ function useUnpairConfirm(
       const forgot = code === null ? Promise.resolve(true) : modeStore.forget(code);
       forgot
         .then(
-          () => openCode(open.code, null),
+          () => openCode(open.code, null, open.scoring ?? null),
           () => saveFailed('forget'),
         )
         .catch(ignoreUnexpected);
@@ -287,14 +346,9 @@ function useTapTile(
   setPanel: SetPanel,
   setStatusKey: SetStatusKey,
 ): (mode: Mode) => void {
-  const { modeStore, scanner, scanFlight, endedNotice, navigation, previewScoring } = usePorts();
+  const { modeStore, scanner, scanFlight, endedNotice } = usePorts();
   return useCallback(
     (mode: Mode) => {
-      // The dev twin's S2 preview needs no code; not over a scan in flight, whose outcome is Home's (as the gear).
-      if (mode === 'scoring' && previewScoring) {
-        if (!scanFlight.active()) navigation.go('scoringPreview');
-        return;
-      }
       // Ready first: a tap on a loading store must not raise the flag.
       if (!isReady(modeStore)) return;
       if (!scanFlight.begin()) return;
@@ -308,17 +362,7 @@ function useTapTile(
         .catch(ignoreUnexpected)
         .finally(() => scanFlight.end());
     },
-    [
-      modeStore,
-      scanner,
-      scanFlight,
-      endedNotice,
-      navigation,
-      previewScoring,
-      handle,
-      setPanel,
-      setStatusKey,
-    ],
+    [modeStore, scanner, scanFlight, endedNotice, handle, setPanel, setStatusKey],
   );
 }
 
@@ -338,6 +382,7 @@ function useHomeView(
   snapshot: ModeStoreSnapshot,
   panel: HomePanel | null,
   statusKey: MessageKey | null,
+  rows: readonly QueueRow[],
 ): HomeView {
   const { t } = useT();
   const { clock } = usePorts();
@@ -348,12 +393,15 @@ function useHomeView(
   // Never null for an expired panel, which would read "expired at ." (Task 10 carry).
   const panelTime = panel?.kind === 'expired' ? format(panel.at, null) : null;
   const continueCopy = useContinueCopy(continueCode);
+  const match = ready?.saved.codes.scoring ?? null;
+  const scoring = useMemo(() => scoringHome(match, rows), [match, rows]);
   return {
     statusText: statusText(ready, statusKey, t, format),
     panel,
     panelTime,
     continueCode,
     continueCopy,
+    scoring,
   };
 }
 

@@ -116,6 +116,13 @@ describe('the landscape rows, at their least (one line of text each)', () => {
   });
 });
 
+/** The line under each tile's purpose, written out here: Remote Scoring says which link opens it (plan S2-1 Task 10). */
+const TILE_HINT = {
+  stream: 'home.tile.stream.hint',
+  scoring: 'home.tile.scoring.hint',
+  dashboard: 'home.tile.comingSoon',
+} as const;
+
 /**
  * The tallest tile at a window width, per language, over the three modes, from the fonts. `titleLines`, when given,
  * stands in for every title's measured lines: the clamp's bound (N31, below).
@@ -127,7 +134,7 @@ function tileNeedBy(width: number, titleLines?: number): Readonly<Record<Lang, n
   for (const lang of LANGS) {
     for (const mode of ['stream', 'scoring', 'dashboard'] as const) {
       const title = word(lang, `mode.${mode}`).toUpperCase();
-      const hint = mode === 'stream' ? 'home.tile.stream.hint' : 'home.tile.comingSoon';
+      const hint = TILE_HINT[mode];
       const lines = titleLines ?? linesOf(title, inner - ICON - space.sm, measureTitle);
       const purposeLines = linesOf(word(lang, `home.tile.${mode}.purpose`), inner, (text) =>
         geist400.width(text, typeScale.body.fontSize),
@@ -524,7 +531,7 @@ describe('portrait with the gear: do three equal tiles fit? (R11 of the D3 findi
     GHOST;
   /** A tile upright, the Live Stream one beside its gear (its head 32 dp short), from the fonts. */
   const tileAt = (width: number, lang: Lang, mode: 'stream' | 'scoring' | 'dashboard'): number => {
-    const hint = mode === 'stream' ? 'home.tile.stream.hint' : 'home.tile.comingSoon';
+    const hint = TILE_HINT[mode];
     const reserve = mode === 'stream' ? layout.touch - space.md : 0;
     const titleLines = linesOf(
       word(lang, `mode.${mode}`).toUpperCase(),

@@ -23,7 +23,7 @@ const DICTIONARIES: Readonly<Record<string, typeof en>> = { en, es, fr, nl };
 /** The preview as Home opens it, on its own route: the Start screen, as the samples begin (owner, 2026-11-01). */
 function renderStart(options?: Parameters<typeof renderWithPorts>[1]): Pad {
   const view = renderWithPorts(<BadmintonPadPreviewScreen />, options);
-  act(() => view.navigation.go('scoringPreview'));
+  act(() => view.navigation.go('scoring'));
   latest = view;
   return view;
 }
@@ -590,7 +590,7 @@ describe('BadmintonPadPreviewScreen: a sanction, end to end', () => {
     choose(en['scoring.sanction.penalty']);
     expect(back(pad)).toBe(true);
     expect(screen.queryByTestId('step-sheet')).toBeNull();
-    expect(pad.navigation.current()).toBe('scoringPreview');
+    expect(pad.navigation.current()).toBe('scoring');
     expect(lastTap()).toBe(startedLine());
   });
 
@@ -675,7 +675,7 @@ describe('BadmintonPadPreviewScreen: the preview row', () => {
       press(name);
       const banner = screen.getByTestId('update-banner');
       expect(within(banner).getByText(en['scoring.preview.noop'])).toBeTruthy();
-      expect(pad.navigation.current()).toBe('scoringPreview');
+      expect(pad.navigation.current()).toBe('scoring');
       press(en['scoring.preview.dev.pad']);
       press(en['scoring.preview.dev.updateNeeded']);
       expect(screen.queryByText(en['scoring.preview.noop'])).toBeNull();
@@ -978,7 +978,7 @@ describe('BadmintonPadPreviewScreen: Match details', () => {
     expect(screen.getAllByTestId('details-sheet')).toHaveLength(1);
     expect(back(pad)).toBe(true);
     expect(screen.queryByTestId('details-sheet')).toBeNull();
-    expect(pad.navigation.current()).toBe('scoringPreview');
+    expect(pad.navigation.current()).toBe('scoring');
     expect(back(pad)).toBe(true);
     expect(pad.navigation.current()).toBe('home');
   });
@@ -1258,7 +1258,7 @@ describe('BadmintonPadPreviewScreen: History', () => {
     expect(screen.getAllByTestId('history')).toHaveLength(1);
     expect(back(pad)).toBe(true);
     expect(screen.queryByTestId('history')).toBeNull();
-    expect(pad.navigation.current()).toBe('scoringPreview');
+    expect(pad.navigation.current()).toBe('scoring');
     expect(back(pad)).toBe(true);
     expect(pad.navigation.current()).toBe('home');
   });
@@ -1884,7 +1884,7 @@ describe('BadmintonPadPreviewScreen: the match card’s four questions (hardenin
         <LanguageSwitch />
       </>,
     );
-    act(() => view.navigation.go('scoringPreview'));
+    act(() => view.navigation.go('scoring'));
     return view;
   };
   const pickFrench = () => act(() => fireEvent.click(screen.getByText('pick-fr')));

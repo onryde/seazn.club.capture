@@ -1,4 +1,5 @@
 import { type SyncState, openSync } from '@/domain/scoring/sync';
+import type { Bootstrap } from '@/domain/scoring/wire';
 import { abandon, onAnswered } from '@/domain/scoring/scoringMatchAnswers';
 import { pump } from '@/domain/scoring/scoringMatchPump';
 import {
@@ -9,7 +10,13 @@ import {
   onRulesRead,
   wanting,
 } from '@/domain/scoring/scoringMatchReads';
-import { landedSave, onSaveFailed, saveOf, savedOf } from '@/domain/scoring/scoringMatchSaves';
+import {
+  landedSave,
+  namedQueue,
+  onSaveFailed,
+  saveOf,
+  savedOf,
+} from '@/domain/scoring/scoringMatchSaves';
 import {
   ENGINE_EPOCH,
   LOAD_BOOTSTRAP,
@@ -107,7 +114,7 @@ export function step(state: MatchState, event: MatchEvent, now: number): MatchSt
   const final = withoutOrphanVoids(settled.state);
   const save = saveOf(state, final);
   const planned = [...(save === null ? [] : [save]), ...result.effects, ...settled.effects];
-  const { effects, last } = numbered(planned, final.saveSeq);
+  const { effects, last } = numbered(planned, final.saveSeq, final.bootstrap);
   const owed = effects.filter((effect) => effect.kind === 'save' && effect.queue !== null).length;
   return {
     state: { ...final, saving: final.saving + owed, saveSeq: last },
@@ -116,16 +123,18 @@ export function step(state: MatchState, event: MatchEvent, now: number): MatchSt
   };
 }
 
-/** Each save, in the order made, gets the next number after `seq`. */
+/** Each save, in the order made, gets the next number after `seq`; a queue goes to its file naming its match. */
 function numbered(
   planned: readonly Planned[],
   seq: number,
+  bootstrap: Bootstrap | null,
 ): { effects: MatchEffect[]; last: number } {
   let last = seq;
   const effects = planned.map((effect): MatchEffect => {
     if (effect.kind !== 'save') return effect;
     last += 1;
-    return { ...effect, n: last };
+    const queue = effect.queue === null ? null : namedQueue(effect.queue, bootstrap);
+    return { ...effect, queue, n: last };
   });
   return { effects, last };
 }

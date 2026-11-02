@@ -6,6 +6,9 @@ import { useEngineSync } from '@/hooks/useEngineSync';
 import { useProtectCode } from '@/hooks/useProtectCode';
 import { routeTarget, useOrientationGate } from '@/hooks/useOrientationGate';
 import { useReopenGate } from '@/hooks/useReopenGate';
+import { useScoringBackground } from '@/hooks/useScoringBackground';
+import { useScoringFixture } from '@/hooks/useScoringFixture';
+import { usePorts } from '@/hooks/usePorts';
 import type { Route } from '@/services/devicePorts';
 import {
   createExpoRouterNavigation,
@@ -15,6 +18,7 @@ import {
 import { OrientationGate } from '@/ui/components/OrientationGate';
 import { BadmintonPadPreviewScreen } from '@/ui/screens/BadmintonPadPreviewScreen';
 import { HomeScreen } from '@/ui/screens/HomeScreen';
+import { ScoringMatchScreen } from '@/ui/screens/ScoringMatchScreen';
 import { SettingsScreen } from '@/ui/screens/SettingsScreen';
 import { StreamScreen } from '@/ui/screens/StreamScreen';
 import { createFakePorts, type FakePorts } from './fakePorts';
@@ -47,7 +51,7 @@ const ROUTE_OF: Readonly<Record<Path, Route>> = {
   '/stream': 'stream',
   '/stream/settings': 'streamSettings',
   '/stream-settings': 'homeSettings',
-  '/scoring': 'scoringPreview',
+  '/scoring': 'scoring',
 };
 
 function routerDouble(): RouterDouble {
@@ -103,6 +107,7 @@ function RoutedApp({
   useEngineFollow();
   useEngineSync();
   useProtectCode();
+  useScoringBackground();
   const route = useSyncExternalStore(nav.subscribe, nav.current);
   const screens = <Screens route={route} />;
   return (
@@ -118,11 +123,22 @@ function Screens({ route }: { route: Route }) {
     <>
       {route === 'home' ? <HomeScreen /> : null}
       {route === 'homeSettings' ? <SettingsScreen from="home" /> : null}
-      {route === 'scoringPreview' ? <BadmintonPadPreviewScreen /> : null}
+      {route === 'scoring' ? <ScoringRouted /> : null}
       {route === 'stream' || route === 'streamSettings' ? <StreamScreen /> : null}
       {route === 'streamSettings' ? <SettingsScreen /> : null}
     </>
   );
+}
+
+/**
+ * `app/scoring/index.tsx` by hand (the drift test pins the route file's own returns): the saved match, else the dev
+ * twin's preview, else nothing: the route's Redirect has no router here, and the test says so by finding the screen gone.
+ */
+function ScoringRouted() {
+  const fixtureId = useScoringFixture();
+  const { previewScoring } = usePorts();
+  if (fixtureId !== null) return <ScoringMatchScreen fixtureId={fixtureId} />;
+  return previewScoring ? <BadmintonPadPreviewScreen /> : null;
 }
 
 /** The root layout's gate (`app/_layout.tsx`): the route's target, the hook's card over the screens. */
@@ -140,6 +156,8 @@ type Launch = {
   readonly previewScoring?: boolean;
   /** Runs before the first render: an engine native already holds, say. */
   readonly prepare?: (fakes: FakePorts) => void;
+  /** Awaited before the first render: a queue file already on the disk, say, which a sync `prepare` cannot write. */
+  readonly seed?: (fakes: FakePorts) => Promise<void>;
   readonly extra?: ReactNode;
   /** The phone has nothing to warn about, so no caption takes the strip's line from a routine status: see `quietDevice.ts`. */
   readonly quiet?: boolean;
@@ -158,6 +176,7 @@ export async function launchApp(launch: Launch = {}): Promise<LaunchedApp> {
   const {
     kvSeed,
     prepare,
+    seed,
     extra,
     around,
     quiet = false,
@@ -172,6 +191,7 @@ export async function launchApp(launch: Launch = {}): Promise<LaunchedApp> {
   });
   if (quiet) quietDevice(fakes.engine);
   prepare?.(fakes);
+  await seed?.(fakes);
   const app = <RoutedApp nav={nav} extra={extra} gated={gated} />;
   const ui = around === undefined ? app : around(app, fakes);
   const rendered = render(ui, { wrapper: wrapperFor(fakes) });

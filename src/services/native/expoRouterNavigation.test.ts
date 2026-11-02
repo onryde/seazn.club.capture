@@ -32,7 +32,7 @@ describe('the Expo Router adapter (D19)', () => {
       stream: true,
       streamSettings: true,
       homeSettings: true,
-      scoringPreview: true,
+      scoring: true,
     };
     const paths = (Object.keys(routes) as Route[]).map((route) => {
       vi.clearAllMocks();
@@ -51,7 +51,7 @@ describe('the Expo Router adapter (D19)', () => {
     ]);
   });
 
-  it('opens the Remote scoring preview from Home and leaves it by replace, as Stream Settings', () => {
+  it('opens Remote Scoring from Home and leaves it by replace, as Stream Settings: no back stack between modes', () => {
     const moves: string[] = [];
     const recording = {
       push: (p: string) => moves.push(`push ${p}`),
@@ -59,7 +59,7 @@ describe('the Expo Router adapter (D19)', () => {
       replace: (p: string) => moves.push(`replace ${p}`),
     };
     const nav = adapter(recording);
-    nav.go('scoringPreview');
+    nav.go('scoring');
     nav.go('home');
     expect(moves).toEqual(['replace /scoring', 'replace /']);
   });

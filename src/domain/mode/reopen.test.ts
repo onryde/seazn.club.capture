@@ -6,6 +6,7 @@ import {
   leaveRule,
   orphanedSession,
   reopenTarget,
+  reopensScoring,
   resumesAtColdStart,
   tapToPairMark,
   type EngineStatus,
@@ -74,6 +75,71 @@ describe('the cold-start re-pair (Process death and reopen)', () => {
   it('runs when unpaired names another code, or no code at all', () => {
     expect(resumesAtColdStart({ ...base, unpaired: OTHER })).toBe(true);
     expect(resumesAtColdStart({ ...base, unpaired: NO_NAME })).toBe(true);
+  });
+});
+
+const scoringCode: SavedCode = {
+  mode: 'scoring',
+  raw: '',
+  slot: null,
+  savedAt: NOW,
+  expiresAt: null,
+  stream: null,
+  scoring: { fixtureId: 'fx-match-4', label: 'Match 4' },
+};
+const inScoring: SavedState = { active: 'scoring', codes: { scoring: scoringCode } };
+
+/**
+ * Plan S2-1 Task 10: Remote Scoring reopens like Live Stream's cold-start re-pair, by analogy: at a cold start only,
+ * with a scoring match saved and Remote Scoring the last mode. A visit to Home never pulls the scorer back in.
+ */
+describe('reopening Remote Scoring', () => {
+  it('reopens at a cold start with the match saved and the mode active', () => {
+    expect(reopensScoring({ saved: inScoring, coldStart: true })).toBe(true);
+  });
+
+  it.each<[string, Parameters<typeof reopensScoring>[0]]>([
+    ['this is a return to the foreground', { saved: inScoring, coldStart: false }],
+    ['another mode is active', { saved: { ...inScoring, active: 'stream' }, coldStart: true }],
+    ['no mode is active', { saved: { ...inScoring, active: null }, coldStart: true }],
+    ['no code is saved', { saved: { active: 'scoring', codes: {} }, coldStart: true }],
+    [
+      'the saved code names no match',
+      {
+        saved: { active: 'scoring', codes: { scoring: { ...scoringCode, scoring: null } } },
+        coldStart: true,
+      },
+    ],
+  ])('does not reopen when %s', (_why, input) => {
+    expect(reopensScoring(input)).toBe(false);
+  });
+
+  it('is where the app lands, when no engine holds Live Stream', () => {
+    expect(
+      reopenTarget({ engine: 'idle', saved: inScoring, now: NOW, resumed: false, scoring: true }),
+    ).toEqual({ go: 'scoring' });
+  });
+
+  it('is Home without it: a foreground, or a mode left by Back, stays where the scorer is', () => {
+    expect(
+      reopenTarget({ engine: 'idle', saved: inScoring, now: NOW, resumed: false, scoring: false }),
+    ).toEqual({ go: 'home' });
+  });
+
+  it('yields to a held or paired broadcast, and to the cold-start re-pair', () => {
+    const both: SavedState = {
+      active: 'scoring',
+      codes: { scoring: scoringCode, stream: streamCode },
+    };
+    expect(
+      reopenTarget({ engine: 'live', saved: both, now: NOW, resumed: false, scoring: true }),
+    ).toEqual({ go: 'stream' });
+    expect(
+      reopenTarget({ engine: 'paired', saved: both, now: NOW, resumed: false, scoring: true }),
+    ).toEqual({ go: 'stream' });
+    expect(
+      reopenTarget({ engine: 'idle', saved: both, now: NOW, resumed: true, scoring: true }),
+    ).toEqual({ go: 'stream' });
   });
 });
 

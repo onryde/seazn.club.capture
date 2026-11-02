@@ -11,6 +11,7 @@ import { routeTarget, useOrientationGate } from '@/hooks/useOrientationGate';
 import { PortsProvider, usePorts, type Ports } from '@/hooks/usePorts';
 import { useProtectCode } from '@/hooks/useProtectCode';
 import { useReopenGate } from '@/hooks/useReopenGate';
+import { useScoringBackground } from '@/hooks/useScoringBackground';
 import { BootFailure } from '@/ui/components/BootFailure';
 import { OrientationGate } from '@/ui/components/OrientationGate';
 import { RootBoundary } from '@/ui/components/RootBoundary';
@@ -56,6 +57,8 @@ function Shell() {
   // Native's copy of the automatic switch and the language (amendment §2, P3).
   useEngineSync();
   useProtectCode();
+  // Taps left in a match's queue go on being sent while nobody looks at the match (plan S2-1, ruling 29).
+  useScoringBackground();
   // The one orientation controller (spec §5); its card covers the stack (R25).
   const { card } = useOrientationGate(routeTarget(usePathname()));
   return (

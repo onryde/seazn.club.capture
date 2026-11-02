@@ -8,7 +8,14 @@ import { flush, launchApp, type LaunchedApp } from '../../../test/routedApp';
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
-const scoringTile = () => screen.getByRole('button', { name: new RegExp(en['mode.scoring']) });
+/**
+ * The preview's route, entered as the navigation port enters it. Home's tile no longer opens it (it scans a link:
+ * plan S2-1 Task 10), so the dev twin's preview has no way in from the screen until Task 11 removes it.
+ */
+async function visit(app: LaunchedApp): Promise<void> {
+  act(() => app.ports.navigation.go('scoring'));
+  await flush();
+}
 const topScore = (points: number) =>
   within(screen.getByTestId('half-first')).queryByText(String(points)) !== null;
 
@@ -18,8 +25,7 @@ const topScore = (points: number) =>
  */
 async function openPreview(): Promise<LaunchedApp> {
   const app = await launchApp({ previewScoring: true });
-  fireEvent.click(scoringTile());
-  await flush();
+  await visit(app);
   // Started a minute before the test's taps, which are then never in the start's bounce window.
   app.setNow(new Date(TEST_NOW.getTime() - 60_000));
   fireEvent.click(screen.getByRole('radio', { name: 'A. Sharma' }));
@@ -42,19 +48,20 @@ async function back(app: LaunchedApp): Promise<boolean> {
 const press = (name: string) => act(() => fireEvent.click(screen.getByRole('button', { name })));
 
 /**
- * S2's design preview as the app routes it (the controller's brief, 2026-10-31): Home's tile opens it, it is Home's
- * own sub-screen (no code, no mode), Back and Home return, and a broadcast still moves the phone to Live Stream.
+ * S2's design preview as the app routes it (the controller's brief, 2026-10-31): with no match saved, the dev twin's
+ * route shows it; it is Home's own sub-screen (no code, no mode), Back and Home return, and a broadcast still moves
+ * the phone to Live Stream.
  */
 describe('the Remote scoring preview, routed', () => {
-  it('opens from the tile with one move of the router, for a double tap too', async () => {
+  it('opens with one move of the router, for a double call too', async () => {
     const app = await launchApp({ previewScoring: true });
     act(() => {
-      scoringTile().click();
-      scoringTile().click();
+      app.ports.navigation.go('scoring');
+      app.ports.navigation.go('scoring');
     });
     await flush();
-    expect(app.nav.current()).toBe('scoringPreview');
-    expect(app.nav.history).toEqual(['scoringPreview']);
+    expect(app.nav.current()).toBe('scoring');
+    expect(app.nav.history).toEqual(['scoring']);
     // The samples begin not started (owner, 2026-11-01): the Start screen.
     expect(screen.getByTestId('start-screen')).toBeTruthy();
   });
@@ -65,7 +72,7 @@ describe('the Remote scoring preview, routed', () => {
     act(() => app.foreground.leave());
     act(() => app.foreground.fire());
     await flush();
-    expect(app.nav.current()).toBe('scoringPreview');
+    expect(app.nav.current()).toBe('scoring');
     expect(topScore(1)).toBe(true);
   });
 
@@ -74,8 +81,7 @@ describe('the Remote scoring preview, routed', () => {
     fireEvent.click(screen.getByTestId('half-first'));
     expect(await back(app)).toBe(true);
     expect(app.nav.current()).toBe('home');
-    fireEvent.click(scoringTile());
-    await flush();
+    await visit(app);
     expect(topScore(1)).toBe(true);
   });
 
@@ -94,8 +100,7 @@ describe('the Remote scoring preview, routed', () => {
     expect(await back(app)).toBe(true);
     expect(app.nav.current()).toBe('home');
     expect(screen.queryByTestId('ending-prompt')).toBeNull();
-    fireEvent.click(scoringTile());
-    await flush();
+    await visit(app);
     expect(screen.getByTestId('ending-prompt').textContent).toContain(
       en['scoring.ending.title'].replace('{person}', 'L. Chen'),
     );
@@ -112,7 +117,7 @@ describe('the Remote scoring preview, routed', () => {
     });
     await flush();
     expect(screen.queryByTestId('score-sheet')).toBeNull();
-    expect(app.nav.current()).toBe('scoringPreview');
+    expect(app.nav.current()).toBe('scoring');
   });
 
   it('moves to Live Stream when a broadcast starts remotely, as from Home (A2)', async () => {
@@ -120,9 +125,8 @@ describe('the Remote scoring preview, routed', () => {
       previewScoring: true,
       prepare: (fakes) => fakes.engine.scene('paired-ready'),
     });
-    fireEvent.click(scoringTile());
-    await flush();
-    expect(app.nav.current()).toBe('scoringPreview');
+    await visit(app);
+    expect(app.nav.current()).toBe('scoring');
     act(() => app.engine.scene('live'));
     await flush();
     expect(app.nav.current()).toBe('stream');
@@ -154,9 +158,8 @@ describe('the Remote scoring preview, held sideways', () => {
     hold(app, tilted(90), 0);
     await flush();
     expect(upright()).toBeNull();
-    fireEvent.click(scoringTile());
-    await flush();
-    expect(app.nav.current()).toBe('scoringPreview');
+    await visit(app);
+    expect(app.nav.current()).toBe('scoring');
     expect(upright()).not.toBeNull();
     expect(app.orientationLock.locks.at(-1)).toBe('landscape');
     hold(app, tilted(0), 1000);
@@ -168,8 +171,7 @@ describe('the Remote scoring preview, held sideways', () => {
 
   it('follows the phone again back on Home', async () => {
     const app = await launchApp({ previewScoring: true, gated: true });
-    fireEvent.click(scoringTile());
-    await flush();
+    await visit(app);
     hold(app, tilted(0), 0);
     await flush();
     expect(app.orientationLock.locks.at(-1)).toBe('portrait');

@@ -323,7 +323,7 @@ describe('useBadmintonPadPreview, the Match details sheet', () => {
 
   it('opens once for a second tap: one Back closes it, and the next leaves for Home', () => {
     const fakes = createFakePorts();
-    act(() => fakes.navigation.go('scoringPreview'));
+    act(() => fakes.navigation.go('scoring'));
     const view = mount(fakes);
     act(() => view.result.current.actions.details());
     act(() => view.result.current.actions.details());
@@ -333,7 +333,7 @@ describe('useBadmintonPadPreview, the Match details sheet', () => {
     });
     expect(handled).toBe(true);
     expect(view.result.current.sheet).toBeNull();
-    expect(fakes.navigation.current()).toBe('scoringPreview');
+    expect(fakes.navigation.current()).toBe('scoring');
     act(() => {
       fakes.back.press();
     });
