@@ -135,7 +135,7 @@ page in the main repo, not here. Do not grow the app to accommodate them.
   Remote Scoring is JavaScript's, not native's: its match state is a fold of
   the web's ledger by `@seazn/engine`, its queue and sync are pure reducers in
   `src/domain/scoring/`, and the server's ledger is the one authority (design
-  §7). Native plays no part in it.
+  §6.1–§6.4). Native plays no part in it.
 - Frames never approach the bridge. Preview is a native view.
 
 ## 3. Layering — enforced, not documented
@@ -197,7 +197,7 @@ contracts/         # the web's capture contracts, vendored and pinned
   design) sits behind the key-value store port in `services/`. Remote
   Scoring's link (origin, token and sport) is in the secure store under
   `scoring.link.{id}`, and its unsent taps in one file per match behind the
-  tap queue store port (S2 design §7.2).
+  tap queue store port (S2 design §6.1, §6.3).
 - `utils/` is where dead code hides. Put the function where it belongs.
 - Absolute imports via tsconfig paths (`@/domain`, `@/ui`).
 
@@ -517,7 +517,8 @@ Three rules travel with these tokens:
   behind `RecordUploadPort`: R3 of the D3 findings design; owner, 2026-10-11,
   and Remote Scoring's capture API behind the scoring port) sit behind ports
   with plain `fetch`; the rest are native's. Realtime is one subscription per
-  match, owned by the runner, only as a nudge to read again (S2 design §7.3).
+  match, owned by the focused match (the hub's, `scoringHub.ts`), only as a
+  nudge to read again (S2 design §7.3).
 - `React.memo` and no anonymous functions in render, for HUD components
   specifically. This is the rare app where that is load-bearing.
 - Animations on Reanimated worklets — UI thread, never JS.
@@ -712,7 +713,8 @@ thermal member. Only transport trouble degrades a session.
   the idle dim (on Android the window's brightness only: its `WRITE_SETTINGS`
   permission is blocked in `app.json`); `expo-localization` for
   the phone's language. No AsyncStorage. `expo-file-system` for Remote
-  Scoring's tap queue (an atomic save: write a `.tmp`, then move), `@seazn/engine`
+  Scoring's tap queue (write a `.tmp`, then move it over the file; on Android
+  the move deletes then renames, so a read promotes a lone `.tmp`), `@seazn/engine`
   (pinned exactly, from GitHub Packages: the credential lives in the user
   config, never the project's `.npmrc`) for the fold, and
   `@supabase/realtime-js` (pinned) for the nudge.
