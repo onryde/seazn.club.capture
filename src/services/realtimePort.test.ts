@@ -5,6 +5,7 @@ import {
   type RealtimeChannelLike,
   type RealtimeClientFactory,
   type RealtimeClientLike,
+  type RealtimeClientOptions,
 } from '@/services/realtimePort';
 import type { RealtimeGrant } from '@/services/scoringPort';
 import { createRingRecord, parseRecordLine } from '@/services/sessionRecord';
@@ -70,7 +71,7 @@ class FakeClient implements RealtimeClientLike {
   token: string | null = null;
   constructor(
     readonly endpoint: string,
-    readonly options: { params: { apikey: string } },
+    readonly options: RealtimeClientOptions,
     private readonly behaviour: Behaviour,
   ) {}
   async setAuth(token: string): Promise<void> {
@@ -161,7 +162,17 @@ describe('the Realtime port: what it asks the library for', () => {
     await settle();
     expect(clients).toHaveLength(1);
     expect(clients[0].endpoint).toBe(ENDPOINT);
-    expect(clients[0].options).toEqual({ params: { apikey: APIKEY } });
+    expect(clients[0].options.params).toEqual({ apikey: APIKEY });
+  });
+
+  it('asks for the JSON text protocol, so that no frame needs a TextDecoder the runtime may not have', async () => {
+    const { client } = await joined();
+    expect(client.options.vsn).toBe('1.0.0');
+  });
+
+  it('asks the library to let the socket go the moment the channel is removed, not after an idle timer', async () => {
+    const { client } = await joined();
+    expect(client.options.disconnectOnEmptyChannelsAfterMs).toBe(0);
   });
 
   it('gives the library the grant’s token before it opens the channel', async () => {

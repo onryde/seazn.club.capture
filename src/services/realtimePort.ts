@@ -8,7 +8,10 @@ export type RealtimeHandlers = {
   readonly onPing: () => void;
   /** The channel is not delivering, and says so once per change, not once per retry of the library. */
   readonly onDown: () => void;
-  /** The channel is delivering (joined, or rejoined after a drop). */
+  /**
+   * The channel is delivering (joined, or rejoined after a drop). Every `onUp` owes a ledger read: a ping sent while
+   * the channel was down was never heard, and the channel signals only what is written from here on.
+   */
   readonly onUp: () => void;
 };
 
@@ -16,8 +19,9 @@ export type RealtimeHandlers = {
  * S2's "something changed" channel (design §6.3, ruling 27): a private Supabase Realtime broadcast of
  * `state_changed`, a ping that is only ever a reason to read the ledger, never data (plan S2-1 Task 8).
  *
- * One subscription at a time: a second `subscribe` closes the first, so the app never holds two sockets. The returned
- * function closes it, and a second call of it is nothing.
+ * One subscription at a time: a second `subscribe` closes the first, so the app never holds two sockets, and the
+ * first's owner is not told (its handlers just stop): the caller keeps a single owner of the channel (plan Task 9).
+ * The returned function closes the subscription, and a second call of it is nothing.
  *
  * The grant's token lives 3600 s and the port never renews it: when the channel drops after its hour it says `onDown`
  * and the library keeps retrying with the expired token to no end. The caller polls while it is down, asks for a fresh
@@ -42,10 +46,26 @@ export type RealtimeClientLike = {
   disconnect(): Promise<unknown>;
 };
 
-/** Builds the library's client for one socket: the endpoint is a `wss://` URL and the key goes in `params`. */
+/**
+ * What the port asks of the library's client, besides the endpoint (a `wss://` URL).
+ * - `params.apikey`: the grant's public key.
+ * - `vsn` '1.0.0': the server frames every message, `state_changed` included, as JSON text. The library's default,
+ *   2.0.0, sends a user broadcast as a binary frame decoded with `TextDecoder`, which Hermes does not have of its own
+ *   (Expo's polyfill probably covers it): a decode that threw would be swallowed by the socket's event loop, and the
+ *   channel would read up with no ping ever heard. A text frame needs nothing from the runtime.
+ * - `disconnectOnEmptyChannelsAfterMs` 0: once the channel is removed the socket goes at once, with no timer (the
+ *   library's default is twice its heartbeat) holding the client and the token after the unsubscribe.
+ */
+export type RealtimeClientOptions = {
+  readonly params: { readonly apikey: string };
+  readonly vsn: '1.0.0';
+  readonly disconnectOnEmptyChannelsAfterMs: 0;
+};
+
+/** Builds the library's client for one socket. */
 export type RealtimeClientFactory = (
   endpoint: string,
-  options: { params: { apikey: string } },
+  options: RealtimeClientOptions,
 ) => RealtimeClientLike;
 
 const EVENT = 'scoring.realtime';
@@ -128,7 +148,11 @@ function openSubscription(
     return { close };
   }
   try {
-    run.client = deps.createClient(endpoint, { params: { apikey: grant.apikey } });
+    run.client = deps.createClient(endpoint, {
+      params: { apikey: grant.apikey },
+      vsn: '1.0.0',
+      disconnectOnEmptyChannelsAfterMs: 0,
+    });
   } catch {
     afterReturn(() => fail(run, deps.logger, handlers, 'client'));
     return { close };

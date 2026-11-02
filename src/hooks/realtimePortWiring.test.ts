@@ -13,6 +13,18 @@ const GRANT: RealtimeGrant = {
 };
 const TOPIC = `realtime:${GRANT.channel}`;
 
+/** A Realtime 1.0.0 frame: one JSON object, in both directions. */
+type V1Frame = {
+  topic: string;
+  event: string;
+  payload: { access_token: string; config: { private: boolean } };
+  ref: string | null;
+  join_ref: string | null;
+};
+
+/** What the server sends: the same object, as JSON text. */
+const serverFrame = (frame: Record<string, unknown>): string => JSON.stringify(frame);
+
 /**
  * The runtime's `WebSocket`, which is all the library is given (Hermes has one: nothing is polyfilled and no `ws` is
  * pulled in). It keeps the frames the library sends, and the test plays the server by `receive`.
@@ -49,21 +61,9 @@ class FakeSocket {
   receive(data: unknown): void {
     this.onmessage?.({ data });
   }
-  get frames(): unknown[][] {
-    return this.sent.map((text) => JSON.parse(text) as unknown[]);
+  get frames(): V1Frame[] {
+    return this.sent.map((text) => JSON.parse(text) as V1Frame);
   }
-}
-
-/** A server-to-client broadcast as a Realtime v2 server frames it: kind 4, the topic, the event, a JSON payload. */
-function binaryBroadcast(topic: string, event: string, payload: unknown): ArrayBuffer {
-  const text = new TextEncoder();
-  const [t, e, p] = [text.encode(topic), text.encode(event), text.encode(JSON.stringify(payload))];
-  const bytes = new Uint8Array(5 + t.length + e.length + p.length);
-  bytes.set([4, t.length, e.length, 0, 1]);
-  bytes.set(t, 5);
-  bytes.set(e, 5 + t.length);
-  bytes.set(p, 5 + t.length + e.length);
-  return bytes.buffer;
 }
 
 const until = async (condition: () => boolean): Promise<void> => {
@@ -89,13 +89,7 @@ async function joinedSocket(
   const off = port.subscribe(GRANT, h);
   await until(() => FakeSocket.made.length > 0 && FakeSocket.made[0].sent.length > 0);
   const socket = FakeSocket.made[0];
-  const [joinRef, ref, topic, event, payload] = socket.frames[0] as [
-    string,
-    string,
-    string,
-    string,
-    { access_token: string; config: { private: boolean } },
-  ];
+  const { join_ref: joinRef, ref, topic, event, payload } = socket.frames[0];
   return { off, socket, joinRef, ref, topic, event, payload };
 }
 
@@ -109,8 +103,9 @@ afterEach(() => {
 
 /**
  * The inert seam (AGENTS §13, class 1): `createNativePorts` is not run by any test, so what it wires is run here, the
- * real `@supabase/realtime-js` over a stand-in for the runtime's `WebSocket`. What a device settles is whether Hermes
- * runs the library and its binary frames: see the Task 8 report's device check.
+ * real `@supabase/realtime-js` over a stand-in for the runtime's `WebSocket`. Every frame is JSON text (`vsn` 1.0.0),
+ * so nothing here needs `TextEncoder` or `TextDecoder`. What a device settles is whether Hermes runs the library at
+ * all: see the Task 8 report's device check.
  */
 describe('the composition root’s Realtime port, over the real library', () => {
   it('opens the runtime’s WebSocket at the grant’s own server, with its key, and joins as a private channel with the token', async () => {
@@ -120,6 +115,7 @@ describe('the composition root’s Realtime port, over the real library', () => 
       true,
     );
     expect(new URL(socket.url).searchParams.get('apikey')).toBe(GRANT.apikey);
+    expect(new URL(socket.url).searchParams.get('vsn')).toBe('1.0.0');
     expect(topic).toBe(TOPIC);
     expect(event).toBe('phx_join');
     expect(payload.access_token).toBe(GRANT.token);
@@ -127,30 +123,32 @@ describe('the composition root’s Realtime port, over the real library', () => 
     off();
   });
 
-  it('a join the server accepts is up, and a state_changed broadcast is a ping, as text or as binary', async () => {
+  it('a join the server accepts is up, and a state_changed broadcast is a ping', async () => {
     const { port } = world();
     const h = handlers();
     const { off, socket, joinRef, ref } = await joinedSocket(port, h);
     socket.receive(
-      JSON.stringify([joinRef, ref, TOPIC, 'phx_reply', { status: 'ok', response: {} }]),
+      serverFrame({
+        topic: TOPIC,
+        event: 'phx_reply',
+        payload: { status: 'ok', response: {} },
+        ref,
+        join_ref: joinRef,
+      }),
     );
     expect(h.onUp).toHaveBeenCalledTimes(1);
 
-    socket.receive(
-      JSON.stringify([
-        null,
-        null,
-        TOPIC,
-        'broadcast',
-        {
-          type: 'broadcast',
-          event: 'state_changed',
-          payload: { v: 1, reason: 'event', at: 'now' },
-        },
-      ]),
-    );
-    socket.receive(binaryBroadcast(TOPIC, 'state_changed', { v: 1, reason: 'event', at: 'now' }));
-    socket.receive(binaryBroadcast(TOPIC, 'another_event', {}));
+    const broadcast = (event: string) =>
+      serverFrame({
+        topic: TOPIC,
+        event: 'broadcast',
+        payload: { type: 'broadcast', event, payload: { v: 1, reason: 'event', at: 'now' } },
+        ref: null,
+        join_ref: null,
+      });
+    socket.receive(broadcast('state_changed'));
+    socket.receive(broadcast('another_event'));
+    socket.receive(broadcast('state_changed'));
     expect(h.onPing).toHaveBeenCalledTimes(2);
     expect(h.onPing).toHaveBeenCalledWith();
     off();
@@ -161,13 +159,13 @@ describe('the composition root’s Realtime port, over the real library', () => 
     const h = handlers();
     const { off, socket, joinRef, ref } = await joinedSocket(port, h);
     socket.receive(
-      JSON.stringify([
-        joinRef,
+      serverFrame({
+        topic: TOPIC,
+        event: 'phx_reply',
+        payload: { status: 'error', response: { reason: `Unauthorized ${GRANT.token}` } },
         ref,
-        TOPIC,
-        'phx_reply',
-        { status: 'error', response: { reason: `Unauthorized ${GRANT.token}` } },
-      ]),
+        join_ref: joinRef,
+      }),
     );
     expect(h.onDown).toHaveBeenCalledTimes(1);
     expect(h.onUp).not.toHaveBeenCalled();
