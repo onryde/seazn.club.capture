@@ -109,9 +109,12 @@ export function createScoringRunner(ports: RunnerPorts, options: Options): Scori
 
   /**
    * A stall (`stallOf`) is said once when it begins and once when it ends, never per step: a taps-that-cannot-go state
-   * with no line in the record looks exactly like a phone that is merely slow (recurring failure class 3).
+   * with no line in the record looks exactly like a phone that is merely slow (recurring failure class 3). The app in the
+   * background sends nothing, which `stallOf` reads as no stall: that is not the stall ending, so nothing is said until the
+   * app is back and the reading is the stall's own (review, 2026-11-02: no false "over" and "again" across a background).
    */
   const sayStall = (current: MatchState): void => {
+    if (!current.foreground) return;
     const now = stallOf(current);
     const was = stalled;
     if (reasonOf(was) === reasonOf(now)) return;

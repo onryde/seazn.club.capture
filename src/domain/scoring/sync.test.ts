@@ -945,28 +945,41 @@ describe('the rules version the server names', () => {
 });
 
 // The sender's own stall (`stallOf`): the server answers, and never takes the tap. The three-in-a-row pause resets
-// `conflictPasses` and `rulesPasses`, so the run that matters is counted apart, across the pauses.
+// `conflictPasses` and `rulesPasses`, so the run that matters is counted apart, across the pauses: a conflict and a rules
+// change alike (review, 2026-11-02: something moving does not make it a fresh run), until the queue empties. Once it is
+// a stall (the sixth), the pause is 60 s, not 15: a phone that cannot get a tap through stops asking every 15 s.
 describe('refusals in a row', () => {
   const conflict: AppendAnswer = { kind: 'seqConflict', currentSeq: 9 };
   const changed: AppendAnswer = { kind: 'rulesChanged', rulesVersion: 0 };
+  /** The state between two sends: the refused tap is back at the head, nothing on its way, no hold. */
+  const again = (state: SyncState): SyncState => ({
+    ...state,
+    hold: null,
+    status: 'idle',
+    inFlight: null,
+    notBefore: 0,
+  });
 
-  it('are counted by kind, across the 15 s pause that resets the passes', () => {
+  it('are counted by kind, across the pause that resets the passes', () => {
     let state = restingOf({ rulesVersion: 1 });
     for (let i = 1; i <= 7; i += 1) {
       state = answer(state, A, changed).state;
       expect(state.refusedRun).toEqual({ by: 'rules', count: i });
-      state = { ...state, hold: null, status: 'idle', inFlight: null };
+      state = again(state);
     }
     expect(state.rulesPasses).toBe(1);
   });
 
-  it('start again when the kind changes: something moved', () => {
-    const rules = answer(restingOf(), A, changed).state;
-    expect(
-      answer({ ...rules, status: 'idle', inFlight: null }, A, conflict).state.refusedRun,
-    ).toEqual({
-      by: 'conflict',
-      count: 1,
+  it('are counted together, a rules change and a conflict alike: something moving does not start them again', () => {
+    let state = restingOf({ rulesVersion: 1 });
+    const kinds = [conflict, changed, conflict, changed, conflict, changed] as const;
+    kinds.forEach((said, at) => {
+      state = answer(state, A, said).state;
+      expect(state.refusedRun, `refusal ${at + 1}`).toEqual({
+        by: said.kind === 'seqConflict' ? 'conflict' : 'rules',
+        count: at + 1,
+      });
+      state = again(state);
     });
   });
 
@@ -981,12 +994,112 @@ describe('refusals in a row', () => {
     expect(taken.state.refusedRun).toBeNull();
   });
 
+  // Review, 2026-11-02: `stallOf` needs a queued tap, but the run kept its count, so a NEW tap after the queue had
+  // emptied another way (an Undo of a queued tap, a refused tap) was a stall at its first refusal.
+  describe('end when the queue empties, whichever way it empties', () => {
+    const run = { by: 'rules', count: 5 } as const;
+
+    it('a queued tap discarded (Undo before it went) leaves the run while another tap is queued, and ends it with the last', () => {
+      const queued = restingOf({ refusedRun: run, queue: queueOf([A, B]) });
+      const one = discardQueued(queued, 'key-b').state;
+      expect(one.queue.pending).toEqual([A]);
+      expect(one.refusedRun).toEqual(run);
+      const none = discardQueued(one, 'key-a').state;
+      expect(none.queue.pending).toEqual([]);
+      expect(none.refusedRun).toBeNull();
+    });
+
+    it('a tap the server refused for good (it left the queue without counting) ends it when it was the last', () => {
+      const only = restingOf({
+        refusedRun: run,
+        queue: queueOf([A]),
+        inFlight: 'key-a',
+        status: 'sending',
+      });
+      const step = answer(only, A, refusal('WRONG_PHASE'));
+      expect(step.state.queue.pending).toEqual([]);
+      expect(step.state.refusedRun).toBeNull();
+    });
+
+    it('a new tap after that is a first refusal, not the sixth', () => {
+      const none = discardQueued(
+        restingOf({ refusedRun: run, queue: queueOf([A]) }),
+        'key-a',
+      ).state;
+      const fresh = { ...none, queue: queueOf([B]) };
+      expect(answer(again(fresh), B, changed).state.refusedRun).toEqual({ by: 'rules', count: 1 });
+    });
+  });
+
   it('an offline answer, a throttle and a one-tap refusal are not the server refusing to take taps: the run stands', () => {
     const refused = answer(restingOf(), A, conflict).state;
     const down = answer({ ...refused, status: 'sending', inFlight: 'key-a' }, A, {
       kind: 'offline',
     });
     expect(down.state.refusedRun).toEqual({ by: 'conflict', count: 1 });
+  });
+
+  describe('the pause', () => {
+    const retries = (count: number, said: AppendAnswer) => {
+      let state = restingOf({ rulesVersion: 1 });
+      const asked: (number | null)[] = [];
+      for (let i = 1; i <= count; i += 1) {
+        const step = answer(state, A, said, NOW);
+        const retry = step.effects.find((effect) => effect.kind === 'retryIn');
+        asked.push(retry?.kind === 'retryIn' ? retry.ms : null);
+        state = again(step.state);
+      }
+      return asked;
+    };
+
+    it('is 15 s on the third refusal and 60 s on the sixth, which is the stall: none between', () => {
+      expect(retries(6, changed)).toEqual([null, null, 15_000, null, null, 60_000]);
+      expect(retries(6, conflict)).toEqual([null, null, 15_000, null, null, 60_000]);
+    });
+
+    it('stays 60 s on every pause after the stall', () => {
+      expect(retries(12, changed)).toEqual([
+        null,
+        null,
+        15_000,
+        null,
+        null,
+        60_000,
+        null,
+        null,
+        60_000,
+        null,
+        null,
+        60_000,
+      ]);
+    });
+
+    it('sends nothing sooner than the pause says, 60 s once stalled', () => {
+      const sixth = answer(
+        restingOf({ rulesVersion: 1, refusedRun: { by: 'rules', count: 5 }, rulesPasses: 2 }),
+        A,
+        changed,
+        NOW,
+      );
+      expect(sixth.state.notBefore).toBe(NOW + 60_000);
+      const third = answer(
+        restingOf({ rulesVersion: 1, refusedRun: { by: 'rules', count: 2 }, rulesPasses: 2 }),
+        A,
+        changed,
+        NOW,
+      );
+      expect(third.state.notBefore).toBe(NOW + 15_000);
+    });
+
+    it('counts a mixed run for the stall as it does for the stall’s reading: the sixth of any kind is 60 s', () => {
+      const mixed = restingOf({
+        rulesVersion: 1,
+        refusedRun: { by: 'conflict', count: 5 },
+        rulesPasses: 2,
+      });
+      const step = answer(mixed, A, changed, NOW);
+      expect(step.effects).toContainEqual({ kind: 'retryIn', ms: 60_000 });
+    });
   });
 });
 

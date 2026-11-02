@@ -88,15 +88,22 @@ type Random = {
   readonly getRandomValues?: (to: Uint8Array) => Uint8Array;
 };
 
+/** What expo-modules-core installs on `globalThis.expo` (its `ts-declarations/global.ts`): a native v4 UUID. */
+type ExpoGlobal = { readonly uuidv4?: unknown };
+
 /** Loggers that have said the runtime has no crypto: once each, however many taps follow. */
 const saidNoCrypto = new WeakSet<Logger>();
 
 /**
- * A tap's key, made when it is tapped and never changed (design §7.3): a v4 UUID, from the runtime's own
- * `randomUUID`, else sixteen of its `getRandomValues`. With neither, `Math.random` stands in (a key only has to be
- * unique, and the server keys by link too) and the record says so once: a phone like that is worth knowing about.
+ * A tap's key, made when it is tapped and never changed (design §7.3): a v4 UUID. First the native generator
+ * expo-modules-core puts on `globalThis.expo` (Android's `UUID.randomUUID`, a SecureRandom; iOS's `UUID()`), which is
+ * what the phone's Hermes has, since it has no `crypto` of its own (device, 2026-11-02). Only where it is absent, the
+ * runtime's own `randomUUID`, else sixteen of its `getRandomValues`. With none, `Math.random` stands in (a key only has
+ * to be unique, and the server keys by link too) and the record says so once: a phone like that is worth knowing about.
  */
 function newTapKey(logger: Logger): string {
+  const expo = (globalThis as { expo?: ExpoGlobal }).expo;
+  if (typeof expo?.uuidv4 === 'function') return (expo.uuidv4 as () => string)();
   const random = (globalThis as { crypto?: Random }).crypto;
   if (random?.randomUUID !== undefined) return random.randomUUID();
   const bytes = new Uint8Array(16);

@@ -243,7 +243,11 @@ function answerOf(say: Reporter, reply: Reply | Lost): AppendAnswer {
   return say.failed('append', answer, reply.status, problem);
 }
 
-type Run = { readonly fields: LogFields; repeats: number };
+/** `said` is the repeat count the record already holds for the run, so the end does not say it twice. */
+type Run = { readonly fields: LogFields; repeats: number; said: number };
+
+/** The repeat counts a live run says: the second, then each power of ten from 10 (2, 10, 100, ...). */
+const isMilestone = (repeats: number): boolean => repeats === 2 || /^10+$/.test(String(repeats));
 
 type Reporter = {
   /** Says a failure and returns it. The same failure as the call's last is counted, not said again. */
@@ -257,16 +261,19 @@ type Reporter = {
  * and, for a refusal, the server's own code: never the URL, the token, a message or any body.
  *
  * A phone offline polls every 15 s for hours: one line per change, not per poll. The first failure of a run is said;
- * the same failure again is only counted; when the run ends (another failure of that call, or a success) the count
- * is said once, as `scoring.answer.repeat`.
+ * the same failure again is only counted; the count is said as `scoring.answer.repeat` while the run is live, at 2, 10,
+ * 100, ... repeats (a run that never ends, or a process that dies in one, must not lose it: review, 2026-11-02), and
+ * once more when the run ends (another failure of that call, or a success) if it has grown since.
  */
 function reporter(logger: Logger): Reporter {
   const runs = new Map<Op, Run>();
+  const say = (run: Run): void => {
+    run.said = run.repeats;
+    logger.warn('scoring.answer.repeat', { ...run.fields, count: run.repeats });
+  };
   const close = (op: Op): void => {
     const run = runs.get(op);
-    if (run !== undefined && run.repeats > 0) {
-      logger.warn('scoring.answer.repeat', { ...run.fields, count: run.repeats });
-    }
+    if (run !== undefined && run.repeats > run.said) say(run);
   };
   return {
     failed: (op, failure, status, problem) => {
@@ -282,10 +289,11 @@ function reporter(logger: Logger): Reporter {
       const run = runs.get(op);
       if (run !== undefined && JSON.stringify(run.fields) === JSON.stringify(fields)) {
         run.repeats += 1;
+        if (isMilestone(run.repeats)) say(run);
         return failure;
       }
       close(op);
-      runs.set(op, { fields, repeats: 0 });
+      runs.set(op, { fields, repeats: 0, said: 0 });
       logger.warn('scoring.answer', fields);
       return failure;
     },

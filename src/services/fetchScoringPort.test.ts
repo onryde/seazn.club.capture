@@ -800,16 +800,90 @@ describe('the record, in a run of the same failure', () => {
     const { port, entries } = portOver((url, init) => reply(url, init));
     for (let poll = 0; poll < 4; poll += 1) await port.events(LINK, FIXTURE, 0);
     expect(answers(entries, 'scoring.answer')).toHaveLength(1);
-    expect(answers(entries, 'scoring.answer.repeat')).toHaveLength(0);
+    // The second repeat is a milestone: it is said while the run is live (below), the third only counted.
+    expect(answers(entries, 'scoring.answer.repeat').map((entry) => entry.fields.count)).toEqual([
+      2,
+    ]);
     reply = answering(respond(200, ok([])));
     await port.events(LINK, FIXTURE, 0);
     const repeats = answers(entries, 'scoring.answer.repeat');
-    expect(repeats).toHaveLength(1);
-    expect(repeats[0].fields).toMatchObject({
+    expect(repeats.map((entry) => entry.fields.count)).toEqual([2, 3]);
+    expect(repeats[1].fields).toMatchObject({
       op: 'events',
       kind: 'offline',
       problem: 'network',
       count: 3,
+    });
+  });
+
+  // Review, 2026-11-02: the count was said only when the run ended, so a phone whose run never ended (the stalled send of
+  // the same day: the same refusal for hours) said it never, and a process that died mid-run lost it. A live run now says
+  // its count at 2, 10, 100, ... repeats: a few lines for any length of run, never one per poll.
+  describe('a run that is still going', () => {
+    const counts = (entries: () => ReturnType<typeof parseRecordLine>[]) =>
+      answers(entries, 'scoring.answer.repeat').map((entry) => entry.fields.count);
+
+    it('says its count at 2, 10 and 100 repeats and in no other poll, 1,500 of them', async () => {
+      const { port, entries } = portOver(answering(respond(422, failure('WRONG_PHASE'))));
+      const seen: number[] = [];
+      for (let call = 0; call <= 1500; call += 1) {
+        await port.append(LINK, FIXTURE, BODY);
+        seen.push(counts(entries).length);
+      }
+      expect(counts(entries)).toEqual([2, 10, 100, 1000]);
+      // The line for a count is said by the call that makes it, not one poll later (call 0 is the first failure).
+      expect([
+        seen[2],
+        seen[3],
+        seen[10],
+        seen[11],
+        seen[100],
+        seen[101],
+        seen[1000],
+        seen[1001],
+      ]).toEqual([1, 1, 2, 2, 3, 3, 4, 4]);
+      expect(seen[1]).toBe(0);
+    });
+
+    it('says the whole count at the end, after the milestones it already said, and not twice when it ends on one', async () => {
+      let reply: ScoringFetch = lost;
+      const { port, entries } = portOver((url, init) => reply(url, init));
+      for (let call = 0; call < 14; call += 1) await port.append(LINK, FIXTURE, BODY);
+      expect(counts(entries)).toEqual([2, 10]);
+      reply = answering(respond(201, CREATED));
+      await port.append(LINK, FIXTURE, BODY);
+      expect(counts(entries)).toEqual([2, 10, 13]);
+      // A run that ends exactly on a milestone has said it already.
+      let again: ScoringFetch = lost;
+      const two = portOver((url, init) => again(url, init));
+      for (let call = 0; call < 3; call += 1) await two.port.append(LINK, FIXTURE, BODY);
+      again = answering(respond(201, CREATED));
+      await two.port.append(LINK, FIXTURE, BODY);
+      expect(counts(two.entries)).toEqual([2]);
+    });
+
+    it('is said again, from the start, for the next run of that call', async () => {
+      let reply: ScoringFetch = lost;
+      const { port, entries } = portOver((url, init) => reply(url, init));
+      for (let call = 0; call < 3; call += 1) await port.append(LINK, FIXTURE, BODY);
+      reply = answering(respond(201, CREATED));
+      await port.append(LINK, FIXTURE, BODY);
+      reply = lost;
+      for (let call = 0; call < 3; call += 1) await port.append(LINK, FIXTURE, BODY);
+      expect(counts(entries)).toEqual([2, 2]);
+    });
+
+    it('keeps the live count of each call apart', async () => {
+      const { port, entries } = portOver(lost);
+      for (let call = 0; call < 3; call += 1) await port.events(LINK, FIXTURE, 0);
+      await port.rules(LINK, FIXTURE);
+      await port.rules(LINK, FIXTURE);
+      expect(
+        answers(entries, 'scoring.answer.repeat').map((entry) => [
+          entry.fields.op,
+          entry.fields.count,
+        ]),
+      ).toEqual([['events', 2]]);
     });
   });
 

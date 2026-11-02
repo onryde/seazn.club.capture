@@ -246,6 +246,45 @@ describe('a server that answers every send and never takes the tap', () => {
     expect(events(fakes).filter((event) => event === 'scoring.stalled')).toHaveLength(1);
   });
 
+  // Review minor, 2026-11-02: the app in the background sends nothing, so `stallOf` reads null there. That is not the stall
+  // ending: a phone that goes to the background and comes back stalled has one stall, said once, not an "over" and a
+  // fresh one on its return.
+  it('is one stall across the background: not unsaid on leaving, not said again on returning', async () => {
+    const fakes = createFakePorts({ clock: timerClock });
+    midMatch(fakes, 0);
+    const runner = await open(fakes);
+    lyingServer(fakes);
+    runner.dispatch(tap(RALLY, 'k1'));
+    await wait(120);
+    expect(events(fakes).filter((event) => event === 'scoring.stalled')).toHaveLength(1);
+    fakes.foreground.leave();
+    await flush();
+    await wait(30);
+    fakes.foreground.fire();
+    await flush();
+    await wait(30);
+    expect(events(fakes).filter((event) => event === 'scoring.unstalled')).toHaveLength(0);
+    expect(events(fakes).filter((event) => event === 'scoring.stalled')).toHaveLength(1);
+    expect(stallOf(stateOf(runner))).toMatchObject({ kind: 'refused', by: 'rules' });
+  });
+
+  it('is still said over once, after the background, when the server then takes the tap', async () => {
+    const fakes = createFakePorts({ clock: timerClock });
+    midMatch(fakes, 0);
+    const runner = await open(fakes);
+    lyingServer(fakes);
+    runner.dispatch(tap(RALLY, 'k1'));
+    await wait(120);
+    fakes.foreground.leave();
+    await flush();
+    fakes.foreground.fire();
+    vi.restoreAllMocks();
+    await wait(120);
+    expect(stateOf(runner).sync.queue.pending).toEqual([]);
+    expect(events(fakes).filter((event) => event === 'scoring.unstalled')).toHaveLength(1);
+    expect(events(fakes).filter((event) => event === 'scoring.stalled')).toHaveLength(1);
+  });
+
   it('another scorer that always writes first is said as a conflict, with no rules version named', async () => {
     const fakes = createFakePorts({ clock: timerClock });
     midMatch(fakes, 0);

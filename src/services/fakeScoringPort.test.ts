@@ -639,6 +639,25 @@ describe('a seed that cannot be', () => {
 });
 
 describe('the preview samples as seeds', () => {
+  // The web's column default is 0 (`V469__fixture_rules_override.sql`) and `rules_version` is `min(0)`: a match nobody has
+  // corrected is at 0. The fake started at 1, which is why the phone's own guess of 1 once worked against it and broke
+  // against the staging server (device, 2026-11-02).
+  it('seeds the rules version the web’s column default gives a match nobody corrected: 0, as every sample', async () => {
+    for (const seed of [SINGLES_SEED, DOUBLES_SEED]) {
+      expect(seed.rulesVersion).toBe(0);
+      const port = createFakeScoringPort(seed);
+      expect(await port.rules(LINK, seed.fixtureId)).toMatchObject({ rulesVersion: 0 });
+    }
+  });
+
+  it('refuses a send made under a guessed version 1 by naming 0, as the web does', async () => {
+    const port = createFakeScoringPort(SINGLES_SEED);
+    const answer = await port.append(LINK, SINGLES_SEED.fixtureId, {
+      ...start(0),
+      rules_version: 1,
+    });
+    expect(answer).toEqual({ kind: 'rulesChanged', rulesVersion: 0 });
+  });
   it('the singles sample: two names as typed, the context, nothing yet on the sheet', async () => {
     const port = createFakeScoringPort(SINGLES_SEED);
     const answer = await port.bootstrap(LINK);

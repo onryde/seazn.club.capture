@@ -255,6 +255,76 @@ describe('the pad', () => {
     expect(readRecord(fakes.record).map((line) => line.event)).not.toContain('scoring.keyFallback');
   });
 
+  // The phone's Hermes has no `crypto` (device, 2026-11-02: the record said `scoring.keyFallback`, so every key was
+  // Math.random's). expo-modules-core installs a native v4 UUID generator on `globalThis.expo` (Android's
+  // `UUID.randomUUID`, a SecureRandom; iOS's `UUID()`): it is the first choice, with no new dependency.
+  describe('a tap’s key from the native generator', () => {
+    const NATIVE = [
+      '6f0c5a52-3d1e-4a0b-8f55-0c2f6d7b9e10',
+      '0b3c2f51-9a77-4c1e-8d24-7a5e1f6c3b88',
+      '9d1e7c44-2b60-4f93-a0c5-5e8b2d7a1c19',
+    ];
+    const taps = async (fakes: Awaited<ReturnType<typeof rig>>) => {
+      const append = vi.spyOn(fakes.scoring, 'append');
+      const view = await started(fakes);
+      await act(async () => {
+        pad(view.result.current).actions.tapHalf('first');
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+      return append.mock.calls.map((call) => call[2].idempotency_key);
+    };
+
+    it('is the key, where the runtime has no crypto at all, and the record says nothing of a fallback', async () => {
+      const made = [...NATIVE];
+      const uuidv4 = vi.fn(() => made.shift() as string);
+      vi.stubGlobal('expo', { uuidv4 });
+      vi.stubGlobal('crypto', undefined);
+      const random = vi.spyOn(Math, 'random');
+      const fakes = await rig();
+      expect(await taps(fakes)).toEqual(NATIVE.slice(0, 2));
+      expect(uuidv4).toHaveBeenCalledTimes(2);
+      expect(random).not.toHaveBeenCalled();
+      expect(readRecord(fakes.record).map((line) => line.event)).not.toContain(
+        'scoring.keyFallback',
+      );
+    });
+
+    it('wins over the runtime’s own randomUUID: that one is not asked', async () => {
+      const made = [...NATIVE];
+      vi.stubGlobal('expo', { uuidv4: () => made.shift() as string });
+      const fakes = await rig();
+      const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID');
+      expect(await taps(fakes)).toEqual(NATIVE.slice(0, 2));
+      expect(randomUUID).not.toHaveBeenCalled();
+    });
+
+    it('is not there (no `expo`, or one without the generator): the runtime’s crypto stands in, and says nothing', async () => {
+      for (const expo of [undefined, {}, { uuidv4: 'not a function' }]) {
+        vi.stubGlobal('expo', expo);
+        const fakes = await rig();
+        const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID');
+        const keys = await taps(fakes);
+        expect(keys, JSON.stringify(expo)).toHaveLength(2);
+        keys.forEach((key) => expect(key).toMatch(UUID_V4));
+        expect(randomUUID).toHaveBeenCalled();
+        expect(readRecord(fakes.record).map((line) => line.event)).not.toContain(
+          'scoring.keyFallback',
+        );
+        randomUUID.mockRestore();
+      }
+    });
+
+    it('is not there and neither is crypto: Math.random keys, and the record says so once', async () => {
+      vi.stubGlobal('expo', {});
+      vi.stubGlobal('crypto', undefined);
+      const fakes = await rig();
+      const keys = await taps(fakes);
+      keys.forEach((key) => expect(key).toMatch(UUID_V4));
+      const lines = readRecord(fakes.record).filter((line) => line.event === 'scoring.keyFallback');
+      expect(lines).toHaveLength(1);
+    });
+  });
+
   it('a tap’s key is made of getRandomValues where the runtime has no randomUUID, and says nothing', async () => {
     const real = globalThis.crypto;
     const getRandomValues = vi.fn((bytes: Uint8Array<ArrayBuffer>) => real.getRandomValues(bytes));

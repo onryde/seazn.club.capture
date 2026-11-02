@@ -78,8 +78,8 @@ export type SyncState = {
   readonly rulesSaid: number | null;
   /**
    * The refusals in a row by which the server answered and did not take the tap (a conflict, or new rules), counted
-   * across the 15 s pauses that reset the passes, and ended by a tap accepted. It is what `stallOf` reads: a server that
-   * answers every time and never takes the tap is a stall, not a slow network.
+   * together across the pauses that reset the passes, and ended when a tap is accepted or the queue empties. It is what
+   * `stallOf` reads: a server that answers every time and never takes the tap is a stall, not a slow network.
    */
   readonly refusedRun: RefusedRun | null;
 };
@@ -104,6 +104,13 @@ export type SyncStep = { readonly state: SyncState; readonly effects: readonly S
 /** Conflicts (or rules changes) in a row before the sender waits instead of fetching and sending at once again. */
 const PASSES_BEFORE_PAUSE = 3;
 const PAUSE_MS = 15_000;
+/**
+ * Refusals in a row (`refusedRun`) after which the server answering and never taking a tap is a stall (`stallOf`, the
+ * record's `scoring.stalled`, the pad's can't-send badge). From then on a pause is `STALLED_PAUSE_MS`: a phone that cannot
+ * get a tap through stops asking every 15 s (review, 2026-11-02).
+ */
+export const STALL_AFTER = 6;
+const STALLED_PAUSE_MS = 60_000;
 /** The wait after a fetch or a rules read that did not land, before sending on what is held. */
 const FETCH_RETRY_MS = 5000;
 /** The wait after a rules read that did not land, before it is asked for again (and the queue sends on what is held). */
@@ -123,7 +130,18 @@ const PERSIST: SyncEffect = { kind: 'persist' };
 /** Where a send may start: not in flight, not waiting on an update, not dead. Offline is a retry. */
 const SENDABLE: ReadonlySet<SyncStatus> = new Set<SyncStatus>(['idle', 'offline']);
 
-const step = (state: SyncState, effects: readonly SyncEffect[]): SyncStep => ({ state, effects });
+/**
+ * Every transition ends here. A refusal run with nothing queued is over, whichever way the queue emptied (an accept, an
+ * Undo of a queued tap, a tap refused for good, a revalidation): a new tap starts a run of its own, not the last one's
+ * sixth (review, 2026-11-02).
+ */
+const step = (state: SyncState, effects: readonly SyncEffect[]): SyncStep => ({
+  state:
+    state.refusedRun !== null && state.queue.pending.length === 0
+      ? { ...state, refusedRun: null }
+      : state,
+  effects,
+});
 
 /**
  * A match opened from what was kept: its queue, and the ledger and rules the phone last held. Nothing is in flight; a
@@ -362,34 +380,40 @@ function ledgerEventOf(sent: QueuedEvent, answer: Accepted): LedgerEvent {
 
 /**
  * The passes of a kind in a row: the count after this one, whether it is the one that pauses, and the wait it adds. A
- * pause sends nothing sooner than 15 s from `now`, and the count starts again.
+ * pause sends nothing sooner than 15 s from `now` (60 s once the refusals are a stall: `refused` is the run's count
+ * with this one), and the count starts again.
  */
 function pass(
   count: number,
   now: number,
+  refused: number,
 ): { count: number; effects: SyncEffect[]; notBefore: number | null } {
   const next = count + 1;
   if (next < PASSES_BEFORE_PAUSE) return { count: next, effects: [], notBefore: null };
-  return { count: 0, effects: [{ kind: 'retryIn', ms: PAUSE_MS }], notBefore: now + PAUSE_MS };
+  const ms = refused >= STALL_AFTER ? STALLED_PAUSE_MS : PAUSE_MS;
+  return { count: 0, effects: [{ kind: 'retryIn', ms }], notBefore: now + ms };
 }
 
-/** One more refusal of `by` in a row: the count goes on across pauses, and starts again when the kind changes. */
+/**
+ * One more refusal in a row: the count goes on across pauses and across kinds (a conflict and a rules change alike: the
+ * server answered and took nothing), and `by` names the latest. It starts again only when the queue empties (`step`).
+ */
 function refusedAgain(state: SyncState, by: RefusedRun['by']): RefusedRun {
-  const run = state.refusedRun;
-  return { by, count: run !== null && run.by === by ? run.count + 1 : 1 };
+  return { by, count: (state.refusedRun?.count ?? 0) + 1 };
 }
 
 /** Another scorer wrote first: fetch from the tip. Three in a row and the sender waits 15 s as well. */
 function conflicted(state: SyncState, sent: QueuedEvent, now: number): SyncStep {
   const freed = notStored(state, sent);
-  const passed = pass(state.conflictPasses, now);
+  const refused = refusedAgain(state, 'conflict');
+  const passed = pass(state.conflictPasses, now, refused.count);
   const next: SyncState = {
     ...freed.state,
     status: resting(state),
     hold: 'ledger',
     conflictPasses: passed.count,
     notBefore: passed.notBefore ?? freed.state.notBefore,
-    refusedRun: refusedAgain(state, 'conflict'),
+    refusedRun: refused,
   };
   return step(next, [...freed.saved, { kind: 'fetchSince', seq: state.tip }, ...passed.effects]);
 }
@@ -401,7 +425,8 @@ function conflicted(state: SyncState, sent: QueuedEvent, now: number): SyncStep 
  */
 function rulesMoved(state: SyncState, sent: QueuedEvent, named: number, now: number): SyncStep {
   const freed = notStored(state, sent);
-  const passed = pass(state.rulesPasses, now);
+  const refused = refusedAgain(state, 'rules');
+  const passed = pass(state.rulesPasses, now, refused.count);
   const next: SyncState = {
     ...freed.state,
     status: resting(state),
@@ -409,7 +434,7 @@ function rulesMoved(state: SyncState, sent: QueuedEvent, named: number, now: num
     rulesPasses: passed.count,
     notBefore: passed.notBefore ?? freed.state.notBefore,
     rulesSaid: named,
-    refusedRun: refusedAgain(state, 'rules'),
+    refusedRun: refused,
   };
   return step(next, [...freed.saved, { kind: 'reloadRules' }, ...passed.effects]);
 }

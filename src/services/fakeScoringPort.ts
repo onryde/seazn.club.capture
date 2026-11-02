@@ -388,7 +388,7 @@ export function seedFromPadSample(
     fixtureId: ids.fixtureId ?? 'fake-fixture',
     linkId: ids.linkId ?? 'fake-link',
     cfg: badmintonCfg({}),
-    rulesVersion: 1,
+    rulesVersion: 0,
     epochRequired: 2,
     screen: 'pad',
     context: sample.context,

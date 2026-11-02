@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { step } from '@/domain/scoring/scoringMatch';
-import { STALL_AFTER, stallOf } from '@/domain/scoring/scoringMatchStall';
+import { stallOf } from '@/domain/scoring/scoringMatchStall';
 import type { MatchState } from '@/domain/scoring/scoringMatchState';
 import type { AppendAnswer } from '@/domain/scoring/wire';
 import { SINGLES, queuedOf, rally } from '../../../test/badmintonLedger';
-import { NOW, opened, ready, tapped } from '../../../test/scoringMatchFixtures';
+import { NOW, ready, tapped } from '../../../test/scoringMatchFixtures';
 
 // When the phone cannot get a tap to the server and the pad would otherwise say "Sending" for good (device, 2026-11-02:
 // the server refused every send FIXTURE_RULES_CHANGED and the pad showed "Sending 8 taps" with nothing in the record).
@@ -37,24 +37,24 @@ function refusedTimes(count: number, answer: AppendAnswer): MatchState {
 
 describe('stallOf: the server answers and never takes the tap', () => {
   it('is not a stall before the sixth refusal in a row', () => {
-    expect(stallOf(refusedTimes(STALL_AFTER - 1, changed))).toBeNull();
+    expect(stallOf(refusedTimes(5, changed))).toBeNull();
   });
 
   it('is, from the sixth: by what it kept saying', () => {
-    expect(stallOf(refusedTimes(STALL_AFTER, changed))).toEqual({
+    expect(stallOf(refusedTimes(6, changed))).toEqual({
       kind: 'refused',
       by: 'rules',
-      count: STALL_AFTER,
+      count: 6,
     });
-    expect(stallOf(refusedTimes(STALL_AFTER, conflict))).toEqual({
+    expect(stallOf(refusedTimes(6, conflict))).toEqual({
       kind: 'refused',
       by: 'conflict',
-      count: STALL_AFTER,
+      count: 6,
     });
   });
 
   it('is over with nothing queued: there is nothing the phone cannot send', () => {
-    const stalled = refusedTimes(STALL_AFTER, changed);
+    const stalled = refusedTimes(6, changed);
     const emptied = {
       ...stalled,
       sync: { ...stalled.sync, queue: { ...stalled.sync.queue, pending: [] } },
@@ -63,7 +63,7 @@ describe('stallOf: the server answers and never takes the tap', () => {
   });
 
   it('is over for a link the door does not take: that is its own card', () => {
-    const stalled = refusedTimes(STALL_AFTER, changed);
+    const stalled = refusedTimes(6, changed);
     const dead = {
       ...stalled,
       sync: { ...stalled.sync, queue: { ...stalled.sync.queue, dead: 'LINK_REVOKED' as const } },
@@ -72,7 +72,7 @@ describe('stallOf: the server answers and never takes the tap', () => {
   });
 
   it('is over for an app too old: the Update needed card says that', () => {
-    const stalled = refusedTimes(STALL_AFTER, changed);
+    const stalled = refusedTimes(6, changed);
     const old = {
       ...stalled,
       bootstrap: { ...SINGLES, epochRequired: stalled.sync.engineEpoch + 1 },
@@ -81,12 +81,12 @@ describe('stallOf: the server answers and never takes the tap', () => {
   });
 
   it('is over for a ledger over the read’s cap: the card says that', () => {
-    const stalled = refusedTimes(STALL_AFTER, changed);
+    const stalled = refusedTimes(6, changed);
     expect(stallOf({ ...stalled, sync: { ...stalled.sync, status: 'tooLarge' } })).toBeNull();
   });
 
   it('is nothing in the background: nothing is sent there, and the return starts it again', () => {
-    const stalled = refusedTimes(STALL_AFTER, changed);
+    const stalled = refusedTimes(6, changed);
     expect(stallOf(step(stalled, { kind: 'background' }, NOW).state)).toBeNull();
   });
 });
@@ -106,8 +106,16 @@ describe('stallOf: a queue that cannot be judged', () => {
     expect(stallOf({ ...state, sync: { ...state.sync, hold: null } })).toBeNull();
   });
 
+  // Review, 2026-11-02: the hold is `revalidate` (the queue waits to be judged) and the match cannot be judged because it
+  // is not here yet, not because it cannot be folded: the guard on `bootstrap` is what says so, so it is pinned alone.
   it('is not a stall while the bootstrap is still to come: the card says loading, the read is out', () => {
-    expect(stallOf(opened({ ...tapped(queue), bootstrap: null }))).toBeNull();
+    // The ledger is read (`ready`) and the bootstrap is not: the queue waits for the judge, and the judge has no match.
+    const state = ready({ ...tapped(queue), bootstrap: null });
+    expect(state.sync.hold).toBe('revalidate');
+    expect(state.sync.queue.pending).toHaveLength(1);
+    expect(state.foreground).toBe(true);
+    expect(state.bootstrap).toBeNull();
+    expect(stallOf(state)).toBeNull();
   });
 
   it('a foldable match is judged and sent: no stall', () => {
