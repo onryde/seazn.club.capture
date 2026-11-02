@@ -151,7 +151,7 @@ Sanction for each side, and Set score only before a game's first rally.
 
 **Covers:** the sanction steps (`StepSheet`), Set score (`ScoreEntrySheet`, titled "Set score · Game
 N", in-progress scores only), the ending prompt (`EndingPrompt`), Match details (`MatchDetailsSheet`:
-`MatchDetails` then `RuleLines`), History (`HistoryCover`). One cover at a time; the pad is hidden from
+`MatchCard`), History (`HistoryCover`). One cover at a time; the pad is hidden from
 a screen reader under it; Back closes it.
 
 **Cards:** Not started (Match details and the rules), Start screen (`TossPicker` and Start match),
@@ -173,7 +173,7 @@ knows no sport.
 **Shared kit vs sport screen** (ruling 13). Sport-agnostic, reused by every sport: `PadView` and its
 cards and `cardPlacement`, the bounce guard, `TapFlash`, `LastTapLine`, `ToolRow`, `StepSheet`,
 `ScoreEntrySheet`, `EndingPrompt`, `SyncDot`, `UpdateBanner`, `RefusalBanner`, `PadStrip`,
-`MatchDetails`, `MatchDetailsSheet`, `RuleLines`, `HistoryCover`, `TossPicker`, `PadStateCard`, the
+`MatchCard`, `MatchDetailsSheet`, `HistoryCover`, `TossPicker`, `PadStateCard`, the
 tally. Sport-specific: the domain view (`badmintonPad.ts`, `badmintonSanction.ts`, `badmintonRules.ts`,
 `badmintonHistory.ts`) and the screen that lays the kit out. Table tennis is expected to reuse
 badminton's screen with its own domain view (one engine kernel, `setbased`). A sport with a clock
