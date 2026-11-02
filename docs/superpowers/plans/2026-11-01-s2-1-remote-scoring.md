@@ -435,6 +435,32 @@ useScoringMatch(fixtureId: string): PadScreenModel | { kind: 'loading' } | { kin
 - [ ] **Step 2:** Implement in small hooks (load, send loop, live, taps), each ≤ 25 lines.
 - [ ] **Step 3:** `pnpm check`. **Step 4:** Commit.
 
+#### Task 9 additions (from the Batch B reviews, 2026-11-02)
+
+The Sonnet per-task and Opus batch reviews of Tasks 3–6 found what the hook must own. Each is a test:
+
+- Every change (tap enqueue, undo, answers, fetches, rules) goes through one pure reducer on the latest
+  state; an abandoned send is fed back as `onAnswer(offline)` so `sending` never sticks; `sent` is the
+  key in flight, never the current head.
+- Every `retryIn` is honoured (no send before its time, whatever tap, ping or foreground arrives).
+- Send only after a fetch or a rules reload has been merged and revalidated.
+- An unresolved head (sent, no definitive answer; also one reopened after a kill) is resent with its key
+  before any revalidate or undo touches it. Undo of an in-flight tap waits for its answer and voids the
+  returned id.
+- The tip comes from the ledger, never from `bootstrap.lastSeq`.
+- The queue is marked dead on a read's 401 and on a bootstrap `viewOnly` (finalized, cancelled, carried
+  forward) while taps are queued.
+- The tap is saved before the screen shows it.
+- `logger.protectLink(token)` when the link is loaded from the secure store.
+- The background sender for other matches' queues (ruling 29) is built here.
+- Dismiss stops that match's sender before `remove`, and deletes `{fixtureId}.boot.json` and the cached
+  ledger too.
+- A garbled queue file or a missing native module surfaces as a visible state, never as silence.
+- Task 7: `legalQueued` skips an illegal tap and goes on judging the ones behind it; it keys own events on
+  `ownEventIds` (the stand-in ledger event carries the phone's clock and a null `deviceLinkId`).
+- Task 9/11: when the link dies while a sheet (Match details, Set score, History) is open, the sheet
+  closes and the bad-link card shows (round 8 hardening, the controller's call).
+
 ## Batch D — into the app
 
 ### Task 10: Scan, save, reopen and Home
