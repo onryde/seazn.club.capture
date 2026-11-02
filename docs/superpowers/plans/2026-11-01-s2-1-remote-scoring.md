@@ -443,8 +443,9 @@ The Sonnet per-task and Opus batch reviews of Tasks 3–6 found what the hook mu
   state; an abandoned send is fed back as `onAnswer(offline)` so `sending` never sticks; `sent` is the
   key in flight, never the current head.
 - Retry waits and merge-before-send are enforced by sync itself (`nextSend(state, now)` and the hold):
-  the hook passes a real clock, calls `revalidate` on a `revalidate` hold, and `onFetchFailed` on a
-  failed read.
+  the hook passes a real clock, calls `revalidate` on a `revalidate` hold, and `onReadFailed` for every
+  failed read; every bootstrap read goes through `onBootstrapStatus`, and the hook runs the
+  `reloadBootstrap` effect.
 - Effects run in order; a send goes only after the `persist` before it has resolved (Review Focus 1
   holds only then).
 - An unresolved head (sent, no definitive answer; also one reopened after a kill) is resent with its key;
@@ -455,9 +456,11 @@ The Sonnet per-task and Opus batch reviews of Tasks 3–6 found what the hook mu
 - A refused save can come back (the next read promotes the temp file): re-save the queue; never say
   "not recorded" without having saved the queue without that tap.
 - `ownEventIds` belong to one link.
+- Task 7 pins that the badminton pad never emits `core.settle` or `core.abandon`, and emits
+  `core.forfeit` only as a disqualification's ending (a device link gets 403 for the rest).
 - The tip comes from the ledger, never from `bootstrap.lastSeq`.
-- The queue is marked dead on a read's 401 and on a bootstrap `viewOnly` (finalized, cancelled, carried
-  forward) while taps are queued.
+- Sync marks the queue dead on a 401, a finalized and a cancelled match; the hook owns a carried-forward
+  `viewOnly` reason and the cards for an empty queue.
 - The tap is saved before the screen shows it.
 - `logger.protectLink(token)` when the link is loaded from the secure store.
 - Task 10 lists `unreadable` queue entries, with Dismiss.
