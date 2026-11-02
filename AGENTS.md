@@ -82,6 +82,15 @@ on: asked whether to turn Send record on with the endpoint on staging, the
 owner chose "On now (Recommended)" in the session on 2026-10-12. Push alerts go
 only to phones holding a Dashboard code (ruling 11).
 
+**Remote Scoring** is a working mode (S2; design
+`docs/specs/2026-11-01-s2-remote-scoring-design.md`, plan S2-1). Its taps,
+written to the match's ledger on the web, are its purpose, not an "upload" in
+the sense above. A scoring code is a match's `/score/{token}` link; there is
+no claim on first scan (S2 ruling 3, superseding decision-record ruling 9 for
+S2), so several scorers may write and the ledger's `expected_seq` keeps them
+honest. Each sport has its own pad screen over a shared kit, never one pad
+with sport conditions (S2 ruling 38; owner, 2026-11-02).
+
 Adding a fourth mode, or a screen outside a mode, is a product decision, not
 an implementation detail. Raise it; don't build it.
 
@@ -122,7 +131,11 @@ page in the main repo, not here. Do not grow the app to accommodate them.
   only two such calls.
 - **Never build a second state machine in TypeScript.** The aggregate lives in
   native. The TS layer is a *projection* of native events. Two authorities
-  disagree at 3-1 in the 40th over.
+  disagree at 3-1 in the 40th over. The rule is about the capture session.
+  Remote Scoring is JavaScript's, not native's: its match state is a fold of
+  the web's ledger by `@seazn/engine`, its queue and sync are pure reducers in
+  `src/domain/scoring/`, and the server's ledger is the one authority (design
+  §7). Native plays no part in it.
 - Frames never approach the bridge. Preview is a native view.
 
 ## 3. Layering — enforced, not documented
@@ -132,7 +145,8 @@ app/               # Expo Router routes. Thin: they import ui, hooks and package
   _layout.tsx      # the composition root: ports, language, reopen gate, orientation gate
   index.tsx        # Home
   stream-settings.tsx  # Stream Settings from Home, no Diagnostics (R2 of the D3 findings design)
-  stream/          # Live Stream (landscape); S2/S4 add scoring/ and dashboard/
+  stream/          # Live Stream (landscape)
+  scoring/         # Remote Scoring (portrait): the sport's pad screen, from a table; S4 adds dashboard/
 src/
   domain/          # pure TS. No react, no react-native, no ui, no modules.
     mode/          # Mode, code recognition, saved codes, reopen and leave rules
@@ -141,6 +155,9 @@ src/
     credentials/   # QR v2 and the waiting fields, parsed (anti-corruption); publish credentials are native's;
                    # the record upload's credential, kept 24 h after its code goes (R4)
     policy/        # fallback strategy, degradation ladder
+    scoring/       # Remote Scoring: wire shapes, the tap queue, sync, the match reducer, and one
+                   # module set per sport behind `ScoringSport` (`sportFor`, a table). Generic files
+                   # never import a sport's: lint (`SPORT_MODULES`) enforces it
   i18n/            # en/es/fr/nl dictionaries, t()/tp(), formatTime(). Pure.
   ui/
     components/    # Text, Button, StatusLine, Tile, CodePanel, TurnCard, …
@@ -148,7 +165,9 @@ src/
     theme/         # tokens — the only source of colour
   hooks/           # the bridge from ports to screens: usePorts, useHome,
                    # useReopenGate, useOrientationGate, useCaptureEngine, …
-  services/        # ports (key-value store, device ports) + implementations
+  services/        # ports (key-value store, device ports) + implementations; Remote Scoring's:
+                   # the scoring port (the web's capture API), the tap queue store (a file per
+                   # match), the scoring link store (secure store) and the Realtime port
 modules/
   capture-engine/  # the engine port, the fake, and the native Expo module (StreamPack, Android)
   code-scanner/    # Expo Module. Google's code scanner (Android), iOS stub, fake.
@@ -175,7 +194,10 @@ contracts/         # the web's capture contracts, vendored and pinned
 - No `store/` — see §2. Session state is native-owned. What the app keeps
   itself (saved codes, the active mode, the language pick and, while
   `FEATURES.recordSend` is on, the upload credential, R4 of the D3 findings
-  design) sits behind the key-value store port in `services/`.
+  design) sits behind the key-value store port in `services/`. Remote
+  Scoring's link (origin, token and sport) is in the secure store under
+  `scoring.link.{id}`, and its unsent taps in one file per match behind the
+  tap queue store port (S2 design §7.2).
 - `utils/` is where dead code hides. Put the function where it belongs.
 - Absolute imports via tsconfig paths (`@/domain`, `@/ui`).
 
@@ -491,9 +513,11 @@ Three rules travel with these tokens:
   launch, the engine instance with it) and the language, which changes only
   when the operator picks one. The theme may join them; today it is plain
   imported tokens. Telemetry never goes in context.
-- No React Query. The endpoints JS calls (the code check, and the record upload
-  behind `RecordUploadPort`: R3 of the D3 findings design; owner, 2026-10-11)
-  sit behind ports with plain `fetch`; the rest are native's.
+- No React Query. The endpoints JS calls (the code check, the record upload
+  behind `RecordUploadPort`: R3 of the D3 findings design; owner, 2026-10-11,
+  and Remote Scoring's capture API behind the scoring port) sit behind ports
+  with plain `fetch`; the rest are native's. Realtime is one subscription per
+  match, owned by the runner, only as a nudge to read again (S2 design §7.3).
 - `React.memo` and no anonymous functions in render, for HUD components
   specifically. This is the rare app where that is load-bearing.
 - Animations on Reanimated worklets — UI thread, never JS.
@@ -687,7 +711,11 @@ thermal member. Only transport trouble degrades a session.
   `expo-screen-orientation` for the orientation gate; `expo-brightness` for
   the idle dim (on Android the window's brightness only: its `WRITE_SETTINGS`
   permission is blocked in `app.json`); `expo-localization` for
-  the phone's language. No AsyncStorage.
+  the phone's language. No AsyncStorage. `expo-file-system` for Remote
+  Scoring's tap queue (an atomic save: write a `.tmp`, then move), `@seazn/engine`
+  (pinned exactly, from GitHub Packages: the credential lives in the user
+  config, never the project's `.npmrc`) for the fold, and
+  `@supabase/realtime-js` (pinned) for the nudge.
 - Expo Updates: check on launch only, and **never apply while the phone is
   paired or holding a broadcast**. A paired phone is waiting for a match, and a
   remote Go live can arrive at any moment. A phone updating at 2pm on a
