@@ -293,6 +293,7 @@
   "scoring.preview.dev.singles": "Individual",
   "scoring.preview.dev.doubles": "Dobles",
   "scoring.preview.dev.sync": "Otro estado de sincronización",
+  "scoring.preview.dev.foldProbe": "Medición del motor",
   "scoring.pad.undo": "Deshacer",
   "scoring.sync.synced": "Sincronizado",
   "scoring.sync.sending.one": "Enviando {count} toque",

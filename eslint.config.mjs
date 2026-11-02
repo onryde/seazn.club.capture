@@ -177,6 +177,18 @@ export default [
                 // react-native in it (the Seazn QR's modules, src/domain/qr). Named by source, so
                 // `react` and the rest stay refused.
                 { to: { module: { origin: 'external', source: 'qrcode-generator' } } },
+                // The second (plan S2-1 Task 1): Seazn's scoring engine, at the subpaths its own
+                // `phone-subpaths.json` names, pure TS over zod. Not `testkit` (vitest, fast-check) or the
+                // web's subpaths; not zod itself, which domain never names (test/domainBoundary.test.ts).
+                {
+                  to: {
+                    module: {
+                      origin: 'external',
+                      source: '@seazn/engine',
+                      internalPath: ['core', 'sport', 'sports', 'sports/*', 'pad'],
+                    },
+                  },
+                },
               ],
             },
             {

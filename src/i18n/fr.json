@@ -293,6 +293,7 @@
   "scoring.preview.dev.singles": "Simple",
   "scoring.preview.dev.doubles": "Double",
   "scoring.preview.dev.sync": "Autre état de synchro",
+  "scoring.preview.dev.foldProbe": "Mesure du moteur",
   "scoring.pad.undo": "Annuler",
   "scoring.sync.synced": "Synchronisé",
   "scoring.sync.sending.one": "Envoi de {count} saisie",

@@ -293,6 +293,7 @@
   "scoring.preview.dev.singles": "Enkel",
   "scoring.preview.dev.doubles": "Dubbel",
   "scoring.preview.dev.sync": "Volgende syncstatus",
+  "scoring.preview.dev.foldProbe": "Enginemeting",
   "scoring.pad.undo": "Ongedaan maken",
   "scoring.sync.synced": "Gesynchroniseerd",
   "scoring.sync.sending.one": "Verzenden: {count} tap",

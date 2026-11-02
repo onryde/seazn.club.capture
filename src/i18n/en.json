@@ -293,6 +293,7 @@
   "scoring.preview.dev.singles": "Singles",
   "scoring.preview.dev.doubles": "Doubles",
   "scoring.preview.dev.sync": "Next sync state",
+  "scoring.preview.dev.foldProbe": "Fold probe",
   "scoring.pad.undo": "Undo",
   "scoring.sync.synced": "Synced",
   "scoring.sync.sending.one": "Sending {count} tap",

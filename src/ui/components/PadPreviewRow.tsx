@@ -1,6 +1,8 @@
 import { memo, useCallback } from 'react';
 import { type PressableStateCallbackType, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { foldProbeLine } from '@/hooks/foldProbe';
 import type { PreviewChoice } from '@/hooks/useBadmintonPadPreview';
+import { useFoldProbe } from '@/hooks/useFoldProbe';
 import { useT } from '@/hooks/useLanguage';
 import type { MessageKey } from '@/i18n/messages';
 import { Text } from '@/ui/components/Text';
@@ -32,7 +34,8 @@ type PadPreviewRowProps = {
 /**
  * The design preview's own row (the controller's brief, 2026-10-31), under the pad: one chip per state to look at,
  * scrolled sideways. It is on the preview screen only, which only a dev-twin build opens, so the owner holding a
- * local release build sees it too. Not part of the pad: S2's real screen has no such row.
+ * local release build sees it too. Not part of the pad: S2's real screen has no such row. It ends with R4's Fold probe
+ * (plan S2-1 Task 1), which needs exactly that reach: the engine timed under Hermes in a release build.
  */
 export const PadPreviewRow = memo(function PadPreviewRow({ chosen, onPick }: PadPreviewRowProps) {
   const { t } = useT();
@@ -53,7 +56,31 @@ export const PadPreviewRow = memo(function PadPreviewRow({ chosen, onPick }: Pad
           onPick={onPick}
         />
       ))}
+      <FoldProbeChip />
     </ScrollView>
+  );
+});
+
+/**
+ * R4 (plan S2-1 Task 1 Step 6): folds the 76-event badminton match 50 times on the engine and shows the events and the
+ * fastest, median and slowest fold in ms beside the chip; the record gets `scoring.foldProbe`. Its own state, so a run
+ * re-renders this chip and not the row.
+ */
+const FoldProbeChip = memo(function FoldProbeChip() {
+  const { t } = useT();
+  const { state, run } = useFoldProbe();
+  const line = foldProbeLine(state);
+  return (
+    <>
+      <Pressable accessibilityRole="button" onPress={run} style={chipStyle}>
+        <Text variant="controlSmall">{t('scoring.preview.dev.foldProbe')}</Text>
+      </Pressable>
+      {line === null ? null : (
+        <Text variant="controlSmall" testID="fold-probe-line" style={styles.reading}>
+          {line}
+        </Text>
+      )}
+    </>
   );
 });
 
@@ -96,6 +123,8 @@ const styles = StyleSheet.create({
   },
   chosen: { borderColor: colour.lime },
   pressed: { backgroundColor: colour.pressFill },
+  // Numbers that change as the probe reads must not twitch (AGENTS §5).
+  reading: { fontVariant: ['tabular-nums'] },
 });
 
 /** Module-level so render allocates no function; pressed takes the press fill, as GhostButton. */
