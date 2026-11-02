@@ -442,16 +442,25 @@ The Sonnet per-task and Opus batch reviews of Tasks 3–6 found what the hook mu
 - Every change (tap enqueue, undo, answers, fetches, rules) goes through one pure reducer on the latest
   state; an abandoned send is fed back as `onAnswer(offline)` so `sending` never sticks; `sent` is the
   key in flight, never the current head.
-- Every `retryIn` is honoured (no send before its time, whatever tap, ping or foreground arrives).
-- Send only after a fetch or a rules reload has been merged and revalidated.
-- An unresolved head (sent, no definitive answer; also one reopened after a kill) is resent with its key
-  before any revalidate or undo touches it. Undo of an in-flight tap waits for its answer and voids the
+- Retry waits and merge-before-send are enforced by sync itself (`nextSend(state, now)` and the hold):
+  the hook passes a real clock, calls `revalidate` on a `revalidate` hold, and `onFetchFailed` on a
+  failed read.
+- Effects run in order; a send goes only after the `persist` before it has resolved (Review Focus 1
+  holds only then).
+- An unresolved head (sent, no definitive answer; also one reopened after a kill) is resent with its key;
+  sync drops nothing while it is unresolved. Undo of an in-flight tap waits for its answer and voids the
   returned id.
+- Read failures go through sync's exported reducer: a dead link or a queue-closing refusal makes the
+  queue dead; `tooLarge` is a visible state, never endless retries.
+- A refused save can come back (the next read promotes the temp file): re-save the queue; never say
+  "not recorded" without having saved the queue without that tap.
+- `ownEventIds` belong to one link.
 - The tip comes from the ledger, never from `bootstrap.lastSeq`.
 - The queue is marked dead on a read's 401 and on a bootstrap `viewOnly` (finalized, cancelled, carried
   forward) while taps are queued.
 - The tap is saved before the screen shows it.
 - `logger.protectLink(token)` when the link is loaded from the secure store.
+- Task 10 lists `unreadable` queue entries, with Dismiss.
 - The background sender for other matches' queues (ruling 29) is built here.
 - Dismiss stops that match's sender before `remove`, and deletes `{fixtureId}.boot.json` and the cached
   ledger too.
