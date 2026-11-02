@@ -19,6 +19,11 @@ import type {
 } from '@/services/devicePorts';
 import { createEndedNotice } from '@/services/endedNotice';
 import { createFakeCodePort, type FakeCodePort } from '@/services/fakeCodePort';
+import {
+  SINGLES_SEED,
+  createFakeScoringPort,
+  type FakeScoringPort,
+} from '@/services/fakeScoringPort';
 import { createMemoryKeyValueStore, type MemoryKeyValueStore } from '@/services/KeyValueStore';
 import { createLogger } from '@/services/logger';
 import { createModeStore } from '@/services/modeStore';
@@ -76,6 +81,12 @@ export type FakePorts = {
   readonly photo: FakePhotoPort;
   /** `hold()`/`release()` pend a request; `calls` counts. */
   readonly scoringLink: FakeScoringLinkPort;
+  /**
+   * S2: a fake server over the preview's singles match, folded by the real engine (`FakeServerControls`: revoke,
+   * goOffline, dropNextAnswer, ...). Pass another `createFakeScoringPort(seed)` as the `scoring` override for a match
+   * of the test's own.
+   */
+  readonly scoring: FakeScoringPort;
   /** The battery mode (R5): Unrestricted until `set`; `opened` counts App info's opens. */
   readonly power: FakePower;
   /** R4: no credential until `give`; the real store's own tests are `uploadCredentialStore.test.ts`. */
@@ -115,6 +126,7 @@ export function createFakePorts(
     share: fakeShare(),
     photo: createFakePhotoPort(),
     scoringLink: createFakeScoringLinkPort(),
+    scoring: createFakeScoringPort(SINGLES_SEED),
     power: createFakePower(),
     uploadCredential: createFakeUploadCredential(),
     recordUpload: createFakeRecordUpload(),

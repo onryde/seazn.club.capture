@@ -9,6 +9,7 @@ import { chooseCodePort } from '@/hooks/codePortWiring';
 import { chooseEngine, routedRecordFor } from '@/hooks/engineWiring';
 import { photoPortFor } from '@/hooks/photoPortWiring';
 import { scoringLinkPortFor } from '@/hooks/scoringLinkPortWiring';
+import { scoringPortFor } from '@/hooks/scoringPortWiring';
 import type { Ports } from '@/hooks/usePorts';
 import { createNativeCodeScanner } from '@/scanner/nativeCodeScanner';
 import { createEndedNotice } from '@/services/endedNotice';
@@ -118,6 +119,8 @@ export function createNativePorts(
     // fails with no camera open: the line says so, truthfully. There is no second gate to keep.
     photo: photoPortFor(native),
     scoringLink: scoringLinkPortFor(native, { logger, hosts }),
+    // S2: plain fetch (AGENTS §8), to the build's host only. Nothing calls it until the match hook (plan Task 9).
+    scoring: scoringPortFor({ fetch: (url, init) => fetch(url, init), logger, hosts }),
     power: createNativePower({
       native,
       os: Platform.OS,

@@ -27,6 +27,7 @@ import type { RecordUploadPort } from '@/services/recordUploadPort';
 import type { RecordSendFlight } from '@/services/recordSendFlight';
 import type { ScanFlight } from '@/services/scanFlight';
 import type { ScoringLinkPort } from '@/services/scoringLinkPort';
+import type { ScoringPort } from '@/services/scoringPort';
 import type { SessionRecord } from '@/services/sessionRecord';
 import type { StreamSettingsStore } from '@/services/streamSettingsStore';
 import type { Surfaces } from '@/services/surfaces';
@@ -78,6 +79,8 @@ export type Ports = {
   readonly photo: PhotoPort;
   /** Spec §10: the match's Remote scoring link (the second call that answers). */
   readonly scoringLink: ScoringLinkPort;
+  /** S2: Remote scoring's calls to the web (bootstrap, ledger, rules, append, realtime grant), plain fetch. */
+  readonly scoring: ScoringPort;
   /** R5: the battery state and the app's settings page, Android only. */
   readonly power: PowerPort;
   /** R4: the credential Send record to Seazn may use (P10: inert while its switch is off). */

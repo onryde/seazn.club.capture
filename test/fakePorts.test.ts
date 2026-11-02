@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createFakePorts, disposeFakePorts } from './fakePorts';
-import { FAKE_SCORING_URL } from './fakeScoringLinkPort';
+import { FAKE_SCORING_SECRET, FAKE_SCORING_URL } from './fakeScoringLinkPort';
 
 // This runs in the node project, which has no UI setup file to dispose for it.
 afterEach(() => {
@@ -73,6 +73,29 @@ describe('fake scoring link', () => {
   it('is on the ports the screens read, the same object as the fake', () => {
     const fakes = createFakePorts();
     expect(fakes.ports.scoringLink).toBe(fakes.scoringLink);
+  });
+});
+
+describe('fake scoring', () => {
+  const link = { origin: 'https://stg.seazn.club', token: FAKE_SCORING_SECRET };
+
+  it('is on the ports the screens read, the same object as the fake', () => {
+    const fakes = createFakePorts();
+    expect(fakes.ports.scoring).toBe(fakes.scoring);
+  });
+
+  it('serves the preview’s singles match, and every createFakePorts has a ledger of its own', async () => {
+    const one = createFakePorts();
+    const two = createFakePorts();
+    const answer = await one.scoring.bootstrap(link);
+    expect(answer).toMatchObject({
+      kind: 'ok',
+      bootstrap: { sides: { home: { name: 'A. Sharma' }, away: { name: 'L. Chen' } }, lastSeq: 0 },
+    });
+    const fixture = answer.kind === 'ok' ? answer.bootstrap.fixtureId : '';
+    one.scoring.addOtherScorerEvent('core.start', {});
+    expect(await one.scoring.events(link, fixture, 0)).toHaveLength(1);
+    expect(await two.scoring.events(link, fixture, 0)).toEqual([]);
   });
 });
 
