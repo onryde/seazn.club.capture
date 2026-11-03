@@ -16,7 +16,12 @@ import {
   type SanctionStep,
 } from '@/domain/scoring/badmintonSanction';
 import type { PadOutcome } from '@/domain/scoring/padLine';
-import type { PadHistoryGroup, PadMatchDetails, PadStateCard } from '@/domain/scoring/padView';
+import type {
+  PadAsk,
+  PadHistoryGroup,
+  PadMatchDetails,
+  PadStateCard,
+} from '@/domain/scoring/padView';
 import { parseWholeNumber } from '@/domain/scoring/wholeNumber';
 import { usePorts } from '@/hooks/usePorts';
 
@@ -31,6 +36,8 @@ export type PadSheetSnapshot = {
   readonly display: BadmintonDisplay;
   readonly history: readonly PadHistoryGroup<BadmintonPadKey>[];
   readonly card: PadStateCard | null;
+  /** The reconnect question (owner ruling 43), while it stands: the real match's; the preview has none. */
+  readonly ask?: PadAsk | null;
 };
 
 /**
@@ -49,17 +56,23 @@ export type PadSheetView =
     }
   | { readonly kind: 'ending'; readonly person: string }
   | { readonly kind: 'details'; readonly details: PadMatchDetails<BadmintonPadKey> }
-  | { readonly kind: 'history'; readonly groups: readonly PadHistoryGroup<BadmintonPadKey>[] };
+  | { readonly kind: 'history'; readonly groups: readonly PadHistoryGroup<BadmintonPadKey>[] }
+  /** The reconnect question (owner ruling 43): shown for as long as it stands, like the ending prompt, and over it. */
+  | { readonly kind: 'ask'; readonly ask: PadAsk }
+  /** Discard's confirm, over the question: Keep is the way back. */
+  | { readonly kind: 'discard'; readonly ask: PadAsk };
 
 type Sheet =
   | { readonly kind: 'sanction'; readonly step: SanctionStep }
   | { readonly kind: 'setScore' }
   | { readonly kind: 'details' }
   | { readonly kind: 'history' }
+  | { readonly kind: 'discard' }
   | null;
 
 const DETAILS: Sheet = { kind: 'details' };
 const HISTORY: Sheet = { kind: 'history' };
+const DISCARD: Sheet = { kind: 'discard' };
 
 /**
  * A sheet's button that records, through the taps' bounce memory (`useTaps`' `opening`, in `usePadTaps.ts`): the sheet
@@ -92,12 +105,17 @@ export function usePadSheets(
     if (!justShown()) cancel();
   }, [justShown, cancel]);
   const choose = useChoose(sheet, setSheet, snapshot?.display ?? null, record, justShown, pad);
-  // No pad to put a sheet over (the match is loading, or is a state of its own): no sheet stays open behind it.
-  if (snapshot === null && sheet !== null) setSheet(null);
+  // No pad to put a sheet over (the match is loading, or is a state of its own): no sheet stays open behind it. And the
+  // question is the only sheet over the pad while it stands (its confirm aside), and its confirm goes with it.
+  if (sheet !== null && staleSheet(sheet, snapshot)) setSheet(null);
   const saveScore = useSaveScore(pad, record, refuseScore, cancel, justShown);
+  // Discard asks again before it deletes: quiet in the bounce window of the question appearing (`justShown`).
+  const askDiscard = useCallback(() => {
+    if (!justShown()) setSheet(DISCARD);
+  }, [justShown]);
   const actions = useMemo(
-    () => ({ tool, details, history, choose, cancel, dismiss, saveScore }),
-    [tool, details, history, choose, cancel, dismiss, saveScore],
+    () => ({ tool, details, history, choose, cancel, dismiss, saveScore, askDiscard }),
+    [tool, details, history, choose, cancel, dismiss, saveScore, askDiscard],
   );
   return { open: sheet !== null, cancel, actions, view, justShown };
 }
@@ -173,6 +191,13 @@ function useSaveScore(
   );
 }
 
+/** Whether an open sheet has no place now: no pad under it; the question over it; or its confirm with no question left. */
+function staleSheet(sheet: NonNullable<Sheet>, snapshot: PadSheetSnapshot | null): boolean {
+  if (snapshot === null) return true;
+  const asking = (snapshot.ask ?? null) !== null && snapshot.card === null;
+  return asking ? sheet.kind !== 'discard' : sheet.kind === 'discard';
+}
+
 function sheetFor(id: string): Sheet {
   const parsed = parseBadmintonTool(id);
   if (parsed === null) return null;
@@ -183,7 +208,12 @@ function sheetFor(id: string): Sheet {
 
 function sheetView(sheet: Sheet, snapshot: PadSheetSnapshot | null): PadSheetView | null {
   if (snapshot === null) return null;
-  const { display, history, card } = snapshot;
+  const { display, history, card, ask = null } = snapshot;
+  // The reconnect question stands over everything while it stands (nothing is sent until it is answered), and its
+  // confirm over it. Under a card there is no pad to ask over, and the badge says it.
+  if (ask !== null && card === null) {
+    return { kind: sheet?.kind === 'discard' ? 'discard' : 'ask', ask };
+  }
   // Under a card the pad takes no tap (`withCard`): the ending prompt goes with the tools while the ending waits, and is
   // back on the pad (hardening, 2026-11-01). Match details and History still open under the card.
   if (display.awaitingEnding && card === null) {

@@ -1,6 +1,6 @@
 import { judgeOf } from '@/domain/scoring/scoringMatchPump';
 import { deadOf, isOutdated, type MatchState } from '@/domain/scoring/scoringMatchState';
-import { STALL_AFTER, type RefusedRun } from '@/domain/scoring/sync';
+import { STALL_AFTER, isAsking, type RefusedRun } from '@/domain/scoring/sync';
 
 /**
  * When the phone has taps it cannot get to the server and nothing on the pad says why (device, 2026-11-02): the pad
@@ -23,6 +23,8 @@ export function stallOf(state: MatchState): Stall | null {
   if (!waiting || deadOf(state) !== null || isOutdated(state) || sync.status === 'tooLarge') {
     return null;
   }
+  // The question is the sender's own hold (`scoring.ask`): nothing is being refused while it waits for the scorer.
+  if (isAsking(sync)) return null;
   const run = sync.refusedRun;
   if (run !== null && run.count >= STALL_AFTER) return { kind: 'refused', ...run };
   const unjudged =

@@ -290,3 +290,13 @@ export const typeScale = {
 } satisfies Record<string, TextStyle>;
 
 export type TypeRole = keyof typeof typeScale;
+
+/**
+ * The most a phone's font scale may grow a role's text, for the roles set in a room measured at their own size (review
+ * minor 4 of round 2, 2026-11-02). Every other role follows the phone's scale, as the rest of the app does.
+ * - `tally`: "1:0" never shrinks and has 72 dp at 320 beside Rules, History and the badge; at 1.15 it is 67.2 dp, where a 1.3
+ *   scale would make it 76.1 and push the row out of the screen (`padFit.test.ts`).
+ * - `syncCount`: the badge's slot is 56 dp and the widest count, "99+", is 55.8 in it, so it does not grow at all. The
+ *   badge's words are the screen reader's and are not drawn, so nothing is lost to a larger setting.
+ */
+export const maxFontScale: Partial<Record<TypeRole, number>> = { tally: 1.15, syncCount: 1 };

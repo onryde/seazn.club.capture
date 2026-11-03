@@ -16,6 +16,7 @@ import {
   openSync,
   retryRules,
   revalidate,
+  STALL_AFTER,
   type SyncState,
 } from '@/domain/scoring/sync';
 import type { AppendAnswer, LedgerEvent } from '@/domain/scoring/wire';
@@ -1641,6 +1642,60 @@ describe('onAnswer: ALREADY_DECIDED (the match is decided or closed)', () => {
     const again = answer(resent, A, refusal('ALREADY_DECIDED'));
     expect(again.effects).toEqual([{ kind: 'reloadBootstrap' }]);
     expect(again.state.decidedProbe).toBe('key-a');
+  });
+});
+
+// Review minor 2 (round 2, 2026-11-02): a server that answers ALREADY_DECIDED and a status read that never lands is a
+// loop of its own (send, refused, read, fail, wait 5 s, send ...) the run never counted, so no stall was ever said.
+describe('a status read that never lands, after ALREADY_DECIDED, counts as a refusal', () => {
+  /** The head sent again after a read gave up: nothing on its way but this, no hold. */
+  const resent = (state: SyncState): SyncState => ({
+    ...state,
+    status: 'sending',
+    inFlight: 'key-a',
+    notBefore: 0,
+  });
+
+  it('each cycle adds one, by `decided`, and the sixth is the stall’s count', () => {
+    let state = stateOf({ queue: queueOf([A, B]) });
+    for (let cycle = 1; cycle <= STALL_AFTER; cycle += 1) {
+      const held = answer(state, A, refusal('ALREADY_DECIDED')).state;
+      // The refusal itself counts nothing yet: the read may still say why (a closed match, a plain refusal).
+      expect(held.refusedRun).toEqual(cycle === 1 ? null : { by: 'decided', count: cycle - 1 });
+      const failed = onFetchFailed(held, NOW);
+      expect(failed.state.refusedRun).toEqual({ by: 'decided', count: cycle });
+      state = resent(failed.state);
+    }
+    expect(state.refusedRun).toEqual({ by: 'decided', count: STALL_AFTER });
+  });
+
+  it('counts across kinds: conflicts and these cycles are one run', () => {
+    const conflicted = answer(stateOf(), A, { kind: 'seqConflict', currentSeq: 6 }).state;
+    const held = answer(
+      resent({ ...conflicted, hold: null, notBefore: 0 }),
+      A,
+      refusal('ALREADY_DECIDED'),
+    );
+    expect(onFetchFailed(held.state, NOW).state.refusedRun).toEqual({ by: 'decided', count: 2 });
+  });
+
+  it('a status that lands is not one: the tap is refused for good, and the run stands as it was', () => {
+    const held = answer(stateOf({ queue: queueOf([A, B]) }), A, refusal('ALREADY_DECIDED')).state;
+    const landed = onBootstrapStatus(held, 'in_play').state;
+    expect(landed.refusedRun).toBeNull();
+  });
+
+  it('a ledger or rules read that does not land adds none: its refusal was counted when it came', () => {
+    const conflicted = answer(stateOf(), A, { kind: 'seqConflict', currentSeq: 6 }).state;
+    expect(onFetchFailed(conflicted, NOW).state.refusedRun).toEqual({ by: 'conflict', count: 1 });
+    const changed = answer(stateOf(), A, { kind: 'rulesChanged', rulesVersion: 3 }).state;
+    expect(onFetchFailed(changed, NOW).state.refusedRun).toEqual({ by: 'rules', count: 1 });
+  });
+
+  it('a throttled read counts the same: the server answered, and the tap has not gone', () => {
+    const held = answer(stateOf({ queue: queueOf([A, B]) }), A, refusal('ALREADY_DECIDED')).state;
+    const throttled = onReadFailed(held, { kind: 'rateLimited', retryAfterMs: 20_000 }, NOW);
+    expect(throttled.state.refusedRun).toEqual({ by: 'decided', count: 1 });
   });
 });
 

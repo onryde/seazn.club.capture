@@ -1,6 +1,7 @@
 import { noteLine, type PadLineWords } from '@/domain/scoring/padLine';
 import {
   withCard,
+  type PadAsk,
   type PadHistoryGroup,
   type PadSide,
   type PadStateCard,
@@ -17,6 +18,7 @@ import {
   undoTargetOf,
   type MatchState,
 } from '@/domain/scoring/scoringMatchState';
+import { askOf } from '@/domain/scoring/scoringMatchAsk';
 import { stallOf } from '@/domain/scoring/scoringMatchStall';
 import type {
   ScoringSport,
@@ -54,6 +56,8 @@ export type MatchPad<S extends SportTypes = SportTypes> = {
   readonly line: PadLineWords;
   /** The Start screen's pick, while the match has not started. */
   readonly toss: PadSide | null;
+  /** The reconnect question, while it stands: other scorers' events landed on this phone's queued taps. */
+  readonly ask: PadAsk | null;
 };
 
 type Folded<S extends SportTypes> = Extract<SportFold<S>, { kind: 'folded' }>;
@@ -111,6 +115,27 @@ function padOf<S extends SportTypes>(state: MatchState<S>, fold: Folded<S>): Mat
     history: fold.history,
     line: lineOf(state, fold),
     toss: sport.notStarted(display) ? state.toss : null,
+    ask: askViewOf(state),
+  };
+}
+
+/**
+ * The reconnect question as the sheet asks it: the counts, and the score as the server has it, which is the match
+ * folded with none of this phone's taps (the pad itself shows them on top). The sides are the pad's halves, so every
+ * sport names them its own way.
+ */
+function askViewOf<S extends SportTypes>(state: MatchState<S>): PadAsk | null {
+  const ask = askOf(state);
+  if (ask === null) return null;
+  const fold = foldOfState(state, []);
+  if (fold === null || fold.kind !== 'folded') return null;
+  const [top, bottom] = state.sport.pad(fold.display, { kind: 'synced' }).halves;
+  return {
+    ...ask,
+    score: [
+      { label: top.label, value: top.value },
+      { label: bottom.label, value: bottom.value },
+    ],
   };
 }
 
@@ -125,8 +150,10 @@ function syncOf(state: MatchState): PadSync {
   const count = state.sync.queue.pending.length;
   if (count === 0) return { kind: 'synced' };
   if (deadOf(state) !== null) return { kind: 'refused', count };
-  const { status } = state.sync;
-  if (status === 'offline' || status === 'outdated') return { kind: 'offline', count };
+  if (isOutdated(state)) return { kind: 'outdated', count };
+  // The question first: a phone that dropped and came back is waiting for the scorer's answer, not for a signal.
+  if (askOf(state) !== null) return { kind: 'asked', count };
+  if (state.sync.status === 'offline') return { kind: 'offline', count };
   // The network is named first: a refusal run left over from before it dropped is not what is stopping the taps now.
   return stallOf(state) === null ? { kind: 'sending', count } : { kind: 'stalled', count };
 }

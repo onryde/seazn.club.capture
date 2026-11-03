@@ -154,7 +154,9 @@ export type MatchEvent<S extends SportTypes = SportTypes> =
   | { readonly kind: 'saved'; readonly n: number }
   /** A save failed: `key` is the tap it was to make durable, if any. */
   | { readonly kind: 'saveFailed'; readonly key: string | null }
-  | { readonly kind: 'say'; readonly words: PadLineWords };
+  | { readonly kind: 'say'; readonly words: PadLineWords }
+  /** The scorer's answer to the reconnect question (`scoringMatchAsk.ts`): send the queued taps, or discard them. */
+  | { readonly kind: 'answerAsk'; readonly answer: 'send' | 'discard' };
 
 /** What is held when a match opens: the queue and ledger from disk, and what the boot cache kept. */
 export type MatchHeld<S extends SportTypes = SportTypes> = {
@@ -212,7 +214,7 @@ export function padTakes(state: MatchState): boolean {
 }
 
 /** Order-free equality of two JSON values: the server's copy of a payload may come back with its keys in another order. */
-function sameJson(a: unknown, b: unknown): boolean {
+export function sameJson(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
   if (Array.isArray(a) !== Array.isArray(b)) return false;

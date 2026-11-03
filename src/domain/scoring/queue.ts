@@ -75,6 +75,12 @@ export type MatchQueue = {
   /** The event ids the server returned for this phone's accepted taps: "This phone" in History, and what Undo reaches. */
   readonly ownEventIds: readonly string[];
   readonly dead: QueueDead | null;
+  /**
+   * The reconnect question (owner ruling 43, 2026-11-02): the ids of the events another scorer wrote while this phone
+   * had taps queued, that the scorer has not yet been asked about. While it is present nothing is sent, and it is kept
+   * with the queue so a kill and a reopen find the question still standing. Absent: nothing is asked.
+   */
+  readonly askedAbout?: readonly string[];
 };
 
 /**

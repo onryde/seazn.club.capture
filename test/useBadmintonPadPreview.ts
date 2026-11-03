@@ -138,10 +138,23 @@ function usePreviewActions(parts: ActionParts): PadPreviewActions {
   const tool = useGuardedTool(taps.secondTouch, sheets.actions.tool);
   const { tapHalf, undo } = taps;
   return useMemo(
-    () => ({ home, tapHalf, undo, ...others, ...sheets.actions, tool, ...starting.actions, pick }),
+    () => ({
+      home,
+      tapHalf,
+      undo,
+      ...others,
+      ...sheets.actions,
+      tool,
+      ...starting.actions,
+      ...NO_ASK,
+      pick,
+    }),
     [home, tapHalf, undo, others, sheets.actions, tool, starting.actions, pick],
   );
 }
+
+/** The preview is one phone with no one else scoring, so the reconnect question (owner ruling 43) is never asked. */
+const NO_ASK = { sendTaps: () => undefined, confirmDiscard: () => undefined } as const;
 
 /**
  * The app's kept match, or a singles match afresh; picking a sample starts its match afresh, and Start (`fresh`) starts

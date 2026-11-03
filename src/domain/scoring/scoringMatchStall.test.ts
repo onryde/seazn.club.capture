@@ -91,6 +91,20 @@ describe('stallOf: the server answers and never takes the tap', () => {
   });
 });
 
+describe('stallOf: the reconnect question', () => {
+  // Owner ruling 43: while the scorer is being asked, nothing is refused: the sender is holding for an answer, and the
+  // record says so with `scoring.ask`. A stall that stood before the question is not said twice.
+  it('is over while the question stands, though the run of refusals before it reached the sixth', () => {
+    const stalled = refusedTimes(6, changed);
+    expect(stallOf(stalled)).not.toBeNull();
+    const asked = {
+      ...stalled,
+      sync: { ...stalled.sync, queue: { ...stalled.sync.queue, askedAbout: ['ev-9'] } },
+    };
+    expect(stallOf(asked)).toBeNull();
+  });
+});
+
 describe('stallOf: a queue that cannot be judged', () => {
   const unfoldable = { ...SINGLES, cfg: { bestOf: 'many' } };
   const queue = [queuedOf('k1', rally('H'))];

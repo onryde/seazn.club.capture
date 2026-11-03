@@ -314,6 +314,51 @@ describe('the pad', () => {
       }
     });
 
+    // Review minor 5 (round 2): a key is whatever the generator answers, so what it answers is read. A throw or a
+    // non-key falls through to the next generator, so the tap is never lost for it and no key is '' or `undefined`.
+    it.each([
+      ['an empty string', () => ''],
+      ['undefined', () => undefined],
+      ['null', () => null],
+      ['a number', () => 42],
+      ['an object', () => ({})],
+      [
+        'a throw',
+        () => {
+          throw new Error('native module not ready');
+        },
+      ],
+    ])(
+      'answers %s: the runtime’s crypto stands in, the tap goes under a v4 key, and the record says nothing',
+      async (_, answer) => {
+        vi.stubGlobal('expo', { uuidv4: vi.fn(answer) });
+        const fakes = await rig();
+        const randomUUID = vi.spyOn(globalThis.crypto, 'randomUUID');
+        const keys = await taps(fakes);
+        expect(keys).toHaveLength(2);
+        keys.forEach((key) => expect(key).toMatch(UUID_V4));
+        expect(randomUUID).toHaveBeenCalled();
+        expect(readRecord(fakes.record).map((line) => line.event)).not.toContain(
+          'scoring.keyFallback',
+        );
+      },
+    );
+
+    it('answers a throw with no crypto either: Math.random stands in, and the record says so once', async () => {
+      vi.stubGlobal('expo', {
+        uuidv4: () => {
+          throw new Error('native module not ready');
+        },
+      });
+      vi.stubGlobal('crypto', undefined);
+      const fakes = await rig();
+      const keys = await taps(fakes);
+      keys.forEach((key) => expect(key).toMatch(UUID_V4));
+      expect(
+        readRecord(fakes.record).filter((line) => line.event === 'scoring.keyFallback'),
+      ).toHaveLength(1);
+    });
+
     it('is not there and neither is crypto: Math.random keys, and the record says so once', async () => {
       vi.stubGlobal('expo', {});
       vi.stubGlobal('crypto', undefined);

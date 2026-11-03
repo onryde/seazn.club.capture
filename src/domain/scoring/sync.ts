@@ -84,7 +84,11 @@ export type SyncState = {
   readonly refusedRun: RefusedRun | null;
 };
 
-export type RefusedRun = { readonly by: 'conflict' | 'rules'; readonly count: number };
+/**
+ * Refusals in a row, the latest kind named. `decided` is an ALREADY_DECIDED whose status read never landed (`letGo`): the
+ * server answered the send and the phone never learned why, so the tap goes again.
+ */
+export type RefusedRun = { readonly by: 'conflict' | 'rules' | 'decided'; readonly count: number };
 
 /** What the hook does next. Each is said once per answer; none is a promise about what the server will say. */
 export type SyncEffect =
@@ -136,12 +140,28 @@ const SENDABLE: ReadonlySet<SyncStatus> = new Set<SyncStatus>(['idle', 'offline'
  * sixth (review, 2026-11-02).
  */
 const step = (state: SyncState, effects: readonly SyncEffect[]): SyncStep => ({
-  state:
-    state.refusedRun !== null && state.queue.pending.length === 0
-      ? { ...state, refusedRun: null }
-      : state,
+  state: settled(state),
   effects,
 });
+
+/**
+ * With nothing queued there is nothing to count or to ask: the refusal run is over, and so is a reconnect question
+ * (`askedAbout`: the scorer has no taps left to send or discard).
+ */
+function settled(state: SyncState): SyncState {
+  if (state.queue.pending.length > 0) return state;
+  const run = state.refusedRun === null ? state : { ...state, refusedRun: null };
+  return run.queue.askedAbout === undefined ? run : { ...run, queue: withoutQuestion(run.queue) };
+}
+
+/** The queue with no reconnect question standing (a copy: the file's other fields are untouched). */
+export const withoutQuestion = (queue: MatchQueue): MatchQueue => ({
+  ...queue,
+  askedAbout: undefined,
+});
+
+/** Whether the reconnect question stands: another scorer's events landed on this phone's queued taps, and nothing is sent until it is answered. */
+export const isAsking = (state: SyncState): boolean => state.queue.askedAbout !== undefined;
 
 /**
  * A match opened from what was kept: its queue, and the ledger and rules the phone last held. Nothing is in flight; a
@@ -187,7 +207,7 @@ export function openSync(held: {
 export function nextSend(state: SyncState, now: number): AppendBody | null {
   const head = state.queue.pending[0];
   if (head === undefined || state.queue.dead !== null || !SENDABLE.has(state.status)) return null;
-  if (state.hold !== null || now < state.notBefore) return null;
+  if (state.hold !== null || now < state.notBefore || isAsking(state)) return null;
   if (head.voidsKey !== undefined) return null;
   return {
     expected_seq: state.tip,
@@ -627,7 +647,9 @@ export function onFetchFailed(state: SyncState, now: number): SyncStep {
 /**
  * The read's hold is let go, a revalidation still owed taking its place, and nothing is sent for `ms`: for a rules
  * read at least 15 s, and the read is due again then (`retryRules`), since with nothing queued no send would ever
- * provoke the next FIXTURE_RULES_CHANGED.
+ * provoke the next FIXTURE_RULES_CHANGED. A status read let go counts as a refusal (`decided`): the tap goes again, is
+ * refused again, and the run is what says a stall (review minor 2 of round 2, 2026-11-02); a conflict's or a rules
+ * change's refusal was counted when it came, and its read failing adds none.
  */
 function letGo(state: SyncState, now: number, ms: number): SyncStep {
   if (state.hold !== 'ledger' && state.hold !== 'rules' && state.hold !== 'status') {
@@ -639,6 +661,7 @@ function letGo(state: SyncState, now: number, ms: number): SyncStep {
     ...state,
     hold: state.revalidateOwed ? 'revalidate' : null,
     decidedProbe: null,
+    refusedRun: state.hold === 'status' ? refusedAgain(state, 'decided') : state.refusedRun,
     notBefore: Math.max(state.notBefore, now + wait),
     rulesRetryAt: rules ? now + wait : state.rulesRetryAt,
   };

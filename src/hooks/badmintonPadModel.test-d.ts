@@ -15,7 +15,15 @@ import type { BadmintonPadPreview } from '../../test/useBadmintonPadPreview';
  * here by hand: a button moved between them fails here.
  */
 type Shared = 'home' | 'tapHalf' | 'undo' | 'tool' | 'cancel' | 'dismiss' | 'update' | 'browser';
-type BadmintonOwn = 'choose' | 'saveScore' | 'recordEnding' | 'voidSanction' | 'pickServer';
+type BadmintonOwn =
+  | 'choose'
+  | 'saveScore'
+  | 'recordEnding'
+  | 'voidSanction'
+  | 'pickServer'
+  | 'sendTaps'
+  | 'askDiscard'
+  | 'confirmDiscard';
 
 describe('the actions every sport’s pad shares', () => {
   it('are these and no more', () => {
@@ -48,6 +56,12 @@ describe('badminton’s pad', () => {
 });
 
 describe('the generic sender', () => {
+  it('answers the reconnect question with one of two words, and says whether it was taken', () => {
+    expectTypeOf<Parameters<MatchSender<never>['answer']>>().toEqualTypeOf<
+      [answer: 'send' | 'discard']
+    >();
+  });
+
   it('names no sport’s Undo: only the ending prompt’s, which any sport may have', () => {
     expectTypeOf<Parameters<MatchSender<never>['undo']>>().toEqualTypeOf<[only?: 'ending']>();
   });

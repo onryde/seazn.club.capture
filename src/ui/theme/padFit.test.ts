@@ -5,7 +5,7 @@ import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
 import { halfNeeds, scoreRole } from '@/ui/theme/scoreRole';
 import { layout, space } from '@/ui/theme/tokens';
-import { typeScale } from '@/ui/theme/type';
+import { maxFontScale, typeScale } from '@/ui/theme/type';
 import { loadFont } from '../../../test/fontMetrics';
 import { linesIn, linesOf } from '../../../test/textFit';
 
@@ -95,14 +95,15 @@ describe('the tool row fits at 320 in four languages', () => {
   });
 });
 
-describe('the header fits on one row at 320 and 360 in four languages (owner ruling 20)', () => {
+describe('the header fits on one row at 320 and 360 (owner ruling 20)', () => {
   // Owner ruling 20 (2026-10-31): Back, then at the right end Rules and History, round icon buttons as Home's gear, and
   // the sync status; between them the games tally, where the Preview tag was (owner, 2026-11-01). The owner's badge
   // (2026-11-02: "remove sending word and have a symbol/icon like green uparrow", and "increase the size of 0:0 to fit in
   // that space") took the words away: the status is an arrow and a count in `padSyncBox`, and the tally grows into the
   // room that gave back. The row's items are `space.xs` apart: Back, the tally and the end group, and inside the group
-  // Rules, History and the badge's slot. Nothing in the row is a word any more, so the rooms below hold in all four
-  // languages at once (the badge's words are a screen reader's, never drawn).
+  // Rules, History and the badge's slot. Nothing in the row is a word any more, so there is no language to measure in
+  // (the badge's words are a screen reader's, never drawn); what can still change its size is the phone's font scale,
+  // which the tally and the badge's count cap (`maxFontScale`, review minor 4 of round 2).
   /** "1:0" in `tally`: two tabular digits (`zero.tf`, the widest) and the colon. Best of 3: a side wins 2 at most. */
   const tallyAt = (fontSize: number) =>
     (2 * barlow700.advanceOfName('zero.tf') + barlow700.advance(':'.codePointAt(0) ?? 0)) *
@@ -162,13 +163,46 @@ describe('the header fits on one row at 320 and 360 in four languages (owner rul
     expect(tallyRoom(320) - tally).toBeGreaterThanOrEqual(8);
   });
 
-  // The words took 88 dp and left the tally 40: at 30 dp it was 38.1. Its size is now bound by the row's height, not
-  // by its room: a larger one has room at 320 and no line to stand on (anti-vacuity, both ways).
-  it('is the largest size whose line stays the 48 dp row: room remains at 54, but a line of 56 would not fit', () => {
+  // The words took 88 dp and left the tally 40: at 30 dp it was 38.1. Its size is bound by the row's height, not by its
+  // room: at 54 dp the digits still have room at 320, but the line they are set on would be taller than the 48 dp row.
+  it('is bound by the 48 dp row’s height, not by its room: 54 dp would still fit the width at 320, and its line would not fit the row', () => {
     expect(tallyAt(54)).toBeLessThanOrEqual(tallyRoom(320));
     expect(Math.ceil(54 * (typeScale.tally.lineHeight / typeScale.tally.fontSize))).toBeGreaterThan(
       layout.touch,
     );
+  });
+
+  // Review minor 4 (round 2): the phone's font scale grows text the row measured at 1. The tally, which never shrinks, would
+  // push Rules and History off the row at 320 from a 1.23 scale; the count would leave its 56 dp slot at any scale
+  // above 1. Their roles cap it (`maxFontScale`, read by `Text`), and a 1.3 scale, a common one, still fits.
+  describe('at a font scale of 1.3', () => {
+    const SCALE = 1.3;
+    const grown = (role: keyof typeof maxFontScale) => Math.min(SCALE, maxFontScale[role] ?? SCALE);
+
+    it('would push the row out of 320 uncapped (anti-vacuity): the tally 76.1 dp of 72, the widest badge 56.3 of 56', () => {
+      expect(tallyAt(typeScale.tally.fontSize * SCALE)).toBeGreaterThan(tallyRoom(320));
+      expect(badgeWidth('99+') + (SCALE - 1) * countWidth('99+')).toBeGreaterThan(
+        layout.padSyncBox,
+      );
+    });
+
+    it('keeps the tally whole in its room at 320: capped at 1.15, 67.2 dp of 72, with a few dp to spare', () => {
+      expect(maxFontScale.tally).toBe(1.15);
+      expect(grown('tally')).toBe(1.15);
+      const width = tallyAt(typeScale.tally.fontSize * grown('tally'));
+      expect(width.toFixed(1)).toBe('67.2');
+      expect(tallyRoom(320) - width).toBeGreaterThanOrEqual(4);
+    });
+
+    it('keeps the widest count, "99+", in the badge’s slot: capped at 1, so it does not grow at all', () => {
+      expect(maxFontScale.syncCount).toBe(1);
+      const width = badgeWidth('99+') + (grown('syncCount') - 1) * countWidth('99+');
+      expect(width).toBeLessThanOrEqual(layout.padSyncBox);
+    });
+
+    it('caps no other role: everything else follows the phone’s scale, as the rest of the app does', () => {
+      expect(Object.keys(maxFontScale).sort()).toEqual(['syncCount', 'tally']);
+    });
   });
 
   it('is larger than the 30 dp it was, and was bound by the words then (the old box left it 40 at 320)', () => {

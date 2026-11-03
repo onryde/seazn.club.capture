@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { refusing, type PadLineWords, type PadOutcome } from '@/domain/scoring/padLine';
+import { TAKEN, refusing, type PadLineWords, type PadOutcome } from '@/domain/scoring/padLine';
 import type { MatchEvent } from '@/domain/scoring/scoringMatchState';
 import { viewAs, type MatchPad, type MatchView } from '@/domain/scoring/scoringMatchView';
 import type { ScoringSport, SportTypes } from '@/domain/scoring/scoringSport';
@@ -102,8 +102,8 @@ const saidNoCrypto = new WeakSet<Logger>();
  * to be unique, and the server keys by link too) and the record says so once: a phone like that is worth knowing about.
  */
 function newTapKey(logger: Logger): string {
-  const expo = (globalThis as { expo?: ExpoGlobal }).expo;
-  if (typeof expo?.uuidv4 === 'function') return (expo.uuidv4 as () => string)();
+  const native = nativeKey();
+  if (native !== null) return native;
   const random = (globalThis as { crypto?: Random }).crypto;
   if (random?.randomUUID !== undefined) return random.randomUUID();
   const bytes = new Uint8Array(16);
@@ -117,6 +117,21 @@ function newTapKey(logger: Logger): string {
 }
 
 /**
+ * The native generator's key, or null when it is not there, throws, or answers anything but a non-empty string: a tap
+ * is never lost, nor keyed '' or `undefined`, for a native module that is not ready (review minor 5 of round 2).
+ */
+function nativeKey(): string | null {
+  const expo = (globalThis as { expo?: ExpoGlobal }).expo;
+  if (typeof expo?.uuidv4 !== 'function') return null;
+  try {
+    const made: unknown = (expo.uuidv4 as () => unknown)();
+    return typeof made === 'string' && made !== '' ? made : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * What a sport's pad hook sends the match: a tap of that sport, Undo (`'ending'`: the sport's ending prompt's, taken only
  * while an ending waits), and words for the line.
  */
@@ -124,6 +139,8 @@ export type MatchSender<S extends SportTypes> = {
   readonly tap: (made: S['tap']) => PadOutcome;
   readonly undo: (only?: 'ending') => PadOutcome;
   readonly say: (words: PadLineWords) => void;
+  /** The scorer's answer to the reconnect question (owner ruling 43): send the queued taps, or discard them. */
+  readonly answer: (answer: 'send' | 'discard') => PadOutcome;
 };
 
 /** Hands events to the runner: what each tap came to, at once, or "not now" while there is no runner. */
@@ -149,7 +166,15 @@ export function useSender<S extends SportTypes>(
     (words: PadLineWords) => void runner?.dispatch({ kind: 'say', words }),
     [runner],
   );
-  return useMemo(() => ({ tap, undo, say }), [tap, undo, say]);
+  const answer = useCallback(
+    (made: 'send' | 'discard'): PadOutcome => {
+      if (runner === null) return NOT_NOW;
+      runner.dispatch({ kind: 'answerAsk', answer: made });
+      return TAKEN;
+    },
+    [runner],
+  );
+  return useMemo(() => ({ tap, undo, say, answer }), [tap, undo, say, answer]);
 }
 
 /** The banner's buttons, through the link port. A page that would not open says so on the banner; the URL never does. */

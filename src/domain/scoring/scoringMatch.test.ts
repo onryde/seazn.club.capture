@@ -92,10 +92,10 @@ describe('opening a match', () => {
   it('a background sender sends its queue once the ledger is read, judging nothing: the server judges each tap', () => {
     const queue = queueOf({ pending: [queuedOf('k1', rally('H'))] });
     const opened = openMatch(
-      held({ queue, judge: 'trust', bootstrap: null, ledger: ledgerOf([]) }),
+      held({ queue, judge: 'trust', bootstrap: null, ledger: ledgerOf([start()]) }),
       NOW,
     );
-    const read = step(opened.state, { kind: 'fetched', events: ledgerOf([start()]) }, NOW);
+    const read = step(opened.state, { kind: 'fetched', events: [] }, NOW);
     expect(sendsOf(read.effects).map((send) => send.body.idempotency_key)).toEqual(['k1']);
     expect(sendsOf(read.effects)[0].body.rules_version).toBe(1);
   });
@@ -410,7 +410,9 @@ describe('the answer to a send', () => {
     expect(abandoned.state.sync.queue.pending).toEqual([]);
   });
 
-  it('a seq conflict fetches from the tip and holds the send; the events brought in are judged before the tap goes again', () => {
+  // Owner ruling 43 (2026-11-02): the events another scorer made are not sent over without asking. The tap goes again
+  // once the scorer answers Send, judged on the ledger as it stands (`scoringMatchAsk.test.ts` holds the question).
+  it('a seq conflict fetches from the tip and holds the send; the events brought in are judged before the tap goes again, once the scorer says Send', () => {
     const { state, sent } = sentOnce();
     const conflict = step(
       state,
@@ -421,8 +423,11 @@ describe('the answer to a send', () => {
     const brought = ledgerOf([start(), rally('A')]).slice(1);
     const landed = step(conflict.state, { kind: 'saved', n: 99 }, NOW).state;
     const merged = step(landed, { kind: 'fetched', events: brought }, NOW);
+    expect(sendsOf(merged.effects)).toEqual([]);
+    const settled = step(merged.state, { kind: 'saved', n: 99 }, NOW).state;
+    const answered = step(settled, { kind: 'answerAsk', answer: 'send' }, NOW);
     expect(
-      sendsOf(merged.effects).map((send) => [send.body.idempotency_key, send.body.expected_seq]),
+      sendsOf(answered.effects).map((send) => [send.body.idempotency_key, send.body.expected_seq]),
     ).toEqual([['k1', 2]]);
   });
 

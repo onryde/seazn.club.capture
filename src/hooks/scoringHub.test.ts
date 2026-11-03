@@ -268,6 +268,23 @@ describe('resuming the senders (a launch, a return)', () => {
     expect([...touched]).toEqual(['m-live']);
   });
 
+  // Owner ruling 43 (2026-11-02): a queue held for the scorer's answer is not a sender's work; the next screen asks.
+  it('starts none for a queue held for the reconnect question: the screen that opens next asks it', async () => {
+    const fakes = createFakePorts({ clock: timerClock });
+    fakes.scoring.goOffline(true);
+    await queued(fakes, 'm-asked', { askedAbout: ['ev-9'] });
+    const touched = new Set<string>();
+    const real = fakes.tapQueue.load;
+    vi.spyOn(fakes.tapQueue, 'load').mockImplementation(async (fixtureId) => {
+      touched.add(fixtureId);
+      return real(fixtureId);
+    });
+    await scoringHubOf(fakes.ports).resume();
+    await flush();
+    expect(listeners(fakes)).toBe(0);
+    expect([...touched]).toEqual([]);
+  });
+
   it('marks the queue of a sport this build does not score dead, once: a second resume starts nothing for it', async () => {
     const fakes = createFakePorts({ clock: timerClock });
     await queued(fakes, 'm-tennis');

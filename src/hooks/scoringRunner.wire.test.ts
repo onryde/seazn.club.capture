@@ -141,6 +141,10 @@ async function rig(): Promise<Rig> {
     }),
   });
   await saveScoringLink(fakes.kv, FIXTURE, LINK, HOST, 'badminton');
+  // The phone had read the web's three events before the broken build queued its tap: they are in its cache and no news,
+  // so no question is asked (owner ruling 43; a queue file with no cache would meet them as another scorer's).
+  const read = await server.events(LINK, FIXTURE, 0);
+  await fakes.tapQueue.saveLedger(FIXTURE, read as readonly LedgerEvent[]);
   await fakes.tapQueue.save({
     fixtureId: FIXTURE,
     label: '',

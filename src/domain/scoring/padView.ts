@@ -118,7 +118,24 @@ export type PadSync =
   | { readonly kind: 'sending'; readonly count: number }
   | { readonly kind: 'offline'; readonly count: number }
   | { readonly kind: 'refused'; readonly count: number }
-  | { readonly kind: 'stalled'; readonly count: number };
+  | { readonly kind: 'stalled'; readonly count: number }
+  /** The server needs a newer app (a 426, or its bootstrap said so): the taps are kept until the phone is updated. */
+  | { readonly kind: 'outdated'; readonly count: number }
+  /** The reconnect question stands (owner ruling 43): other scorers' events landed, and nothing is sent until the scorer answers. */
+  | { readonly kind: 'asked'; readonly count: number };
+
+/** One side's name and score in the reconnect question, as the pad's half names them. */
+export type PadAskSide = { readonly label: string; readonly value: string };
+
+/**
+ * The reconnect question the pad's sheet asks (owner ruling 43, 2026-11-02): how many events were scored elsewhere and
+ * still stand, how many taps of this phone wait, and the score as the server has it without them, top side first.
+ */
+export type PadAsk = {
+  readonly foreign: number;
+  readonly queued: number;
+  readonly score: readonly [PadAskSide, PadAskSide];
+};
 
 /**
  * A tool's weight: `primary` is the lime plate, `standard` an outline, `destructive` the caution outline (never red:

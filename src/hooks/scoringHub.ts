@@ -152,7 +152,9 @@ function createScoringHub(ports: Ports): ScoringHub {
       const { fixtureId, pending, dead } = entry.queue;
       // Nothing queued: the match is a leftover of an older sender or an earlier launch, and is swept if unwanted.
       if (pending.length === 0) await sweep(fixtureId);
-      else if (dead === null) await startHeadless(fixtureId);
+      // Held for the reconnect question (owner ruling 43): nothing for a sender to do, the next screen asks.
+      else if (dead === null && entry.queue.askedAbout === undefined)
+        await startHeadless(fixtureId);
     }
   };
 

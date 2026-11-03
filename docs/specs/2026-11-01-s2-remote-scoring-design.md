@@ -182,7 +182,7 @@ knows no sport.
 
 **Shared kit vs sport screen** (ruling 13). Sport-agnostic, reused by every sport: `PadView` and its
 cards and `cardPlacement`, the bounce guard, `TapFlash`, `LastTapLine`, `ToolRow`, `StepSheet`,
-`ScoreEntrySheet`, `EndingPrompt`, `SyncDot`, `UpdateBanner`, `RefusalBanner`, `PadStrip`,
+`ScoreEntrySheet`, `EndingPrompt`, `SyncBadge`, `AskSheet`, `UpdateBanner`, `RefusalBanner`, `PadStrip`,
 `MatchCard`, `MatchDetailsSheet`, `HistoryCover`, `TossPicker`, `PadStateCard`, the
 tally. Sport-specific: the domain view (`badmintonPad.ts`, `badmintonSanction.ts`, `badmintonRules.ts`,
 `badmintonHistory.ts`) and the screen that lays the kit out. Table tennis is expected to reuse
@@ -269,11 +269,42 @@ design surface.
       holds and is refused again. If no read ever agrees with the server, that is a **stall**, not a
       loop to wait out: the sixth refusal in a row, of either kind (a conflict or new rules), puts one
       `scoring.stalled` line in the record and the send badge in its can't-send colour, and the pause
-      between tries grows from 15 s to 60 s until a tap is taken or the queue empties;
+      between tries grows from 15 s to 60 s until a tap is taken or the queue empties. An
+      ALREADY_DECIDED whose status read never lands counts into the same run (`decided`: the server
+      answered, the phone never learned why, and the tap goes again), so that loop is said too.
+      _Residual case (the round 2 review, 2026-11-02):_ a refusal that is itself stale (it named version
+      v before the organiser's second correction) and a lagging replica's rules read naming the same v
+      agree with each other, so the phone adopts v for one pass although the match is already at v + 1.
+      The next send is refused naming v + 1 and a read that agrees raises it again, but a revalidation
+      that runs in the one pass, under rules that are one correction behind, could drop a queued tap
+      those rules call illegal and the real ones allow (said as "did not count"). It needs two
+      corrections inside a replica's lag; it is accepted and not mended, and a tap dropped so is a
+      refusal line in the record, never silent;
   - any other refusal (4xx) → that event leaves the queue, the last-tap line says the tap did not
     count, the ledger is fetched again;
   - no network, timeout, 5xx → stay queued, retry with backoff, with the same `idempotency_key`, so a
     tap the server accepted before the answer was lost is not counted twice; the send badge says offline and counts.
+- **The reconnect question** (ruling 43, owner, 2026-11-02). Taps queued only by this phone, offline,
+  go by themselves when the signal is back. But a ledger fetch that brings events _another scorer_
+  made, while this phone has taps queued, stops the sender: nothing is sent until the scorer answers.
+  Which events are foreign: the ledger's new events whose ids are not in the queue's `ownEventIds`
+  and are not the copy of a tap the phone sent (its link, type and payload) whose answer was lost; a
+  rally and its Undo that come together cancel, and another scorer's Undo of this phone's own event is
+  nothing scored. The marker (`askedAbout`, the foreign ids) is in the queue file, so a kill and a
+  reopen find the question standing, and it ends with the queue (nothing left to send or discard). The
+  pad shows a sheet over it, in the screen's language: "{n} scored elsewhere while you were offline"
+  (plural-aware, no sport named), the score as the server has it without the phone's taps, how many
+  taps wait, and two buttons. **Send my taps** lifts the question and runs the normal revalidate and
+  send, on the ledger as it stands. **Discard them** opens a confirm with Keep as the default (the
+  dim and Back both mean Keep); the confirm's Discard deletes the queue, sends nothing and keeps the
+  event whose answer was lost, which is the phone's own now. More foreign events while the sheet is
+  open raise the count and the score, and a revalidation that drops every tap the question was about
+  ends it. The badge shows the can't-send state ("{n} taps waiting for your answer"), and no stall is
+  said for it. A background sender (no screen) holds without asking and never sends; the next pad to
+  open on that match asks. The record gets `scoring.ask {foreign, queued}` when it begins and
+  `scoring.asked {answer}` (`send`, `discard`, or `moot` when the taps went another way). The web's
+  record allow-list does not carry `foreign` or `queued`, so Send record drops them and Share record
+  keeps them (`_FINDINGS.md` N43). Back on the sheet leaves the pad for Home, as the ending prompt does.
 - Undo of a tap still in the queue removes it from the queue; nothing is sent (_the controller's_).
 - Other scorers' events arrive in real time, as on the web (ruling 27): the web's Supabase Realtime
   channel carries a "something changed" ping with no payload (`use-fixture-stream.ts`), its token from

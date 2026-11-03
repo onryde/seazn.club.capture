@@ -412,6 +412,9 @@ function encodeQueue(queue: MatchQueue): string {
     ),
     ownEventIds: queue.ownEventIds,
     dead: queue.dead,
+    ...(queue.askedAbout === undefined || queue.askedAbout.length === 0
+      ? {}
+      : { askedAbout: queue.askedAbout }),
   });
   if (LINK_SECRET.test(text)) throw new Error('a queue never carries a scoring link secret');
   if (decodeQueue(text, queue.fixtureId) === null)
@@ -430,9 +433,11 @@ function decodeQueue(text: string, fixtureId: string): MatchQueue | null {
   const pending = readList(raw.pending, readTap);
   const ownEventIds = readList(raw.ownEventIds, readText);
   const dead = readDead(raw.dead);
+  const askedAbout = 'askedAbout' in raw ? readList(raw.askedAbout, readText) : [];
   if (typeof raw.label !== 'string' || pending === undefined) return null;
-  if (ownEventIds === undefined || dead === undefined) return null;
-  return { fixtureId, label: raw.label, pending, ownEventIds, dead };
+  if (ownEventIds === undefined || dead === undefined || askedAbout === undefined) return null;
+  const queue: MatchQueue = { fixtureId, label: raw.label, pending, ownEventIds, dead };
+  return askedAbout.length === 0 ? queue : { ...queue, askedAbout };
 }
 
 function readTap(raw: unknown): QueuedEvent | undefined {

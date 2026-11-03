@@ -8,6 +8,7 @@ import {
 import type { Bootstrap, LedgerEvent, ReadFailure, Rules } from '@/domain/scoring/wire';
 import type { SportTypes } from '@/domain/scoring/scoringSport';
 import { withSync } from '@/domain/scoring/scoringMatchAnswers';
+import { noteForeign } from '@/domain/scoring/scoringMatchAsk';
 import {
   BOOTSTRAP_PACE_MS,
   CARD_SCREENS,
@@ -86,7 +87,10 @@ export function onFetched<S extends SportTypes>(
 ): Part<S> {
   const fresh = events.filter((event) => event.seq > state.sync.tip);
   void now;
-  return withSync(state, onLedger(state.sync, fresh));
+  const merged = withSync(state, onLedger(state.sync, fresh));
+  // A batch sync refused (it left a hole) merged nothing: there is nothing yet to ask about.
+  if (merged.state.sync.ledger === state.sync.ledger) return merged;
+  return part(noteForeign(merged.state, fresh), merged.effects);
 }
 
 /** The rules a read brought: the phone folds under them only when they are the version it holds now. */

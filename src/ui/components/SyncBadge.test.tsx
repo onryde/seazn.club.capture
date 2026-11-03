@@ -66,6 +66,8 @@ describe('SyncBadge: what each state draws', () => {
     ['offline', { kind: 'offline', count: 3 }],
     ['refused', { kind: 'refused', count: 3 }],
     ['stalled', { kind: 'stalled', count: 3 }],
+    ['outdated', { kind: 'outdated', count: 3 }],
+    ['asked', { kind: 'asked', count: 3 }],
   ] as const)(
     'draws the same badge in caution orange, the arrow stopped, when %s',
     (_kind, sync: PadSync) => {
@@ -146,7 +148,7 @@ describe('SyncBadge: what a screen reader and a finger get', () => {
     ['fr', fr],
     ['nl', nl],
   ] as const;
-  const KINDS = ['sending', 'offline', 'refused', 'stalled'] as const;
+  const KINDS = ['sending', 'offline', 'refused', 'stalled', 'outdated', 'asked'] as const;
 
   it.each(LANGUAGES)(
     '%s: names each state in its dictionary’s words, for one tap and for many',
@@ -184,14 +186,61 @@ describe('SyncBadge: what a screen reader and a finger get', () => {
     expect(count().closest('[aria-hidden="true"]')).not.toBeNull();
   });
 
-  it('tells a screen reader what a tap does: it opens History', () => {
-    handed.length = 0;
-    renderWithPorts(<SyncBadge sync={{ kind: 'sending', count: 8 }} onPress={vi.fn()} />);
-    const own = handed.filter(
-      (props) => props.accessibilityLabel === filled(en['scoring.sync.sending.other'], 8),
+  // Review, 2026-11-02: the hint was the bare noun "History", which says what the screen is and not what the tap does.
+  it.each(LANGUAGES)(
+    '%s: tells a screen reader what a tap does, as a phrase: it opens History',
+    (lang, words: Dictionary) => {
+      handed.length = 0;
+      renderWithPorts(<SyncBadge sync={{ kind: 'sending', count: 8 }} onPress={vi.fn()} />, {
+        deviceLanguages: [lang],
+      });
+      const own = handed.filter(
+        (props) => props.accessibilityLabel === filled(words['scoring.sync.sending.other'], 8),
+      );
+      expect(own.length).toBeGreaterThan(0);
+      const hint = own.at(-1)?.accessibilityHint;
+      expect(hint).toBe(words['scoring.sync.opensHistory']);
+      expect(hint).not.toBe(words['scoring.history.title']);
+    },
+  );
+
+  it('says "Opens History" in English, and the phrase is not the screen’s name', () => {
+    expect(en['scoring.sync.opensHistory']).toBe('Opens History');
+  });
+
+  // Review, 2026-11-02: the badge turning orange was seen and never said. A live region is the app's own way of saying a
+  // change (the last-tap line, the cards): politely, and only while the taps cannot go, so a count climbing while the
+  // phone sends does not talk. Whether TalkBack reads it is the device check's.
+  it.each([
+    ['offline', { kind: 'offline', count: 2 }],
+    ['refused', { kind: 'refused', count: 2 }],
+    ['stalled', { kind: 'stalled', count: 2 }],
+    ['outdated', { kind: 'outdated', count: 2 }],
+    ['asked', { kind: 'asked', count: 2 }],
+  ] as const)(
+    'announces itself politely when %s, as a button and as a label',
+    (_kind, sync: PadSync) => {
+      const view = renderWithPorts(<SyncBadge sync={sync} onPress={vi.fn()} />);
+      expect(badge().getAttribute('aria-live')).toBe('polite');
+      view.unmount();
+      renderWithPorts(<SyncBadge sync={sync} onPress={null} />);
+      expect(badge().getAttribute('aria-live')).toBe('polite');
+    },
+  );
+
+  it('does not announce while it is only sending: the count climbs with every tap', () => {
+    renderWithPorts(<SyncBadge sync={{ kind: 'sending', count: 2 }} onPress={vi.fn()} />);
+    expect(badge().getAttribute('aria-live')).not.toBe('polite');
+  });
+
+  it('is announced as the same node that turned orange: a sending badge that stops keeps its place', () => {
+    const view = renderWithPorts(
+      <SyncBadge sync={{ kind: 'sending', count: 2 }} onPress={vi.fn()} />,
     );
-    expect(own.length).toBeGreaterThan(0);
-    expect(own.at(-1)?.accessibilityHint).toBe(en['scoring.history.title']);
+    const node = badge();
+    view.rerender(<SyncBadge sync={{ kind: 'offline', count: 2 }} onPress={vi.fn()} />);
+    expect(badge()).toBe(node);
+    expect(badge().getAttribute('aria-live')).toBe('polite');
   });
 
   it('calls onPress once for a press, and once more for a second (a second tap is History again)', () => {

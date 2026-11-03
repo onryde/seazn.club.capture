@@ -38,6 +38,13 @@ export type BadmintonPadActions = PadActions & {
   /** The Start screen (owner, 2026-11-01, option A): who serves first, picked; then Start match, a tap. */
   readonly pickServer: (side: PadSide) => void;
   readonly start: () => void;
+  /**
+   * The reconnect question (owner ruling 43): Send my taps, Discard them (which asks again) and its confirm's Discard.
+   * Keep, the confirm's other button, is the shared `dismiss`.
+   */
+  readonly sendTaps: () => void;
+  readonly askDiscard: () => void;
+  readonly confirmDiscard: () => void;
 };
 
 /** What the badminton pad screen is drawn from: the real match's (`useBadmintonMatch`) and the preview's. */
@@ -109,7 +116,9 @@ function useSheets(
   const refuseScore = useCallback(() => say(refusalLine('scoring.refusal.invalidScore')), [say]);
   const snapshot = useMemo<PadSheetSnapshot | null>(
     () =>
-      pad === null ? null : { display: pad.display, history: pad.history, card: pad.view.card },
+      pad === null
+        ? null
+        : { display: pad.display, history: pad.history, card: pad.view.card, ask: pad.ask },
     [pad],
   );
   const sheets = usePadSheets(driver, snapshot, opening, refuseScore);
@@ -135,12 +144,23 @@ function useActions(parts: Parts): BadmintonPadActions {
   const home = useBackToHome();
   const start = useStart(parts);
   const ending = useEnding(parts);
+  const asked = useAsk(parts);
   const links = useLinks(parts.runner, parts.setCardNote);
   const tool = useGuardedTool(taps.secondTouch, sheets.actions.tool);
   const { tapHalf, undo } = taps;
   return useMemo(
-    () => ({ home, tapHalf, undo, ...sheets.actions, tool, ...ending, ...links, ...start }),
-    [home, tapHalf, undo, tool, sheets.actions, ending, links, start],
+    () => ({
+      home,
+      tapHalf,
+      undo,
+      ...sheets.actions,
+      tool,
+      ...ending,
+      ...asked,
+      ...links,
+      ...start,
+    }),
+    [home, tapHalf, undo, tool, sheets.actions, ending, asked, links, start],
   );
 }
 
@@ -173,4 +193,26 @@ function useEnding({ sender, pad, taps, sheets }: Parts) {
     if (!justShown()) opening('void', () => undo('ending'));
   }, [opening, undo, justShown]);
   return useMemo(() => ({ recordEnding, voidSanction }), [recordEnding, voidSanction]);
+}
+
+/**
+ * The reconnect question's answers (owner ruling 43): each an opening tap (`useTaps`), quiet in the bounce window of the
+ * sheet appearing. The sheet leaves with the answer, and a second touch on what was under it, a half or Undo, counts
+ * once with it. Discard's first button only opens its confirm (`sheets.actions.askDiscard`).
+ */
+function useAsk({ sender, taps, sheets }: Parts) {
+  const { answer } = sender;
+  const { opening } = taps;
+  const { justShown } = sheets;
+  const sendTaps = useCallback(() => {
+    if (!justShown()) opening('ask', () => answer('send'));
+  }, [opening, answer, justShown]);
+  const confirmDiscard = useCallback(() => {
+    if (!justShown()) opening('discardAsk', () => answer('discard'));
+  }, [opening, answer, justShown]);
+  const { askDiscard } = sheets.actions;
+  return useMemo(
+    () => ({ sendTaps, confirmDiscard, askDiscard }),
+    [sendTaps, confirmDiscard, askDiscard],
+  );
 }

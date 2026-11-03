@@ -31,6 +31,7 @@ import {
   type MatchStep,
   type Planned,
 } from '@/domain/scoring/scoringMatchState';
+import { onAnswerAsk, releaseMoot } from '@/domain/scoring/scoringMatchAsk';
 import { onPick, onTap, onUndo, withoutOrphanVoids } from '@/domain/scoring/scoringMatchTaps';
 
 /**
@@ -116,7 +117,8 @@ export function step<S extends SportTypes>(
   now: number,
 ): MatchStep<S> {
   const result = handle(state, event, now);
-  const settled = result.pump ? pump(result.state, now) : part(result.state);
+  const released = releaseMoot(result.state);
+  const settled = result.pump ? pump(released, now) : part(released);
   const final = withoutOrphanVoids(settled.state);
   const save = saveOf(state, final);
   const planned = [...(save === null ? [] : [save]), ...result.effects, ...settled.effects];
@@ -186,5 +188,7 @@ function handle<S extends SportTypes>(
       return handled(onSaveFailed(landedSave(state), event.key, now));
     case 'say':
       return handled(part({ ...state, line: event.words }));
+    case 'answerAsk':
+      return handled(onAnswerAsk(state, event.answer));
   }
 }

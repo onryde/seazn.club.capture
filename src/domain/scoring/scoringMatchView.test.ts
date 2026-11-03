@@ -218,6 +218,76 @@ describe('what the pad says of the transport', () => {
     });
   });
 
+  // Review, 2026-11-02: a 426 was read as "offline", so the badge told a phone that needs an update to wait for a signal.
+  describe('taps kept for an update', () => {
+    it('are outdated, with the count, not offline: the answer was 426', () => {
+      const state = { ...unsent(), sync: { ...unsent().sync, status: 'outdated' as const } };
+      expect(padOf(state).view.sync).toEqual({ kind: 'outdated', count: 2 });
+    });
+
+    it('are outdated when the bootstrap names a newer engine, with nothing sent yet', () => {
+      const old = unsent();
+      const state = { ...old, bootstrap: { ...SINGLES, epochRequired: old.sync.engineEpoch + 1 } };
+      expect(padOf(state).view.sync).toEqual({ kind: 'outdated', count: 2 });
+    });
+
+    it('are refused first in a dead queue, even when the app is also too old; and offline is still offline', () => {
+      const old = unsent();
+      const dead = {
+        ...old,
+        bootstrap: { ...SINGLES, epochRequired: old.sync.engineEpoch + 1 },
+        sync: { ...old.sync, queue: { ...old.sync.queue, dead: 'gone' as const } },
+      };
+      expect(padOf(dead).view.sync).toEqual({ kind: 'refused', count: 2 });
+      const down = { ...unsent(), sync: { ...unsent().sync, status: 'offline' as const } };
+      expect(padOf(down).view.sync).toEqual({ kind: 'offline', count: 2 });
+    });
+  });
+
+  // The reconnect question (owner ruling 43): the badge reads "can't send" while it stands, and the pad carries what the
+  // sheet asks: how many were scored elsewhere, how many taps wait, and the score as the server has it, without them.
+  describe('the reconnect question', () => {
+    const foreign = { kind: 'fetched', events: ledgerOf([start(), rally('A')]).slice(1) } as const;
+    const questioned = () => step(unsent(), foreign, NOW).state;
+
+    it('is a can’t-send badge with the count of the taps waiting', () => {
+      expect(padOf(questioned()).view.sync).toEqual({ kind: 'asked', count: 2 });
+    });
+
+    it('beats offline: a phone that dropped and came back is waiting for an answer, not for a signal', () => {
+      const state = questioned();
+      const down = { ...state, sync: { ...state.sync, status: 'offline' as const } };
+      expect(padOf(down).view.sync).toEqual({ kind: 'asked', count: 2 });
+    });
+
+    it('carries the counts and the server’s score without the phone’s taps (the pad shows 1:2 with them: k1 home, k2 away)', () => {
+      const pad = padOf(questioned());
+      expect(pad.ask).toEqual({
+        foreign: 1,
+        queued: 2,
+        score: [
+          { label: 'A. Sharma', value: '0' },
+          { label: 'L. Chen', value: '1' },
+        ],
+      });
+      expect(pad.view.halves.map((half) => half.value)).toEqual(['1', '2']);
+    });
+
+    it('is nothing when none stands', () => {
+      expect(padOf(unsent()).ask).toBeNull();
+    });
+
+    it('gives way to a link the door does not take: that is the card’s to say', () => {
+      const state = questioned();
+      const dead = {
+        ...state,
+        sync: { ...state.sync, queue: { ...state.sync.queue, dead: 'LINK_REVOKED' as const } },
+      };
+      expect(padOf(dead).ask).toBeNull();
+      expect(padOf(dead).view.sync).toEqual({ kind: 'refused', count: 2 });
+    });
+  });
+
   it('taps kept in a dead queue are refused, with the count', () => {
     expect(
       padOf(

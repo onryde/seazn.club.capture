@@ -4,6 +4,7 @@ import type { MatchEvent } from '@/domain/scoring/scoringMatchState';
 import { stallOf } from '@/domain/scoring/scoringMatchStall';
 import { createScoringRunner, type RunnerMode, type ScoringRunner } from '@/hooks/scoringRunner';
 import { SINGLES_SEED } from '@/services/fakeScoringPort';
+import type { LedgerEvent } from '@/domain/scoring/wire';
 import { saveScoringLink } from '@/services/scoringLinkStore';
 import { FAKE_SCORING_SECRET } from '../../test/fakeScoringLinkPort';
 import { queuedOf, rally } from '../../test/badmintonLedger';
@@ -60,6 +61,16 @@ async function open(fakes: FakePorts, mode: RunnerMode = 'focused'): Promise<Sco
   await runner.start();
   await flush();
   return runner;
+}
+
+/**
+ * The phone had read the match before its taps were queued, so the web's events are in its cache and no news (owner
+ * ruling 43: a fetch that brings events another scorer made, with taps queued, asks the scorer first). A queue file
+ * written by hand with no cache would meet every one of them as news.
+ */
+async function readBefore(fakes: FakePorts): Promise<void> {
+  const read = await fakes.scoring.events(LINK, FIXTURE, 0);
+  await fakes.tapQueue.saveLedger(FIXTURE, read as readonly LedgerEvent[]);
 }
 
 const stateOf = (runner: ScoringRunner) => {
@@ -127,6 +138,14 @@ describe('a match the organiser never corrected (rules_version 0, the web’s de
     fakes.scoring.addOtherScorerEvent('badminton.rally', { wonBy: HOME, serving: HOME });
     fakes.scoring.addOtherScorerEvent('badminton.rally', { wonBy: AWAY });
     await wait(60);
+    // The web scored while this phone was offline, and its taps are waiting: the scorer is asked (owner ruling 43), and
+    // nothing goes until the answer. The Start has been dropped as no longer legal; the rally is what is asked about.
+    expect(stateOf(runner).sync.queue.pending.map((queued) => queued.type)).toEqual([
+      'badminton.rally',
+    ]);
+    expect(await ledgerTypes(fakes)).toEqual(['core.start', 'badminton.rally', 'badminton.rally']);
+    runner.dispatch({ kind: 'answerAsk', answer: 'send' });
+    await wait(60);
     expect(await ledgerTypes(fakes)).toEqual([
       'core.start',
       'badminton.rally',
@@ -192,6 +211,7 @@ describe('a match the organiser never corrected (rules_version 0, the web’s de
         ownEventIds: [],
         dead: null,
       });
+      await readBefore(fakes);
       const append = vi.spyOn(fakes.scoring, 'append');
       const runner = await open(fakes, mode);
       await wait(40);
@@ -228,6 +248,27 @@ describe('a server that answers every send and never takes the tap', () => {
     expect(line?.level).toBe('warn');
     expect(line?.fields).toMatchObject({ reason: 'rules', held: 3, said: 7, count: 6 });
     expect(stallOf(stateOf(runner))).toMatchObject({ kind: 'refused', by: 'rules' });
+  });
+
+  // Review minor 2 (round 2, 2026-11-02): the server says the match is decided, and the read that would say why never lands.
+  it('ALREADY_DECIDED with the status read failing every time is a stall too, said once as `decided`', async () => {
+    const fakes = createFakePorts({ clock: timerClock });
+    midMatch(fakes, 0);
+    const runner = await open(fakes);
+    vi.spyOn(fakes.scoring, 'append').mockResolvedValue({
+      kind: 'refused',
+      status: 422,
+      code: 'ALREADY_DECIDED',
+    });
+    vi.spyOn(fakes.scoring, 'bootstrap').mockResolvedValue({ kind: 'offline' });
+    runner.dispatch(tap(RALLY, 'k1'));
+    await wait(5);
+    expect(events(fakes)).not.toContain('scoring.stalled');
+    await wait(120);
+    expect(events(fakes).filter((event) => event === 'scoring.stalled')).toHaveLength(1);
+    const line = readRecord(fakes.record).find((entry) => entry.event === 'scoring.stalled');
+    expect(line?.fields).toMatchObject({ reason: 'decided', count: 6 });
+    expect(stallOf(stateOf(runner))).toMatchObject({ kind: 'refused', by: 'decided' });
   });
 
   it('is said to be over once a tap is accepted, once', async () => {
@@ -314,6 +355,7 @@ describe('a server that answers every send and never takes the tap', () => {
       ownEventIds: [],
       dead: null,
     });
+    await readBefore(fakes);
     const append = vi.spyOn(fakes.scoring, 'append');
     const runner = await open(fakes);
     await wait(60);

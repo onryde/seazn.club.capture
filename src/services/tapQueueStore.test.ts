@@ -94,6 +94,17 @@ describe('save and load', () => {
     expect(back?.pending[0]).not.toHaveProperty('voidsKey');
   });
 
+  // Owner ruling 43 (2026-11-02): the reconnect question stands across a kill, in the queue's own file.
+  it('round-trips the reconnect question: the ids it is about, and no field when none stands', async () => {
+    const { store } = storeOver();
+    await store.save(queue({ askedAbout: ['ev-9', 'ev-10'] }));
+    expect((await store.load(FIXTURE))?.askedAbout).toEqual(['ev-9', 'ev-10']);
+    await store.save(queue({ askedAbout: undefined }));
+    expect(await store.load(FIXTURE)).not.toHaveProperty('askedAbout');
+    await store.save(queue({ askedAbout: [] }));
+    expect(await store.load(FIXTURE)).not.toHaveProperty('askedAbout');
+  });
+
   it('round-trips a dead queue for each word', async () => {
     const words = [
       'LINK_INVALID',
@@ -508,6 +519,8 @@ describe('a file that cannot be read', () => {
       text({ v: 1, ...queue(), pending: [{ ...tap(), createdAt: undefined }] }),
     ],
     ['own ids that are not text', text({ v: 1, ...queue(), ownEventIds: [1] })],
+    ['a question about ids that are not text', text({ v: 1, ...queue(), askedAbout: [1] })],
+    ['a question that is not a list', text({ v: 1, ...queue(), askedAbout: 'ev-9' })],
     ['an own id that is empty', text({ v: 1, ...queue(), ownEventIds: [''] })],
     ['a dead word nobody knows', text({ v: 1, ...queue(), dead: 'vanished' })],
     ['a dead word of the wrong type', text({ v: 1, ...queue(), dead: 5 })],

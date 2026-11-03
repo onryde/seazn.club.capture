@@ -21,13 +21,18 @@ const MOST_SHOWN = 99;
  * symbol/icon like green uparrow for sending"): an arrow up and the count, no words, and nothing at all while every tap
  * has gone. Lime arrow in a quiet outline while they are on their way. When they cannot go (offline, a link the door
  * shut, a server that keeps refusing) the same badge in caution orange with a heavier outline, the arrow stopped under
- * a bar, so the state does not rest on telling lime from orange (never red: red means ON AIR, AGENTS §5). A tap opens
- * History. A screen reader gets the words and the true count, not the drawing.
+ * a bar, so the state does not rest on telling lime from orange (never red: red means ON AIR, AGENTS §5). Those
+ * states also include an app that must be updated and the reconnect question waiting for its answer. A tap opens
+ * History, and the hint says so as a phrase. A screen reader gets the words and the true count, not the drawing, and
+ * is told politely when the badge turns orange.
  */
 export const SyncBadge = memo(function SyncBadge({ sync, onPress }: SyncBadgeProps) {
   const translator = useT();
   if (sync.kind === 'synced') return null;
   const trouble = sync.kind !== 'sending';
+  // The turn to orange is said, politely, on the badge's own node (TalkBack reads a live region's own label); a count
+  // climbing while the phone is sending is not (device-only: whether a screen reader says it).
+  const live = trouble ? 'polite' : 'none';
   const words = syncWords(sync, translator);
   const content = <BadgeContent sync={sync} trouble={trouble} />;
   // No History to open (a dead link's card names no match): a label, not a button that does nothing.
@@ -37,6 +42,7 @@ export const SyncBadge = memo(function SyncBadge({ sync, onPress }: SyncBadgePro
         testID="sync"
         accessible
         accessibilityLabel={words}
+        accessibilityLiveRegion={live}
         style={trouble ? troubleAtRest : sendingAtRest}
       >
         {content}
@@ -48,7 +54,8 @@ export const SyncBadge = memo(function SyncBadge({ sync, onPress }: SyncBadgePro
       testID="sync"
       accessibilityRole="button"
       accessibilityLabel={words}
-      accessibilityHint={translator.t('scoring.history.title')}
+      accessibilityHint={translator.t('scoring.sync.opensHistory')}
+      accessibilityLiveRegion={live}
       onPress={onPress}
       style={trouble ? troubleStyle : sendingStyle}
     >
@@ -91,6 +98,10 @@ function syncWords(sync: Counted, { tp }: Translator): string {
       return tp('scoring.sync.refused', sync.count);
     case 'stalled':
       return tp('scoring.sync.stalled', sync.count);
+    case 'outdated':
+      return tp('scoring.sync.outdated', sync.count);
+    case 'asked':
+      return tp('scoring.sync.asked', sync.count);
   }
 }
 

@@ -22,7 +22,9 @@ import type { PadSheetView } from '@/hooks/usePadSheets';
 import { useT } from '@/hooks/useLanguage';
 import { usePadText } from '@/hooks/usePadText';
 import type { MessageKey } from '@/i18n/messages';
+import { AskSheet } from '@/ui/components/AskSheet';
 import { Button } from '@/ui/components/Button';
+import { DismissSheet } from '@/ui/components/DismissSheet';
 import { EndingPrompt } from '@/ui/components/EndingPrompt';
 import { HistoryCover, type HistoryGroupWords } from '@/ui/components/HistoryCover';
 import { IconButton } from '@/ui/components/IconButton';
@@ -314,7 +316,32 @@ const PadSheet = memo(function PadSheet({
       return <MatchDetailsView details={sheet.details} onClose={actions.dismiss} />;
     case 'history':
       return <MatchHistory groups={sheet.groups} onClose={actions.cancel} />;
+    case 'ask':
+      return <AskSheet ask={sheet.ask} onSend={actions.sendTaps} onDiscard={actions.askDiscard} />;
+    case 'discard':
+      return <DiscardAsk queued={sheet.ask.queued} actions={actions} />;
   }
+});
+
+/** Discard's confirm over the reconnect question (owner ruling 43): Keep, the plate and the way back, or Discard. */
+const DiscardAsk = memo(function DiscardAsk({
+  queued,
+  actions,
+}: {
+  readonly queued: number;
+  readonly actions: BadmintonPadActions;
+}) {
+  const { t, tp } = useT();
+  return (
+    <DismissSheet
+      title={tp('scoring.ask.confirm.title', queued)}
+      body={tp('scoring.ask.confirm.body', queued)}
+      keepLabel={t('scoring.ask.confirm.keep')}
+      dismissLabel={t('scoring.ask.confirm.discard')}
+      onKeep={actions.dismiss}
+      onDismiss={actions.confirmDiscard}
+    />
+  );
 });
 
 /** History (owner ruling 21) in the operator's language: each row's sentence, score, recorder and "Undone". */
