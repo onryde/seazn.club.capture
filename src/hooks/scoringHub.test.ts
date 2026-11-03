@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BadmintonTap } from '@/domain/scoring/badmintonPad';
 import type { MatchQueue } from '@/domain/scoring/queue';
 import { scoringHubOf, type FocusHandle } from '@/hooks/scoringHub';
+import { createScoringRunner } from '@/hooks/scoringRunner';
 import { SINGLES_SEED } from '@/services/fakeScoringPort';
 import { readScoringLink, saveScoringLink } from '@/services/scoringLinkStore';
 import { ledgerOf, queuedOf, rally, start } from '../../test/badmintonLedger';
@@ -698,6 +699,32 @@ describe('a link that dies with nothing queued', () => {
     expect(await fakes.tapQueue.loadLedger(FIXTURE)).toBeNull();
   });
 
+  it('keeps no tap ids either: a fresh link is another device link, whose events these would not undo (owner ruling 46)', async () => {
+    const fakes = await savedRig();
+    const hub = scoringHubOf(fakes.ports);
+    await cached(fakes);
+    await fakes.tapQueue.save({
+      fixtureId: FIXTURE,
+      label: 'Match 4',
+      pending: [],
+      ownEventIds: ['ev-1'],
+      dead: null,
+    });
+    await fakes.tapQueue.leave(FIXTURE, fakes.ports.clock().getTime());
+    await fakes.tapQueue.save({
+      fixtureId: FIXTURE,
+      label: 'Match 4',
+      pending: [],
+      ownEventIds: ['ev-1'],
+      dead: null,
+    });
+    fakes.scoring.revoke();
+    hub.focus(FIXTURE);
+    await flush();
+    expect(await link(fakes)).toEqual({ kind: 'none' });
+    expect([...fakes.queueFiles.files.keys()]).toEqual([]);
+  });
+
   it('keeps both while a tap is queued: the taps are the leftover Home shows, and the link is how a fresh scan finds them', async () => {
     const fakes = await savedRig();
     await queued(fakes, FIXTURE);
@@ -888,7 +915,7 @@ describe('a background queue that drains', () => {
       tapQueue: fakes.tapQueue,
     });
     await cold.ports.modeStore.load();
-    vi.spyOn(cold.ports.tapQueue, 'remove').mockRejectedValue(new Error('disk gone'));
+    vi.spyOn(cold.ports.tapQueue, 'leave').mockRejectedValue(new Error('disk gone'));
     fakes.scoring.goOffline(false);
     await scoringHubOf(cold.ports).resume();
     await vi.advanceTimersByTimeAsync(60_000);
@@ -989,9 +1016,9 @@ describe('resume sweeps what nothing wants', () => {
   it('a disk that refuses the sweep is recorded, never raised, and the next match is still swept', async () => {
     const fakes = await leftover();
     await queued(fakes, 'fx-other', { pending: [] });
-    const remove = fakes.tapQueue.remove.bind(fakes.tapQueue);
-    vi.spyOn(fakes.tapQueue, 'remove').mockImplementation((id) =>
-      id === FIXTURE ? Promise.reject(new Error('disk gone')) : remove(id),
+    const leave = fakes.tapQueue.leave.bind(fakes.tapQueue);
+    vi.spyOn(fakes.tapQueue, 'leave').mockImplementation((id, now) =>
+      id === FIXTURE ? Promise.reject(new Error('disk gone')) : leave(id, now),
     );
     await scoringHubOf(fakes.ports).resume();
     expect(readRecord(fakes.record).map((line) => line.event)).toContain('scoring.tidy-refused');
@@ -1075,5 +1102,245 @@ describe('a scan claims its match', () => {
     hub.claim('fx-other');
     await hub.resume();
     expect(await kept(fakes)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Leaving a match keeps this phone's own taps for a day (owner ruling 46, 2026-11-03)
+// ---------------------------------------------------------------------------------------------------------------
+
+describe('leaving a match for good keeps this phone’s own tap ids for a day', () => {
+  const HOUR = 3_600_000;
+  const RALLY: BadmintonTap = { kind: 'rally', side: 'first' };
+  const KEPT = 'fake-singles.own.json';
+  const nowOf = (fakes: FakePorts): number => fakes.ports.clock().getTime();
+  /** The clock moves on without running the fake engine's every tick in between. */
+  const later = (ms: number): void => {
+    vi.setSystemTime(Date.now() + ms);
+  };
+
+  /** The pad tapped Start and a rally while the server was there, and left: both sent, nothing queued, two ids owned. */
+  async function played(): Promise<{ fakes: FakePorts; ids: readonly string[] }> {
+    const fakes = await rig();
+    const handle = scoringHubOf(fakes.ports).focus(FIXTURE);
+    await flush();
+    handle.runner.dispatch({ kind: 'tap', tap: START, key: 'k1', at: AT });
+    await flush();
+    handle.runner.dispatch({ kind: 'tap', tap: RALLY, key: 'k2', at: AT });
+    await flush();
+    handle.release();
+    await flush();
+    const ids = (await fakes.tapQueue.load(FIXTURE))?.ownEventIds ?? [];
+    expect(ids).toHaveLength(2);
+    expect((await fakes.tapQueue.load(FIXTURE))?.pending).toEqual([]);
+    return { fakes, ids };
+  }
+
+  it('leave stops the runner, forgets the link, deletes the files and keeps the ids in a file of their own', async () => {
+    const { fakes, ids } = await played();
+    await scoringHubOf(fakes.ports).leave(FIXTURE);
+    expect([...fakes.queueFiles.files.keys()]).toEqual([KEPT]);
+    expect(await readScoringLink(fakes.kv, FIXTURE, HOST)).toEqual({ kind: 'none' });
+    expect(await fakes.tapQueue.loadKept(FIXTURE, nowOf(fakes))).toEqual(ids);
+    expect(listeners(fakes)).toBe(0);
+  });
+
+  it('a Dismiss, which is the operator’s word that the match is done, keeps nothing: the ids go too', async () => {
+    const { fakes } = await played();
+    await scoringHubOf(fakes.ports).dismiss(FIXTURE);
+    expect([...fakes.queueFiles.files.keys()]).toEqual([]);
+  });
+
+  it('a Dismiss after a leave (Close on a match left earlier) takes the kept ids as well', async () => {
+    const { fakes } = await played();
+    await scoringHubOf(fakes.ports).leave(FIXTURE);
+    await scoringHubOf(fakes.ports).dismiss(FIXTURE);
+    expect([...fakes.queueFiles.files.keys()]).toEqual([]);
+  });
+
+  it('forgets the link before it touches the files, as a Dismiss does', async () => {
+    const { fakes } = await played();
+    const forget = vi.spyOn(fakes.kv, 'delete');
+    const leave = vi.spyOn(fakes.tapQueue, 'leave');
+    await scoringHubOf(fakes.ports).leave(FIXTURE);
+    expect(forget).toHaveBeenCalledTimes(1);
+    expect(leave).toHaveBeenCalledWith(FIXTURE, nowOf(fakes));
+    expect(forget.mock.invocationCallOrder[0]).toBeLessThan(leave.mock.invocationCallOrder[0]);
+  });
+
+  it('a match nobody runs is left too, and a second leave is no failure', async () => {
+    const fakes = createFakePorts({ clock: timerClock });
+    await queued(fakes, 'm-old', { pending: [], ownEventIds: ['ev-7'] });
+    const hub = scoringHubOf(fakes.ports);
+    await hub.leave('m-old');
+    await hub.leave('m-old');
+    expect([...fakes.queueFiles.files.keys()]).toEqual(['m-old.own.json']);
+    expect(await fakes.tapQueue.loadKept('m-old', nowOf(fakes))).toEqual(['ev-7']);
+  });
+
+  it('stops a headless sender before it leaves, as a Dismiss does', async () => {
+    const fakes = await rig();
+    await leftWithOneTap(fakes);
+    expect(listeners(fakes)).toBe(1);
+    await scoringHubOf(fakes.ports).leave(FIXTURE);
+    expect(listeners(fakes)).toBe(0);
+  });
+
+  it('a resume that finds a match with nothing queued, not the saved one, leaves it: its ids are kept', async () => {
+    const fakes = await rig();
+    await cached(fakes);
+    await fakes.tapQueue.save({
+      fixtureId: FIXTURE,
+      label: 'Match 4',
+      pending: [],
+      ownEventIds: ['ev-1', 'ev-2'],
+      dead: null,
+    });
+    await fakes.ports.modeStore.load();
+    await scoringHubOf(fakes.ports).resume();
+    expect((await readScoringLink(fakes.kv, FIXTURE, HOST)).kind).toBe('none');
+    expect([...fakes.queueFiles.files.keys()]).toEqual([KEPT]);
+    expect(await fakes.tapQueue.loadKept(FIXTURE, nowOf(fakes))).toEqual(['ev-1', 'ev-2']);
+  });
+
+  it('a sender that has sent the last tap of a match nobody holds keeps the ids of what it sent', async () => {
+    const fakes = await rig();
+    await leftWithOneTap(fakes);
+    fakes.scoring.goOffline(false);
+    await cached(fakes);
+    await fakes.ports.modeStore.load();
+    await scoringHubOf(fakes.ports).resume();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(await ledgerTypes(fakes)).toEqual(['core.start']);
+    expect([...fakes.queueFiles.files.keys()]).toEqual([KEPT]);
+    expect(await fakes.tapQueue.loadKept(FIXTURE, nowOf(fakes))).toHaveLength(1);
+  });
+
+  it('the saved match is not left by a resume: its queue and its ids stay where Continue finds them', async () => {
+    const { fakes, ids } = await played();
+    await fakes.ports.modeStore.open({
+      mode: 'scoring' as const,
+      raw: '',
+      slot: null,
+      savedAt: new Date('2026-11-02T09:00:00.000Z'),
+      expiresAt: null,
+      stream: null,
+      scoring: { fixtureId: FIXTURE, label: 'Match 4' },
+    });
+    await scoringHubOf(fakes.ports).resume();
+    expect((await fakes.tapQueue.load(FIXTURE))?.ownEventIds).toEqual(ids);
+    expect(await fakes.tapQueue.loadKept(FIXTURE, nowOf(fakes))).toBeNull();
+  });
+
+  describe('what is kept is no work and no leftover', () => {
+    /** A match left a moment ago: nothing but its kept ids on the disk. */
+    async function keptOnly(): Promise<FakePorts> {
+      const fakes = await rig();
+      await fakes.tapQueue.save({
+        fixtureId: FIXTURE,
+        label: 'Match 4',
+        pending: [],
+        ownEventIds: ['ev-1', 'ev-2'],
+        dead: null,
+      });
+      await fakes.tapQueue.leave(FIXTURE, nowOf(fakes));
+      await fakes.ports.modeStore.load();
+      expect([...fakes.queueFiles.files.keys()]).toEqual([KEPT]);
+      return fakes;
+    }
+
+    it('a resume starts no sender for it and leaves it where it is', async () => {
+      const fakes = await keptOnly();
+      await scoringHubOf(fakes.ports).resume();
+      expect(listeners(fakes)).toBe(0);
+      expect([...fakes.queueFiles.files.keys()]).toEqual([KEPT]);
+    });
+
+    it('is not on the list the swept and the Home cards are made from', async () => {
+      const fakes = await keptOnly();
+      expect(await fakes.tapQueue.list()).toEqual([]);
+    });
+
+    it('a headless runner opened on the match has nothing to send and lets go at once, with the ids loaded', async () => {
+      const fakes = await keptOnly();
+      await saveScoringLink(fakes.kv, FIXTURE, LINK, HOST, 'badminton');
+      const idle = vi.fn();
+      const sender = createScoringRunner(fakes.ports, {
+        fixtureId: FIXTURE,
+        mode: 'headless',
+        onIdle: idle,
+      });
+      await sender.start();
+      await flush();
+      expect(idle).toHaveBeenCalledTimes(1);
+      const snapshot = sender.snapshot();
+      expect(snapshot.kind === 'ready' && snapshot.state.sync.queue.ownEventIds).toEqual([
+        'ev-1',
+        'ev-2',
+      ]);
+      await sender.stop();
+    });
+  });
+
+  describe('a resume expires what is older than a day', () => {
+    it('deletes a kept file once it is more than 24 h old, and not before', async () => {
+      const { fakes } = await played();
+      await scoringHubOf(fakes.ports).leave(FIXTURE);
+      later(24 * HOUR);
+      await scoringHubOf(fakes.ports).resume();
+      expect([...fakes.queueFiles.files.keys()]).toEqual([KEPT]);
+      later(1);
+      await scoringHubOf(fakes.ports).resume();
+      expect([...fakes.queueFiles.files.keys()]).toEqual([]);
+    });
+
+    it('keeps another match’s younger entry beside it', async () => {
+      const { fakes } = await played();
+      await scoringHubOf(fakes.ports).leave(FIXTURE);
+      later(20 * HOUR);
+      await fakes.tapQueue.save({
+        fixtureId: 'm-new',
+        label: '',
+        pending: [],
+        ownEventIds: ['ev-5'],
+        dead: null,
+      });
+      await fakes.tapQueue.leave('m-new', nowOf(fakes));
+      later(5 * HOUR);
+      await scoringHubOf(fakes.ports).resume();
+      expect([...fakes.queueFiles.files.keys()]).toEqual(['m-new.own.json']);
+    });
+
+    it('a launch with nothing kept does nothing, the empty input', async () => {
+      const fakes = await rig();
+      await fakes.ports.modeStore.load();
+      await scoringHubOf(fakes.ports).resume();
+      expect(fakes.queueFiles.files.size).toBe(0);
+    });
+
+    it('a disk that refuses the delete is recorded, never raised, and the queues are still looked at', async () => {
+      const { fakes } = await played();
+      await scoringHubOf(fakes.ports).leave(FIXTURE);
+      later(25 * HOUR);
+      fakes.scoring.goOffline(true);
+      await queued(fakes, 'fx-taps');
+      fakes.queueFiles.failNext('remove');
+      await scoringHubOf(fakes.ports).resume();
+      expect(readRecord(fakes.record).map((line) => line.event)).toContain('scoring.tidy-refused');
+      expect(listeners(fakes)).toBe(1);
+    });
+  });
+
+  describe('a kept file cannot be written', () => {
+    it('a leave that could not keep the ids deletes nothing and rejects: the next sweep leaves it again', async () => {
+      const { fakes, ids } = await played();
+      fakes.queueFiles.failNext('write');
+      await expect(scoringHubOf(fakes.ports).leave(FIXTURE)).rejects.toThrow();
+      expect((await fakes.tapQueue.load(FIXTURE))?.ownEventIds).toEqual(ids);
+      await fakes.ports.modeStore.load();
+      await scoringHubOf(fakes.ports).resume();
+      expect(await fakes.tapQueue.loadKept(FIXTURE, nowOf(fakes))).toEqual(ids);
+      expect(await fakes.tapQueue.load(FIXTURE)).toBeNull();
+    });
   });
 });

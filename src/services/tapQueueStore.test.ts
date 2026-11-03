@@ -1150,3 +1150,314 @@ describe('the bootstrap cache beside the queue (plan S2-1 Task 9)', () => {
     expect(await store.loadBoot(FIXTURE)).toEqual(CACHE);
   });
 });
+
+describe('leaving a match keeps this phone’s own tap ids for a day (owner ruling 46, 2026-11-03)', () => {
+  const keptOf = (fixtureId: string) => `${fixtureId}.own.json`;
+  const HOUR = 3_600_000;
+  const LEFT = 1_700_000_000_000;
+  /** A match as a pad leaves it: the queue file with nothing pending, its ledger and its boot cache. */
+  async function played(store: ReturnType<typeof storeOver>['store'], fixtureId = FIXTURE) {
+    await store.save(queue({ fixtureId, pending: [], ownEventIds: ['ev-1', 'ev-2'] }));
+    await store.saveLedger(fixtureId, LEDGER);
+    await store.saveBoot(fixtureId, { bootstrap: { ...SINGLES, fixtureId }, toss: null });
+  }
+  const placed = (over: Record<string, unknown>) =>
+    text({ v: 1, fixtureId: FIXTURE, ownEventIds: ['ev-1'], leftAt: LEFT, ...over });
+  const keptUnreadable = (entries: () => ReturnType<typeof parseRecordLine>[]) =>
+    entries().filter((entry) => entry.event === 'scoring.kept.unreadable');
+
+  it('deletes the queue, ledger and boot cache as a remove does, and keeps the ids in a file of their own', async () => {
+    const files = createMemoryQueueFiles();
+    const { store } = storeOver(files);
+    await played(store);
+    await store.leave(FIXTURE, LEFT);
+    expect(await store.load(FIXTURE)).toBeNull();
+    expect(await store.loadLedger(FIXTURE)).toBeNull();
+    expect(await store.loadBoot(FIXTURE)).toBeNull();
+    expect([...files.files.keys()]).toEqual([keptOf(FIXTURE)]);
+    expect(await store.loadKept(FIXTURE, LEFT + HOUR)).toEqual(['ev-1', 'ev-2']);
+  });
+
+  it('is no queue: the list does not name it, so no leftover card and nothing unsent can come of it', async () => {
+    const { store } = storeOver();
+    await played(store);
+    await store.leave(FIXTURE, LEFT);
+    expect(await store.list()).toEqual([]);
+    expect(await store.load(FIXTURE)).toBeNull();
+  });
+
+  it('reads back after the app is killed and started again', async () => {
+    const files = createMemoryQueueFiles();
+    await played(storeOver(files).store);
+    await storeOver(files).store.leave(FIXTURE, LEFT);
+    expect(await storeOver(files).store.loadKept(FIXTURE, LEFT + 2 * HOUR)).toEqual([
+      'ev-1',
+      'ev-2',
+    ]);
+  });
+
+  it('keeps them for 24 h to the millisecond, and no longer', async () => {
+    const { store } = storeOver();
+    await played(store);
+    await store.leave(FIXTURE, LEFT);
+    expect(await store.loadKept(FIXTURE, LEFT + 24 * HOUR)).toEqual(['ev-1', 'ev-2']);
+    expect(await store.loadKept(FIXTURE, LEFT + 24 * HOUR + 1)).toBeNull();
+  });
+
+  it('has nothing to keep for a match with no own taps: no file is written, and an older one goes', async () => {
+    const files = createMemoryQueueFiles();
+    const { store } = storeOver(files);
+    await store.save(queue({ pending: [], ownEventIds: [] }));
+    await store.leave(FIXTURE, LEFT);
+    expect(files.files.size).toBe(0);
+    files.files.set(keptOf(FIXTURE), placed({}));
+    await store.save(queue({ pending: [], ownEventIds: [] }));
+    await store.leave(FIXTURE, LEFT + HOUR);
+    expect(files.files.size).toBe(0);
+  });
+
+  it('is a no-op for a match with no files at all, and twice is the same as once', async () => {
+    const files = createMemoryQueueFiles();
+    const { store } = storeOver(files);
+    await expect(store.leave(FIXTURE, LEFT)).resolves.toBeUndefined();
+    await played(store);
+    await store.leave(FIXTURE, LEFT);
+    await store.leave(FIXTURE, LEFT);
+    expect([...files.files.keys()]).toEqual([keptOf(FIXTURE)]);
+    expect(await store.loadKept(FIXTURE, LEFT)).toEqual(['ev-1', 'ev-2']);
+  });
+
+  it('leaving again, with only the kept ids left to keep (nothing tapped since), stamps them again', async () => {
+    const { store } = storeOver();
+    await played(store);
+    await store.leave(FIXTURE, LEFT);
+    await store.leave(FIXTURE, LEFT + 20 * HOUR);
+    expect(await store.loadKept(FIXTURE, LEFT + 40 * HOUR)).toEqual(['ev-1', 'ev-2']);
+    expect(await store.loadKept(FIXTURE, LEFT + 44 * HOUR + 1)).toBeNull();
+  });
+
+  it('leaving a match that has a queue again takes the queue’s ids, which hold the kept ones and the new', async () => {
+    const { store } = storeOver();
+    await played(store);
+    await store.leave(FIXTURE, LEFT);
+    await store.save(queue({ pending: [], ownEventIds: ['ev-1', 'ev-2', 'ev-9'] }));
+    await store.leave(FIXTURE, LEFT + HOUR);
+    expect(await store.loadKept(FIXTURE, LEFT + 2 * HOUR)).toEqual(['ev-1', 'ev-2', 'ev-9']);
+  });
+
+  it('keeps a second match’s ids beside the first: each is its own file and its own day', async () => {
+    const files = createMemoryQueueFiles();
+    const { store } = storeOver(files);
+    await played(store);
+    await played(store, OTHER);
+    await store.leave(FIXTURE, LEFT);
+    await store.leave(OTHER, LEFT + 20 * HOUR);
+    expect([...files.files.keys()].sort()).toEqual([keptOf(FIXTURE), keptOf(OTHER)].sort());
+    expect(await store.loadKept(FIXTURE, LEFT + 21 * HOUR)).toEqual(['ev-1', 'ev-2']);
+    expect(await store.loadKept(OTHER, LEFT + 21 * HOUR)).toEqual(['ev-1', 'ev-2']);
+    expect(await store.loadKept(FIXTURE, LEFT + 25 * HOUR)).toBeNull();
+    expect(await store.loadKept(OTHER, LEFT + 25 * HOUR)).toEqual(['ev-1', 'ev-2']);
+  });
+
+  it('is null for a match nothing was kept for, the empty input', async () => {
+    const { store } = storeOver();
+    expect(await store.loadKept(FIXTURE, LEFT)).toBeNull();
+  });
+
+  it('a remove (Dismiss, Forget, Close) takes the kept ids and their temp file too, and only its own', async () => {
+    const files = createMemoryQueueFiles();
+    const { store } = storeOver(files);
+    await played(store);
+    await played(store, OTHER);
+    await store.leave(FIXTURE, LEFT);
+    await store.leave(OTHER, LEFT);
+    files.files.set(`${keptOf(FIXTURE)}.tmp`, 'half');
+    await store.remove(FIXTURE);
+    expect([...files.files.keys()]).toEqual([keptOf(OTHER)]);
+  });
+
+  it('refuses ids that name the link’s secret: nothing is deleted, nothing is written', async () => {
+    const files = createMemoryQueueFiles();
+    const { store } = storeOver(files);
+    files.files.set(nameOf(FIXTURE), asFile(queue({ pending: [], ownEventIds: [TOKEN] })));
+    await expect(store.leave(FIXTURE, LEFT)).rejects.toThrow(/link/i);
+    expect(files.written.join('')).not.toContain(TOKEN);
+    expect([...files.files.keys()]).toEqual([nameOf(FIXTURE)]);
+  });
+
+  it.each([
+    ['not a number', Number.NaN],
+    ['below zero', -1],
+    ['not whole', 1.5],
+  ])(
+    'a stamp that is %s would not read back: refused, and nothing is deleted',
+    async (_name, stamp) => {
+      const files = createMemoryQueueFiles();
+      const { store } = storeOver(files);
+      await played(store);
+      await expect(store.leave(FIXTURE, stamp)).rejects.toThrow(/read back/);
+      expect(await store.load(FIXTURE)).not.toBeNull();
+      expect(files.files.has(keptOf(FIXTURE))).toBe(false);
+    },
+  );
+
+  it('rejects when the kept file cannot be written, and deletes nothing: the queue is still there to be left again', async () => {
+    const files = createMemoryQueueFiles();
+    const { store } = storeOver(files);
+    await played(store);
+    files.failNext('write');
+    await expect(store.leave(FIXTURE, LEFT)).rejects.toThrow();
+    expect(await store.load(FIXTURE)).not.toBeNull();
+    expect(await store.loadLedger(FIXTURE)).toEqual(LEDGER);
+    expect(await store.loadBoot(FIXTURE)).not.toBeNull();
+    expect(await store.loadKept(FIXTURE, LEFT)).toBeNull();
+    await store.leave(FIXTURE, LEFT);
+    expect(await store.loadKept(FIXTURE, LEFT)).toEqual(['ev-1', 'ev-2']);
+  });
+
+  it('killed between the kept file and the delete: both stand, and leaving again finishes it', async () => {
+    const files = createMemoryQueueFiles();
+    await played(storeOver(files).store);
+    files.failNext('remove');
+    await expect(storeOver(files).store.leave(FIXTURE, LEFT)).rejects.toThrow();
+    const again = storeOver(files).store;
+    expect(await again.loadKept(FIXTURE, LEFT + HOUR)).toEqual(['ev-1', 'ev-2']);
+    expect((await again.load(FIXTURE))?.ownEventIds).toEqual(['ev-1', 'ev-2']);
+    await again.leave(FIXTURE, LEFT + HOUR);
+    expect([...files.files.keys()]).toEqual([keptOf(FIXTURE)]);
+  });
+
+  it('a kept file whose save was cut inside its move is promoted from the temp file', async () => {
+    const files = createMemoryQueueFiles();
+    await played(storeOver(files).store);
+    files.failNext('moveAfterDelete');
+    await expect(storeOver(files).store.leave(FIXTURE, LEFT)).rejects.toThrow();
+    expect(files.files.has(`${keptOf(FIXTURE)}.tmp`)).toBe(true);
+    expect(await storeOver(files).store.loadKept(FIXTURE, LEFT + HOUR)).toEqual(['ev-1', 'ev-2']);
+  });
+
+  it.each([
+    ['text that is not JSON', 'not json'],
+    ['a file of another version', placed({ v: 2 })],
+    ['a file of another match', placed({ fixtureId: OTHER })],
+    ['ids that are no list', placed({ ownEventIds: 'ev-1' })],
+    ['an empty id', placed({ ownEventIds: ['ev-1', ''] })],
+    ['no ids', placed({ ownEventIds: [] })],
+    ['a stamp that is no number', placed({ leftAt: '2026-11-03T10:00:00.000Z' })],
+    ['a stamp that is not whole', placed({ leftAt: 1.5 })],
+    ['a stamp below zero', placed({ leftAt: -1 })],
+    ['no stamp', text({ v: 1, fixtureId: FIXTURE, ownEventIds: ['ev-1'] })],
+  ])('%s is no kept entry: null, said once, never thrown', async (_name, content) => {
+    const files = createMemoryQueueFiles();
+    const { store, entries } = storeOver(files);
+    files.files.set(keptOf(FIXTURE), content);
+    expect(await store.loadKept(FIXTURE, LEFT)).toBeNull();
+    expect(await store.loadKept(FIXTURE, LEFT)).toBeNull();
+    expect(keptUnreadable(entries)).toHaveLength(1);
+    expect(keptUnreadable(entries)[0]?.fields).toEqual({ problem: 'garbled' });
+    expect(await store.list()).toEqual([]);
+  });
+
+  it('a trouble said once is said again after the file has been cleared away, by a remove or an expiry', async () => {
+    const files = createMemoryQueueFiles();
+    const { store, entries } = storeOver(files);
+    files.files.set(keptOf(FIXTURE), 'not json');
+    await store.loadKept(FIXTURE, LEFT);
+    await store.remove(FIXTURE);
+    files.files.set(keptOf(FIXTURE), 'not json');
+    await store.loadKept(FIXTURE, LEFT);
+    expect(keptUnreadable(entries)).toHaveLength(2);
+    await store.expireKept(LEFT);
+    files.files.set(keptOf(FIXTURE), 'not json');
+    await store.loadKept(FIXTURE, LEFT);
+    expect(keptUnreadable(entries)).toHaveLength(3);
+  });
+
+  it('a kept file the disk refuses to read is null and said, not thrown', async () => {
+    const files = createMemoryQueueFiles();
+    const { store, entries } = storeOver(files);
+    await played(store);
+    await store.leave(FIXTURE, LEFT);
+    files.failNext('read');
+    expect(await store.loadKept(FIXTURE, LEFT)).toBeNull();
+    expect(keptUnreadable(entries)).toHaveLength(1);
+    expect(await store.loadKept(FIXTURE, LEFT)).toEqual(['ev-1', 'ev-2']);
+  });
+
+  it('an id unfit for a file name keeps nothing and reads nothing', async () => {
+    const { store, files } = storeOver();
+    await expect(store.leave('../x', LEFT)).resolves.toBeUndefined();
+    expect(await store.loadKept('../x', LEFT)).toBeNull();
+    expect(files.ops).toEqual([]);
+  });
+
+  describe('expiring what is older than a day', () => {
+    it('deletes the entries older than 24 h and keeps the rest, tmp files with them', async () => {
+      const files = createMemoryQueueFiles();
+      const { store } = storeOver(files);
+      await played(store);
+      await played(store, OTHER);
+      await store.leave(FIXTURE, LEFT);
+      await store.leave(OTHER, LEFT + 10 * HOUR);
+      files.files.set(`${keptOf(FIXTURE)}.tmp`, 'half');
+      await store.expireKept(LEFT + 24 * HOUR);
+      expect([...files.files.keys()].sort()).toEqual(
+        [keptOf(FIXTURE), `${keptOf(FIXTURE)}.tmp`, keptOf(OTHER)].sort(),
+      );
+      await store.expireKept(LEFT + 24 * HOUR + 1);
+      expect([...files.files.keys()]).toEqual([keptOf(OTHER)]);
+      await store.expireKept(LEFT + 34 * HOUR + 1);
+      expect(files.files.size).toBe(0);
+    });
+
+    it('leaves a queue and its caches alone: only kept files are its business', async () => {
+      const files = createMemoryQueueFiles();
+      const { store } = storeOver(files);
+      await played(store);
+      await store.expireKept(LEFT + 1000 * HOUR);
+      expect(await store.load(FIXTURE)).not.toBeNull();
+      expect(await store.loadLedger(FIXTURE)).toEqual(LEDGER);
+      expect(await store.loadBoot(FIXTURE)).not.toBeNull();
+    });
+
+    it('takes a garbled kept file away, which nothing else would, and one whose temp file is garbled too', async () => {
+      const files = createMemoryQueueFiles();
+      const { store } = storeOver(files);
+      files.files.set(keptOf(FIXTURE), 'not json');
+      files.files.set(`${keptOf(OTHER)}.tmp`, 'half');
+      await store.expireKept(LEFT);
+      expect(files.files.size).toBe(0);
+    });
+
+    it('leaves a file the disk would not read: it is tried again next time', async () => {
+      const files = createMemoryQueueFiles();
+      const { store } = storeOver(files);
+      await played(store);
+      await store.leave(FIXTURE, LEFT);
+      files.failNext('read');
+      await store.expireKept(LEFT + 100 * HOUR);
+      expect(files.files.has(keptOf(FIXTURE))).toBe(true);
+      await store.expireKept(LEFT + 100 * HOUR);
+      expect(files.files.has(keptOf(FIXTURE))).toBe(false);
+    });
+
+    it('with nothing kept, the empty input, deletes nothing; a folder that cannot be listed is said, not thrown', async () => {
+      const files = createMemoryQueueFiles();
+      const { store } = storeOver(files);
+      await expect(store.expireKept(LEFT)).resolves.toBeUndefined();
+      files.failNext('names');
+      await expect(store.expireKept(LEFT)).resolves.toBeUndefined();
+    });
+
+    it('rejects when the disk refuses the delete, so the caller can say so', async () => {
+      const files = createMemoryQueueFiles();
+      const { store } = storeOver(files);
+      await played(store);
+      await store.leave(FIXTURE, LEFT);
+      files.failNext('remove');
+      await expect(store.expireKept(LEFT + 25 * HOUR)).rejects.toThrow();
+      await store.expireKept(LEFT + 25 * HOUR);
+      expect(files.files.size).toBe(0);
+    });
+  });
+});

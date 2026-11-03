@@ -1,6 +1,7 @@
 import { isRecord } from '@/domain/credentials/wire';
 import {
   QUEUE_DEAD_WORDS,
+  keptStillMine,
   type BootCache,
   type MatchQueue,
   type QueueDead,
@@ -56,7 +57,7 @@ export type QueueEntry =
   | { readonly kind: 'queue'; readonly queue: MatchQueue }
   | { readonly kind: 'unreadable'; readonly fixtureId: string };
 
-/** What Home's Continue card and the match hook keep of unsent taps. Methods never reject but `save*` and `remove*`. */
+/** What Home's Continue card and the match hook keep of unsent taps. Methods never reject but `save*`, `remove*`, `leave` and `expireKept`. */
 export interface TapQueueStore {
   /**
    * Every match with a queue, by fixture id, in a stable order. A match is never skipped: one whose files exist but
@@ -93,6 +94,18 @@ export interface TapQueueStore {
   saveBoot(fixtureId: string, cache: BootCache): Promise<void>;
   /** Deletes a match's boot cache. Rejects when the disk refuses; none is not a failure. */
   removeBoot(fixtureId: string): Promise<void>;
+  /**
+   * Lets a match go with nothing left to send (scanning another match, a drained sender's clean-up), keeping the ids of
+   * this phone's own taps for a day (owner ruling 46, 2026-11-03): its queue, ledger and boot cache are deleted as
+   * `remove` does, but the ids, stamped `now` (epoch ms), are first written to a small file of their own. That file is
+   * no queue: `list` never names it, so it is no leftover card and no unsent work. Having none to keep, it keeps none (an
+   * older kept file of the match goes). Rejects when the disk refuses, and deletes nothing if the ids could not be kept.
+   */
+  leave(fixtureId: string, now: number): Promise<void>;
+  /** The own-tap ids kept for a match left within the last day, or null: none, too old, or unreadable (reported once). */
+  loadKept(fixtureId: string, now: number): Promise<readonly string[] | null>;
+  /** Deletes every kept file older than a day, and any that cannot be read. Rejects when the disk refuses a delete. */
+  expireKept(now: number): Promise<void>;
 }
 
 const FILE_VERSION = 1;
@@ -100,6 +113,8 @@ const FILE_VERSION = 1;
 const FIXTURE_ID = /^[A-Za-z0-9_-]{1,100}$/;
 /** A queue's own files: `{id}.json`, its temp `{id}.json.tmp` and its set-aside `{id}.json.bad`. A ledger's dot breaks it. */
 const QUEUE_FILE = /^([A-Za-z0-9_-]{1,100})\.json(?:\.tmp|\.bad)?$/;
+/** The kept ids of a left match: `{id}.own.json` and its temp. A queue's regex never matches them: its id has no dot. */
+const KEPT_FILE = /^([A-Za-z0-9_-]{1,100})\.own\.json(?:\.tmp)?$/;
 /** The shape of a scoring link's secret (`dl_` and base64url), matched loosely: better a refusal than a leak. */
 const LINK_SECRET = /dl_[A-Za-z0-9_-]{20,}/;
 /** The key a folder-level failure is reported under: no file name can be empty. */
@@ -112,6 +127,23 @@ const ledgerName = (fixtureId: string): string => `${fixtureId}.ledger.json`;
 const ledgerTempName = (fixtureId: string): string => `${ledgerName(fixtureId)}.tmp`;
 const bootName = (fixtureId: string): string => `${fixtureId}.boot.json`;
 const bootTempName = (fixtureId: string): string => `${bootName(fixtureId)}.tmp`;
+const keptName = (fixtureId: string): string => `${fixtureId}.own.json`;
+const keptTempName = (fixtureId: string): string => `${keptName(fixtureId)}.tmp`;
+
+/** Every file of a match that is not its kept ids: what `leave` and `remove` both delete. */
+const matchFiles = (fixtureId: string): readonly string[] => [
+  fileName(fixtureId),
+  tempName(fixtureId),
+  asideName(fixtureId),
+  ledgerName(fixtureId),
+  ledgerTempName(fixtureId),
+  bootName(fixtureId),
+  bootTempName(fixtureId),
+];
+const keptFiles = (fixtureId: string): readonly string[] => [
+  keptName(fixtureId),
+  keptTempName(fixtureId),
+];
 
 /** One durable file and what a read does about its troubles. */
 type Slot<T> = {
@@ -121,7 +153,10 @@ type Slot<T> = {
   readonly aside: string | null;
   /** The record line a trouble is said under. */
   readonly event:
-    'scoring.queue.unreadable' | 'scoring.ledger.unreadable' | 'scoring.boot.unreadable';
+    | 'scoring.queue.unreadable'
+    | 'scoring.ledger.unreadable'
+    | 'scoring.boot.unreadable'
+    | 'scoring.kept.unreadable';
   readonly decode: (text: string) => T | null;
 };
 
@@ -152,6 +187,14 @@ const bootSlot = (fixtureId: string): Slot<BootCache> => ({
   decode: (text) => decodeBoot(text, fixtureId),
 });
 
+const keptSlot = (fixtureId: string): Slot<Kept> => ({
+  main: keptName(fixtureId),
+  temp: keptTempName(fixtureId),
+  aside: null,
+  event: 'scoring.kept.unreadable',
+  decode: (text) => decodeKept(text, fixtureId),
+});
+
 export function createTapQueueStore(deps: { files: QueueFiles; logger: Logger }): TapQueueStore {
   const { files, logger } = deps;
   const inOrder = serially();
@@ -177,20 +220,24 @@ export function createTapQueueStore(deps: { files: QueueFiles; logger: Logger })
       }),
     remove: (fixtureId) =>
       guarded(fixtureId, undefined, async () => {
-        for (const name of [
-          fileName(fixtureId),
-          tempName(fixtureId),
-          asideName(fixtureId),
-          ledgerName(fixtureId),
-          ledgerTempName(fixtureId),
-          bootName(fixtureId),
-          bootTempName(fixtureId),
-        ])
+        for (const name of [...matchFiles(fixtureId), ...keptFiles(fixtureId)])
           await files.remove(name);
-        readable(fileName(fixtureId));
-        readable(ledgerName(fixtureId));
-        readable(bootName(fixtureId));
+        readableAll(readable, fixtureId);
       }),
+    leave: (fixtureId, now) =>
+      guarded(fixtureId, undefined, async () => {
+        const ids = await ownIdsOf(reading, fixtureId);
+        if (ids.length > 0) await writeKept(files, fixtureId, ids, now);
+        else for (const name of keptFiles(fixtureId)) await files.remove(name);
+        for (const name of matchFiles(fixtureId)) await files.remove(name);
+        readableAll(readable, fixtureId);
+      }),
+    loadKept: (fixtureId, now) =>
+      guarded(fixtureId, null, async () => {
+        const kept = await recover(reading, keptSlot(fixtureId));
+        return kept !== null && keptStillMine(kept.leftAt, now) ? kept.ownEventIds : null;
+      }),
+    expireKept: (now) => inOrder(() => expireKept(reading, now)),
     loadLedger: (fixtureId) =>
       guarded(fixtureId, null, () => recover(reading, ledgerSlot(fixtureId))),
     saveLedger: (fixtureId, events) =>
@@ -234,16 +281,23 @@ function serially(): <T>(task: () => Promise<T>) => Promise<T> {
 
 type Reading = { files: QueueFiles; report: Report; readable: Readable };
 
-async function listEntries(reading: Reading): Promise<readonly QueueEntry[]> {
-  let names: readonly string[];
+/** Every file name in the folder; none, said once, when the folder cannot be listed. */
+async function folderNames(reading: Reading): Promise<readonly string[]> {
   try {
-    names = await reading.files.names();
+    const names = await reading.files.names();
+    reading.readable(FOLDER);
+    return names;
   } catch {
     reading.report(queueSlot('x'), FOLDER, 'folder');
     return [];
   }
-  reading.readable(FOLDER);
-  const ids = [...new Set(names.flatMap((name) => QUEUE_FILE.exec(name)?.[1] ?? []))].sort();
+}
+
+const idsIn = (names: readonly string[], pattern: RegExp): string[] =>
+  [...new Set(names.flatMap((name) => pattern.exec(name)?.[1] ?? []))].sort();
+
+async function listEntries(reading: Reading): Promise<readonly QueueEntry[]> {
+  const ids = idsIn(await folderNames(reading), QUEUE_FILE);
   const entries: QueueEntry[] = [];
   for (const id of ids) {
     const { value, trouble } = await recoverSlot(reading, queueSlot(id));
@@ -252,6 +306,37 @@ async function listEntries(reading: Reading): Promise<readonly QueueEntry[]> {
       entries.push({ kind: 'unreadable', fixtureId: id });
   }
   return entries;
+}
+
+/** A match's files all read afresh after a delete: a trouble reported for one is over when the file is gone. */
+function readableAll(readable: Readable, fixtureId: string): void {
+  readable(fileName(fixtureId));
+  readable(ledgerName(fixtureId));
+  readable(bootName(fixtureId));
+  readable(keptName(fixtureId));
+}
+
+/**
+ * The ids to keep when a match is left: its queue's, which hold every id the kept file gave when the match was opened
+ * again; a match with no queue (opened again, nothing tapped since) keeps the ids it already had, stamped again.
+ */
+async function ownIdsOf(reading: Reading, fixtureId: string): Promise<readonly string[]> {
+  const queue = (await recoverSlot(reading, queueSlot(fixtureId))).value;
+  if (queue !== null) return queue.ownEventIds;
+  return (await recoverSlot(reading, keptSlot(fixtureId))).value?.ownEventIds ?? [];
+}
+
+/**
+ * Deletes the kept files older than a day. One that cannot be read at all (garbled) goes too, since nothing would ever
+ * read it; one the disk refused to read stays, to be tried again next time.
+ */
+async function expireKept(reading: Reading, now: number): Promise<void> {
+  for (const id of idsIn(await folderNames(reading), KEPT_FILE)) {
+    const { value, trouble } = await recoverSlot(reading, keptSlot(id));
+    if (trouble || (value !== null && keptStillMine(value.leftAt, now))) continue;
+    for (const name of keptFiles(id)) await reading.files.remove(name);
+    reading.readable(keptName(id));
+  }
 }
 
 /** A queue that could not be read leaves its text as `{id}.json.bad`: that file is the match, named, not skipped. */
@@ -371,6 +456,20 @@ async function writeBoot(files: QueueFiles, fixtureId: string, cache: BootCache)
     encodeBoot(fixtureId, cache),
     bootTempName(fixtureId),
     bootName(fixtureId),
+  );
+}
+
+async function writeKept(
+  files: QueueFiles,
+  fixtureId: string,
+  ownEventIds: readonly string[],
+  leftAt: number,
+): Promise<void> {
+  await writeThenMove(
+    files,
+    encodeKept(fixtureId, ownEventIds, leftAt),
+    keptTempName(fixtureId),
+    keptName(fixtureId),
   );
 }
 
@@ -568,4 +667,36 @@ function decodeBoot(text: string, fixtureId: string): BootCache | null {
   const bootstrap = parseBootstrap(raw.bootstrap);
   if (toss === undefined || bootstrap === null || bootstrap.fixtureId !== fixtureId) return null;
   return { bootstrap, toss };
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The kept ids: this phone's own taps in a match it left, for a day (owner ruling 46, 2026-11-03)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** What a left match keeps: the event ids the server returned for this phone's taps, and when the match was left. */
+type Kept = { readonly ownEventIds: readonly string[]; readonly leftAt: number };
+
+/**
+ * The text of a kept file, or a refusal. Like the queue, it names no link secret and is only written if it reads back
+ * (at least one id, a whole stamp), so the store never writes a file it would then report as garbled.
+ */
+function encodeKept(fixtureId: string, ownEventIds: readonly string[], leftAt: number): string {
+  const text = JSON.stringify({ v: FILE_VERSION, fixtureId, ownEventIds, leftAt });
+  if (LINK_SECRET.test(text)) throw new Error('kept ids never carry a scoring link secret');
+  if (decodeKept(text, fixtureId) === null) throw new Error('kept ids that would not read back');
+  return text;
+}
+
+function decodeKept(text: string, fixtureId: string): Kept | null {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!isRecord(raw) || raw.v !== FILE_VERSION || raw.fixtureId !== fixtureId) return null;
+  const ownEventIds = readList(raw.ownEventIds, readText);
+  const leftAt = readWhole(raw.leftAt, 0);
+  if (ownEventIds === undefined || ownEventIds.length === 0 || leftAt === undefined) return null;
+  return { ownEventIds, leftAt };
 }

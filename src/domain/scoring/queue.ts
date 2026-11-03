@@ -91,6 +91,20 @@ export type MatchQueue = {
 };
 
 /**
+ * How long a phone keeps the ids of its own taps in a match it has left (owner ruling 46, 2026-11-03): a volunteer who
+ * scans another court's code by mistake and then scans their own again finds History and Undo as they were. A day.
+ */
+export const KEPT_OWN_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Whether ids kept since `leftAt` (epoch ms) are still this phone's to use at `now`: not older than a day. A stamp from
+ * the future (the phone's clock was set back) counts by its distance, so one a day or more ahead is not kept for ever.
+ */
+export function keptStillMine(leftAt: number, now: number): boolean {
+  return Math.abs(now - leftAt) <= KEPT_OWN_MS;
+}
+
+/**
  * What a reopened match needs before the network answers (plan S2-1 Task 9): the bootstrap last read, with the rules
  * the phone has adopted since (`cfg` and `rulesVersion` are the current ones), and the side the scorer picked to
  * serve first, which the match's first rally carries until a rally stands. No secret: the link's token is the secure

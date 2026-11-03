@@ -240,6 +240,21 @@ design surface.
   match's queue file: the web's ledger carries only the device link, which the phone and a browser on
   the same link share. If the app's data is cleared, older taps read "Another scorer" in History and
   cannot be undone (_the controller's_).
+- **Leaving a match keeps its own ids for a day** (owner ruling 46, 2026-11-03). A match is left when
+  nothing of it is left to send: another match's scan replaces it, or its background sender has sent
+  the last tap of a match nobody holds. Its queue, ledger and boot cache go as before, but the ids of
+  this phone's own taps are first written, stamped with the time, to a small file of their own
+  (`{id}.own.json`), and kept for 24 h. Scanning the same match again within the day reads them back as
+  own: a volunteer who scans another court's code by mistake and then their own finds History saying
+  "This phone" and Undo reaching their latest tap. The file is not a queue. Home never lists it, so it
+  is no Continue or Dismiss card, no unsent tap and no work for a sender, and the queue writer's
+  refusal of a link secret covers it. What is older than 24 h goes at the next launch or return to the
+  foreground (the hub's resume, which already sweeps what nothing wants), and a read past the day
+  ignores it whatever has swept. A match with taps still unsent is not left: it stays Home's leftover
+  as before, and its ids are kept when its sender has drained it. Dismiss (a bad-link panel, a
+  leftover, Close on a Finished match) and Forget on a dead link keep nothing: they say the match is
+  done or that its link is gone, and a fresh link is another device link whose events these ids would
+  not undo.
 
 ### 6.3 The queue
 

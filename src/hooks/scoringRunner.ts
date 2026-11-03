@@ -291,11 +291,12 @@ type Opened = {
   readonly boot: BootCache | null;
 };
 
-const emptyQueue = (fixtureId: string): MatchQueue => ({
+/** A match with no queue file: nothing queued, and the ids of this phone's own taps from before it was left, if kept. */
+const emptyQueue = (fixtureId: string, kept: readonly string[]): MatchQueue => ({
   fixtureId,
   label: '',
   pending: [],
-  ownEventIds: [],
+  ownEventIds: kept,
   dead: null,
 });
 
@@ -332,9 +333,12 @@ async function loadMatch(
   if (queue === null && (await unreadableQueue(ports, fixtureId))) {
     return { kind: 'unreadable', what: 'queue' };
   }
+  // A match scanned again within a day of being left finds its own taps as they were (owner ruling 46, 2026-11-03).
+  const kept =
+    queue === null ? await ports.tapQueue.loadKept(fixtureId, ports.clock().getTime()) : null;
   return {
     kind: 'open',
-    open: { sport, queue: queue ?? emptyQueue(fixtureId), ledger: ledger ?? [], boot },
+    open: { sport, queue: queue ?? emptyQueue(fixtureId, kept ?? []), ledger: ledger ?? [], boot },
   };
 }
 

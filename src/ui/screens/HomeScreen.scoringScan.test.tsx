@@ -365,28 +365,28 @@ describe('which match is let go when another is scanned', () => {
       await fakes.kv.set(STORE_KEYS.active, 'scoring');
     }
     await seed(fakes);
-    const dismiss = vi.spyOn(scoringHubOf(fakes.ports), 'dismiss');
+    const letGo = vi.spyOn(scoringHubOf(fakes.ports), 'leave');
     const hook = renderHook(() => useHome(), { wrapper: wrapperFor(fakes) });
     await act(() => fakes.ports.modeStore.load());
     act(() => hook.result.current.actions.openFromPanel(code));
     await waitFor(() => expect(fakes.navigation.current()).toBe('scoring'));
     for (let i = 0; i < SETTLE; i += 1) await act(async () => undefined);
-    return { fakes, dismiss };
+    return { fakes, letGo };
   }
 
   it('the first match ever scanned lets nothing go', async () => {
-    const { dismiss } = await openOver(null);
-    expect(dismiss).not.toHaveBeenCalled();
+    const { letGo } = await openOver(null);
+    expect(letGo).not.toHaveBeenCalled();
   });
 
   it('the same match scanned again with nothing unsent is not "another match": its fresh link stays', async () => {
-    const { fakes, dismiss } = await openOver('fake-doubles', (f) =>
+    const { fakes, letGo } = await openOver('fake-doubles', (f) =>
       leave(f, queueHolding('fake-doubles', 0), {
         origin: 'https://stg.seazn.club',
         token: 'dl_theOldTokenForHomeTests',
       }),
     );
-    expect(dismiss).not.toHaveBeenCalled();
+    expect(letGo).not.toHaveBeenCalled();
     expect(JSON.parse(fakes.kv.entries.get(linkKey('fake-doubles')) ?? 'null')).toEqual({
       ...LINK,
       sportKey: 'badminton',
@@ -394,11 +394,11 @@ describe('which match is let go when another is scanned', () => {
   });
 
   it('an old match whose queue cannot be read is kept: its taps are the leftover Home shows', async () => {
-    const { fakes, dismiss } = await openOver(FAKE_MATCH, async (f) => {
+    const { fakes, letGo } = await openOver(FAKE_MATCH, async (f) => {
       await leave(f, queueHolding(FAKE_MATCH, 1));
       f.queueFiles.files.set(`${FAKE_MATCH}.json`, '{ not json');
     });
-    expect(dismiss).not.toHaveBeenCalled();
+    expect(letGo).not.toHaveBeenCalled();
     expect(fakes.kv.entries.has(linkKey(FAKE_MATCH))).toBe(true);
     // Kept on purpose, not by a read that failed and was recorded.
     expect(readRecord(fakes.record).map((line) => line.event)).not.toContain(
@@ -407,11 +407,11 @@ describe('which match is let go when another is scanned', () => {
   });
 
   it('an old match with no queue at all is let go even while a third match holds taps', async () => {
-    const { fakes, dismiss } = await openOver(FAKE_MATCH, async (f) => {
+    const { fakes, letGo } = await openOver(FAKE_MATCH, async (f) => {
       await f.kv.set(linkKey(FAKE_MATCH), STORED_LINK);
       await leave(f, queueHolding('fx-third', 2, { label: 'Match 9' }));
     });
-    expect(dismiss).toHaveBeenCalledWith(FAKE_MATCH);
+    expect(letGo).toHaveBeenCalledWith(FAKE_MATCH);
     expect(fakes.kv.entries.has(linkKey(FAKE_MATCH))).toBe(false);
     expect((await fakes.tapQueue.load('fx-third'))?.pending).toHaveLength(2);
   });

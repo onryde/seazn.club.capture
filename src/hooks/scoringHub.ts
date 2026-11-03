@@ -29,6 +29,12 @@ export type ScoringHub = {
   /** Dismiss: stops this match's runner, forgets its link, then deletes its queue, ledger and boot cache. */
   dismiss(fixtureId: string): Promise<void>;
   /**
+   * A Dismiss for a match the scorer has simply gone from (scanning another match; owner ruling 46, 2026-11-03): the same,
+   * except that the ids of this phone's own taps are kept for a day, so a rescan of the match finds History and Undo as
+   * they were. Dismiss is the operator saying the match is done, and keeps nothing.
+   */
+  leave(fixtureId: string): Promise<void>;
+  /**
    * The stop of this match's runner that has not finished saving, or null when none is out: the pad has left and its last
    * ledger and boot-cache writes may not have landed, so what a reader of the match's files saw may be one step behind
    * (Home's Finished card reads again once this settles). Never rejects.
@@ -123,12 +129,16 @@ function createScoringHub(ports: Ports): ScoringHub {
     return saved !== undefined && saved !== id && !focused.has(id) && !claims.has(id);
   };
 
-  /** An unwanted match goes with its link, queue, ledger and boot cache (Dismiss without the runner). A refusal is recorded. */
+  /**
+   * An unwanted match goes with its link, queue, ledger and boot cache (Dismiss without the runner), keeping the ids of
+   * this phone's own taps for a day (`leave`, owner ruling 46): the scorer has gone from it, not finished with it. A
+   * refusal is recorded.
+   */
   const sweep = async (id: string): Promise<void> => {
     try {
       if (!unwanted(id)) return;
       await forgetScoringLink(ports.kv, id);
-      await ports.tapQueue.remove(id);
+      await ports.tapQueue.leave(id, ports.clock().getTime());
     } catch {
       ports.logger.warn('scoring.tidy-refused', {});
     }
@@ -164,7 +174,17 @@ function createScoringHub(ports: Ports): ScoringHub {
     await stopRunner(id, runner);
   };
 
+  /** The ids kept for a left match are for a day: what is older goes, at a launch and on every return. A refusal is recorded. */
+  const expireKept = async (): Promise<void> => {
+    try {
+      await ports.tapQueue.expireKept(ports.clock().getTime());
+    } catch {
+      ports.logger.warn('scoring.tidy-refused', {});
+    }
+  };
+
   const resume = async (): Promise<void> => {
+    await expireKept();
     for (const entry of await ports.tapQueue.list()) {
       if (entry.kind !== 'queue') continue;
       const { fixtureId, pending, dead } = entry.queue;
@@ -221,17 +241,24 @@ function createScoringHub(ports: Ports): ScoringHub {
     return handleOf(id, entry);
   };
 
-  const dismiss = async (id: string): Promise<void> => {
+  const dismiss = (id: string): Promise<void> => ending(id, false);
+
+  const leave = (id: string): Promise<void> => ending(id, true);
+
+  const ending = async (id: string, keepOwn: boolean): Promise<void> => {
     dismissing.add(id);
     try {
-      await dismissed(id);
+      await dismissed(id, keepOwn);
     } finally {
       dismissing.delete(id);
     }
   };
 
-  /** Stops the runner, then forgets the link BEFORE the files go: a stop half way never leaves a queue a link could send. */
-  const dismissed = async (id: string): Promise<void> => {
+  /**
+   * Stops the runner, then forgets the link BEFORE the files go: a stop half way never leaves a queue a link could send.
+   * `keepOwn`: the files go but for the ids of this phone's own taps (`leave`).
+   */
+  const dismissed = async (id: string, keepOwn: boolean): Promise<void> => {
     const held = focused.get(id);
     if (held !== undefined) {
       focused.delete(id);
@@ -246,8 +273,9 @@ function createScoringHub(ports: Ports): ScoringHub {
     }
     await stopping.get(id);
     await forgetScoringLink(ports.kv, id);
-    await ports.tapQueue.remove(id);
+    if (keepOwn) await ports.tapQueue.leave(id, ports.clock().getTime());
+    else await ports.tapQueue.remove(id);
   };
 
-  return { focus, resume, dismiss, claim, settled };
+  return { focus, resume, dismiss, leave, claim, settled };
 }

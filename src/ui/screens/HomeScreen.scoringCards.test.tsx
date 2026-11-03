@@ -5,6 +5,7 @@ import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
 import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
+import { SCORING_POLL_MS } from '@/hooks/useScoringHome';
 import { STORE_KEYS } from '@/services/modeStore';
 import { colour } from '@/ui/theme/tokens';
 import { HomeScreen } from '@/ui/screens/HomeScreen';
@@ -369,6 +370,47 @@ describe('what a card does not touch', () => {
     await homeWith(async () => undefined, { kvSeed: inMatch(FAKE_MATCH, '') });
     const title = within(continueCard() as HTMLElement).getByText('Continue Remote Scoring');
     expect(title.parentElement?.children).toHaveLength(1);
+  });
+});
+
+// Owner ruling 46, 2026-11-03: a match the scorer has left keeps the ids of its own taps for a day, in a file that is no
+// queue. Home must read it as nothing: no card, no count, no Dismiss, no polling.
+describe('the own tap ids kept for a left match', () => {
+  const keep = async (fakes: FakePorts): Promise<void> => {
+    await fakes.tapQueue.save({ ...queueHolding('fx-left', 0), ownEventIds: ['ev-1', 'ev-2'] });
+    await fakes.tapQueue.leave('fx-left', fakes.ports.clock().getTime());
+  };
+  const kept = (home: FakePorts): string[] => [...home.queueFiles.files.keys()];
+
+  it('is no leftover card and no Dismiss beside the saved match, which says nothing is unsent', async () => {
+    const home = await homeWith(keep, { kvSeed: inMatch() });
+    expect(kept(home)).toEqual(['fx-left.own.json']);
+    expect(leftovers()).toHaveLength(0);
+    expect(screen.queryByRole('button', { name: /Dismiss/ })).toBeNull();
+    expect(screen.queryByText(/not sent/)).toBeNull();
+    expect(button('Continue')).toBeTruthy();
+    expect(button('Forget')).toBeTruthy();
+    expect(kept(home)).toEqual(['fx-left.own.json']);
+  });
+
+  it('with no match saved, Home has no Remote Scoring card at all', async () => {
+    const home = await homeWith(keep);
+    expect(continueCard()).toBeNull();
+    expect(leftovers()).toHaveLength(0);
+    expect(screen.queryByRole('button', { name: /Dismiss|Forget|Continue/ })).toBeNull();
+    expect(kept(home)).toEqual(['fx-left.own.json']);
+  });
+
+  it('is not polled for: the disk is read at mount and return, not every few seconds', async () => {
+    vi.useFakeTimers();
+    try {
+      const home = await homeWith(keep, { kvSeed: inMatch() });
+      const listed = vi.spyOn(home.ports.tapQueue, 'list');
+      await act(() => vi.advanceTimersByTimeAsync(3 * SCORING_POLL_MS));
+      expect(listed).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

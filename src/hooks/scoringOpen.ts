@@ -89,8 +89,10 @@ async function writeLink(
 
 /**
  * The match the saved code replaces is let go when nothing of it is left to send: its link, queue, ledger and boot
- * cache go (the hub's Dismiss). A match with taps still queued, dead or live, or whose queue cannot be read, is kept: its
- * taps show on Home as a leftover (design §5), and only the organiser's word or the operator's Dismiss removes them.
+ * cache go (the hub's `leave`), but for the ids of this phone's own taps, kept for a day so that scanning the match again
+ * finds History and Undo as they were (owner ruling 46, 2026-11-03). A match with taps still queued, dead or live, or
+ * whose queue cannot be read, is kept: its taps show on Home as a leftover (design §5), and only the organiser's word or
+ * the operator's Dismiss removes them; the sweep that follows its last tap keeps the ids the same way.
  */
 export async function letGoOfScoring(
   ports: Ports,
@@ -103,7 +105,7 @@ export async function letGoOfScoring(
     entry.kind === 'queue' ? entry.queue.fixtureId === previous : entry.fixtureId === previous,
   );
   if (left !== undefined && (left.kind === 'unreadable' || left.queue.pending.length > 0)) return;
-  await scoringHubOf(ports).dismiss(previous);
+  await scoringHubOf(ports).leave(previous);
 }
 
 /**
