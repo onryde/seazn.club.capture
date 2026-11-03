@@ -23,7 +23,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
-// Owner, 2026-11-03: when this phone's own tap decides the match, Undo stays for 30 s under a countdown on the result
+// Owner, 2026-11-03: when this phone's own tap decides the match, Undo stays for 45 s under a countdown on the result
 // card, then goes and the card says to ask the organiser. The end of a game is not this. Each test reads what the
 // scorer sees, on the real runner, queue and fake server, the phone's clock held where a test puts it. The window's own
 // rule and its timer are `undoWindow.test.ts` and `useUndoWindow.test.tsx`; what jsdom cannot see (the colours, a screen
@@ -125,14 +125,14 @@ describe('the Undo window of a match this phone decided', () => {
     ['fr', fr],
     ['nl', nl],
   ] as const)(
-    'counts 30, then 29 on the result card, with Undo in its place, in %s',
+    'counts 45, then 44 on the result card, with Undo in its place, in %s',
     async (lang, words) => {
       const app = await startedMatch(words, lang);
       await decided(app);
-      expect(cardText()).toBe(open(words, 30));
+      expect(cardText()).toBe(open(words, 45));
       expect(undoButton(words)?.getAttribute('aria-disabled')).not.toBe('true');
       await pass(app, 1000);
-      expect(cardText()).toBe(open(words, 29));
+      expect(cardText()).toBe(open(words, 44));
       expect(undoButton(words)).not.toBeNull();
     },
   );
@@ -143,11 +143,11 @@ describe('the Undo window of a match this phone decided', () => {
     ['fr', fr],
     ['nl', nl],
   ] as const)(
-    'closes at 30 s: the Undo button is gone and the card says to ask the organiser, in %s',
+    'closes at 45 s: the Undo button is gone and the card says to ask the organiser, in %s',
     async (lang, words) => {
       const app = await startedMatch(words, lang);
       await decided(app);
-      await pass(app, 29_000);
+      await pass(app, 44_000);
       expect(cardText()).toBe(open(words, 1));
       expect(undoButton(words)).not.toBeNull();
       await pass(app, 1000);
@@ -159,20 +159,20 @@ describe('the Undo window of a match this phone decided', () => {
     },
   );
 
-  it('stays closed: minutes later the card and the line are as they were at 30 s', async () => {
+  it('stays closed: minutes later the card and the line are as they were at 45 s', async () => {
     const app = await startedMatch();
     await decided(app);
-    await pass(app, 30_000);
+    await pass(app, 45_000);
     await jump(app, 180_000);
     expect(cardText()).toBe(closed(en));
     expect(undoButton()).toBeNull();
   });
 
-  it('an Undo inside the window reopens the match as before, and the next decision starts a fresh 30 s', async () => {
+  it('an Undo inside the window reopens the match as before, and the next decision starts a fresh 45 s', async () => {
     const app = await startedMatch();
     await decided(app);
     await pass(app, 10_000);
-    expect(cardText()).toBe(open(en, 20));
+    expect(cardText()).toBe(open(en, 35));
     press(en['scoring.pad.undo']);
     await flush(300);
     expect(screen.queryByTestId('pad-card')).toBeNull();
@@ -180,17 +180,18 @@ describe('the Undo window of a match this phone decided', () => {
     await pass(app, 5_000);
     await rally(app, 'first');
     await flush(0);
-    expect(cardText()).toBe(open(en, 30));
+    expect(cardText()).toBe(open(en, 45));
     await pass(app, 3_000);
-    expect(cardText()).toBe(open(en, 27));
-    // The old window would have closed by now; this one has 27 s.
-    await pass(app, 20_000);
+    expect(cardText()).toBe(open(en, 42));
+    // The first window would have closed by now (46 s after its tap); this one, begun 15 s later, has 14 s.
+    await pass(app, 28_000);
+    expect(cardText()).toBe(open(en, 14));
     expect(undoButton()).not.toBeNull();
-    await pass(app, 7_000);
+    await pass(app, 14_000);
     expect(undoButton()).toBeNull();
   });
 
-  it('the end of a game is not a decision: Undo stays after 30 s, and after 10 minutes', async () => {
+  it('the end of a game is not a decision: Undo stays after 45 s, and after 10 minutes', async () => {
     const app = await startedMatch();
     await scoredElsewhere(app, 20);
     await rally(app, 'first');
@@ -198,7 +199,7 @@ describe('the Undo window of a match this phone decided', () => {
     expect(screen.queryByTestId('pad-card')).toBeNull();
     // One game is over: a box for it in each half.
     expect(screen.getAllByTestId('period')).toHaveLength(2);
-    await pass(app, 40_000);
+    await pass(app, 50_000);
     expect(undoButton()?.getAttribute('aria-disabled')).not.toBe('true');
     await jump(app, 600_000);
     expect(undoButton()?.getAttribute('aria-disabled')).not.toBe('true');
@@ -207,11 +208,11 @@ describe('the Undo window of a match this phone decided', () => {
     expect(shows('first', 20)).toBe(true);
   });
 
-  it('going Home and back within the 30 s finds the same window, and after it closed finds it closed', async () => {
+  it('going Home and back within the 45 s finds the same window, and after it closed finds it closed', async () => {
     const app = await startedMatch();
     await decided(app);
     await pass(app, 12_000);
-    expect(cardText()).toBe(open(en, 18));
+    expect(cardText()).toBe(open(en, 33));
     act(() => {
       app.back.press();
     });
@@ -220,8 +221,8 @@ describe('the Undo window of a match this phone decided', () => {
     await pass(app, 2_000);
     act(() => app.ports.navigation.go('scoring'));
     await flush(200);
-    expect(cardText()).toBe(open(en, 16));
-    await pass(app, 16_000);
+    expect(cardText()).toBe(open(en, 31));
+    await pass(app, 31_000);
     expect(cardText()).toBe(closed(en));
     act(() => {
       app.back.press();
@@ -238,7 +239,7 @@ describe('the Undo window of a match this phone decided', () => {
     await scoredElsewhere(app, 42);
     expect(cardText()).toBe(closed(en));
     expect(undoButton()).toBeNull();
-    await pass(app, 40_000);
+    await pass(app, 50_000);
     expect(cardText()).toBe(closed(en));
   });
 });
@@ -293,11 +294,11 @@ describe('a match scanned again after it was left', () => {
     },
   );
 
-  it('finds a window left a few seconds ago closed, not started again at 30', async () => {
+  it('finds a window left a few seconds ago closed, not started again at 45', async () => {
     const app = await startedMatch();
     await decided(app);
     await pass(app, 4_000);
-    expect(cardText()).toBe(open(en, 26));
+    expect(cardText()).toBe(open(en, 41));
     await leftAndScanned(app, 'leave');
     act(() => app.ports.navigation.go('scoring'));
     await flush(1_500);
@@ -317,20 +318,20 @@ describe('Undo against a result made elsewhere in between', () => {
     await scoredElsewhere(app, 1);
     expect(cardText()).toBe(closed(en));
     expect(undoButton()).toBeNull();
-    await pass(app, 40_000);
+    await pass(app, 50_000);
     expect(cardText()).toBe(closed(en));
   });
 });
 
 describe('a deciding tap queued while the phone was offline', () => {
-  it('follows the same rule: no Undo after 30 s on the pad, and the reconnect question can still discard it', async () => {
+  it('follows the same rule: no Undo after 45 s on the pad, and the reconnect question can still discard it', async () => {
     const app = await startedMatch();
     await scoredElsewhere(app, 41);
     app.scoring.goOffline(true);
     await rally(app, 'first');
     await flush(0);
-    expect(cardText()).toBe(open(en, 30));
-    await pass(app, 29_000);
+    expect(cardText()).toBe(open(en, 45));
+    await pass(app, 44_000);
     expect(cardText()).toBe(open(en, 1));
     await pass(app, 1_000);
     expect(cardText()).toBe(closed(en));

@@ -6,7 +6,7 @@ import { readScoringLink, saveScoringLink } from '@/services/scoringLinkStore';
 import { FAKE_SCORING_SECRET } from '../../test/fakeScoringLinkPort';
 import { createFakePorts, timerClock, type FakePorts } from '../../test/fakePorts';
 
-// Owner, 2026-11-03: Undo closes 30 s after a match is decided by this phone's own tap. The start of that window is
+// Owner, 2026-11-03: Undo closes 45 s after a match is decided by this phone's own tap. The start of that window is
 // the reducer's (`scoringMatchWindow.test.ts`: the dispatched tap that decides); the hub keeps it between screens, per
 // launch (the `Ports`) and per match, and lets it go with the match: a leave, a Dismiss (which Close and Forget are). Over
 // the real runner, queue store and fake server. A restart is a new `Ports` over the same files and the same server.
@@ -105,25 +105,26 @@ describe('the Undo window’s start, kept by the hub', () => {
     expect(decidedAtOf(handle)).toBe(at);
   });
 
-  it('is the same window when the screen goes and comes back: Home and back within 30 s', async () => {
+  it('is the same window when the screen goes and comes back: Home and back within 45 s', async () => {
     const fakes = await rig();
     const { handle, at } = await decided(fakes);
     handle.release();
     await flush();
-    await wait(4_000);
+    // 35 s after the tap: past the 30 s the window first had, still inside the 45 s.
+    await wait(34_000);
     const back = scoringHubOf(fakes.ports).focus(FIXTURE);
     await flush();
     expect(decidedAtOf(back)).toBe(at);
-    // Not a fresh 30 s: the rest of this one, to the millisecond.
+    // Not a fresh 45 s: the rest of this one, to the millisecond.
     expect(back.runner.dispatch({ ...UNDO })).toEqual({ ok: true });
   });
 
-  it('is shut for Undo on the screen that comes back after the 30 s, whatever it was opened with', async () => {
+  it('is shut for Undo on the screen that comes back after the 45 s, whatever it was opened with', async () => {
     const fakes = await rig();
     const { handle } = await decided(fakes);
     handle.release();
     await flush();
-    await wait(31_000);
+    await wait(46_000);
     const back = scoringHubOf(fakes.ports).focus(FIXTURE);
     await flush();
     expect(back.runner.dispatch({ ...UNDO })).toEqual({ ok: false, refusal: 'notNow' });

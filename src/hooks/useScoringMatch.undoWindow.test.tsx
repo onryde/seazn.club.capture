@@ -9,7 +9,7 @@ import { saveScoringLink } from '@/services/scoringLinkStore';
 import { FAKE_SCORING_SECRET } from '../../test/fakeScoringLinkPort';
 import { createFakePorts, timerClock, type FakePorts } from '../../test/fakePorts';
 
-// Owner, 2026-11-03: Undo closes 30 s after a match is decided by this phone's own tap. The window's rule and timer are
+// Owner, 2026-11-03: Undo closes 45 s after a match is decided by this phone's own tap. The window's rule and timer are
 // `undoWindow.test.ts` and `useUndoWindow.test.tsx`; here the match hook hands the pad over with it applied, over the
 // real runner, hub, queue store and reducer, and the fake server. A restart is a new `Ports` over the same files and
 // the same server: the launch's memory goes, the phone's disk stays.
@@ -90,7 +90,7 @@ describe('the pad of a match this phone decided', () => {
   it('after a restart shows the decided match with no Undo at all', async () => {
     const fakes = await rig();
     const first = await decidedByThisPhone(fakes);
-    expect(undoLeft(first)).toBe(29);
+    expect(undoLeft(first)).toBe(44);
     expect(undoOn(first)).toBe(true);
     first.unmount();
     await flush();

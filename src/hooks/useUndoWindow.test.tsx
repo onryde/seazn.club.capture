@@ -7,7 +7,7 @@ import { useUndoWindow } from '@/hooks/useUndoWindow';
 import type { MatchPad } from '@/domain/scoring/scoringMatchView';
 import { createFakePorts, timerClock } from '../../test/fakePorts';
 
-// Owner, 2026-11-03: Undo closes 30 s after a match is decided by this phone's own tap, with a countdown. The window's
+// Owner, 2026-11-03: Undo closes 45 s after a match is decided by this phone's own tap, with a countdown. The window's
 // start comes with the pad (`MatchPad.decidedAt`: the reducer's, `scoringMatchWindow.ts`, kept by the hub); the hook
 // counts it down on the phone's clock and applies it to the pad. These tests drive it with pads made by hand, on a clock
 // moved by fake timers. The reducer, the hub, the match hook and the screen are tested over it elsewhere.
@@ -124,17 +124,19 @@ const phone = () => {
 const timers = () => vi.getTimerCount() - baseline;
 
 describe('the window of a match decided by this phone’s own tap', () => {
-  it('is at 30 the moment the decision is shown, and counts down a second at a time', async () => {
+  it('is at 45 the moment the decision is shown, and counts down a second at a time', async () => {
     const mounted = setUp(phone(), { pad: decidedAgo(0) });
-    expect(left(mounted)).toBe(30);
+    expect(left(mounted)).toBe(45);
     expect(undoOf(mounted)).toBe(true);
     await wait(999);
-    expect(left(mounted)).toBe(30);
+    expect(left(mounted)).toBe(45);
     await wait(1);
-    expect(left(mounted)).toBe(29);
+    expect(left(mounted)).toBe(44);
     await wait(14_000);
-    expect(left(mounted)).toBe(15);
+    expect(left(mounted)).toBe(30);
     await wait(14_000);
+    expect(left(mounted)).toBe(16);
+    await wait(15_000);
     expect(left(mounted)).toBe(1);
     expect(undoOf(mounted)).toBe(true);
   });
@@ -143,20 +145,20 @@ describe('the window of a match decided by this phone’s own tap', () => {
   // timer started with the screen would be 400 ms late every second.
   it('counts from the tap, not from when the screen drew it: the digit changes on the tap’s own second', async () => {
     const mounted = setUp(phone(), { pad: decidedAgo(400) });
-    expect(left(mounted)).toBe(30);
+    expect(left(mounted)).toBe(45);
     await wait(599);
-    expect(left(mounted)).toBe(30);
+    expect(left(mounted)).toBe(45);
     await wait(1);
-    expect(left(mounted)).toBe(29);
+    expect(left(mounted)).toBe(44);
     await wait(999);
-    expect(left(mounted)).toBe(29);
+    expect(left(mounted)).toBe(44);
     await wait(1);
-    expect(left(mounted)).toBe(28);
+    expect(left(mounted)).toBe(43);
   });
 
-  it('closes at the 30 s to the millisecond: a timer set for the close itself, not a tick that comes near it', async () => {
+  it('closes at the 45 s to the millisecond: a timer set for the close itself, not a tick that comes near it', async () => {
     const mounted = setUp(phone(), { pad: decidedAgo(250) });
-    await wait(29_749);
+    await wait(44_749);
     expect(left(mounted)).toBe(1);
     expect(undoOf(mounted)).toBe(true);
     await wait(1);
@@ -166,7 +168,7 @@ describe('the window of a match decided by this phone’s own tap', () => {
 
   it('stays closed once closed, however long the pad stays', async () => {
     const mounted = setUp(phone(), { pad: decidedAgo(0) });
-    await wait(30_000);
+    await wait(45_000);
     await wait(120_000);
     expect(left(mounted)).toBeNull();
     expect(undoOf(mounted)).toBe(false);
@@ -175,7 +177,7 @@ describe('the window of a match decided by this phone’s own tap', () => {
   it('reads the phone’s clock, not the count of ticks: a phone asleep for a minute comes back closed', async () => {
     const mounted = setUp(phone(), { pad: decidedAgo(0) });
     await wait(2_000);
-    expect(left(mounted)).toBe(28);
+    expect(left(mounted)).toBe(43);
     // Timers stand still while the app sleeps; the wall clock does not.
     vi.setSystemTime(Date.now() + 60_000);
     await wait(1_000);
@@ -183,32 +185,33 @@ describe('the window of a match decided by this phone’s own tap', () => {
   });
 
   it('is closed at once on a screen opened after the window ran out, and starts nothing', async () => {
-    const mounted = setUp(phone(), { pad: decidedAgo(31_000) });
+    const mounted = setUp(phone(), { pad: decidedAgo(46_000) });
     expect(left(mounted)).toBeNull();
     expect(undoOf(mounted)).toBe(false);
     expect(timers()).toBe(0);
   });
 
   it('counts the rest of a window that was already running when the screen opened (Home and back)', async () => {
-    const mounted = setUp(phone(), { pad: decidedAgo(14_300) });
-    expect(left(mounted)).toBe(16);
+    // 33.3 s gone: past the 30 s the window first had, so a longer one is what is counted.
+    const mounted = setUp(phone(), { pad: decidedAgo(33_300) });
+    expect(left(mounted)).toBe(12);
     await wait(699);
-    expect(left(mounted)).toBe(16);
+    expect(left(mounted)).toBe(12);
     await wait(1);
-    expect(left(mounted)).toBe(15);
+    expect(left(mounted)).toBe(11);
   });
 
-  it('starts a fresh 30 s at the next decision after Undo reopened the match', async () => {
+  it('starts a fresh 45 s at the next decision after Undo reopened the match', async () => {
     const mounted = setUp(phone(), { pad: decidedAgo(0) });
     await wait(10_000);
-    expect(left(mounted)).toBe(20);
+    expect(left(mounted)).toBe(35);
     await show(mounted, PLAYING);
     expect(card(mounted)).toBeNull();
     await wait(5_000);
     await show(mounted, decidedAgo(0));
-    expect(left(mounted)).toBe(30);
+    expect(left(mounted)).toBe(45);
     await wait(3_000);
-    expect(left(mounted)).toBe(27);
+    expect(left(mounted)).toBe(42);
   });
 
   it('keeps counting through renders that change nothing about the result', async () => {
@@ -216,7 +219,7 @@ describe('the window of a match decided by this phone’s own tap', () => {
     const mounted = setUp(phone(), { pad: decided });
     await wait(4_000);
     await show(mounted, { ...decided, line: null });
-    expect(left(mounted)).toBe(26);
+    expect(left(mounted)).toBe(41);
   });
 
   it('hands a pad that is not a result back as it is', async () => {
@@ -267,6 +270,8 @@ describe('the timer', () => {
     await wait(15_000);
     expect(timers()).toBe(1);
     await wait(15_000);
+    expect(timers()).toBe(1);
+    await wait(15_000);
     expect(left(mounted)).toBeNull();
     expect(timers()).toBe(0);
   });
@@ -278,11 +283,11 @@ describe('the timer', () => {
     const own = { ...padWith(RESULT, OWN), decidedAt: start };
     const mounted = setUp(phone(), { pad: own });
     await wait(5_000);
-    expect(left(mounted)).toBe(25);
+    expect(left(mounted)).toBe(40);
     await show(mounted, { ...padWith(RESULT, NOT_OWN), decidedAt: start });
     await wait(10_000);
     await show(mounted, own);
-    expect(left(mounted)).toBe(15);
+    expect(left(mounted)).toBe(30);
     expect(undoOf(mounted)).toBe(true);
   });
 
@@ -302,9 +307,9 @@ describe('the timer', () => {
 
   it('is one timer under StrictMode’s second pass too', async () => {
     const mounted = setUp(phone(), { strict: true, pad: decidedAgo(0) });
-    expect(left(mounted)).toBe(30);
+    expect(left(mounted)).toBe(45);
     await wait(2_000);
-    expect(left(mounted)).toBe(28);
+    expect(left(mounted)).toBe(43);
     expect(timers()).toBe(1);
   });
 
@@ -315,13 +320,13 @@ describe('the timer', () => {
     const adjusted = createFakePorts({ clock: () => new Date(Date.now() - setBack) }).ports;
     baseline = vi.getTimerCount();
     const mounted = setUp(adjusted, { pad: decidedAgo(400) });
-    expect(left(mounted)).toBe(30);
+    expect(left(mounted)).toBe(45);
     setBack = 3;
     await wait(600);
-    expect(left(mounted)).toBe(30);
+    expect(left(mounted)).toBe(45);
     expect(timers()).toBe(1);
     await wait(3);
-    expect(left(mounted)).toBe(29);
+    expect(left(mounted)).toBe(44);
     expect(timers()).toBe(1);
   });
 

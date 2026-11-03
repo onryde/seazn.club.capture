@@ -92,7 +92,7 @@ export type MatchState<S extends SportTypes = SportTypes> = {
   /** A ledger read of a decided match wanted the bootstrap inside that window: it is read when the window is over. */
   readonly bootstrapOwed: boolean;
   /**
-   * The phone's clock (ms) when this phone's own dispatched tap decided the match, which opens Undo for 30 s (owner,
+   * The phone's clock (ms) when this phone's own dispatched tap decided the match, which opens Undo for 45 s (owner,
    * 2026-11-03; `scoringMatchWindow.ts`); null when none did: not decided, decided by another scorer, or decided before
    * this launch's screen held it. The runner hands it to the hub, which keeps it between screens.
    */

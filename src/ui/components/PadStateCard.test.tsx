@@ -27,7 +27,7 @@ describe('PadStateCard', () => {
     },
   );
 
-  // Owner, 2026-11-03: a decided match keeps Undo for 30 s, and the card counts the seconds down.
+  // Owner, 2026-11-03: a decided match keeps Undo for 45 s, and the card counts the seconds down.
   const said = () => screen.getByTestId('pad-card-said');
   const countdown = () => screen.getByTestId('pad-card-countdown');
   const OPEN = en['scoring.card.resultRecorded.title'] + en['scoring.card.resultRecorded.bodyOpen'];
@@ -36,7 +36,7 @@ describe('PadStateCard', () => {
   const counted = (left: number) =>
     en['scoring.card.resultRecorded.undoCountdown'].replace('{seconds}', String(left));
 
-  it.each([30, 17, 1])('says how long Undo stays open on a recorded result: %i s', (left) => {
+  it.each([45, 17, 1])('says how long Undo stays open on a recorded result: %i s', (left) => {
     renderWithPorts(<PadStateCard card={{ kind: 'resultRecorded', undoLeft: left }} />);
     expect(card().textContent).toBe(OPEN + counted(left));
     expect(countdown().textContent).toBe(counted(left));
@@ -50,7 +50,7 @@ describe('PadStateCard', () => {
     expect(screen.queryByTestId('pad-card-countdown')).toBeNull();
   });
 
-  // A card whose digits change every second under a polite live region would be read out thirty times. Its title and its
+  // A card whose digits change every second under a polite live region would be read out forty-five times. Its title and its
   // sentence are the live region, said once when the card appears; the digits are outside it, read by a swipe, and the
   // card itself is not a live region. Whether TalkBack and VoiceOver say it so is the device check's.
   describe('for a screen reader', () => {
@@ -66,10 +66,10 @@ describe('PadStateCard', () => {
 
     it('has the same words in the live region on every second, so only the digits move', () => {
       const { rerender } = renderWithPorts(
-        <PadStateCard card={{ kind: 'resultRecorded', undoLeft: 30 }} />,
+        <PadStateCard card={{ kind: 'resultRecorded', undoLeft: 45 }} />,
       );
       const before = said().textContent;
-      for (const left of [29, 15, 1]) {
+      for (const left of [44, 15, 1]) {
         rerender(<PadStateCard card={{ kind: 'resultRecorded', undoLeft: left }} />);
         expect(said().textContent).toBe(before);
         expect(countdown().textContent).toBe(counted(left));

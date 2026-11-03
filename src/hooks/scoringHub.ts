@@ -93,7 +93,7 @@ function createScoringHub(ports: Ports): ScoringHub {
   /**
    * Where each match's Undo window started: the phone's clock when its own tap decided it (owner, 2026-11-03). In memory
    * only, per launch, so a restart finds none; kept here and not by a runner or a screen because the focused runner is
-   * stopped when the pad goes and a new one built on its return, and Home and back within the 30 s keeps the window.
+   * stopped when the pad goes and a new one built on its return, and Home and back within the 45 s keeps the window.
    * It goes with the match: a leave (scanning another) or a Dismiss (which Close and Forget are) takes it, so a rescan
    * never dates a decision from the ledger it reads again.
    */

@@ -58,7 +58,7 @@ export type MatchPad<S extends SportTypes = SportTypes> = {
   readonly toss: PadSide | null;
   /** The reconnect question, while it stands: other scorers' events landed on this phone's queued taps. */
   readonly ask: PadAsk | null;
-  /** When this phone's own tap decided the match, on the phone's clock (ms): the start of Undo's 30 s; null if none did. */
+  /** When this phone's own tap decided the match, on the phone's clock (ms): the start of Undo's 45 s; null if none did. */
   readonly decidedAt: number | null;
 };
 

@@ -102,7 +102,7 @@ export function onUndo<S extends SportTypes>(
   const fold = padTakes(state) ? foldOfState(state) : null;
   if (fold === null || fold.kind !== 'folded' || state.bootstrap === null)
     return refused(state, 'notNow');
-  // A decided match's Undo is open for 30 s from this phone's deciding tap (owner, 2026-11-03), whatever the pad shows.
+  // A decided match's Undo is open for 45 s from this phone's deciding tap (owner, 2026-11-03), whatever the pad shows.
   if (undoRunOut(state, now)) return refused(state, 'notNow');
   const target = undoTargetOf(state, fold);
   if (target.kind === 'blocked') return refused(state, blockedRefusal(target.reason));

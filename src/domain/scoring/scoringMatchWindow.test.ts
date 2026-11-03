@@ -14,7 +14,7 @@ import {
 } from '../../../test/badmintonLedger';
 import { AT, held, queueOf, ready } from '../../../test/scoringMatchFixtures';
 
-// Owner, 2026-11-03: Undo closes 30 s after a match is decided by this phone's own tap. The start of the window is the
+// Owner, 2026-11-03: Undo closes 45 s after a match is decided by this phone's own tap. The start of the window is the
 // reducer's: it is the DISPATCHED tap that makes the match decided, read off the state before and after the step, never
 // off a frame the pad happened to show. It is kept on the state (`decidedAt`, ms on the phone's clock), handed in when a
 // match opens (the hub keeps it between screens) and asked of an Undo, which a closed window refuses. Every time below
@@ -133,7 +133,7 @@ describe('a window the hub hands a match that opens', () => {
 
 describe('Undo against the window', () => {
   it('is taken at the start, in the middle, and one millisecond before the window closes', () => {
-    for (const gone of [0, 15_000, 29_999]) {
+    for (const gone of [0, 30_000, 44_999]) {
       const undone = step(decidedByThisPhone(), UNDO, T + gone);
       expect(undone.outcome).toEqual({ ok: true });
     }
@@ -141,7 +141,7 @@ describe('Undo against the window', () => {
 
   it('is refused from the moment the window closes, and the match is left as it was', () => {
     const state = decidedByThisPhone();
-    for (const gone of [30_000, 30_001, 600_000]) {
+    for (const gone of [45_000, 45_001, 600_000]) {
       const refused = step(state, UNDO, T + gone);
       expect(refused.outcome).toEqual({ ok: false, refusal: 'notNow' });
       expect(refused.state.sync.queue.pending).toEqual(state.sync.queue.pending);
@@ -166,8 +166,8 @@ describe('Undo against the window', () => {
     expect(decidedAt(undone)).toBeNull();
     const again = step(undone, { ...DECIDING, key: 'k2' }, T + 25_000).state;
     expect(decidedAt(again)).toBe(T + 25_000);
-    // The old window would be shut at T + 30 s; the new one is open at T + 40 s.
-    expect(step(again, { ...UNDO, key: 'u2' }, T + 40_000).outcome).toEqual({ ok: true });
+    // The old window would be shut at T + 45 s; the new one, begun at T + 25 s, is open at T + 60 s.
+    expect(step(again, { ...UNDO, key: 'u2' }, T + 60_000).outcome).toEqual({ ok: true });
   });
 
   it('has no window at the end of a game, which Undo takes back at any time', () => {

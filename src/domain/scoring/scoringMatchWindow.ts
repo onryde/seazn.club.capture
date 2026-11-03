@@ -18,7 +18,7 @@ import type { MatchEvent, MatchState } from '@/domain/scoring/scoringMatchState'
  * `decidedAt` after `event`, which took `before` to `after`. A tap that makes a decided match where there was none is the
  * decision; a decided match goes on with the start it has; a match no longer decided (Undo, a void, a discarded tap) has
  * none. A window already closed is left alone without a fold: its start is harmless until the next decision replaces it,
- * since nothing is open after 30 s and the next dispatched tap that decides starts again.
+ * since nothing is open after 45 s and the next dispatched tap that decides starts again.
  */
 export function decidedAtAfter<S extends SportTypes>(
   before: MatchState<S>,

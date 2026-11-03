@@ -2,26 +2,28 @@ import { describe, expect, it } from 'vitest';
 import type { PadLastTap, PadStateCard, PadView } from '@/domain/scoring/padView';
 import { undoWindowChangesAt, undoWindowLeft, withUndoWindow } from '@/domain/scoring/undoWindow';
 
-// Owner, 2026-11-03: Undo closes 30 s after a match is decided by this phone's own tap, with a countdown. The rule is
+// Owner, 2026-11-03: Undo closes 45 s after a match is decided by this phone's own tap, with a countdown. The rule is
 // whole seconds, rounded up; every number below is written out, none computed from the code under test.
 
 describe('undoWindowLeft', () => {
   it.each([
-    [0, 30],
-    [1, 30],
-    [999, 30],
-    [1_000, 29],
-    [1_001, 29],
-    [14_999, 16],
-    [15_000, 15],
-    [29_000, 1],
-    [29_001, 1],
-    [29_999, 1],
+    [0, 45],
+    [1, 45],
+    [999, 45],
+    [1_000, 44],
+    [1_001, 44],
+    [14_999, 31],
+    [15_000, 30],
+    [29_999, 16],
+    [30_000, 15],
+    [44_000, 1],
+    [44_001, 1],
+    [44_999, 1],
   ])('has %i ms gone with %i s left', (gone, left) => {
     expect(undoWindowLeft(10_000, 10_000 + gone)).toBe(left);
   });
 
-  it.each([30_000, 30_001, 60_000, 3_600_000])('is closed once %i ms have gone', (gone) => {
+  it.each([45_000, 45_001, 60_000, 3_600_000])('is closed once %i ms have gone', (gone) => {
     expect(undoWindowLeft(10_000, 10_000 + gone)).toBeNull();
   });
 
@@ -31,17 +33,17 @@ describe('undoWindowLeft', () => {
   });
 
   // The phone's clock set back (a network time sync) must not give more than the window.
-  it.each([-1, -1_000, -29_999, -30_000, -3_600_000])(
-    'never gives more than 30 when the clock is %i ms before the start',
+  it.each([-1, -1_000, -44_999, -45_000, -3_600_000])(
+    'never gives more than 45 when the clock is %i ms before the start',
     (gone) => {
-      expect(undoWindowLeft(10_000_000, 10_000_000 + gone)).toBe(30);
+      expect(undoWindowLeft(10_000_000, 10_000_000 + gone)).toBe(45);
     },
   );
 
   it('counts from a start at zero too', () => {
-    expect(undoWindowLeft(0, 0)).toBe(30);
-    expect(undoWindowLeft(0, 29_001)).toBe(1);
-    expect(undoWindowLeft(0, 30_000)).toBeNull();
+    expect(undoWindowLeft(0, 0)).toBe(45);
+    expect(undoWindowLeft(0, 44_001)).toBe(1);
+    expect(undoWindowLeft(0, 45_000)).toBeNull();
   });
 });
 
@@ -59,11 +61,14 @@ describe('undoWindowChangesAt', () => {
     [28_999, 39_000],
     [29_000, 40_000],
     [29_999, 40_000],
+    [43_999, 54_000],
+    [44_000, 55_000],
+    [44_999, 55_000],
   ])('with %i ms gone it is %i on the phone’s clock', (gone, at) => {
     expect(undoWindowChangesAt(10_000, 10_000 + gone)).toBe(at);
   });
 
-  it.each([30_000, 30_001, 3_600_000])('has no next change once %i ms have gone', (gone) => {
+  it.each([45_000, 45_001, 3_600_000])('has no next change once %i ms have gone', (gone) => {
     expect(undoWindowChangesAt(10_000, 10_000 + gone)).toBeNull();
   });
 

@@ -1,19 +1,20 @@
 import type { PadView } from '@/domain/scoring/padView';
 
 /**
- * How long Undo stays open on a decided match (owner, 2026-11-03: "go"): 30 s from the moment this phone's own tap
- * decided it. The end of a game is not this: Undo has no limit there. Sport-agnostic, like the card.
+ * How long Undo stays open on a decided match: 45 s from the moment this phone's own tap decided it (owner, 2026-11-03:
+ * "go" with 30 s, then 45 s after testing build 823). The end of a game is not this: Undo has no limit there.
+ * Sport-agnostic, like the card.
  *
  * Pure: the clock is the caller's. Time comes in as milliseconds on the phone's clock. The window's start is the
  * reducer's (`scoringMatchWindow.ts`: the dispatched tap that decides the match) and the hub's to keep in memory, so it
  * survives the screen but not a restart: after a restart, a leave or a Dismiss a decided match shows no Undo at all.
  */
-export const UNDO_WINDOW_MS = 30_000;
+export const UNDO_WINDOW_MS = 45_000;
 export const UNDO_WINDOW_SECONDS = UNDO_WINDOW_MS / 1000;
 
 /**
- * The whole seconds of Undo left, 30 down to 1, rounded up; null once the window is closed, and when it never opened.
- * A clock set back before the start gives 30, never more.
+ * The whole seconds of Undo left, 45 down to 1, rounded up; null once the window is closed, and when it never opened.
+ * A clock set back before the start gives 45, never more.
  */
 export function undoWindowLeft(openedAt: number | null, now: number): number | null {
   if (openedAt === null) return null;

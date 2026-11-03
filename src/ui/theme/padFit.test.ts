@@ -1078,7 +1078,7 @@ describe('the recorded result card at 320 and 360 in four languages (owner, 2026
     typeScale.panelTitle.letterSpacing * [...text].length;
   const bodyWidth = (text: string) => geist400.width(text, typeScale.body.fontSize);
   const room = (width: number) => column(width) - 2 * space.md - layout.padSideBar;
-  /** The countdown line: its digits are tabular, every one as wide as Geist's `zero.tf`, and the most it counts is 30. */
+  /** The countdown line: its digits are tabular, every one as wide as Geist's `zero.tf`, and the most it counts is 45, two of them. */
   const countdownWidth = (text: string) =>
     bodyWidth(fill(text, { seconds: '' })) +
     2 * geist400.advanceOfName('zero.tf') * typeScale.body.fontSize;
@@ -1104,7 +1104,7 @@ describe('the recorded result card at 320 and 360 in four languages (owner, 2026
           for (const word of words(text)) expect(bodyWidth(word)).toBeLessThanOrEqual(room(width));
         }
         const counting = said(dictionary, 'undoCountdown');
-        expect(linesOf(fill(counting, { seconds: '30' }), room(width), bodyWidth)).toBe(1);
+        expect(linesOf(fill(counting, { seconds: '45' }), room(width), bodyWidth)).toBe(1);
         expect(countdownWidth(counting)).toBeLessThanOrEqual(room(width));
       }
     },

@@ -5,7 +5,7 @@ import { undoWindowChangesAt, undoWindowLeft, withUndoWindow } from '@/domain/sc
 import type { Ports } from '@/hooks/usePorts';
 
 /**
- * The Undo window of a decided match (owner, 2026-11-03), for any sport's pad: 30 s from the moment this phone's own tap
+ * The Undo window of a decided match (owner, 2026-11-03), for any sport's pad: 45 s from the moment this phone's own tap
  * decided it, with the seconds counted on the result card. Where the window starts is not this hook's to say: the
  * reducer dates the dispatched tap that decides the match (`scoringMatchWindow.ts`) and the hub keeps it between screens,
  * so it arrives with the pad as `decidedAt`, and a rescan, a restart or a ledger read that lands late never starts one.
@@ -15,7 +15,7 @@ import type { Ports } from '@/hooks/usePorts';
  * this screen drew it, so every digit changes on the tap's own second and the last change is the close itself, to the
  * millisecond. Only one is ever pending, only while the card counts, and it is cleared when the window closes, when Undo
  * reopens the match and when the screen goes. A press of Undo is checked against the clock again by the reducer
- * (`undoRunOut`), so it cannot land after the 30 s however late this timer or the screen is.
+ * (`undoRunOut`), so it cannot land after the 45 s however late this timer or the screen is.
  */
 export function useUndoWindow<S extends SportTypes>(
   ports: Ports,

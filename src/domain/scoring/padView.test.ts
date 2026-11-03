@@ -73,7 +73,7 @@ const live: PadView<Key> = {
 
 const CARDS: readonly PadStateCard[] = [
   { kind: 'notStarted' },
-  { kind: 'resultRecorded', undoLeft: 30 },
+  { kind: 'resultRecorded', undoLeft: 45 },
   { kind: 'viewOnly' },
   { kind: 'linkInvalid' },
   { kind: 'updateNeeded', unsent: 3 },

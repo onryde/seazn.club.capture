@@ -273,7 +273,7 @@ export function hasUndoCell(card: PadStateCard | null): boolean {
  * `outdated` state).
  *
  * A recorded result holds the screen after its Undo window has closed too (the controller's ruling, 2026-11-03): the
- * organiser may finalise the result while the scorer watches the card, so the 30 s of Undo are not what the screen is
+ * organiser may finalise the result while the scorer watches the card, so the 45 s of Undo are not what the screen is
  * held for.
  */
 export function holdsScreen(card: PadStateCard | null): boolean {
