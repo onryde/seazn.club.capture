@@ -80,8 +80,17 @@ function soleOf(seat: BootstrapSide): string | null {
   return only !== undefined && more.length === 0 ? only.personId : null;
 }
 
-/** The person by the id the bootstrap gave for the name the pad offered; a name the side does not have is refused. */
+/**
+ * The person by the id the bootstrap gave for the name the pad offered; a name the side does not have is refused. A
+ * side that lists no people is offered as its own name (`namesOf`), and that name is a team sanction, with no person:
+ * the engine reads an absent `person` so (`SetBasedSanction`; device, 2026-11-03).
+ */
 function sanctionEvent(seat: BootstrapSide, sanction: BadmintonSanction): BadmintonEvent | null {
+  if (seat.members.length === 0) {
+    return sanction.person === seat.name
+      ? { type: 'badminton.sanction', payload: { by: seat.entrantId, level: sanction.level } }
+      : null;
+  }
   const member = seat.members.find((one) => one.fullName === sanction.person);
   if (member === undefined) return null;
   return {

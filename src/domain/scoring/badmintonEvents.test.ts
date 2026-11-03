@@ -196,6 +196,28 @@ describe('badmintonEventFor: sanctions and the set score', () => {
     ).toBeNull();
   });
 
+  // Device, 2026-11-03: a staging fixture whose entrants list no people. The pad offers the side's own name, and a
+  // warning was refused as not valid. The engine takes a sanction with no person as a team sanction.
+  it('records a team sanction, naming no person, against a side that lists no people', () => {
+    const teams: Bootstrap = {
+      ...BOOTSTRAP,
+      sides: {
+        home: { entrantId: 'ent-a', name: 'A', kind: 'individual', members: [], lineup: [] },
+        away: BOOTSTRAP.sides.away,
+      },
+    };
+    const team = (person: string) =>
+      badmintonEventFor(
+        { kind: 'sanction', side: 'first', level: 'warning', person },
+        { bootstrap: teams, display: LIVE },
+      );
+    expect(team('A')).toEqual({
+      type: 'badminton.sanction',
+      payload: { by: 'ent-a', level: 'warning' },
+    });
+    expect(team('L. Chen')).toBeNull();
+  });
+
   it('sets the game’s points top first as home and away, a partial summary', () => {
     expect(eventFor({ kind: 'setScore', first: 9, second: 4 }, PRE)).toEqual({
       type: 'badminton.game.summary',
