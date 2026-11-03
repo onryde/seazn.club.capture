@@ -134,14 +134,15 @@ The kit and the badminton screen exist on `feat/s2-pad-ui` and are the design of
 reads the components rather than this section for pixel detail; this section names what S2 keeps.
 
 **Top bar** (every state but the bad-link card): Back; the games won, "1:0" top:bottom, LED lime 46 dp
-(`tally` role, the header's own 48 dp line; a disqualified game counts for nobody); ⓘ Match details and
-↺ History, 48 dp round icon buttons; the send badge (owner, 2026-11-02: "remove sending word and have a
+(`tally` role, the header's own 48 dp line; a disqualified game counts for nobody); then at the right end
+the send badge, then ⓘ Match details and ↺ History, 48 dp round icon buttons, History last (owner,
+2026-11-03: "have sync icon first then info, history"). The send badge (owner, 2026-11-02: "remove sending word and have a
 symbol/icon like green uparrow for sending", "1 yes" on the proposal, and "can we incrase the size of 0:0
 fit in that space"): no words, an up arrow and the count in a 48 dp outlined badge, lime arrow in a quiet
 outline while taps are on their way, and when they cannot go (offline, a dead link, a server that keeps
 refusing: `stallOf`) the same badge in caution orange with a heavier outline and the arrow stopped under a
 bar, so it does not rest on telling lime from orange. Nothing waiting is no badge, though its 56 dp slot
-stays so the icons stand still. "99+" is the widest it draws. A tap opens History; a screen reader hears
+stays so the tally's room stays the same. "99+" is the widest it draws. A tap opens History; a screen reader hears
 the words ("8 taps can't be sent") and the History hint.
 
 **Strip**, one line: "Game N of M" at the left, the interval ("Interval at 11", "Interval") at the far

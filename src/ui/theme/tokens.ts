@@ -349,10 +349,10 @@ const base = {
    */
   padLineLines: 3,
   /**
-   * The send badge's slot at the right end of the pad's header (owner ruling 20, 2026-10-31: Rules, History and the sync
-   * status at the right end; the owner's 2026-11-02 badge: an arrow and the count, no words): the widest badge, two
+   * The send badge's slot in the pad header's right end, before Rules and History (owner ruling 20, 2026-10-31; the
+   * order, owner 2026-11-03; the owner's 2026-11-02 badge: an arrow and the count, no words): the widest badge, two
    * hairlines of the heavier outline, its padding and the arrow's box and "99+" in `syncCount` (padFit.test.ts). Fixed, so
-   * the icons stand still as the badge comes and goes; the games tally takes the rest of the row.
+   * the tally's room stays the same as the badge comes and goes; the games tally takes the rest of the row.
    */
   padSyncBox: 56,
   /** The badge's arrow: drawn at this size in its 24-unit box, the arrow itself a little over half of it. */

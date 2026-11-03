@@ -485,10 +485,10 @@ const SetScore = memo(function SetScore({
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colour.ground },
   pad: { flex: 1, gap: space.sm, padding: space.md },
-  // `space.xs` apart: Back, the tally, Rules, History and the sync box share the row (padFit.test.ts).
+  // `space.xs` apart: Back, the tally, the sync box, Rules and History share the row (padFit.test.ts).
   header: { flexDirection: 'row', alignItems: 'center', gap: space.xs, minHeight: layout.touch },
   tally: { flexShrink: 0 },
-  // Pushed to the right end by its auto margin: the row's spare room stands between the tally and Rules.
+  // Pushed to the right end by its auto margin: the row's spare room stands between the tally and the sync box.
   end: { flexDirection: 'row', alignItems: 'center', gap: space.xs, marginLeft: 'auto' },
   sync: { width: layout.padSyncBox, alignItems: 'flex-end' },
   body: { flex: 1, gap: space.sm },

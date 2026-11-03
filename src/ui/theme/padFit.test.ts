@@ -96,12 +96,12 @@ describe('the tool row fits at 320 in four languages', () => {
 });
 
 describe('the header fits on one row at 320 and 360 (owner ruling 20)', () => {
-  // Owner ruling 20 (2026-10-31): Back, then at the right end Rules and History, round icon buttons as Home's gear, and
-  // the sync status; between them the games tally, where the Preview tag was (owner, 2026-11-01). The owner's badge
+  // Owner ruling 20 (2026-10-31): Back, then at the right end the sync status, then Rules and History, round icon
+  // buttons as Home's gear (the order, owner 2026-11-03); between them the games tally, where the Preview tag was (owner, 2026-11-01). The owner's badge
   // (2026-11-02: "remove sending word and have a symbol/icon like green uparrow", and "increase the size of 0:0 to fit in
   // that space") took the words away: the status is an arrow and a count in `padSyncBox`, and the tally grows into the
   // room that gave back. The row's items are `space.xs` apart: Back, the tally and the end group, and inside the group
-  // Rules, History and the badge's slot. Nothing in the row is a word any more, so there is no language to measure in
+  // the badge's slot, Rules and History. Nothing in the row is a word any more, so there is no language to measure in
   // (the badge's words are a screen reader's, never drawn); what can still change its size is the phone's font scale,
   // which the tally and the badge's count cap (`maxFontScale`, review minor 4 of round 2).
   /** "1:0" in `tally`: two tabular digits (`zero.tf`, the widest) and the colon. Best of 3: a side wins 2 at most. */
