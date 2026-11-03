@@ -3,13 +3,13 @@ import { isRecord } from '@/domain/credentials/wire';
 import { badmintonHistory } from '@/domain/scoring/badmintonHistory';
 import {
   SANCTION_LEVELS,
-  sideNames,
   type BadmintonDisplay,
   type BadmintonDone,
   type BadmintonPadKey,
   type BadmintonSide,
 } from '@/domain/scoring/badmintonPad';
 import type { PadHistoryGroup, PadSide } from '@/domain/scoring/padView';
+import { sideNames } from '@/domain/scoring/setBasedSides';
 import type { BootstrapMember, BootstrapSide } from '@/domain/scoring/wire';
 
 /**

@@ -1,12 +1,12 @@
 import {
   SANCTION_LEVELS,
   sanctionWord,
-  sideNames,
   type BadmintonSanction,
   type BadmintonSide,
   type SanctionLevelKey,
 } from '@/domain/scoring/badmintonPad';
 import type { PadSide, PadText, PadVar } from '@/domain/scoring/padView';
+import { sideNames } from '@/domain/scoring/setBasedSides';
 
 /**
  * A sanction, step by step (owner rulings, 2026-10-31): the level (the web's four), then the person (that side's

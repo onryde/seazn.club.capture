@@ -3,7 +3,6 @@ import { isBounce } from '@/domain/scoring/bounce';
 import {
   badmintonDetails,
   parseBadmintonTool,
-  sideNames,
   type BadmintonDisplay,
   type BadmintonPadKey,
   type BadmintonSanction,
@@ -22,6 +21,7 @@ import type {
   PadMatchDetails,
   PadStateCard,
 } from '@/domain/scoring/padView';
+import { sideNames } from '@/domain/scoring/setBasedSides';
 import { parseWholeNumber } from '@/domain/scoring/wholeNumber';
 import { usePorts } from '@/hooks/usePorts';
 

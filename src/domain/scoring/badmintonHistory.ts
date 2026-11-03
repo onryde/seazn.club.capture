@@ -1,11 +1,11 @@
 import {
   doneSaid,
-  scoreText,
   type BadmintonDisplay,
   type BadmintonDone,
   type BadmintonPadKey,
 } from '@/domain/scoring/badmintonPad';
 import type { PadHistoryGroup, PadHistoryRow, PadSide } from '@/domain/scoring/padView';
+import { scoreText } from '@/domain/scoring/setBasedSides';
 
 /**
  * One entry on the match's sheet as whoever keeps the score recorded it (the preview's fake; S2's ledger fold): what it

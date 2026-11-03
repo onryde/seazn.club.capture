@@ -6,6 +6,7 @@ import type {
 import type { PadSide } from '@/domain/scoring/padView';
 import { isRecord } from '@/domain/credentials/wire';
 import type { QueuedEvent } from '@/domain/scoring/queue';
+import { seatsOf, soleOf, type Seats } from '@/domain/scoring/setBasedSides';
 import type { Bootstrap, BootstrapSide, LedgerEvent } from '@/domain/scoring/wire';
 
 /**
@@ -22,14 +23,6 @@ export type BadmintonEventContext = {
   readonly bootstrap: Bootstrap;
   readonly display: BadmintonDisplay;
 };
-
-type Seats = Readonly<Record<PadSide, BootstrapSide>>;
-
-/** The two seats, top first, or null while either has no entrant (a bye, a match waiting on a result). */
-export function seatsOf(bootstrap: Bootstrap): Seats | null {
-  const { home, away } = bootstrap.sides;
-  return home === null || away === null ? null : { first: home, second: away };
-}
 
 export function badmintonEventFor(
   tap: BadmintonTap,
@@ -72,12 +65,6 @@ function rallyEvent(seats: Seats, side: PadSide, display: BadmintonDisplay): Bad
     ...(scorer === null ? {} : { scorer }),
   };
   return { type: 'badminton.rally', payload };
-}
-
-/** A singles side's one player, or null for a pair (the web's `soleMemberOf`: the lineup, by its length). */
-function soleOf(seat: BootstrapSide): string | null {
-  const [only, ...more] = seat.lineup;
-  return only !== undefined && more.length === 0 ? only.personId : null;
 }
 
 /**

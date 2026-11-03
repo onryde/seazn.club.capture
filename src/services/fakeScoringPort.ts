@@ -2,13 +2,12 @@ import { foldMatch, type LineupPair } from '@seazn/engine/core';
 import { badminton } from '@seazn/engine/sports/setbased';
 import {
   badmintonCfg,
-  envelopeOf,
-  lineupOf,
   refusalOf,
   type BadmintonEngineMatch,
 } from '@/domain/scoring/badmintonEngine';
 import type { BadmintonTap } from '@/domain/scoring/badmintonPad';
 import type { PadSide } from '@/domain/scoring/padView';
+import { envelopeOf, lineupOf } from '@/domain/scoring/setBasedEngine';
 import {
   voidTargetOf,
   type AppendAnswer,

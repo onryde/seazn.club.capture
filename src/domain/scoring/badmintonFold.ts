@@ -19,13 +19,9 @@ import {
 import { isRecord } from '@/domain/credentials/wire';
 import {
   badmintonCfg,
-  envelopeOf,
-  lineupOf,
-  queuedEnvelopeOf,
   refusalOf,
   type BadmintonEngineMatch,
 } from '@/domain/scoring/badmintonEngine';
-import { seatsOf } from '@/domain/scoring/badmintonEvents';
 import {
   doneOf,
   ledgerHistory,
@@ -52,6 +48,8 @@ import type { BadmintonRules } from '@/domain/scoring/badmintonRules';
 import type { MatchContext } from '@/domain/scoring/matchContext';
 import type { PadHistoryGroup, PadSide } from '@/domain/scoring/padView';
 import type { QueuedEvent } from '@/domain/scoring/queue';
+import { envelopeOf, lineupOf, queuedEnvelopeOf } from '@/domain/scoring/setBasedEngine';
+import { seatsOf } from '@/domain/scoring/setBasedSides';
 import { undoTarget } from '@/domain/scoring/undoTarget';
 import { matchContextOf, type Bootstrap, type LedgerEvent } from '@/domain/scoring/wire';
 

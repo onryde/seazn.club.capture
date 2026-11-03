@@ -21,6 +21,7 @@ import {
   type PadTool,
   type PadView,
 } from '@/domain/scoring/padView';
+import { scoreText, sideNames, type SetBasedSide } from '@/domain/scoring/setBasedSides';
 
 /** The web's four sanction levels (`sanction.*`), lightest first. */
 export type BadmintonSanctionLevel = 'warning' | 'penalty' | 'expulsion' | 'disqualification';
@@ -32,7 +33,7 @@ export const SANCTION_LEVELS: readonly BadmintonSanctionLevel[] = [
 ];
 
 /** A side's players as the organiser typed them: one in singles, two in doubles. */
-export type BadmintonSide = { readonly players: readonly string[] };
+export type BadmintonSide = SetBasedSide;
 
 export type BadmintonSanction = {
   readonly side: PadSide;
@@ -176,11 +177,6 @@ const SYNCED: PadSync = { kind: 'synced' };
 /** A sanction level's word (the web's `sanction.*`). */
 export function sanctionWord(level: BadmintonSanctionLevel): PadText<SanctionLevelKey> {
   return { key: `scoring.sanction.${level}` };
-}
-
-/** A side's names as one line: partners joined, as the match label joins them. */
-export function sideNames(side: BadmintonSide): string {
-  return side.players.join(' / ');
 }
 
 /**
@@ -477,7 +473,3 @@ function undoneText(state: BadmintonDisplay, tap: BadmintonUndoneTap): Text {
       return { key: 'scoring.badminton.undone.ending', vars: { person: tap.person } };
   }
 }
-
-/** A score, top first, an en dash between ("7–3"): numbers are not translated (docs/i18n-glossary.md, Typography). */
-export const scoreText = ({ first, second }: { readonly first: number; readonly second: number }) =>
-  `${first}–${second}`;

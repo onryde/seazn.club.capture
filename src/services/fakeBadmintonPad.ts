@@ -3,7 +3,6 @@ import type { BadmintonRules } from '@/domain/scoring/badmintonRules';
 import type { MatchContext } from '@/domain/scoring/matchContext';
 import {
   SANCTION_LEVELS,
-  sideNames,
   type BadmintonDisplay,
   type BadmintonDone,
   type BadmintonGame,
@@ -14,6 +13,7 @@ import {
   type BadmintonUndoneTap,
 } from '@/domain/scoring/badmintonPad';
 import type { PadSide, PadStateCard, PadSync } from '@/domain/scoring/padView';
+import { sideNames } from '@/domain/scoring/setBasedSides';
 
 /**
  * A FAKE badminton pad, for the S2 design preview and nothing else: the owner holds the pad on a phone before signing
