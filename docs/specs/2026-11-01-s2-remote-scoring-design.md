@@ -192,8 +192,10 @@ tally. Sport-specific: the domain view (`badmintonPad.ts`, `badmintonSanction.ts
 badminton's screen with its own domain view (one engine kernel, `setbased`). A sport with a clock
 (football, hockey) adds a clock part to the kit when its turn comes, following the web's `PadClockBar`.
 
-**Fit**, held by the fit tests: 320 and 360 dp wide, four languages, singles and doubles. At 320 dp the
-sync word may take three lines in es, fr and nl.
+**Fit**, held by the fit tests: 320 and 360 dp wide, four languages, singles and doubles. The send badge has
+no words (owner, 2026-11-02, the top bar above), so the sync state takes one fixed slot, `layout.padSyncBox`,
+in every language; `padFit.test.ts` holds the widest thing it draws, "99+", inside the slot and the tally in
+the room that is left at 320 dp.
 
 ## 6. The app's side
 
@@ -249,8 +251,8 @@ design surface.
   - accepted → the event joins the ledger, leaves the queue;
   - 409 `SEQ_CONFLICT` (another scorer wrote since this phone's `expected_seq`; the body may carry
     `current_seq`) → fetch `GET …/events?since_seq=`, fold, and send the queue again on the new
-    `expected_seq`; a queued event the new ledger makes illegal is dropped with a refusal line (as
-    the web pipeline does);
+    `expected_seq`; a queued event the new ledger makes illegal is dropped, said on the pad's
+    line and in the record as `scoring.dropped {reason, count}` (as the web pipeline does);
   - 426 `ENGINE_OUTDATED` (the app's engine epoch is behind the server's) → the Update needed state;
     the queue is kept and counted;
   - 409 `FIXTURE_RULES_CHANGED` (the `rules_version` the phone sent is not the match's: the web refuses
@@ -282,9 +284,17 @@ design surface.
       that runs in the one pass, under rules that are one correction behind, could drop a queued tap
       those rules call illegal and the real ones allow (said as "did not count"). It needs two
       corrections inside a replica's lag; it is accepted and not mended, and a tap dropped so is a
-      refusal line in the record, never silent;
-  - any other refusal (4xx) → that event leaves the queue, the last-tap line says the tap did not
-    count, the ledger is fetched again;
+      `scoring.dropped` line in the record, never silent;
+  - any other refusal (4xx) is read by what it says (`closes` and `refused` in `sync.ts`). A 401 (a link
+    the door does not take), a 402 (an account that must pay), a 404 (the match is gone) and a 403 (the
+    result is carried forward, the match is finalized, or this link may not make the write) close the
+    whole queue (`QueueDead`): every tap is kept, nothing more is sent, and the pad says so. The one 403
+    that is about a single tap is a bare one answering a void or a forfeit (the link may not make that
+    one write): that tap alone is refused, as below. A 422 `ALREADY_DECIDED` holds its tap while the
+    bootstrap's status is read: a finalized or cancelled match closes the queue, any other status refuses
+    that tap alone. Every other 4xx (a 400, another 422, a 409 that is neither of the two above) → that
+    event leaves the queue, the last-tap line says the tap did not count (once, however many went), the
+    ledger is fetched again, and the record gets `scoring.dropped {reason, count}`;
   - no network, timeout, 5xx → stay queued, retry with backoff, with the same `idempotency_key`, so a
     tap the server accepted before the answer was lost is not counted twice; the send badge says offline and counts.
 - **The reconnect question** (ruling 43, owner, 2026-11-02). Taps queued only by this phone, offline,
@@ -327,8 +337,10 @@ design surface.
   taps not sent — tell the organiser" with Dismiss; Dismiss deletes that queue. Nothing else
   discards a tap.
 - Store: the queue holds no secret, and secure store is the wrong place for a growing list.
-  _The controller's_ pick is a small JSON file per match through `expo-file-system`, written
-  atomically (temp file and rename); the builder checks it autolinks inside Expo's range (AGENTS §13
+  _The controller's_ pick is a small JSON file per match through `expo-file-system`, written to a
+  `.tmp` and moved over the file. The move is not atomic on Android (it deletes the target, then
+  renames: `expoQueueFiles.ts`, AGENTS §11), so a kill between the two leaves only the `.tmp`, and a
+  read promotes it if it decodes (`tapQueueStore`); the builder checks it autolinks inside Expo's range (AGENTS §13
   failure class 4). The scoring link's token stays in secure store with the saved codes.
 
 ### 6.4 History comes from the ledger

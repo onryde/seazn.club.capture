@@ -521,7 +521,7 @@ Three rules travel with these tokens:
   and Remote Scoring's capture API behind the scoring port) sit behind ports
   with plain `fetch`; the rest are native's. Realtime is one subscription per
   match, owned by the focused match (the hub's, `scoringHub.ts`), only as a
-  nudge to read again (S2 design §7.3).
+  nudge to read again (S2 design §6.3).
 - `React.memo` and no anonymous functions in render, for HUD components
   specifically. This is the rare app where that is load-bearing.
 - Animations on Reanimated worklets — UI thread, never JS.

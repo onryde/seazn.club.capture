@@ -124,11 +124,11 @@ export function createNativePorts(
     // S2: the update banner's two buttons (plan Task 9); the browser's URL holds the scoring link's token.
     link: createNativeLink(),
     scoringLink: scoringLinkPortFor(native, { logger, hosts }),
-    // S2: plain fetch (AGENTS §8), to the build's host only. Nothing calls it until the match hook (plan Task 9).
+    // S2: plain fetch (AGENTS §8), to the build's host only. The match runner (`scoringRunner.ts`) is its one caller.
     scoring: scoringPortFor({ fetch: (url, init) => fetch(url, init), logger, hosts }),
-    // S2: one JSON file per match in the document directory. Nothing reads it until the match hook (plan Task 9).
+    // S2: one JSON file per match in the document directory. The runner, the hub and Home's cards read and write it.
     tapQueue: createTapQueueStore({ files: createExpoQueueFiles(), logger }),
-    // S2: the real `@supabase/realtime-js` over the runtime's WebSocket. Nothing subscribes until the match hook (plan Task 9).
+    // S2: the real `@supabase/realtime-js` over the runtime's WebSocket. The focused match's live owner (`scoringLive.ts`) subscribes.
     realtime: realtimePortFor({ logger }),
     power: createNativePower({
       native,
