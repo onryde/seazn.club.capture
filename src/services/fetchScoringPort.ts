@@ -1,5 +1,6 @@
 import { isBuildOrigin } from '@/services/seaznHosts';
 import {
+  CODE_WORD,
   parseAppendAnswer,
   parseBootstrap,
   parseEvents,
@@ -72,8 +73,6 @@ const OFFLINE: Failure = { kind: 'offline' };
 const TOO_LARGE: ReadFailure = { kind: 'tooLarge' };
 const TOO_LARGE_BODY = Symbol('too-large');
 const API = '/api/v1';
-/** The server's own codes are upper snake case; anything else is not worth a line and might be a secret. */
-const CODE_WORD = /^[A-Z][A-Z0-9_]{1,63}$/;
 
 /** The answers that grow with the match have the larger cap. */
 const CAP: Readonly<Record<Op, number>> = {

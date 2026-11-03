@@ -110,7 +110,13 @@ export type MatchEffect =
   | { readonly kind: 'send'; readonly body: AppendBody; readonly sent: QueuedEvent }
   | { readonly kind: 'fetch'; readonly since: number }
   | { readonly kind: 'loadRules' }
-  | { readonly kind: 'loadBootstrap' };
+  | { readonly kind: 'loadBootstrap' }
+  /**
+   * `count` taps left the queue without counting, all for `code` (`CODE_WORD`: the server's own word, or ours,
+   * `NO_LONGER_LEGAL`; anything else is `OTHER`). The runner says it in the record, one line for the taps one judgement
+   * dropped: the pad's line is one sentence however many went, and the record is where the number is kept.
+   */
+  | { readonly kind: 'dropped'; readonly code: string; readonly count: number };
 
 export type SaveEffect = {
   readonly kind: 'save';

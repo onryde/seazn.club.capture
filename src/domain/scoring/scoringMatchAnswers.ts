@@ -2,7 +2,7 @@ import { refusalLine } from '@/domain/scoring/padLine';
 import type { QueuedEvent } from '@/domain/scoring/queue';
 import type { SportTypes } from '@/domain/scoring/scoringSport';
 import { type SyncEffect, type SyncState, onAnswer } from '@/domain/scoring/sync';
-import type { AppendAnswer } from '@/domain/scoring/wire';
+import { CODE_WORD, type AppendAnswer } from '@/domain/scoring/wire';
 import {
   LOAD_BOOTSTRAP,
   NOT_YET,
@@ -22,20 +22,30 @@ import {
  * step, and the Undo that waited for its tap's answer, made a plain void of the id the answer names.
  */
 
+/** The word the record gets for a refusal that is not the server's own upper-snake code: free text may hold a secret. */
+const OTHER = 'OTHER';
+const wordOf = (code: string): string => (CODE_WORD.test(code) ? code : OTHER);
+
 /**
  * Maps sync's effects to the hook's. `persist` is the save the diff makes; `send` is the pump's alone (`NOT_YET`);
- * `retryIn` is read off the state (`wakeAt`), not carried out as an effect of its own.
+ * `retryIn` is read off the state (`wakeAt`), not carried out as an effect of its own. Each `refused` is a tap that left
+ * the queue without counting: the pad says it once, whatever the number, so the number goes to the record as one
+ * `dropped` per word.
  */
 function effectsOf(effects: readonly SyncEffect[]): { effects: MatchEffect[]; refused: boolean } {
   const out: MatchEffect[] = [];
-  let refused = false;
+  const dropped = new Map<string, number>();
   for (const effect of effects) {
     if (effect.kind === 'fetchSince') out.push({ kind: 'fetch', since: effect.seq });
     else if (effect.kind === 'reloadRules') out.push({ kind: 'loadRules' });
     else if (effect.kind === 'reloadBootstrap') out.push(LOAD_BOOTSTRAP);
-    else if (effect.kind === 'refused') refused = true;
+    else if (effect.kind === 'refused') {
+      const code = wordOf(effect.code);
+      dropped.set(code, (dropped.get(code) ?? 0) + 1);
+    }
   }
-  return { effects: out, refused };
+  dropped.forEach((count, code) => out.push({ kind: 'dropped', code, count }));
+  return { effects: out, refused: dropped.size > 0 };
 }
 
 /** The state after sync moved, and what it asked for; a tap that left the queue refused is said, once, on the line. */

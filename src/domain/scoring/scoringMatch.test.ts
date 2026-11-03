@@ -505,6 +505,11 @@ describe('the answer to a send', () => {
     expect(refused.state.sync.queue.pending).toEqual([]);
     expect(refused.state.line).toEqual({ kind: 'refusal', key: 'scoring.refusal.notCounted' });
     expect(refused.effects).toContainEqual({ kind: 'fetch', since: 1 });
+    expect(refused.effects).toContainEqual({
+      kind: 'dropped',
+      code: 'RALLY_NOT_ALLOWED',
+      count: 1,
+    });
   });
 
   it('ALREADY_DECIDED reads the bootstrap for the match’s status; a match still open refuses that tap alone', () => {

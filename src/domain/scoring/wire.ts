@@ -383,6 +383,9 @@ export function parseRealtimeGrant(body: unknown): RealtimeGrant | null {
 // The append answer
 // ---------------------------------------------------------------------------------------------------------------
 
+/** The server's own codes are upper snake case; anything else is not worth a line and might be a secret. */
+export const CODE_WORD = /^[A-Z][A-Z0-9_]{1,63}$/;
+
 /** The v1 error envelope, `{ok:false, error:{code, ...extras}}`; anything else is not the server's word. */
 function errorOf(body: unknown): { code: string; extras: Record<string, unknown> } | null {
   if (!isRecord(body) || body.ok !== false || !isRecord(body.error)) return null;

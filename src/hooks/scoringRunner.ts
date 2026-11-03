@@ -200,7 +200,19 @@ export function createScoringRunner(ports: RunnerPorts, options: Options): Scori
         return reads.loadRules();
       case 'loadBootstrap':
         return reads.loadBootstrap();
+      case 'dropped':
+        return sayDropped(effect);
     }
+  };
+
+  /**
+   * Taps the phone's own check or the server's refusal took out of the queue without counting. The pad says "Not recorded"
+   * once on its line; the record says how many and why (spec section 6.3 residual: never silent). The field is `reason`,
+   * not `code`: the scrub masks any field named `code`. The word is `CODE_WORD`-checked in the reducer, and no tap, id,
+   * payload or URL goes with it.
+   */
+  const sayDropped = (effect: Extract<MatchEffect, { kind: 'dropped' }>): void => {
+    ports.logger.warn('scoring.dropped', { reason: effect.code, count: effect.count });
   };
 
   /**

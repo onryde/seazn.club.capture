@@ -1426,6 +1426,13 @@ Nothing is lost on the phone, and the line is still there in a sent record with 
 fields, so a reader sees that a question was asked and how it was answered. The counts are what a web-side reader of the
 sent record cannot see.
 
+A fourth line, `scoring.dropped {reason, count}` (review of the whole branch, 2026-11-03), needs nothing from the web's
+list: both keys are on it, so a sent record carries the line whole. It says that `count` taps left the queue without
+counting (the pad's "Not recorded" line, once however many), and why: `reason` is the server's own upper-snake word, or
+`NO_LONGER_LEGAL` when the phone's check dropped them against the ledger, or `OTHER`. The key is `reason` and not `code`
+because the scrub masks any field named `code` (`NEVER_KEYS`). Web follow-up, with the keys above: the record reader
+should know the event exists, since a record without it hid every such drop.
+
 **Deferred, not mended:** a key goes in the web's list only through a web change and `pnpm contracts:vendor`, and the
 test that holds the two lists equal (`recordContract.test.ts`) then moves with it. Asked for with the next change to the
 record contract, `said`, `foreign` and `queued` together. Until then the counts are read from a shared record.
