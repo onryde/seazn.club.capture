@@ -503,7 +503,8 @@ rounds 2–7 and the hardening get one full review before the branch's PR.
 In order: (1) R4, the engine folded on the OnePlus under Hermes in a release build, timed; (2) the web
 bootstrap endpoint in a seazn.club worktree, on staging; (3) the app's port, queue, sync and Realtime;
 (4) the real badminton pad on the kit, the scan and the Continue card; (5) the exit bar on staging.
-Table tennis is plan S2-2. The endpoint's production deploy goes with the 1.0.x release notes.
+Table tennis is plan S2-2, designed in `docs/specs/2026-11-03-s2-2-table-tennis-design.md` (rulings
+48–52). The endpoint's production deploy goes with the 1.0.x release notes.
 
 ## 14. Left to the builder
 
