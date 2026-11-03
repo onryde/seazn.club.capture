@@ -71,7 +71,7 @@ export interface TapQueueStore {
   /**
    * Atomic as far as the platform allows: the whole queue is written to a temporary file and moved over the old one,
    * so a save cut short leaves the old file whole, and one cut inside the move leaves the temp file, which a read promotes. Rejects when it
-   * could not be written, so the caller never shows a tap as stored that is not.
+   * could not be written, so the caller never shows a tap as stored that is not. Why is `queueSaveProblemOf(error)`.
    */
   save(queue: MatchQueue): Promise<void>;
   /**
@@ -106,6 +106,31 @@ export interface TapQueueStore {
   loadKept(fixtureId: string, now: number): Promise<readonly string[] | null>;
   /** Deletes every kept file older than a day, and any that cannot be read. Rejects when the disk refuses a delete. */
   expireKept(now: number): Promise<void>;
+}
+
+/**
+ * Why a queue save failed, for the record line `scoring.queue.saveFailed {problem}`: `secret` (the text names a scoring
+ * link's secret), `readback` (the text would not read back as the queue), `name` (the fixture id is no file name) or
+ * `file` (the file port's write or move threw, or anything else). Each is a word, never a message, path or queue text.
+ */
+export type QueueSaveProblem = 'secret' | 'readback' | 'name' | 'file';
+
+/**
+ * A queue the store itself will not write, refused before any file is touched. It carries its reason, so a caller never
+ * matches on the message. The file port's own failures are not this class, and read as `file`.
+ */
+export class QueueSaveRefused extends Error {
+  constructor(
+    readonly problem: Exclude<QueueSaveProblem, 'file'>,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+/** The word for whatever a queue `save` rejected with: the store's own refusals carry theirs, the rest is `file`. */
+export function queueSaveProblemOf(error: unknown): QueueSaveProblem {
+  return error instanceof QueueSaveRefused ? error.problem : 'file';
 }
 
 const FILE_VERSION = 1;
@@ -428,7 +453,7 @@ async function setAside(files: QueueFiles, from: string, to: string): Promise<bo
 
 async function writeQueue(files: QueueFiles, queue: MatchQueue): Promise<void> {
   if (!FIXTURE_ID.test(queue.fixtureId))
-    throw new Error('a queue needs a fixture id fit for a file name');
+    throw new QueueSaveRefused('name', 'a queue needs a fixture id fit for a file name');
   await writeThenMove(
     files,
     encodeQueue(queue),
@@ -522,9 +547,10 @@ function encodeQueue(queue: MatchQueue): string {
       ? {}
       : { answeredSend: queue.answeredSend }),
   });
-  if (LINK_SECRET.test(text)) throw new Error('a queue never carries a scoring link secret');
+  if (LINK_SECRET.test(text))
+    throw new QueueSaveRefused('secret', 'a queue never carries a scoring link secret');
   if (decodeQueue(text, queue.fixtureId) === null)
-    throw new Error('a queue that would not read back');
+    throw new QueueSaveRefused('readback', 'a queue that would not read back');
   return text;
 }
 

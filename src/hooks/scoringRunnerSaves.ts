@@ -1,11 +1,13 @@
 import type { BootCache } from '@/domain/scoring/queue';
 import type { SaveEffect } from '@/domain/scoring/scoringMatchState';
 import type { RunnerPorts } from '@/hooks/scoringRunner';
+import { queueSaveProblemOf } from '@/services/tapQueueStore';
 
 /**
  * The saves of one runner (plan S2-1 Task 9 review, item 13): one after the other, in the order the reducer asked for
  * them, so a send that waits for the saves before it (`pending`) waits for all of them. A save of the queue is told to
- * the reducer once it has landed or failed (`landed`); the two caches never fail a tap.
+ * the reducer once it has landed or failed (`landed`); the two caches never fail a tap. A queue save that fails says
+ * why in the record, one word (`problem`: secret, readback, name or file), never the error's message.
  */
 export type Saver = {
   /** Queues one save behind the last. */
@@ -55,8 +57,8 @@ async function persist(deps: Deps, effect: SaveEffect): Promise<boolean> {
   try {
     await tapQueue.save(effect.queue);
     return true;
-  } catch {
-    logger.warn('scoring.queue.saveFailed', {});
+  } catch (error) {
+    logger.warn('scoring.queue.saveFailed', { problem: queueSaveProblemOf(error) });
     return false;
   }
 }

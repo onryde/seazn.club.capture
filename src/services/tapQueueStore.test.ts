@@ -3,7 +3,7 @@ import type { BootCache, MatchQueue, QueuedEvent } from '@/domain/scoring/queue'
 import type { LedgerEvent } from '@/domain/scoring/wire';
 import { createLogger } from '@/services/logger';
 import { createRingRecord, parseRecordLine } from '@/services/sessionRecord';
-import { createTapQueueStore, type QueueEntry } from '@/services/tapQueueStore';
+import { createTapQueueStore, queueSaveProblemOf, type QueueEntry } from '@/services/tapQueueStore';
 import { FAKE_SCORING_SECRET } from '../../test/fakeScoringLinkPort';
 import { DOUBLES, SINGLES } from '../../test/badmintonLedger';
 import { createMemoryQueueFiles } from '../../test/memoryQueueFiles';
@@ -1469,5 +1469,89 @@ describe('leaving a match keeps this phone’s own tap ids for a day (owner ruli
       await store.expireKept(LEFT + 25 * HOUR);
       expect(files.files.size).toBe(0);
     });
+  });
+});
+
+// A queue save that fails says why in one word, for the record line `scoring.queue.saveFailed {problem}`: the store's
+// own refusals carry it, and anything the file port throws is `file`. The word is never matched out of a message, and
+// no message, path or queue text travels with it.
+describe('why a queue save failed', () => {
+  const problemOf = async (files: ReturnType<typeof createMemoryQueueFiles>, saved: MatchQueue) => {
+    const failure: unknown = await storeOver(files)
+      .store.save(saved)
+      .then(
+        () => null,
+        (error: unknown) => error,
+      );
+    if (failure === null) throw new Error('the save was not refused');
+    return queueSaveProblemOf(failure);
+  };
+
+  it.each([
+    ['the label', queue({ label: `Match ${TOKEN}` })],
+    ['a tap’s payload', queue({ pending: [tap({ payload: { note: [`x ${TOKEN}`] } })] })],
+    ['an own event id', queue({ ownEventIds: [TOKEN] })],
+  ])('a link secret in %s is `secret`', async (_name, bad) => {
+    expect(await problemOf(createMemoryQueueFiles(), bad)).toBe('secret');
+  });
+
+  it('a link secret is `secret` whatever else is wrong with the queue, but a bad file name comes first', async () => {
+    expect(
+      await problemOf(
+        createMemoryQueueFiles(),
+        queue({ label: TOKEN, pending: [tap({ attempts: 1.5 })] }),
+      ),
+    ).toBe('secret');
+    expect(
+      await problemOf(createMemoryQueueFiles(), queue({ fixtureId: '../x', label: TOKEN })),
+    ).toBe('name');
+  });
+
+  it.each([
+    ['a fractional attempts count', queue({ pending: [tap({ attempts: 1.5 })] })],
+    ['a tap with no payload', queue({ pending: [tap({ payload: undefined })] })],
+  ])('%s, which would not read back, is `readback`', async (_name, bad) => {
+    expect(await problemOf(createMemoryQueueFiles(), bad)).toBe('readback');
+  });
+
+  it.each(['', '..', '../x', 'a b', 'a'.repeat(101)])(
+    'the fixture id %j, which is no file name, is `name`',
+    async (fixtureId) => {
+      expect(await problemOf(createMemoryQueueFiles(), queue({ fixtureId }))).toBe('name');
+    },
+  );
+
+  it.each(['write', 'move', 'moveAfterDelete'] as const)(
+    'the disk refusing %s is `file`',
+    async (op) => {
+      const files = createMemoryQueueFiles();
+      files.failNext(op);
+      expect(await problemOf(files, queue())).toBe('file');
+    },
+  );
+
+  it('anything that is not one of the store’s own refusals is `file`: a plain Error, a lookalike, a non-error', () => {
+    const lookalike = Object.assign(new Error('disk'), { problem: 'secret' });
+    for (const thrown of [
+      new Error('disk'),
+      lookalike,
+      'secret',
+      undefined,
+      null,
+      { problem: 'readback' },
+    ])
+      expect(queueSaveProblemOf(thrown)).toBe('file');
+  });
+
+  it('the refusal’s message names no secret, and a refused save leaves no word behind for the next one', async () => {
+    const files = createMemoryQueueFiles();
+    const { store } = storeOver(files);
+    const refused = await store.save(queue({ label: TOKEN })).catch((error: unknown) => error);
+    expect(String(refused)).not.toContain(TOKEN);
+    await store.save(queue());
+    files.failNext('write');
+    const failed = await store.save(queue({ pending: [] })).catch((error: unknown) => error);
+    expect(queueSaveProblemOf(refused)).toBe('secret');
+    expect(queueSaveProblemOf(failed)).toBe('file');
   });
 });
