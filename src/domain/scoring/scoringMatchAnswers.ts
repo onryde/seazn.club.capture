@@ -1,7 +1,7 @@
 import { refusalLine } from '@/domain/scoring/padLine';
 import type { QueuedEvent } from '@/domain/scoring/queue';
 import type { SportTypes } from '@/domain/scoring/scoringSport';
-import { type SyncEffect, type SyncState, onAnswer } from '@/domain/scoring/sync';
+import { NO_LONGER_LEGAL, type SyncEffect, type SyncState, onAnswer } from '@/domain/scoring/sync';
 import { CODE_WORD, type AppendAnswer } from '@/domain/scoring/wire';
 import {
   LOAD_BOOTSTRAP,
@@ -75,8 +75,9 @@ export function onAnswered<S extends SportTypes>(
 
 /**
  * The tap an Undo waited for was accepted: the Undo becomes a plain void of the id the answer names, in its place in the
- * queue. The fold must take it (another scorer may have voided the tap already: then it is dropped); the background
- * sender judges nothing and keeps it, and the server judges it.
+ * queue. The fold judges it (another scorer may have voided the tap already). If the fold takes it, it is kept; if the
+ * fold judges and does not, it is dropped and said (`droppedUndo`); if there is no fold to judge with, it waits for one
+ * (`awaitingFold`). The background sender judges nothing and keeps it, and the server judges it.
  */
 function resolveUndo<S extends SportTypes>(
   moved: Part<S>,
@@ -91,17 +92,35 @@ function resolveUndo<S extends SportTypes>(
     moved.state,
     pending.map((tap) => (tap === waiting ? plain : tap)),
   );
+  if (next.judge === 'trust') return part(next, moved.effects);
   const fold = foldOfState(next);
-  const legal =
-    next.judge === 'trust' ||
-    (fold !== null && fold.kind === 'folded' && fold.legalQueued.includes(plain.key));
-  const kept = legal
-    ? next
-    : withPending(
-        moved.state,
-        pending.filter((tap) => tap !== waiting),
-      );
-  return part(kept, moved.effects);
+  if (fold === null || fold.kind !== 'folded') return part(awaitingFold(next), moved.effects);
+  return fold.legalQueued.includes(plain.key)
+    ? part(next, moved.effects)
+    : droppedUndo(moved, plain);
+}
+
+/**
+ * The fold cannot judge now (no bootstrap held, or a match that cannot be folded): that is no refusal from the match, so
+ * the Undo is not dropped. It stays in the queue and is judged with the rest of it, as `revalidating` judges a tap, on
+ * the first step the fold can: nothing is sent until then (the hold), and a hold already standing is kept. Leaving the
+ * match hands the queue to the background sender, which trusts and sends it.
+ */
+function awaitingFold<S extends SportTypes>(state: MatchState<S>): MatchState<S> {
+  const { sync } = state;
+  return { ...state, sync: { ...sync, hold: sync.hold ?? 'revalidate', revalidateOwed: true } };
+}
+
+/** The fold judged the Undo and the match does not take it: gone from the queue, and said as `revalidate` says a tap. */
+function droppedUndo<S extends SportTypes>(moved: Part<S>, plain: QueuedEvent): Part<S> {
+  const { pending } = moved.state.sync.queue;
+  const kept = withPending(
+    moved.state,
+    pending.filter((tap) => tap.key !== plain.key),
+  );
+  const refused: SyncEffect = { kind: 'refused', key: plain.key, code: NO_LONGER_LEGAL };
+  const said = withSync(kept, { state: kept.sync, effects: [refused] });
+  return part(said.state, [...moved.effects, ...said.effects]);
 }
 
 /** A send that never went: its tap stays, its attempt counted, and the sender waits as it does for no network. */

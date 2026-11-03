@@ -197,4 +197,48 @@ describe('the record says a tap the phone dropped', () => {
     expect(lineOf[0].fields).toEqual({ reason: said, count: 1 });
     await runner.stop();
   });
+
+  it('an Undo of a tap in flight, which another scorer voided before the answer: dropped, ONE line, count 1', async () => {
+    const fakes = createFakePorts({ clock: timerClock });
+    const runner = await open(fakes);
+    runner.dispatch(tap(START, 'k-start'));
+    await flush();
+    // The server takes the rally, and its answer is held back: the phone does not know the rally's fate.
+    const real = fakes.scoring.append;
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let eventId = '';
+    vi.spyOn(fakes.scoring, 'append').mockImplementation(async (...args) => {
+      const answer = await real(...args);
+      if (answer.kind === 'accepted') eventId = answer.eventId;
+      await gate;
+      return answer;
+    });
+    runner.dispatch(tap(FIRST, 'k-r1'));
+    await flush();
+    runner.dispatch({ kind: 'undo', key: 'k-u1', at: new Date(Date.now()).toISOString() });
+    await flush();
+    expect(stateOf(runner).sync.queue.pending.map((queued) => queued.key)).toEqual([
+      'k-r1',
+      'k-u1',
+    ]);
+    // Another scorer voids that very rally, and a read brings it in before the answer lands.
+    fakes.scoring.addOtherScorerEvent('core.void', { event_id: eventId });
+    runner.dispatch({ kind: 'read' });
+    await flush();
+    expect(lines(fakes, 'scoring.dropped')).toEqual([]);
+
+    release();
+    await wait(5);
+
+    expect(stateOf(runner).sync.queue.pending).toEqual([]);
+    const said = lines(fakes, 'scoring.dropped');
+    expect(said).toHaveLength(1);
+    expect(said[0].level).toBe('warn');
+    expect(said[0].fields).toEqual({ reason: 'NO_LONGER_LEGAL', count: 1 });
+    expect(stateOf(runner).line).toEqual({ kind: 'refusal', key: 'scoring.refusal.notCounted' });
+    await runner.stop();
+  });
 });

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { QueuedEvent } from '@/domain/scoring/queue';
 import { foldQueue } from '@/domain/scoring/scoringMatchState';
 import { step } from '@/domain/scoring/scoringMatch';
+import { onAnswered } from '@/domain/scoring/scoringMatchAnswers';
 import { viewOf } from '@/domain/scoring/scoringMatchView';
 import {
   BROWSER_LINK,
@@ -228,6 +229,150 @@ describe('the answer to the tap an Undo waits for', () => {
     );
     expect(keysOf(conflict.state)).toEqual(['k1', 'u1']);
     expect(conflict.state.sync.queue.pending[1].voidsKey).toBe('k1');
+  });
+});
+
+describe('the answer to the tap an Undo waits for, when the match will not take the Undo', () => {
+  const DROPPED = { kind: 'dropped', code: 'NO_LONGER_LEGAL', count: 1 };
+  const droppedIn = (effects: readonly { kind: string }[]) =>
+    effects.filter((effect) => effect.kind === 'dropped');
+  const PLAIN = {
+    key: 'u1',
+    type: 'core.void',
+    payload: { event_id: 'ev-2' },
+    rulesVersion: 1,
+    createdAt: AT,
+    attempts: 0,
+  };
+  const ANSWER = { kind: 'accepted', seq: 2, eventId: 'ev-2', rulesVersion: 1 } as const;
+  /** Another scorer's void of the tap, at seq 3: the ledger read that brings it in. */
+  const THEIR_VOID = ledgerOf([start(), { ...rally('H'), link: PHONE_LINK }, voiding(2)]).slice(2);
+  const fetchedNothing = { kind: 'fetched', events: [] } as const;
+  const UNJUDGED = [
+    ['no bootstrap held', null],
+    ['a match that cannot be folded', { ...SINGLES, cfg: { bestOf: 'many' } }],
+  ] as const;
+
+  it('judged and refused: dropped, said once on the line and once as a dropped effect', () => {
+    const { state, sent } = sentOnce();
+    const asked = step(state, UNDO, NOW).state;
+    const brought = ledgerOf([start(), { ...rally('H'), link: PHONE_LINK }, voiding(2)]).slice(1);
+    const merged = step(asked, { kind: 'fetched', events: brought }, NOW).state;
+    const answered = step(merged, { kind: 'answered', sent, answer: ANSWER }, NOW);
+    expect(answered.state.sync.queue.pending).toEqual([]);
+    expect(droppedIn(answered.effects)).toEqual([DROPPED]);
+    expect(answered.state.line).toEqual({ kind: 'refusal', key: 'scoring.refusal.notCounted' });
+    expect(savesOf(answered.effects)[0].queue?.pending).toEqual([]);
+    const saved = step(answered.state, { kind: 'saved', n: 99 }, NOW);
+    expect(droppedIn(saved.effects)).toEqual([]);
+  });
+
+  it('judged and legal: kept, and nothing is said', () => {
+    const { state, sent } = sentOnce();
+    const asked = askedAndSaved(state);
+    const answered = step(asked, { kind: 'answered', sent, answer: ACCEPTED }, NOW);
+    expect(keysOf(answered.state)).toEqual(['u1']);
+    expect(droppedIn(answered.effects)).toEqual([]);
+    expect(answered.state.line).toBeNull();
+  });
+
+  it.each(UNJUDGED)(
+    '%s: the Undo is not dropped; it stays queued as a plain void, unsent, and nothing is said',
+    (_name, bootstrap) => {
+      const { state, sent } = sentOnce();
+      const asked = { ...askedAndSaved(state), bootstrap };
+      const answered = step(asked, { kind: 'answered', sent, answer: ANSWER }, NOW);
+      expect(answered.state.sync.queue.pending).toEqual([PLAIN]);
+      expect(savesOf(answered.effects)[0].queue?.pending).toEqual([PLAIN]);
+      expect(droppedIn(answered.effects)).toEqual([]);
+      expect(answered.state.line).toBeNull();
+      expect(answered.state.sync.hold).toBe('revalidate');
+      expect(answered.state.sync.revalidateOwed).toBe(true);
+      const saved = step(answered.state, { kind: 'saved', n: 99 }, NOW);
+      expect(sendsOf(saved.effects)).toEqual([]);
+      const later = step(saved.state, { kind: 'tick' }, NOW + 60_000);
+      expect(sendsOf(later.effects)).toEqual([]);
+      expect(keysOf(later.state)).toEqual(['u1']);
+    },
+  );
+
+  it.each(UNJUDGED)(
+    '%s, then the fold can judge: a legal Undo is judged and sent on that very step',
+    (_name, bootstrap) => {
+      const { state, sent } = sentOnce();
+      const asked = { ...askedAndSaved(state), bootstrap };
+      const answered = step(asked, { kind: 'answered', sent, answer: ANSWER }, NOW);
+      const saved = step(answered.state, { kind: 'saved', n: 99 }, NOW);
+      const read = step(saved.state, { kind: 'bootstrapRead', bootstrap: SINGLES }, NOW);
+      expect(droppedIn(read.effects)).toEqual([]);
+      expect(read.state.sync.hold).toBeNull();
+      expect(
+        sendsOf(read.effects).map((send) => [send.body.idempotency_key, send.body.payload]),
+      ).toEqual([['u1', { event_id: 'ev-2' }]]);
+    },
+  );
+
+  it.each(UNJUDGED)(
+    '%s, then the fold can judge and the match does not take it: dropped once, said once',
+    (_name, bootstrap) => {
+      const { state, sent } = sentOnce();
+      const asked = { ...askedAndSaved(state), bootstrap };
+      const answered = step(asked, { kind: 'answered', sent, answer: ANSWER }, NOW);
+      const saved = step(answered.state, { kind: 'saved', n: 99 }, NOW);
+      const fetched = step(saved.state, { kind: 'fetched', events: THEIR_VOID }, NOW);
+      expect(keysOf(fetched.state)).toEqual(['u1']);
+      expect(sendsOf(fetched.effects)).toEqual([]);
+      const read = step(fetched.state, { kind: 'bootstrapRead', bootstrap: SINGLES }, NOW);
+      expect(read.state.sync.queue.pending).toEqual([]);
+      expect(droppedIn(read.effects)).toEqual([DROPPED]);
+      expect(read.state.line).toEqual({ kind: 'refusal', key: 'scoring.refusal.notCounted' });
+      expect(sendsOf(read.effects)).toEqual([]);
+      const after = step(read.state, { kind: 'tick' }, NOW + 60_000);
+      expect(droppedIn(after.effects)).toEqual([]);
+    },
+  );
+
+  it('the Undo leaves the queue by the answer’s own step, not only by the sweep of orphaned Undos after it', () => {
+    const { state, sent } = sentOnce();
+    const asked = step(state, UNDO, NOW).state;
+    const brought = ledgerOf([start(), { ...rally('H'), link: PHONE_LINK }, voiding(2)]).slice(1);
+    const merged = step(asked, { kind: 'fetched', events: brought }, NOW).state;
+    const answered = onAnswered(merged, sent, ANSWER, NOW);
+    expect(answered.state.sync.queue.pending).toEqual([]);
+  });
+
+  it('the background sender judges nothing: the Undo is kept, and the sender is not held for a judgement', () => {
+    const queue = queueOf({ pending: [queuedOf('k1', rally('H')), WAITING] });
+    const read = step(opened({ queue, judge: 'trust', bootstrap: null }), fetchedNothing, NOW);
+    const marked = step(read.state, { kind: 'saved', n: 99 }, NOW).state;
+    const sent = sendsOf(read.effects)[0].sent;
+    const answered = step(marked, { kind: 'answered', sent, answer: ACCEPTED }, NOW);
+    expect(keysOf(answered.state)).toEqual(['u1']);
+    expect(answered.state.sync.hold).toBeNull();
+    expect(answered.state.sync.revalidateOwed).toBe(false);
+  });
+
+  it('the background sender with a bootstrap held keeps an Undo the fold would refuse: the server judges it', () => {
+    const queue = queueOf({ pending: [{ ...SENT, attempts: 1 }, WAITING] });
+    const brought = ledgerOf([start(), { ...rally('H'), link: PHONE_LINK }, voiding(2)]).slice(1);
+    const read = step(opened({ queue, judge: 'trust' }), fetchedNothing, NOW);
+    const marked = step(read.state, { kind: 'saved', n: 99 }, NOW).state;
+    const merged = step(marked, { kind: 'fetched', events: brought }, NOW).state;
+    const sent = sendsOf(read.effects)[0].sent;
+    const answered = step(merged, { kind: 'answered', sent, answer: ANSWER }, NOW);
+    expect(keysOf(answered.state)).toEqual(['u1']);
+    expect(droppedIn(answered.effects)).toEqual([]);
+  });
+
+  it('a match that never becomes judgeable does not wedge: leaving hands the file to the sender, which trusts and sends', () => {
+    const { state, sent } = sentOnce();
+    const asked = { ...askedAndSaved(state), bootstrap: null };
+    const answered = step(asked, { kind: 'answered', sent, answer: ANSWER }, NOW);
+    const file = savesOf(answered.effects)[0].queue;
+    if (file === null || file === undefined) throw new Error('the Undo was not saved');
+    const headless = opened({ queue: file, judge: 'trust', bootstrap: null });
+    const read = step(headless, { kind: 'fetched', events: [] }, NOW);
+    expect(sendsOf(read.effects).map((send) => send.body.idempotency_key)).toEqual(['u1']);
   });
 });
 
