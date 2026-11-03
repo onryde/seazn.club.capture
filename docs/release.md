@@ -107,18 +107,27 @@ onryde/seazn.club.capture`).
    `GET /api/v1/device-link` (the bootstrap, new for this app) and
    `GET /api/v1/public/fixtures/{id}/realtime-token` (new), with the fixture's
    `events` and `rules` calls that go with them (design §7.2). With a real
-   production scoring link in hand, `device-link` is the quick check:
+   production scoring link in hand, check the two new routes. Read the token
+   without echoing it, so it stays out of the shell's history, and never paste
+   it into a chat or an issue:
 
    ```sh
-   curl -s -o /dev/null -w '%{http_code}\n' \
-     -H 'Authorization: Bearer <a production scoring link token>' \
+   read -rs TOKEN   # paste the scoring link's token, then Enter
+   curl -s -o /dev/null -w 'device-link %{http_code}\n' \
+     -H "Authorization: Bearer $TOKEN" \
      https://seazn.club/api/v1/device-link
+   curl -s -o /dev/null -w 'realtime-token %{http_code}\n' \
+     -H "Authorization: Bearer $TOKEN" \
+     "https://seazn.club/api/v1/public/fixtures/<fixture id>/realtime-token"
+   unset TOKEN
    ```
 
-   It must not answer 404, which is a route production does not have. Without
-   these routes a production build reports every real scoring link as invalid
-   or offline, and no Remote Scoring match can open. If production lacks them,
-   hold the tag until the web's deploy has them.
+   Neither may answer 404, which is a route production does not have. Without
+   `device-link` a production build reports every real scoring link as invalid
+   or offline, and no Remote Scoring match can open; without `realtime-token`
+   matches still open and score, but lose the Realtime nudge and fall back to
+   polling. If production lacks either, hold the tag until the web's deploy
+   has them.
 
 3. **Tag main** once the pull request has merged:
 
