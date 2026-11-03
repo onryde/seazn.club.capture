@@ -58,6 +58,8 @@ export type MatchPad<S extends SportTypes = SportTypes> = {
   readonly toss: PadSide | null;
   /** The reconnect question, while it stands: other scorers' events landed on this phone's queued taps. */
   readonly ask: PadAsk | null;
+  /** When this phone's own tap decided the match, on the phone's clock (ms): the start of Undo's 30 s; null if none did. */
+  readonly decidedAt: number | null;
 };
 
 type Folded<S extends SportTypes> = Extract<SportFold<S>, { kind: 'folded' }>;
@@ -116,6 +118,7 @@ function padOf<S extends SportTypes>(state: MatchState<S>, fold: Folded<S>): Mat
     line: lineOf(state, fold),
     toss: sport.notStarted(display) ? state.toss : null,
     ask: askViewOf(state),
+    decidedAt: state.decidedAt,
   };
 }
 

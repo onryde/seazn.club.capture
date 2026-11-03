@@ -1,6 +1,6 @@
 import { watchDeadLink } from '@/hooks/scoringDeadLink';
 import { startLive } from '@/hooks/scoringLive';
-import { createScoringRunner, type ScoringRunner } from '@/hooks/scoringRunner';
+import { createScoringRunner, type ScoringRunner, type UndoStart } from '@/hooks/scoringRunner';
 import type { Ports } from '@/hooks/usePorts';
 import { forgetScoringLink } from '@/services/scoringLinkStore';
 
@@ -90,6 +90,22 @@ function createScoringHub(ports: Ports): ScoringHub {
   /** The stops that have finished: `settled` answers null for the latest stop of a match once it is in here. */
   const stopsDone = new WeakSet<Promise<void>>();
 
+  /**
+   * Where each match's Undo window started: the phone's clock when its own tap decided it (owner, 2026-11-03). In memory
+   * only, per launch, so a restart finds none; kept here and not by a runner or a screen because the focused runner is
+   * stopped when the pad goes and a new one built on its return, and Home and back within the 30 s keeps the window.
+   * It goes with the match: a leave (scanning another) or a Dismiss (which Close and Forget are) takes it, so a rescan
+   * never dates a decision from the ledger it reads again.
+   */
+  const undoStarts = new Map<string, number>();
+  const undoStartOf = (id: string): UndoStart => ({
+    read: () => undoStarts.get(id) ?? null,
+    write: (at) => {
+      if (at === null) undoStarts.delete(id);
+      else undoStarts.set(id, at);
+    },
+  });
+
   const stopRunner = (id: string, runner: ScoringRunner): Promise<void> => {
     const done = runner.stop();
     stopping.set(id, done);
@@ -137,6 +153,7 @@ function createScoringHub(ports: Ports): ScoringHub {
   const sweep = async (id: string): Promise<void> => {
     try {
       if (!unwanted(id)) return;
+      undoStarts.delete(id);
       await forgetScoringLink(ports.kv, id);
       await ports.tapQueue.leave(id, ports.clock().getTime());
     } catch {
@@ -229,7 +246,11 @@ function createScoringHub(ports: Ports): ScoringHub {
       held.refs += 1;
       return handleOf(id, held);
     }
-    const runner = createScoringRunner(ports, { fixtureId: id, mode: 'focused' });
+    const runner = createScoringRunner(ports, {
+      fixtureId: id,
+      mode: 'focused',
+      undoStart: undoStartOf(id),
+    });
     const entry: Focused = {
       runner,
       refs: 1,
@@ -272,6 +293,7 @@ function createScoringHub(ports: Ports): ScoringHub {
       await stopRunner(id, sender);
     }
     await stopping.get(id);
+    undoStarts.delete(id);
     await forgetScoringLink(ports.kv, id);
     if (keepOwn) await ports.tapQueue.leave(id, ports.clock().getTime());
     else await ports.tapQueue.remove(id);

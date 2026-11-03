@@ -91,6 +91,12 @@ export type MatchState<S extends SportTypes = SportTypes> = {
   readonly bootstrapAskedAt: number | null;
   /** A ledger read of a decided match wanted the bootstrap inside that window: it is read when the window is over. */
   readonly bootstrapOwed: boolean;
+  /**
+   * The phone's clock (ms) when this phone's own dispatched tap decided the match, which opens Undo for 30 s (owner,
+   * 2026-11-03; `scoringMatchWindow.ts`); null when none did: not decided, decided by another scorer, or decided before
+   * this launch's screen held it. The runner hands it to the hub, which keeps it between screens.
+   */
+  readonly decidedAt: number | null;
 };
 
 /** What the hook did last, and what is left of it: the queue and the match as they stand. */
@@ -176,6 +182,8 @@ export type MatchHeld<S extends SportTypes = SportTypes> = {
   readonly foreground: boolean;
   /** The rules version to send under when no bootstrap is held: the newest a queued tap was made under. */
   readonly rulesVersion: number;
+  /** The start of the Undo window of this launch's decision of the match, if the hub kept one (`MatchState.decidedAt`). */
+  readonly decidedAt: number | null;
 };
 
 export const LOAD_BOOTSTRAP: MatchEffect = { kind: 'loadBootstrap' };

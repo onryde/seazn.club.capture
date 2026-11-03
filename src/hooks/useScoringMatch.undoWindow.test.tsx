@@ -83,53 +83,14 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('the pad of a match this phone decided', () => {
-  it('opens its Undo at 30 when the deciding tap is shown, and counts it down', async () => {
-    const fakes = await rig();
-    const match = await decidedByThisPhone(fakes);
-    // The deciding tap was a second before the last wait: 29 s left, Undo on.
-    expect(undoLeft(match)).toBe(29);
-    expect(undoOn(match)).toBe(true);
-    await wait(10_000);
-    expect(undoLeft(match)).toBe(19);
-  });
-
-  it('closes at 30 s: Undo is off, and the card says so', async () => {
-    const fakes = await rig();
-    const match = await decidedByThisPhone(fakes);
-    await wait(29_000);
-    expect(undoLeft(match)).toBeNull();
-    expect(undoOn(match)).toBe(false);
-    await wait(60_000);
-    expect(undoLeft(match)).toBeNull();
-  });
-
-  it('takes back the deciding tap with Undo inside the window, and the match is open again', async () => {
-    const fakes = await rig();
-    const match = await decidedByThisPhone(fakes);
-    act(() => pad(match).actions.undo());
-    await flush();
-    await wait(1_000);
-    expect(pad(match).view.card).toBeNull();
-    expect(pad(match).view.halves[0].value).toBe('20');
-  });
-
-  it('keeps the window when the screen goes and comes back within it', async () => {
-    const fakes = await rig();
-    const first = await decidedByThisPhone(fakes);
-    first.unmount();
-    await flush();
-    await wait(4_000);
-    const back = mount(fakes);
-    await flush();
-    expect(undoLeft(back)).toBe(25);
-    expect(undoOn(back)).toBe(true);
-  });
-
   // A restart: the phone's disk and the server still hold the match, whose last own event decided it. Nothing of the
-  // launch's memory is left, so the window is not there: the match shows no Undo at all, however soon it reopens.
+  // launch's memory is left, so the window is not there: the match shows no Undo at all, however soon it reopens. The
+  // rest of the window (counting, closing, Undo, Home and back, the other scorer) is the routed screen test's, over the
+  // same runner, and the hub's own test holds where its start is kept.
   it('after a restart shows the decided match with no Undo at all', async () => {
     const fakes = await rig();
     const first = await decidedByThisPhone(fakes);
+    expect(undoLeft(first)).toBe(29);
     expect(undoOn(first)).toBe(true);
     first.unmount();
     await flush();
@@ -139,25 +100,5 @@ describe('the pad of a match this phone decided', () => {
     expect(undoOn(restarted)).toBe(false);
     await wait(10_000);
     expect(undoLeft(restarted)).toBeNull();
-  });
-
-  it('is not given a window by a result the other scorer made', async () => {
-    const fakes = await rig();
-    const match = mount(fakes);
-    await flush();
-    act(() => pad(match).actions.pickServer('first'));
-    act(() => pad(match).actions.start());
-    await flush();
-    await wait(1_000);
-    for (let i = 0; i < 42; i += 1) {
-      fakes.scoring.addOtherScorerEvent('badminton.rally', {
-        wonBy: SINGLES_SEED.sides.home.entrantId,
-      });
-    }
-    fakes.realtime.ping();
-    await flush();
-    await wait(1_000);
-    expect(undoLeft(match)).toBeNull();
-    expect(undoOn(match)).toBe(false);
   });
 });

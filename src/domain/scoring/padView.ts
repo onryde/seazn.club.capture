@@ -268,9 +268,13 @@ export function hasUndoCell(card: PadStateCard | null): boolean {
 /**
  * Whether the pad keeps the phone's screen on under this card (owner ruling 9, the screen stays on while the pad shows;
  * applied by the controller on 2026-11-02): on the pad and under the two cards the scorer is still waiting on (the match
- * not open yet, a recorded result they may undo a mistake in). Off under the three that need a person to act or end the
- * scorer's part, which have nothing left to wait for: the organiser's lock (view only), a dead link, and an app to
- * update (as the full-screen `outdated` state).
+ * not open yet, a recorded result). Off under the three that need a person to act or end the scorer's part, which have
+ * nothing left to wait for: the organiser's lock (view only), a dead link, and an app to update (as the full-screen
+ * `outdated` state).
+ *
+ * A recorded result holds the screen after its Undo window has closed too (the controller's ruling, 2026-11-03): the
+ * organiser may finalise the result while the scorer watches the card, so the 30 s of Undo are not what the screen is
+ * held for.
  */
 export function holdsScreen(card: PadStateCard | null): boolean {
   return card?.kind !== 'viewOnly' && card?.kind !== 'linkInvalid' && card?.kind !== 'updateNeeded';

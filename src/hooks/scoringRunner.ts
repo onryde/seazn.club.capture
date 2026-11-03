@@ -68,11 +68,22 @@ export type ScoringRunner = {
   link(): ScoringLink | null;
 };
 
+/**
+ * Where the start of the Undo window of a match this phone decided is kept between runners (the hub's, per match; owner,
+ * 2026-11-03). A runner reads it when it opens and writes it whenever its reducer moves it (`MatchState.decidedAt`).
+ */
+export type UndoStart = {
+  readonly read: () => number | null;
+  readonly write: (at: number | null) => void;
+};
+
 type Options = {
   readonly fixtureId: string;
   readonly mode: RunnerMode;
   /** Said once, when a headless runner has nothing left to send (its queue is empty, or dead): the hub lets it go. */
   readonly onIdle?: () => void;
+  /** The Undo window's start, kept by the hub; none for a runner that is on its own (a test's). */
+  readonly undoStart?: UndoStart;
 };
 
 export function createScoringRunner(ports: RunnerPorts, options: Options): ScoringRunner {
@@ -102,6 +113,8 @@ export function createScoringRunner(ports: RunnerPorts, options: Options): Scori
   const dispatch = (event: MatchEvent): PadOutcome | null => {
     if (stopped || state === null) return null;
     const result = step(state, event, now());
+    if (result.state.decidedAt !== state.decidedAt)
+      options.undoStart?.write(result.state.decidedAt);
     state = result.state;
     result.effects.forEach(run);
     if (saver.unsettled() === 0) publish({ kind: 'ready', state });
@@ -238,7 +251,11 @@ export function createScoringRunner(ports: RunnerPorts, options: Options): Scori
   // --- starting and stopping ---------------------------------------------------------------------------------------
 
   const open = (loaded: Opened): void => {
-    const opened = openMatch(heldOf(loaded, mode, ports.foreground.isForeground()), now());
+    const decidedAt = options.undoStart?.read() ?? null;
+    const opened = openMatch(
+      heldOf(loaded, mode, ports.foreground.isForeground(), decidedAt),
+      now(),
+    );
     state = opened.state;
     opened.effects.forEach(run);
     publish({ kind: 'ready', state });
@@ -369,10 +386,15 @@ async function markUnsendable(ports: RunnerPorts, fixtureId: string): Promise<vo
 const NO_RULES_VERSION = 0;
 
 /**
- * What the reducer opens a match from: the sport its link names, the files, the judge this mode has, and whether the
- * app is in the foreground.
+ * What the reducer opens a match from: the sport its link names, the files, the judge this mode has, whether the
+ * app is in the foreground, and the start of the Undo window the hub kept for the match, if any.
  */
-function heldOf(loaded: Opened, mode: RunnerMode, foreground: boolean): MatchHeld {
+function heldOf(
+  loaded: Opened,
+  mode: RunnerMode,
+  foreground: boolean,
+  decidedAt: number | null,
+): MatchHeld {
   const rulesVersion = Math.max(
     NO_RULES_VERSION,
     ...loaded.queue.pending.map((tap) => tap.rulesVersion),
@@ -386,6 +408,7 @@ function heldOf(loaded: Opened, mode: RunnerMode, foreground: boolean): MatchHel
     judge: mode === 'focused' ? 'fold' : 'trust',
     foreground,
     rulesVersion: loaded.boot?.bootstrap.rulesVersion ?? rulesVersion,
+    decidedAt,
   };
 }
 

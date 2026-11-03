@@ -1063,3 +1063,74 @@ describe('the Start screen at 320 and 360 in four languages (owner, 2026-11-01)'
     },
   );
 });
+
+/**
+ * The recorded result's card and its Undo window (owner, 2026-11-03), on the pad at 320 and 360 in four languages: the
+ * title, the sentence while Undo is open, the sentence once it is closed, and the countdown line. The card has no line
+ * limit (it stands above the halves and they give way), so what can fail is a word wider than its room, and a card so tall
+ * the halves lose their room: the sentences are held to three lines, which is what the first wording of the French one
+ * (four at 320) broke. The room is the card's text: the column less the card's padding (space.md a side) and its edge.
+ */
+describe('the recorded result card at 320 and 360 in four languages (owner, 2026-11-03)', () => {
+  const geist400 = loadFont('geist-400');
+  const titleWidth = (text: string) =>
+    barlow700.width(text.toUpperCase(), typeScale.panelTitle.fontSize) +
+    typeScale.panelTitle.letterSpacing * [...text].length;
+  const bodyWidth = (text: string) => geist400.width(text, typeScale.body.fontSize);
+  const room = (width: number) => column(width) - 2 * space.md - layout.padSideBar;
+  /** The countdown line: its digits are tabular, every one as wide as Geist's `zero.tf`, and the most it counts is 30. */
+  const countdownWidth = (text: string) =>
+    bodyWidth(fill(text, { seconds: '' })) +
+    2 * geist400.advanceOfName('zero.tf') * typeScale.body.fontSize;
+  const said = (dictionary: Dictionary, name: string) => {
+    const text = dictionary[`scoring.card.resultRecorded.${name}`] ?? '';
+    expect(text).not.toBe('');
+    return text;
+  };
+  const MOST_LINES = 3;
+
+  it('has 252 and 292 for its text', () => {
+    expect(WIDTHS.map(room)).toEqual([252, 292]);
+  });
+
+  it.each(LANGUAGES)(
+    '%s: the title is one line, each sentence at most three, the countdown one, no word broken',
+    (_lang, dictionary: Dictionary) => {
+      for (const width of WIDTHS) {
+        expect(linesOf(said(dictionary, 'title'), room(width), titleWidth)).toBe(1);
+        for (const name of ['bodyOpen', 'bodyClosed']) {
+          const text = said(dictionary, name);
+          expect(linesOf(text, room(width), bodyWidth)).toBeLessThanOrEqual(MOST_LINES);
+          for (const word of words(text)) expect(bodyWidth(word)).toBeLessThanOrEqual(room(width));
+        }
+        const counting = said(dictionary, 'undoCountdown');
+        expect(linesOf(fill(counting, { seconds: '30' }), room(width), bodyWidth)).toBe(1);
+        expect(countdownWidth(counting)).toBeLessThanOrEqual(room(width));
+      }
+    },
+  );
+
+  // The tallest the card is, in any language at 320 or 360: padding, the title, a gap, the sentence, and open also a
+  // gap and the countdown line. `panelTitle` is 24 a line and `body` 22.
+  it('is 160 tall at most with Undo open and 130 once it is closed', () => {
+    expect([typeScale.panelTitle.lineHeight, typeScale.body.lineHeight]).toEqual([24, 22]);
+    const tallest = (name: string) =>
+      Math.max(
+        ...LANGUAGES.flatMap(([, dictionary]) =>
+          WIDTHS.map((width) => linesOf(said(dictionary, name), room(width), bodyWidth)),
+        ),
+      );
+    const chrome = 2 * space.md + typeScale.panelTitle.lineHeight + space.sm;
+    const open = chrome + tallest('bodyOpen') * 22 + space.sm + 22;
+    const closed = chrome + tallest('bodyClosed') * 22;
+    expect([open, closed]).toEqual([160, 130]);
+  });
+
+  // Anti-vacuity: the French sentence the card first had is four lines at 320, which is why it was cut.
+  it('would be four lines in French at 320 with its first wording', () => {
+    const first =
+      "L'organisateur le finalise. Vous repérez une erreur dans vos propres saisies\u00a0? Annuler reste possible.";
+    expect(linesOf(first, room(320), bodyWidth)).toBe(4);
+    expect(linesOf(said(fr, 'bodyOpen'), room(320), bodyWidth)).toBe(3);
+  });
+});

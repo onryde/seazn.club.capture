@@ -89,6 +89,7 @@ describe('finishOf, for a sport of another kind', () => {
         judge: 'fold',
         foreground: true,
         rulesVersion: 1,
+        decidedAt: null,
       },
       NOW,
     ).state;

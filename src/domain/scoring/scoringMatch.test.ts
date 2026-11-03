@@ -883,7 +883,12 @@ describe('Undo', () => {
       ...Array.from({ length: 41 }, () => rally('H')),
       { ...rally('H'), link: PHONE_LINK },
     ]);
-    const base = ready({ ledger: decided, queue: queueOf({ ownEventIds: [eventId(43)] }) });
+    // The deciding rally is this phone's own, and Undo's window (owner, 2026-11-03) opened at NOW.
+    const base = ready({
+      ledger: decided,
+      queue: queueOf({ ownEventIds: [eventId(43)] }),
+      decidedAt: NOW,
+    });
     const illegal = queuedOf('k9', rally('H'));
     const state: MatchState = {
       ...base,

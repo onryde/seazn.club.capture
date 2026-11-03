@@ -35,6 +35,7 @@ const HELD: MatchHeld<FirstTo3> = {
   judge: 'fold',
   foreground: true,
   rulesVersion: 1,
+  decidedAt: null,
 };
 
 /** The match opened and its first ledger read answered with nothing: a scorer's empty pad. */

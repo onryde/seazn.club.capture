@@ -38,6 +38,7 @@ export async function readFinish(ports: FinishPorts, fixtureId: string): Promise
       judge: 'fold',
       foreground: true,
       rulesVersion: boot.bootstrap.rulesVersion,
+      decidedAt: null,
     },
     ports.clock().getTime(),
   );

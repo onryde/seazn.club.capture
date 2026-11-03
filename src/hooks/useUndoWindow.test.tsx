@@ -7,9 +7,10 @@ import { useUndoWindow } from '@/hooks/useUndoWindow';
 import type { MatchPad } from '@/domain/scoring/scoringMatchView';
 import { createFakePorts, timerClock } from '../../test/fakePorts';
 
-// Owner, 2026-11-03: Undo closes 30 s after a match is decided by this phone's own tap, with a countdown. The hook
-// holds the window's start in memory, per launch (the ports) and per match; these tests drive it with pads made by
-// hand, on the phone's clock moved by fake timers. The match hook and the screen are tested over it elsewhere.
+// Owner, 2026-11-03: Undo closes 30 s after a match is decided by this phone's own tap, with a countdown. The window's
+// start comes with the pad (`MatchPad.decidedAt`: the reducer's, `scoringMatchWindow.ts`, kept by the hub); the hook
+// counts it down on the phone's clock and applies it to the pad. These tests drive it with pads made by hand, on a clock
+// moved by fake timers. The reducer, the hub, the match hook and the screen are tested over it elsewhere.
 
 type Types = {
   readonly tap: unknown;
@@ -64,29 +65,29 @@ function padWith(card: PadStateCard | null, lastTap: PadView<'k.x'>['lastTap'] =
     line: null,
     toss: null,
     ask: null,
+    decidedAt: null,
   };
 }
 
+const RESULT = { kind: 'resultRecorded', undoLeft: null } as const;
 const PLAYING = padWith(null);
-const DECIDED = padWith({ kind: 'resultRecorded', undoLeft: null });
-const DECIDED_BY_OTHER = padWith({ kind: 'resultRecorded', undoLeft: null }, NOT_OWN);
+/** This phone's own tap decided the match `ago` ms before the clock now reads. */
+const decidedAgo = (ago: number, lastTap: PadView<'k.x'>['lastTap'] = OWN): Pad => ({
+  ...padWith(RESULT, lastTap),
+  decidedAt: Date.now() - ago,
+});
+const DECIDED_BY_OTHER = padWith(RESULT, NOT_OWN);
 
-/** The hook mounted on a screen whose first pad is `pad` (a match in play unless said), as a screen opens. */
-function setUp(ports: Ports, options: { strict?: boolean; pad?: Pad | null; id?: string } = {}) {
+/** The hook mounted on a screen whose first pad is `pad` (a match in play unless said). */
+function setUp(ports: Ports, options: { strict?: boolean; pad?: Pad | null } = {}) {
   function Wrapper({ children }: { children: ReactNode }) {
     const tree = <PortsProvider ports={ports}>{children}</PortsProvider>;
     return options.strict ? <StrictMode>{tree}</StrictMode> : tree;
   }
-  return renderHook(
-    (props: { id: string; pad: Pad | null }) => useUndoWindow(ports, props.id, props.pad),
-    {
-      wrapper: Wrapper,
-      initialProps: {
-        id: options.id ?? 'fixture-a',
-        pad: options.pad === undefined ? PLAYING : options.pad,
-      },
-    },
-  );
+  return renderHook((props: { pad: Pad | null }) => useUndoWindow(ports, props.pad), {
+    wrapper: Wrapper,
+    initialProps: { pad: options.pad === undefined ? PLAYING : options.pad },
+  });
 }
 
 type Mounted = ReturnType<typeof setUp>;
@@ -96,9 +97,16 @@ const left = (mounted: Mounted) => {
   const shown = card(mounted);
   return shown?.kind === 'resultRecorded' ? shown.undoLeft : 'no result card';
 };
-const wait = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
-const show = (mounted: Mounted, pad: Pad | null, id = 'fixture-a') =>
-  act(() => mounted.rerender({ id, pad }));
+/**
+ * Time passing, a second at a time at most: the card's timer is set again by the render its own firing causes, and
+ * React flushes that render when the `act` ends, so one `act` over a long wait would run one hop of the chain only.
+ */
+async function wait(ms: number): Promise<void> {
+  for (let left = ms; left > 0; left -= 1_000) {
+    await act(() => vi.advanceTimersByTimeAsync(Math.min(left, 1_000)));
+  }
+}
+const show = (mounted: Mounted, pad: Pad | null) => act(() => mounted.rerender({ pad }));
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -116,12 +124,13 @@ const phone = () => {
 const timers = () => vi.getTimerCount() - baseline;
 
 describe('the window of a match decided by this phone’s own tap', () => {
-  it('opens at 30 the moment the decided pad is first shown, and counts down a second at a time', async () => {
-    const mounted = setUp(phone());
-    await show(mounted, DECIDED);
+  it('is at 30 the moment the decision is shown, and counts down a second at a time', async () => {
+    const mounted = setUp(phone(), { pad: decidedAgo(0) });
     expect(left(mounted)).toBe(30);
     expect(undoOf(mounted)).toBe(true);
-    await wait(1_000);
+    await wait(999);
+    expect(left(mounted)).toBe(30);
+    await wait(1);
     expect(left(mounted)).toBe(29);
     await wait(14_000);
     expect(left(mounted)).toBe(15);
@@ -130,20 +139,33 @@ describe('the window of a match decided by this phone’s own tap', () => {
     expect(undoOf(mounted)).toBe(true);
   });
 
-  it('closes at 30 s, not a tick before: 29.999 s on it is still open with 1 s left', async () => {
-    const mounted = setUp(phone());
-    await show(mounted, DECIDED);
-    await wait(29_999);
-    // The tick came at 29 s; the clock now reads 29.999 s but nothing has re-read it, so the last second is on screen.
+  // The start is the tap's, not the screen's: a pad shown 400 ms after the tap changes its digit 600 ms later, and a
+  // timer started with the screen would be 400 ms late every second.
+  it('counts from the tap, not from when the screen drew it: the digit changes on the tap’s own second', async () => {
+    const mounted = setUp(phone(), { pad: decidedAgo(400) });
+    expect(left(mounted)).toBe(30);
+    await wait(599);
+    expect(left(mounted)).toBe(30);
+    await wait(1);
+    expect(left(mounted)).toBe(29);
+    await wait(999);
+    expect(left(mounted)).toBe(29);
+    await wait(1);
+    expect(left(mounted)).toBe(28);
+  });
+
+  it('closes at the 30 s to the millisecond: a timer set for the close itself, not a tick that comes near it', async () => {
+    const mounted = setUp(phone(), { pad: decidedAgo(250) });
+    await wait(29_749);
     expect(left(mounted)).toBe(1);
+    expect(undoOf(mounted)).toBe(true);
     await wait(1);
     expect(left(mounted)).toBeNull();
     expect(undoOf(mounted)).toBe(false);
   });
 
   it('stays closed once closed, however long the pad stays', async () => {
-    const mounted = setUp(phone());
-    await show(mounted, DECIDED);
+    const mounted = setUp(phone(), { pad: decidedAgo(0) });
     await wait(30_000);
     await wait(120_000);
     expect(left(mounted)).toBeNull();
@@ -151,9 +173,7 @@ describe('the window of a match decided by this phone’s own tap', () => {
   });
 
   it('reads the phone’s clock, not the count of ticks: a phone asleep for a minute comes back closed', async () => {
-    const ports = phone();
-    const mounted = setUp(ports);
-    await show(mounted, DECIDED);
+    const mounted = setUp(phone(), { pad: decidedAgo(0) });
     await wait(2_000);
     expect(left(mounted)).toBe(28);
     // Timers stand still while the app sleeps; the wall clock does not.
@@ -162,25 +182,40 @@ describe('the window of a match decided by this phone’s own tap', () => {
     expect(left(mounted)).toBeNull();
   });
 
+  it('is closed at once on a screen opened after the window ran out, and starts nothing', async () => {
+    const mounted = setUp(phone(), { pad: decidedAgo(31_000) });
+    expect(left(mounted)).toBeNull();
+    expect(undoOf(mounted)).toBe(false);
+    expect(timers()).toBe(0);
+  });
+
+  it('counts the rest of a window that was already running when the screen opened (Home and back)', async () => {
+    const mounted = setUp(phone(), { pad: decidedAgo(14_300) });
+    expect(left(mounted)).toBe(16);
+    await wait(699);
+    expect(left(mounted)).toBe(16);
+    await wait(1);
+    expect(left(mounted)).toBe(15);
+  });
+
   it('starts a fresh 30 s at the next decision after Undo reopened the match', async () => {
-    const mounted = setUp(phone());
-    await show(mounted, DECIDED);
+    const mounted = setUp(phone(), { pad: decidedAgo(0) });
     await wait(10_000);
     expect(left(mounted)).toBe(20);
     await show(mounted, PLAYING);
     expect(card(mounted)).toBeNull();
     await wait(5_000);
-    await show(mounted, DECIDED);
+    await show(mounted, decidedAgo(0));
     expect(left(mounted)).toBe(30);
     await wait(3_000);
     expect(left(mounted)).toBe(27);
   });
 
   it('keeps counting through renders that change nothing about the result', async () => {
-    const mounted = setUp(phone());
-    await show(mounted, DECIDED);
+    const decided = decidedAgo(0);
+    const mounted = setUp(phone(), { pad: decided });
     await wait(4_000);
-    await show(mounted, padWith({ kind: 'resultRecorded', undoLeft: null }));
+    await show(mounted, { ...decided, line: null });
     expect(left(mounted)).toBe(26);
   });
 
@@ -199,106 +234,39 @@ describe('the window of a match decided by this phone’s own tap', () => {
   });
 });
 
-describe('a result that is not this phone’s own tap, or not seen being made', () => {
-  it('opens no window for the other scorer’s result: the card is closed and Undo off', async () => {
-    const mounted = setUp(phone());
-    await show(mounted, DECIDED_BY_OTHER);
+describe('a result that is not this phone’s own tap', () => {
+  it('opens no window for a result with no start: the card is closed and Undo off', async () => {
+    const mounted = setUp(phone(), { pad: DECIDED_BY_OTHER });
     expect(left(mounted)).toBeNull();
     expect(undoOf(mounted)).toBe(false);
     await wait(10_000);
     expect(left(mounted)).toBeNull();
+    expect(timers()).toBe(0);
   });
 
-  it('opens no window for a result that is there when the pad is first shown (a restart)', async () => {
-    const mounted = setUp(phone(), { pad: null });
-    await show(mounted, DECIDED);
+  // Undo is off on the pad whenever another scorer's tap stands after this phone's: a start cannot offer it.
+  it('opens none for a start whose result is the other scorer’s on top: Undo is off on the pad', async () => {
+    const mounted = setUp(phone(), { pad: decidedAgo(0, NOT_OWN) });
     expect(left(mounted)).toBeNull();
     expect(undoOf(mounted)).toBe(false);
   });
 });
 
-describe('the window outlives the screen, and not the app', () => {
-  it('is the same window when the scorer goes Home and back within the 30 s', async () => {
-    const ports = phone();
-    const first = setUp(ports);
-    await show(first, DECIDED);
-    await wait(12_300);
-    expect(left(first)).toBe(18);
-    first.unmount();
-    await wait(2_000);
-    const back = setUp(ports, { pad: DECIDED });
-    expect(left(back)).toBe(16);
-    await wait(15_000);
-    expect(left(back)).toBe(1);
-    await wait(1_000);
-    expect(left(back)).toBeNull();
-  });
-
-  it('does not restart when the scorer comes back after it closed', async () => {
-    const ports = phone();
-    const first = setUp(ports);
-    await show(first, DECIDED);
-    await wait(25_000);
-    first.unmount();
-    await wait(20_000);
-    const back = setUp(ports, { pad: DECIDED });
-    expect(left(back)).toBeNull();
-    expect(undoOf(back)).toBe(false);
-  });
-
-  it('is gone after a restart: a new launch (new ports) shows the decided match with no Undo', async () => {
-    const ports = phone();
-    const first = setUp(ports);
-    await show(first, DECIDED);
-    await wait(5_000);
-    first.unmount();
-    const relaunched = setUp({ ...ports }, { pad: DECIDED });
-    expect(left(relaunched)).toBeNull();
-    expect(undoOf(relaunched)).toBe(false);
-  });
-
-  it('is the match’s own: another match opened on the same launch has none', async () => {
-    const ports = phone();
-    const first = setUp(ports);
-    await show(first, DECIDED);
-    first.unmount();
-    const other = setUp(ports, { id: 'fixture-b', pad: DECIDED });
-    expect(left(other)).toBeNull();
-  });
-
-  it('forgets a match’s window when the screen is told another match (a reused screen)', async () => {
-    const mounted = setUp(phone());
-    await show(mounted, DECIDED);
-    await wait(3_000);
-    expect(left(mounted)).toBe(27);
-    await show(mounted, DECIDED, 'fixture-b');
-    expect(left(mounted)).toBeNull();
-    await show(mounted, DECIDED, 'fixture-a');
-    expect(left(mounted)).toBe(27);
-  });
-
-  it('is the same window under StrictMode’s second pass', async () => {
-    const mounted = setUp(phone(), { strict: true });
-    await show(mounted, DECIDED);
-    expect(left(mounted)).toBe(30);
-    await wait(2_000);
-    expect(left(mounted)).toBe(28);
-    expect(timers()).toBe(1);
-  });
-});
-
 describe('the timer', () => {
-  // The brief: it ticks only while the window is open, and nothing is left running when it is closed or the screen goes.
-  it('runs only while the window is open', async () => {
+  // It runs only while the window is open, as ONE timer for the next change of the card, and nothing is left running
+  // when the window is closed, the match reopened or the screen gone.
+  it('is one timer while the window is open, none otherwise', async () => {
     const mounted = setUp(phone());
     expect(timers()).toBe(0);
     await show(mounted, DECIDED_BY_OTHER);
     expect(timers()).toBe(0);
     await show(mounted, PLAYING);
     expect(timers()).toBe(0);
-    await show(mounted, DECIDED);
+    await show(mounted, decidedAgo(0));
     expect(timers()).toBe(1);
-    await wait(30_000);
+    await wait(15_000);
+    expect(timers()).toBe(1);
+    await wait(15_000);
     expect(left(mounted)).toBeNull();
     expect(timers()).toBe(0);
   });
@@ -306,47 +274,61 @@ describe('the timer', () => {
   // Another scorer's tap takes Undo off the result and the timer stops; when their tap is taken back, Undo returns with
   // the seconds the window really has left, not the count where it stopped.
   it('counts what is really left when Undo comes back after the timer stopped', async () => {
-    const mounted = setUp(phone());
-    await show(mounted, DECIDED);
+    const start = Date.now();
+    const own = { ...padWith(RESULT, OWN), decidedAt: start };
+    const mounted = setUp(phone(), { pad: own });
     await wait(5_000);
     expect(left(mounted)).toBe(25);
-    await show(mounted, DECIDED_BY_OTHER);
+    await show(mounted, { ...padWith(RESULT, NOT_OWN), decidedAt: start });
     await wait(10_000);
-    await show(mounted, DECIDED);
+    await show(mounted, own);
     expect(left(mounted)).toBe(15);
     expect(undoOf(mounted)).toBe(true);
   });
 
   it('is stopped when Undo reopens the match', async () => {
-    const mounted = setUp(phone());
-    await show(mounted, DECIDED);
+    const mounted = setUp(phone(), { pad: decidedAgo(0) });
     expect(timers()).toBe(1);
     await show(mounted, PLAYING);
     expect(timers()).toBe(0);
   });
 
   it('is cleared when the screen goes', async () => {
-    const mounted = setUp(phone());
-    await show(mounted, DECIDED);
+    const mounted = setUp(phone(), { pad: decidedAgo(0) });
     expect(timers()).toBe(1);
     mounted.unmount();
     expect(timers()).toBe(0);
   });
 
-  it('is not started again by a return to a window that has closed', async () => {
-    const ports = phone();
-    const first = setUp(ports);
-    await show(first, DECIDED);
-    await wait(31_000);
-    first.unmount();
-    const back = setUp(ports, { pad: DECIDED });
-    expect(timers()).toBe(0);
+  it('is one timer under StrictMode’s second pass too', async () => {
+    const mounted = setUp(phone(), { strict: true, pad: decidedAgo(0) });
+    expect(left(mounted)).toBe(30);
+    await wait(2_000);
+    expect(left(mounted)).toBe(28);
+    expect(timers()).toBe(1);
+  });
+
+  // A timer can fire a hair before the phone's clock reads the change (the clock was set back after the timer was set, as a
+  // network time sync does): the render shows the same second and sets the rest, and the digit changes when the clock does.
+  it('fires early when the clock was set back after the timer was set: the same second shows, a second timer finishes the change', async () => {
+    let setBack = 0;
+    const adjusted = createFakePorts({ clock: () => new Date(Date.now() - setBack) }).ports;
+    baseline = vi.getTimerCount();
+    const mounted = setUp(adjusted, { pad: decidedAgo(400) });
+    expect(left(mounted)).toBe(30);
+    setBack = 3;
+    await wait(600);
+    expect(left(mounted)).toBe(30);
+    expect(timers()).toBe(1);
+    await wait(3);
+    expect(left(mounted)).toBe(29);
+    expect(timers()).toBe(1);
   });
 
   it('is stopped when another scorer’s event takes Undo away from the result under it', async () => {
-    const mounted = setUp(phone());
-    await show(mounted, DECIDED);
-    await show(mounted, DECIDED_BY_OTHER);
+    const start = Date.now();
+    const mounted = setUp(phone(), { pad: { ...padWith(RESULT, OWN), decidedAt: start } });
+    await show(mounted, { ...padWith(RESULT, NOT_OWN), decidedAt: start });
     expect(left(mounted)).toBeNull();
     expect(timers()).toBe(0);
   });

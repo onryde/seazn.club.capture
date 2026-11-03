@@ -32,6 +32,7 @@ import {
   type Planned,
 } from '@/domain/scoring/scoringMatchState';
 import { onAnswerAsk, releaseMoot } from '@/domain/scoring/scoringMatchAsk';
+import { decidedAtAfter } from '@/domain/scoring/scoringMatchWindow';
 import { onPick, onTap, onUndo, withoutOrphanVoids } from '@/domain/scoring/scoringMatchTaps';
 
 /**
@@ -81,6 +82,7 @@ export function openMatch<S extends SportTypes>(held: MatchHeld<S>, now: number)
     saveSeq: 0,
     bootstrapAskedAt: null,
     bootstrapOwed: false,
+    decidedAt: held.decidedAt,
   };
   if (held.queue.dead !== null) return { state, effects: [], outcome: null };
   const asks = held.judge === 'fold';
@@ -119,7 +121,7 @@ export function step<S extends SportTypes>(
   const result = handle(state, event, now);
   const released = releaseMoot(result.state);
   const settled = result.pump ? pump(released, now) : part(released);
-  const final = withoutOrphanVoids(settled.state);
+  const final = withDecidedAt(state, withoutOrphanVoids(settled.state), event, now);
   const save = saveOf(state, final);
   const planned = [...(save === null ? [] : [save]), ...result.effects, ...settled.effects];
   const { effects, last } = numbered(planned, final.saveSeq, final.bootstrap);
@@ -129,6 +131,17 @@ export function step<S extends SportTypes>(
     effects,
     outcome: result.outcome,
   };
+}
+
+/** The step's state with the Undo window's start as the step left it (`scoringMatchWindow.ts`). */
+function withDecidedAt<S extends SportTypes>(
+  before: MatchState<S>,
+  after: MatchState<S>,
+  event: MatchEvent<S>,
+  now: number,
+): MatchState<S> {
+  const decidedAt = decidedAtAfter(before, after, event, now);
+  return decidedAt === after.decidedAt ? after : { ...after, decidedAt };
 }
 
 /** Each save, in the order made, gets the next number after `seq`; a queue goes to its file naming its match. */
@@ -156,7 +169,7 @@ function handle<S extends SportTypes>(
     case 'tap':
       return onTap(state, event);
     case 'undo':
-      return onUndo(state, event);
+      return onUndo(state, event, now);
     case 'pickServer':
       return onPick(state, event.side);
     case 'answered':

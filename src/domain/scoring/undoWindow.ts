@@ -1,12 +1,12 @@
-import type { PadStateCard, PadView } from '@/domain/scoring/padView';
+import type { PadView } from '@/domain/scoring/padView';
 
 /**
- * How long Undo stays open on a decided match (owner, 2026-11-03: "go"): 30 s from the moment this phone first shows
- * the result its own tap made. The end of a game is not this: Undo has no limit there. Sport-agnostic, like the card.
+ * How long Undo stays open on a decided match (owner, 2026-11-03: "go"): 30 s from the moment this phone's own tap
+ * decided it. The end of a game is not this: Undo has no limit there. Sport-agnostic, like the card.
  *
- * Pure: the clock is the caller's. Time comes in as milliseconds on the phone's clock, and the window's start is held
- * by the caller, in memory (`useUndoWindow`), so it survives the screen but not a restart: after a restart a decided
- * match shows no Undo at all, and the window never reopens.
+ * Pure: the clock is the caller's. Time comes in as milliseconds on the phone's clock. The window's start is the
+ * reducer's (`scoringMatchWindow.ts`: the dispatched tap that decides the match) and the hub's to keep in memory, so it
+ * survives the screen but not a restart: after a restart, a leave or a Dismiss a decided match shows no Undo at all.
  */
 export const UNDO_WINDOW_MS = 30_000;
 export const UNDO_WINDOW_SECONDS = UNDO_WINDOW_MS / 1000;
@@ -22,45 +22,13 @@ export function undoWindowLeft(openedAt: number | null, now: number): number | n
 }
 
 /**
- * What a screen has seen of a match, for the window: `none` before any pad (a restart, a screen opened late), `playing`
- * while the match is open, `decided` under a recorded result. `openedAt` is the phone's clock when the window opened.
+ * The moment on the phone's clock when the seconds `undoWindowLeft` gives next change, which for the last second is the
+ * close itself: a timer set for it fires when the card is due to change, never a tick late. Null when there is no
+ * window or it is closed.
  */
-export type UndoWindowSeen = {
-  readonly phase: 'none' | 'playing' | 'decided';
-  readonly openedAt: number | null;
-};
-
-/** The facts of a pad the window reads. */
-type UndoFacts = {
-  readonly card: PadStateCard | null;
-  readonly lastTap: { readonly undo: boolean } | null;
-};
-
-/**
- * The window after the pad shows `view` at `now`. It opens only at the moment a match this screen saw in play is first
- * shown decided with Undo on, which only this phone's own latest tap gives (another scorer's result offers none): a
- * decided match seen first (a restart, a return to the pad) opens nothing. A card that is not the result (the
- * organiser's lock, a link that died) is neither a match in play nor a loss of where it stood, so a result coming back
- * from under one does not start again. Undo reopening the match is `playing`, and the next decision opens a fresh window.
- * The same object while nothing changed.
- */
-export function advanceUndoWindow(
-  seen: UndoWindowSeen,
-  view: UndoFacts,
-  now: number,
-): UndoWindowSeen {
-  const phase = phaseAfter(seen.phase, view.card);
-  if (phase === seen.phase) return seen;
-  const opens = seen.phase === 'playing' && phase === 'decided' && view.lastTap?.undo === true;
-  return { phase, openedAt: opens ? now : seen.openedAt };
-}
-
-function phaseAfter(
-  phase: UndoWindowSeen['phase'],
-  card: PadStateCard | null,
-): UndoWindowSeen['phase'] {
-  if (card === null) return 'playing';
-  return card.kind === 'resultRecorded' ? 'decided' : phase;
+export function undoWindowChangesAt(openedAt: number | null, now: number): number | null {
+  const left = undoWindowLeft(openedAt, now);
+  return openedAt === null || left === null ? null : openedAt + UNDO_WINDOW_MS - (left - 1) * 1000;
 }
 
 /**

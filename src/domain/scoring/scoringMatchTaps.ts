@@ -2,6 +2,7 @@ import { type PadRefusal, TAKEN, refusing } from '@/domain/scoring/padLine';
 import type { PadSide } from '@/domain/scoring/padView';
 import type { QueuedEvent } from '@/domain/scoring/queue';
 import type { SportFold, SportTypes } from '@/domain/scoring/scoringSport';
+import { undoRunOut } from '@/domain/scoring/scoringMatchWindow';
 import { discardQueued } from '@/domain/scoring/sync';
 import { type UndoTarget, undoEventFor } from '@/domain/scoring/undoTarget';
 import {
@@ -93,10 +94,16 @@ function typeToUndo(state: MatchState, target: UndoTarget): string | null {
   return state.sync.queue.pending.find((tap) => tap.key === target.key)?.type ?? null;
 }
 
-export function onUndo<S extends SportTypes>(state: MatchState<S>, event: UndoEvent): Handled<S> {
+export function onUndo<S extends SportTypes>(
+  state: MatchState<S>,
+  event: UndoEvent,
+  now: number,
+): Handled<S> {
   const fold = padTakes(state) ? foldOfState(state) : null;
   if (fold === null || fold.kind !== 'folded' || state.bootstrap === null)
     return refused(state, 'notNow');
+  // A decided match's Undo is open for 30 s from this phone's deciding tap (owner, 2026-11-03), whatever the pad shows.
+  if (undoRunOut(state, now)) return refused(state, 'notNow');
   const target = undoTargetOf(state, fold);
   if (target.kind === 'blocked') return refused(state, blockedRefusal(target.reason));
   if (event.only === 'ending' && !state.sport.awaitingEnding(fold.display)) {

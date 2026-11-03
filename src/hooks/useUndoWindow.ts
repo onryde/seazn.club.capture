@@ -1,70 +1,40 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { PadStateCard } from '@/domain/scoring/padView';
 import type { MatchPad } from '@/domain/scoring/scoringMatchView';
 import type { SportTypes } from '@/domain/scoring/scoringSport';
-import {
-  advanceUndoWindow,
-  undoWindowLeft,
-  withUndoWindow,
-  type UndoWindowSeen,
-} from '@/domain/scoring/undoWindow';
+import { undoWindowChangesAt, undoWindowLeft, withUndoWindow } from '@/domain/scoring/undoWindow';
 import type { Ports } from '@/hooks/usePorts';
 
 /**
- * The Undo window of a decided match (owner, 2026-11-03), for any sport's pad: 30 s from the moment this phone first shows
- * the result its own tap made, with the seconds counted on the result card. The rule is pure (`undoWindow.ts`); this hook
- * owns what is not: the phone's clock, the one timer, and where the window's start is kept.
+ * The Undo window of a decided match (owner, 2026-11-03), for any sport's pad: 30 s from the moment this phone's own tap
+ * decided it, with the seconds counted on the result card. Where the window starts is not this hook's to say: the
+ * reducer dates the dispatched tap that decides the match (`scoringMatchWindow.ts`) and the hub keeps it between screens,
+ * so it arrives with the pad as `decidedAt`, and a rescan, a restart or a ledger read that lands late never starts one.
+ * The rule is pure (`undoWindow.ts`); this hook owns the phone's clock and one timer, and applies the window to the pad.
  *
- * The start is held in memory per launch (the `Ports`) and per match, not by the screen: going Home and back within the
- * 30 s keeps the same window. It is not persisted, on purpose: after a restart a decided match shows no Undo at all, and
- * the window never reopens and never restarts. The timer ticks once a second only while the card is counting, and is
- * cleared when the window closes, when Undo reopens the match, and when the screen goes.
+ * The timer is set for the moment the card next changes (`undoWindowChangesAt`), counted from the tap and not from when
+ * this screen drew it, so every digit changes on the tap's own second and the last change is the close itself, to the
+ * millisecond. Only one is ever pending, only while the card counts, and it is cleared when the window closes, when Undo
+ * reopens the match and when the screen goes. A press of Undo is checked against the clock again by the reducer
+ * (`undoRunOut`), so it cannot land after the 30 s however late this timer or the screen is.
  */
-const TICK_MS = 1000;
-
-/** Where each launch keeps its windows' starts: the phone's clock when a match's window opened. */
-const launches = new WeakMap<Ports, Map<string, number>>();
-
-function startsOf(ports: Ports): Map<string, number> {
-  const found = launches.get(ports);
-  if (found !== undefined) return found;
-  const made = new Map<string, number>();
-  launches.set(ports, made);
-  return made;
-}
-
-/** What a screen has seen of a match, when it opens: nothing, and the start this launch kept for it, if any. */
-const unseen = (ports: Ports, fixtureId: string): UndoWindowSeen => ({
-  phase: 'none',
-  openedAt: startsOf(ports).get(fixtureId) ?? null,
-});
-
-/** Whether the card is counting down an open Undo. */
-const counting = (card: PadStateCard | null | undefined): boolean =>
-  card?.kind === 'resultRecorded' && card.undoLeft !== null;
-
-type Held = { readonly fixtureId: string; readonly seen: UndoWindowSeen };
-
 export function useUndoWindow<S extends SportTypes>(
   ports: Ports,
-  fixtureId: string,
   pad: MatchPad<S> | null,
 ): MatchPad<S> | null {
   const { clock } = ports;
-  const [held, setHeld] = useState<Held>(() => ({ fixtureId, seen: unseen(ports, fixtureId) }));
-  const seen = held.fixtureId === fixtureId ? held.seen : unseen(ports, fixtureId);
-  const advanced = pad === null ? seen : advanceUndoWindow(seen, pad.view, clock().getTime());
-  // Adjusted while rendering, so the first frame of a decided match already says 30 and shows Undo. Another match's
-  // `unseen` is a new object, so a screen told another match is held again by this alone.
-  if (advanced !== held.seen) setHeld({ fixtureId, seen: advanced });
-  const { openedAt } = advanced;
-  useKeptStart(ports, fixtureId, openedAt);
-  const [now, setNow] = useState(() => clock().getTime());
-  const left = undoWindowLeft(openedAt, now);
+  const openedAt = pad?.decidedAt ?? null;
+  // The clock is read by every render, so what the card says is always the clock's, however long since the last timer.
+  const left = undoWindowLeft(openedAt, clock().getTime());
   const windowed = useMemo(() => withWindow(pad, left), [pad, left]);
-  useTicks(counting(windowed?.view.card), clock, setNow);
+  useNextChange(counting(windowed), openedAt, clock);
   return windowed;
 }
+
+/** Whether the card is counting down an open Undo. */
+const counting = <S extends SportTypes>(pad: MatchPad<S> | null): boolean => {
+  const card = pad?.view.card;
+  return card?.kind === 'resultRecorded' && card.undoLeft !== null;
+};
 
 /** The pad with the window applied; the same pad when it has none to apply. */
 function withWindow<S extends SportTypes>(
@@ -76,19 +46,20 @@ function withWindow<S extends SportTypes>(
   return view === pad.view ? pad : { ...pad, view };
 }
 
-/** Keeps the window's start for the launch, so a screen that comes back finds it. */
-function useKeptStart(ports: Ports, fixtureId: string, openedAt: number | null): void {
-  useEffect(() => {
-    if (openedAt !== null) startsOf(ports).set(fixtureId, openedAt);
-  }, [ports, fixtureId, openedAt]);
-}
-
-/** Reads the phone's clock once a second while `running`, and once as it starts; nothing runs otherwise. */
-function useTicks(running: boolean, clock: Ports['clock'], setNow: (now: number) => void): void {
+/**
+ * Renders again when the card next changes, while it counts; no timer is set otherwise. Each firing is a render, which
+ * sets the next timer: one is pending at a time. A timer that fires a hair early renders the same second and sets the rest.
+ */
+function useNextChange(running: boolean, openedAt: number | null, clock: Ports['clock']): void {
+  const [fired, setFired] = useState(0);
   useEffect(() => {
     if (!running) return;
-    setNow(clock().getTime());
-    const timer = setInterval(() => setNow(clock().getTime()), TICK_MS);
-    return () => clearInterval(timer);
-  }, [running, clock, setNow]);
+    const current = clock().getTime();
+    const at = undoWindowChangesAt(openedAt, current);
+    const timer = setTimeout(
+      () => setFired((count) => count + 1),
+      at === null ? 0 : Math.max(0, at - current),
+    );
+    return () => clearTimeout(timer);
+  }, [running, openedAt, fired, clock]);
 }

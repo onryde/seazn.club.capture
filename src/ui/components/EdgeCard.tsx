@@ -9,8 +9,9 @@ export type Edge = 'caution' | 'lime' | 'quiet';
  * The scoring screens' card: a surface with a bar down its left edge whose colour is the card's meaning (never red: red
  * means ON AIR, AGENTS §5). The pad's state cards and the states that stand in place of the pad (`ScoringStateCard`)
  * are this one card, so the two read as one family. Said politely when it appears, since a card is what changed; a card
- * whose words change every second (`live="none"`: the Undo countdown) is not a live region, or a screen reader would read
- * every second out.
+ * with words that change every second (`live="none"`: the recorded result's Undo countdown) is not a live region
+ * itself, or a screen reader would read every second out: it says what is said once in a live region of its own inside
+ * it (`PadStateCard`), and keeps the changing digits out of it.
  */
 export const EdgeCard = memo(function EdgeCard({
   edge,

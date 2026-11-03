@@ -40,6 +40,7 @@ export const held = (over: Partial<MatchHeld> = {}): MatchHeld => ({
   judge: 'fold',
   foreground: true,
   rulesVersion: 1,
+  decidedAt: null,
   ...over,
 });
 

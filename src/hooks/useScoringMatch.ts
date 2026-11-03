@@ -57,9 +57,9 @@ export function useScoringMatch<S extends SportTypes, Pad>(
     () => (snapshot.kind === 'ready' ? viewAs(sport, snapshot.state) : null),
     [snapshot, sport],
   );
-  // A decided match's Undo is open for 30 s from the moment this phone shows the result its own tap made (owner,
-  // 2026-11-03); the sport's pad hook is handed the pad with that window applied.
-  const windowed = useUndoWindow(ports, fixtureId, view?.kind === 'pad' ? view : null);
+  // A decided match's Undo is open for 30 s from this phone's own deciding tap (owner, 2026-11-03: the pad's `decidedAt`,
+  // dated by the reducer and kept by the hub); the sport's pad hook is handed the pad with that window applied.
+  const windowed = useUndoWindow(ports, view?.kind === 'pad' ? view : null);
   const pad = usePad(ports, runner, windowed);
   return resolved(snapshot, view, pad);
 }

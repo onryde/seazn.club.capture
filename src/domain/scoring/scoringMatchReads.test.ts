@@ -49,7 +49,8 @@ describe('a decided match', () => {
 
   it('once finalized, its bootstrap closes the match to this phone: view only, and Undo is off', () => {
     const own = [...DECIDED.slice(0, -1), { ...rally('H'), link: PHONE_LINK }];
-    const state = ready({ queue: queueOf({ ownEventIds: ['ev-43'] }) }, own);
+    // This phone's deciding tap opened Undo's window at NOW (owner, 2026-11-03), so only the finalizing closes it here.
+    const state = ready({ queue: queueOf({ ownEventIds: ['ev-43'] }), decidedAt: NOW }, own);
     expect(step(state, UNDO, NOW).outcome).toEqual({ ok: true });
     const read = step(
       state,

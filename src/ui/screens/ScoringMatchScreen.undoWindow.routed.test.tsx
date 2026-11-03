@@ -5,6 +5,7 @@ import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
 import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
+import { scoringHubOf } from '@/hooks/scoringHub';
 import { SINGLES_SEED } from '@/services/fakeScoringPort';
 import { STORE_KEYS } from '@/services/modeStore';
 import { TEST_NOW } from '../../../test/fakePorts';
@@ -112,7 +113,8 @@ const undoButton = (words: Words = en) =>
   screen.queryByRole('button', { name: words['scoring.pad.undo'] });
 const open = (words: Words, seconds: number) =>
   words['scoring.card.resultRecorded.title'] +
-  words['scoring.card.resultRecorded.bodyOpen'].replace('{seconds}', String(seconds));
+  words['scoring.card.resultRecorded.bodyOpen'] +
+  words['scoring.card.resultRecorded.undoCountdown'].replace('{seconds}', String(seconds));
 const closed = (words: Words) =>
   words['scoring.card.resultRecorded.title'] + words['scoring.card.resultRecorded.bodyClosed'];
 
@@ -238,5 +240,117 @@ describe('the Undo window of a match this phone decided', () => {
     expect(undoButton()).toBeNull();
     await pass(app, 40_000);
     expect(cardText()).toBe(closed(en));
+  });
+});
+
+// Scanning another match leaves this one (`hub.leave`): its caches go and this phone's own tap ids are kept for a day. A
+// rescan reads the bootstrap and an EMPTY ledger first (the pad shows the match not yet played), and the real ledger
+// after: decided, with those kept ids. That is a match found decided, not a decision of this phone's (owner, 2026-11-03).
+describe('a match scanned again after it was left', () => {
+  /** The scorer goes Home, scans another match (the hub leaves this one) and scans this one again. */
+  async function leftAndScanned(app: LaunchedApp, after: 'leave' | 'dismiss'): Promise<void> {
+    act(() => {
+      app.back.press();
+    });
+    await flush(200);
+    const hub = scoringHubOf(app.ports);
+    await (after === 'leave' ? hub.leave(FAKE_MATCH) : hub.dismiss(FAKE_MATCH));
+    await app.kv.set(linkKey(FAKE_MATCH), STORED_LINK);
+  }
+
+  /** The server answers the ledger only once released: the pad meets the bootstrap before the events. */
+  function holdLedger(app: LaunchedApp): () => void {
+    let release: () => void = () => undefined;
+    const open = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const real = app.scoring.events.bind(app.scoring);
+    vi.spyOn(app.scoring, 'events').mockImplementation(async (...args) => {
+      await open;
+      return real(...args);
+    });
+    return release;
+  }
+
+  it.each(['leave', 'dismiss'] as const)(
+    'finds the result with no Undo after a %s, though its ledger lands after the first look',
+    async (after) => {
+      const app = await startedMatch();
+      await decided(app);
+      await pass(app, 4_000);
+      await leftAndScanned(app, after);
+      const release = holdLedger(app);
+      act(() => app.ports.navigation.go('scoring'));
+      await flush(200);
+      expect(screen.queryByTestId('pad-card')).toBeNull();
+      release();
+      await flush(1_000);
+      // Four seconds on, with the kept ids: it must not read as a window opened now, nor as the one left.
+      expect(cardText()).toBe(closed(en));
+      expect(undoButton()).toBeNull();
+      await pass(app, 3_000);
+      expect(cardText()).toBe(closed(en));
+    },
+  );
+
+  it('finds a window left a few seconds ago closed, not started again at 30', async () => {
+    const app = await startedMatch();
+    await decided(app);
+    await pass(app, 4_000);
+    expect(cardText()).toBe(open(en, 26));
+    await leftAndScanned(app, 'leave');
+    act(() => app.ports.navigation.go('scoring'));
+    await flush(1_500);
+    expect(cardText()).toBe(closed(en));
+    expect(undoButton()).toBeNull();
+  });
+});
+
+describe('Undo against a result made elsewhere in between', () => {
+  it('shows no Undo when the other scorer decides the match after this phone took its own deciding tap back', async () => {
+    const app = await startedMatch();
+    await decided(app);
+    await pass(app, 5_000);
+    press(en['scoring.pad.undo']);
+    await flush(300);
+    expect(screen.queryByTestId('pad-card')).toBeNull();
+    await scoredElsewhere(app, 1);
+    expect(cardText()).toBe(closed(en));
+    expect(undoButton()).toBeNull();
+    await pass(app, 40_000);
+    expect(cardText()).toBe(closed(en));
+  });
+});
+
+describe('a deciding tap queued while the phone was offline', () => {
+  it('follows the same rule: no Undo after 30 s on the pad, and the reconnect question can still discard it', async () => {
+    const app = await startedMatch();
+    await scoredElsewhere(app, 41);
+    app.scoring.goOffline(true);
+    await rally(app, 'first');
+    await flush(0);
+    expect(cardText()).toBe(open(en, 30));
+    await pass(app, 29_000);
+    expect(cardText()).toBe(open(en, 1));
+    await pass(app, 1_000);
+    expect(cardText()).toBe(closed(en));
+    expect(undoButton()).toBeNull();
+    // Someone scored on the web meanwhile, and the data comes back: the question stands and the tap is still its to ask.
+    app.scoring.addOtherScorerEvent('badminton.rally', {
+      wonBy: SINGLES_SEED.sides.away.entrantId,
+    });
+    app.scoring.goOffline(false);
+    for (let waited = 0; screen.queryByTestId('ask-sheet') === null && waited < 40; waited += 1) {
+      await pass(app, 1_000);
+    }
+    expect(screen.getByTestId('ask-sheet')).toBeTruthy();
+    await pass(app, 2_000);
+    press(en['scoring.ask.discard']);
+    await pass(app, 2_000);
+    press(en['scoring.ask.confirm.discard']);
+    await pass(app, 2_000);
+    expect(screen.queryByTestId('ask-sheet')).toBeNull();
+    // The decider is gone: the match is open again, and no result card stands.
+    expect(screen.queryByTestId('pad-card')).toBeNull();
   });
 });

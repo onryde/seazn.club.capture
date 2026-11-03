@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PadLastTap, PadStateCard, PadView } from '@/domain/scoring/padView';
-import {
-  advanceUndoWindow,
-  undoWindowLeft,
-  withUndoWindow,
-  type UndoWindowSeen,
-} from '@/domain/scoring/undoWindow';
+import { undoWindowChangesAt, undoWindowLeft, withUndoWindow } from '@/domain/scoring/undoWindow';
 
 // Owner, 2026-11-03: Undo closes 30 s after a match is decided by this phone's own tap, with a countdown. The rule is
 // whole seconds, rounded up; every number below is written out, none computed from the code under test.
@@ -50,81 +45,40 @@ describe('undoWindowLeft', () => {
   });
 });
 
+// The moment the seconds on the card next change, which is the moment a timer is set for: so the last change is the
+// close itself, to the millisecond, and every digit changes as it is due, never a tick late.
+describe('undoWindowChangesAt', () => {
+  it.each([
+    [0, 11_000],
+    [1, 11_000],
+    [999, 11_000],
+    [1_000, 12_000],
+    [1_001, 12_000],
+    [14_999, 25_000],
+    [15_000, 26_000],
+    [28_999, 39_000],
+    [29_000, 40_000],
+    [29_999, 40_000],
+  ])('with %i ms gone it is %i on the phone’s clock', (gone, at) => {
+    expect(undoWindowChangesAt(10_000, 10_000 + gone)).toBe(at);
+  });
+
+  it.each([30_000, 30_001, 3_600_000])('has no next change once %i ms have gone', (gone) => {
+    expect(undoWindowChangesAt(10_000, 10_000 + gone)).toBeNull();
+  });
+
+  it('has none when there is no window', () => {
+    expect(undoWindowChangesAt(null, 10_000)).toBeNull();
+  });
+
+  it('counts from the start when the clock was set back before it', () => {
+    expect(undoWindowChangesAt(10_000, 4_000)).toBe(11_000);
+  });
+});
+
 const recorded = (undoLeft: number | null): PadStateCard => ({ kind: 'resultRecorded', undoLeft });
-const NONE: UndoWindowSeen = { phase: 'none', openedAt: null };
-const PLAYING: UndoWindowSeen = { phase: 'playing', openedAt: null };
 const OWN = { text: { key: 'k.x' }, undo: true } as const;
 const NOT_OWN = { text: { key: 'k.x' }, undo: false } as const;
-const pad = (card: PadStateCard | null, lastTap: PadLastTap<'k.x'> | null = OWN) => ({
-  card,
-  lastTap,
-});
-
-describe('advanceUndoWindow', () => {
-  // The window opens when this phone first shows the decided state its own tap made: a match seen in play, then decided.
-  it('opens at the moment a match in play is first shown decided with Undo on its own tap', () => {
-    expect(advanceUndoWindow(PLAYING, pad(recorded(null)), 5_000)).toEqual({
-      phase: 'decided',
-      openedAt: 5_000,
-    });
-  });
-
-  it('opens nothing when the first thing seen is already decided (after a restart, or a screen opened late)', () => {
-    expect(advanceUndoWindow(NONE, pad(recorded(null)), 5_000)).toEqual({
-      phase: 'decided',
-      openedAt: null,
-    });
-  });
-
-  it('opens nothing for a result another scorer made, which offers no Undo', () => {
-    expect(advanceUndoWindow(PLAYING, pad(recorded(null), NOT_OWN), 5_000)).toEqual({
-      phase: 'decided',
-      openedAt: null,
-    });
-    expect(advanceUndoWindow(PLAYING, pad(recorded(null), null), 5_000).openedAt).toBeNull();
-  });
-
-  it('is the same object while nothing changes: a decided pad seen again does not start again', () => {
-    const decided: UndoWindowSeen = { phase: 'decided', openedAt: 5_000 };
-    expect(advanceUndoWindow(decided, pad(recorded(12)), 9_000)).toBe(decided);
-    expect(advanceUndoWindow(PLAYING, pad(null), 9_000)).toBe(PLAYING);
-  });
-
-  it('keeps the window it has while the match is decided, whatever the clock says', () => {
-    const decided: UndoWindowSeen = { phase: 'decided', openedAt: 5_000 };
-    expect(advanceUndoWindow(decided, pad(recorded(null)), 99_000).openedAt).toBe(5_000);
-  });
-
-  // The next decision starts a fresh window: Undo reopened the match (a card of none), then it is decided again.
-  it('starts a fresh window at the next decision after Undo reopened the match', () => {
-    const decided: UndoWindowSeen = { phase: 'decided', openedAt: 5_000 };
-    const reopened = advanceUndoWindow(decided, pad(null), 8_000);
-    expect(reopened.phase).toBe('playing');
-    expect(advanceUndoWindow(reopened, pad(recorded(null)), 20_000)).toEqual({
-      phase: 'decided',
-      openedAt: 20_000,
-    });
-  });
-
-  // A card that is not the result (the organiser's lock, a dead link coming and going, a banner) neither opens a window
-  // nor loses where the match stood, so a result that comes back under a flicker does not start again.
-  it.each([
-    { kind: 'viewOnly' },
-    { kind: 'linkInvalid' },
-    { kind: 'notStarted' },
-    { kind: 'updateNeeded', unsent: 1 },
-  ] as const)('does not mistake a $kind card for a match in play', (card) => {
-    const decided: UndoWindowSeen = { phase: 'decided', openedAt: 5_000 };
-    const covered = advanceUndoWindow(decided, pad(card), 8_000);
-    expect(covered).toBe(decided);
-    expect(advanceUndoWindow(covered, pad(recorded(null)), 40_000)).toBe(decided);
-  });
-
-  it('a match not yet started stays unseen, and Start shows it in play', () => {
-    expect(advanceUndoWindow(NONE, pad({ kind: 'notStarted' }), 1_000)).toBe(NONE);
-    expect(advanceUndoWindow(NONE, pad(null), 1_000).phase).toBe('playing');
-  });
-});
 
 describe('withUndoWindow', () => {
   const text = { key: 'k.x' } as const;
