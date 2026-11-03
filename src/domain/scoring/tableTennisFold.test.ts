@@ -5,7 +5,7 @@ import type { PadSide } from '@/domain/scoring/padView';
 import type { QueuedEvent } from '@/domain/scoring/queue';
 import type { SportFoldInput } from '@/domain/scoring/scoringSport';
 import { foldTableTennis, needsAnchor, undoneTap } from '@/domain/scoring/tableTennisFold';
-import type { TableTennisDisplay } from '@/domain/scoring/tableTennisPad';
+import type { TableTennisDisplay, TableTennisSanctionLevel } from '@/domain/scoring/tableTennisPad';
 import type { Bootstrap } from '@/domain/scoring/wire';
 import {
   DECIDED_3_0,
@@ -36,6 +36,8 @@ import {
 // this phone's legal queued taps on top. Every expected value below is written out from the ITTF laws (2.13 service,
 // 2.15 expedite) and the design, never computed by the fold. Top half = home, bottom = away.
 
+// `scoreBound` is the engine's `summaryScoreBound` (kernel.ts): an uncapped sport's cap-less margin, max(setTo, finalSetTo)
+// + 20, so 11 + 20 = 31 here and 21 + 20 = 41 for hardbat. The 20 is the engine's number, written out to be read.
 const STANDARD_RULES = { bestOf: 5, setTo: 11, finalSetTo: 11, winBy: 2, scoreBound: 31 };
 const SINGLES_SIDES: TableTennisDisplay['sides'] = {
   first: { players: ['A. Sharma'] },
@@ -371,6 +373,33 @@ describe('foldTableTennis: the anchor', () => {
     expect(display([]).anchorNeeded).toBe(false);
   });
 
+  // Ruling (fix round 1): the question is for any live match nobody can say the server of, a point standing or not.
+  it('is needed for a match started elsewhere that has had no point: this phone picked nothing', () => {
+    const d = display([start()]);
+    expect(d).toMatchObject({
+      phase: 'pre',
+      server: null,
+      serveNumber: null,
+      serverPicked: false,
+      anchorNeeded: true,
+    });
+  });
+
+  it('is needed when game 1 was entered by Set score alone, though this phone picked at the start', () => {
+    const d = display([start(), wholeGame(11, 7)], { toss: 'first' });
+    expect(d).toMatchObject({ server: null, serverPicked: false, anchorNeeded: true });
+  });
+
+  it('is not needed for a match this phone started: its pick is shown at 0–0', () => {
+    const d = display([], { queued: [queuedOf('k', start())], toss: 'second' });
+    expect(d).toMatchObject({
+      phase: 'pre',
+      server: 'second',
+      serverPicked: true,
+      anchorNeeded: false,
+    });
+  });
+
   it('is needed again when the point that anchored it is undone, never a stale server', () => {
     const ledger = [start(), rally({ wonBy: 'H', serving: 'H' }), ...rallies('A'), voiding(2)];
     expect(display(ledger.slice(0, 3))).toMatchObject({ server: 'second', anchorNeeded: false });
@@ -466,19 +495,19 @@ describe('needsAnchor: the engine’s reasons it names nobody', () => {
   };
 
   it.each(Object.entries(NEEDED))('%s: %s', (why, needed) => {
-    expect(needsAnchor(unknown(why as SetBasedServeUnknown), true, true)).toBe(needed);
+    expect(needsAnchor(unknown(why as SetBasedServeUnknown), true, false)).toBe(needed);
   });
 
-  it('needs none when the engine names the server, the match is not live, or no point stands', () => {
+  it('needs none when the engine names the server, the match is not live, or this phone’s pick is shown', () => {
     const named: SetBasedServeContext = {
       servingSide: 'ent-home',
       side: 'home',
       serverPersonId: null,
       serveOrderKnown: true,
     };
-    expect(needsAnchor(named, true, true)).toBe(false);
-    expect(needsAnchor(unknown('undeclared'), false, true)).toBe(false);
-    expect(needsAnchor(unknown('undeclared'), true, false)).toBe(false);
+    expect(needsAnchor(named, true, false)).toBe(false);
+    expect(needsAnchor(unknown('undeclared'), false, false)).toBe(false);
+    expect(needsAnchor(unknown('undeclared'), true, true)).toBe(false);
   });
 });
 
@@ -532,6 +561,22 @@ describe('foldTableTennis: which queued taps are still legal', () => {
     expect(result.legalQueued).toEqual([]);
   });
 
+  // Fix round 1, ruling 3: the Start pick is shown as the server, but only the engine's own naming counts for a returns
+  // point. Nothing has anchored the pick yet (no point carries a `serving`), so the receiver is not known.
+  it('drops a returns rally while the server is only this phone’s Start pick, not yet anchored', () => {
+    const result = folded([start(), expedite()], {
+      toss: 'first',
+      queued: [queuedOf('k', returns('A'))],
+    });
+    expect(result.display).toMatchObject({
+      server: 'first',
+      serverPicked: true,
+      expedite: 'inForce',
+    });
+    expect(result.legalQueued).toEqual([]);
+    expect(result.display.points).toEqual({ first: 0, second: 0 });
+  });
+
   it('leaves a rally with fewer than 13 returns to the engine: the server may win it', () => {
     const result = folded(expedited, { queued: [queuedOf('k', returns('H', 5))] });
     expect(result.legalQueued).toEqual(['k']);
@@ -553,6 +598,15 @@ describe('foldTableTennis: which queued taps are still legal', () => {
     ];
     const named = rally({ wonBy: 'A', serving: 'H', returns: 13 });
     expect(folded(noAnchor, { queued: [queuedOf('k', named)] }).legalQueued).toEqual(['k']);
+  });
+
+  it('drops a second Expedite: it is in force to the end of the match, the engine takes it once', () => {
+    const queued = [queuedOf('k-first', expedite()), queuedOf('k-second', expedite())];
+    const result = folded(played('HA'), { queued });
+    expect(result.legalQueued).toEqual(['k-first']);
+    expect(
+      folded([...played('HA'), expedite()], { queued: [queuedOf('k', expedite())] }).legalQueued,
+    ).toEqual([]);
   });
 
   it('does not offer Undo for a tap it dropped', () => {
@@ -617,6 +671,16 @@ describe('foldTableTennis: which queued taps are still legal', () => {
 });
 
 describe('foldTableTennis: cards, timeouts and the set score', () => {
+  // The pad's two cards (the umpire's yellow and red) are the engine's two sanction levels; a level the engine adds is
+  // unknown to `doneOf` and to `TableTennisSanctionLevel` until this fails.
+  it('names exactly the engine’s sanction levels', () => {
+    const named: Readonly<Record<TableTennisSanctionLevel, true>> = {
+      warning: true,
+      penalty: true,
+    };
+    expect([...tabletennisPadRules.sanctionLevels].sort()).toEqual(Object.keys(named).sort());
+  });
+
   it('folds a card with no person named, and says it of the side', () => {
     const d = display([...played('HA'), sanction('A', 'penalty')]);
     expect(d.lastTap).toEqual({
@@ -654,9 +718,9 @@ describe('foldTableTennis: cards, timeouts and the set score', () => {
     });
   });
 
-  it('names no server after a game was set whole, until a point names one', () => {
+  it('names no server after a game was set whole, and asks who is serving until a point names one', () => {
     const d = display([start(), wholeGame(11, 7)]);
-    expect(d).toMatchObject({ server: null, serverPicked: false, anchorNeeded: false });
+    expect(d).toMatchObject({ server: null, serverPicked: false, anchorNeeded: true });
   });
 });
 
@@ -667,7 +731,7 @@ describe('foldTableTennis: a variant', () => {
     expect(display(DEUCE_10_10, { bootstrap: hardbat })).toMatchObject({
       points: { first: 10, second: 10 },
       deuce: false,
-      rules: { bestOf: 5, setTo: 21, finalSetTo: 21, winBy: 2, scoreBound: 41 },
+      rules: { bestOf: 5, setTo: 21, finalSetTo: 21, winBy: 2, scoreBound: 41 }, // 21 + the engine's margin of 20
     });
     const twenty = played(`H${'AH'.repeat(19)}A`); // 20–20 after 40 points
     expect(display(twenty, { bootstrap: hardbat })).toMatchObject({

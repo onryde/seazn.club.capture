@@ -129,6 +129,8 @@ export type TableTennisDisplay = {
   /**
    * The side due to serve, or null when the ledger does not say: the Start pick was lost (a co-scorer's point landed
    * first), the first game was set whole, or the engine found the ledger contradicts itself. Null draws no plate.
+   * It may be this phone's Start pick, which no ledger event has named: then `serverPicked` is true. A pick is not the
+   * engine's belief, so a rule that needs the server known (a 13 returns point, design §4.5) reads the engine, never this.
    */
   readonly server: PadSide | null;
   /**
@@ -143,7 +145,10 @@ export type TableTennisDisplay = {
   readonly serveNumber: 1 | 2 | null;
   /** The server shown is this phone's pick on the Start screen, the ledger having named nobody yet. */
   readonly serverPicked: boolean;
-  /** Nobody can say who serves for want of an anchor: the pad offers Who is serving? (design §4.2). */
+  /**
+   * Nobody can say who serves for want of an anchor and this phone's pick is not standing in (`serverPicked`): the pad
+   * offers Who is serving? (design §4.2, fix round 1: asked at 0-0 too, for a match started elsewhere).
+   */
   readonly anchorNeeded: boolean;
   readonly expedite: TableTennisExpedite;
   /** Level in the endgame, where a side needs two clear: from the target less one (10–10; hardbat 20–20). */

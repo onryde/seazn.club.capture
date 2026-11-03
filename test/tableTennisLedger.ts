@@ -1,3 +1,4 @@
+import { foldEpochOf } from '@seazn/engine/sport';
 import type { QueuedEvent } from '@/domain/scoring/queue';
 import type { Bootstrap, BootstrapSide, LedgerEvent } from '@/domain/scoring/wire';
 
@@ -35,7 +36,7 @@ export const SINGLES: Bootstrap = {
   moduleVersion: '1.0.0',
   cfg: {},
   rulesVersion: 1,
-  epochRequired: 2,
+  epochRequired: foldEpochOf('tabletennis'),
   screen: 'pad',
   viewOnlyReason: null,
   context: {
@@ -186,10 +187,6 @@ export function queuedOf(key: string, spec: Spec): QueuedEvent {
     attempts: 0,
   };
 }
-
-/** `count` points alternating, the top side first: `HAHA…`. */
-export const alternating = (count: number): string =>
-  Array.from({ length: count }, (_, i) => (i % 2 === 0 ? 'H' : 'A')).join('');
 
 /** The start, then the first point (home serving: the anchor), then `winners` for the points after it. */
 export const anchored = (first: Seat, winners: string): readonly Spec[] => [

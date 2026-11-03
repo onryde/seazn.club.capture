@@ -325,7 +325,7 @@ function displayOf(
     sides: match.names.sides,
     context: match.context,
     ...board,
-    ...serveOf(match, stream, folded, extras),
+    ...serveOf(match, folded, extras),
     rules: rulesOf(match),
     phase: phaseOf(state, board.game, lastRallyGame(stream.envelopes, folded.facts)),
     expedite: expediteOf(match, state),
@@ -403,19 +403,16 @@ type ServeFacts = Pick<
 >;
 
 /** Everything the pad says about the serve, from the engine's reader and this phone's pick. */
-function serveOf(match: Match, stream: Stream, folded: Folded, extras: Extras): ServeFacts {
+function serveOf(match: Match, folded: Folded, extras: Extras): ServeFacts {
   const { serve, picked } = extras;
   const person = serverPersonOf(match, serve);
-  const rallyStands = stream.envelopes.some(
-    (envelope) => envelope.type === RALLY && folded.facts.has(envelope.id),
-  );
   return {
     server: serverOf(serve, picked),
     serverPerson: person.name,
     serverPersonId: person.id,
     serveNumber: serveNumberOf(serve, picked),
     serverPicked: picked !== null,
-    anchorNeeded: needsAnchor(serve, folded.state.phase === 'live', rallyStands),
+    anchorNeeded: needsAnchor(serve, folded.state.phase === 'live', picked !== null),
   };
 }
 
@@ -474,17 +471,18 @@ const NO_DECLARATION_MENDS: readonly SetBasedServeUnknown[] = [
 ];
 
 /**
- * Whether the pad asks Who is serving? (design §4.2, ruling 51): the match is live, a point stands (before the first the
- * Start pick does this job), the engine names nobody, and its reason is a gap a declaration fills, not a dispute
- * (`recorded-disagrees`: the engine refuses to re-anchor off a declaration mid-dispute, the next game resolves it) nor a
- * mismatch (`ledger-mismatch`: no new event fixes it), as the web's anchor tile decides (`needsServeAnchor`).
+ * Whether the pad asks Who is serving? (design §4.2, ruling 51; fix round 1): the match is live, the engine names nobody,
+ * this phone's Start pick is not the server shown (`serverPicked`: before the first point that pick does this job), and
+ * the engine's reason is a gap a declaration fills, not a dispute (`recorded-disagrees`: the engine refuses to re-anchor
+ * off a declaration mid-dispute, the next game resolves it) nor a mismatch (`ledger-mismatch`: no new event fixes it), as
+ * the web's anchor tile decides (`needsServeAnchor`). No point need stand: a match started elsewhere asks at 0-0.
  */
 export function needsAnchor(
   serve: SetBasedServeContext,
   live: boolean,
-  rallyStands: boolean,
+  serverPicked: boolean,
 ): boolean {
-  if (!live || !rallyStands || serve.side !== null) return false;
+  if (!live || serverPicked || serve.side !== null) return false;
   return !NO_DECLARATION_MENDS.some((reason) => reason === serve.unknownBecause);
 }
 
