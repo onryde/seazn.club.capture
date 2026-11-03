@@ -146,7 +146,7 @@ describe('the Undo window’s start, kept by the hub', () => {
   // take the ledger landing, decided, with the kept ids for a decision of this phone's.
   it('is gone with a leave: the rescan shows the match decided with no start, even when its ledger lands after a 0-0', async () => {
     const fakes = await rig();
-    const { handle } = await decided(fakes);
+    await decided(fakes);
     await scoringHubOf(fakes.ports).leave(FIXTURE);
     await saveScoringLink(fakes.kv, FIXTURE, LINK, HOST, 'badminton');
     const gate = holdLedgerReads(fakes);
@@ -159,7 +159,6 @@ describe('the Undo window’s start, kept by the hub', () => {
     await flush();
     expect(decidedAtOf(rescanned)).toBeNull();
     expect(rescanned.runner.dispatch({ ...UNDO })).toEqual({ ok: false, refusal: 'notNow' });
-    expect(handle).toBeDefined();
   });
 
   it('is gone with a Dismiss, which Close and Forget are: the same match scanned again has no window', async () => {
