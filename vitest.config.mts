@@ -67,7 +67,7 @@ export default defineConfig({
         },
         test: {
           name: 'ui',
-          include: ['src/**/*.test.tsx', 'modules/**/*.test.tsx'],
+          include: ['src/**/*.test.tsx', 'modules/**/*.test.tsx', 'test/**/*.test.tsx'],
           environment: 'jsdom',
           setupFiles: ['./test/setup-ui.ts'],
           // A cold jsdom + react-native-web render can pass 5 s on a loaded

@@ -81,14 +81,15 @@ describe('saved codes, v3 (amendment §3)', () => {
     expect(read?.stream?.waiting && 'overlayUrl' in read.stream.waiting).toBe(false);
   });
 
-  it('round-trips a scoring code, which has no stream part', () => {
+  it('round-trips a scoring code: its match and no stream part', () => {
     const code: SavedCode = {
       mode: 'scoring',
-      raw: 'https://stg.seazn.club/score/abc',
+      raw: '',
       slot: null,
       savedAt: FIXTURE_NOW,
       expiresAt: null,
       stream: null,
+      scoring: { fixtureId: 'fx-match-4', label: 'Match 4' },
     };
     expect(decodeSavedCode(encodeSavedCode(code))).toEqual(code);
   });
@@ -110,6 +111,7 @@ describe('saved codes, v3 (amendment §3)', () => {
         codeUrl: CODE_URL,
         tapToPair: false,
       },
+      scoring: null,
     });
   });
 
@@ -215,6 +217,7 @@ describe('saved codes, v3 (amendment §3)', () => {
       savedAt: FIXTURE_NOW,
       expiresAt: LATER,
       stream: null,
+      scoring: null,
     });
     const stream = { waiting: sampleWaiting(), codeUrl: CODE_URL, tapToPair: false };
     const fromScoring = savedCodeFrom(
@@ -227,6 +230,58 @@ describe('saved codes, v3 (amendment §3)', () => {
       null,
       null,
     ]);
+  });
+
+  // Plan S2-1 Task 10: the saved scoring code names its match (the key of its link and its queue) and what Home calls it.
+  it('saves a scoring code with its match, and never its link: the token is the secure store’s own entry', () => {
+    const link = 'https://stg.seazn.club/score/dl_madeUpTokenMadeUpToken1';
+    const code = savedCodeFrom(
+      { mode: 'scoring', raw: link, token: 'dl_madeUpTokenMadeUpToken1' },
+      FIXTURE_NOW,
+      null,
+      { fixtureId: 'fx-match-4', label: 'Match 4' },
+    );
+    expect(code).toEqual({
+      mode: 'scoring',
+      raw: '',
+      slot: null,
+      savedAt: FIXTURE_NOW,
+      expiresAt: null,
+      stream: null,
+      scoring: { fixtureId: 'fx-match-4', label: 'Match 4' },
+    });
+    expect(encodeSavedCode(code)).not.toContain('dl_madeUpToken');
+  });
+
+  it('saves a stream code with no scoring part, even if one is handed over', () => {
+    const code = savedCodeFrom(streamCode('t', LATER), FIXTURE_NOW, null, {
+      fixtureId: 'fx',
+      label: 'L',
+    });
+    expect(code.scoring).toBeNull();
+  });
+
+  it('drops a scoring record with no scoring part, or one that does not read', () => {
+    const scoring = (part: unknown) =>
+      record({ mode: 'scoring', slot: null, stream: null, scoring: part });
+    expect(decodeSavedCode(scoring({ fixtureId: 'fx', label: 'Match 4' }))?.scoring).toEqual({
+      fixtureId: 'fx',
+      label: 'Match 4',
+    });
+    expect(decodeSavedCode(scoring(undefined))).toBeNull();
+    expect(decodeSavedCode(scoring(null))).toBeNull();
+    expect(decodeSavedCode(scoring('fx'))).toBeNull();
+    expect(decodeSavedCode(scoring({ label: 'Match 4' }))).toBeNull();
+    expect(decodeSavedCode(scoring({ fixtureId: '', label: 'Match 4' }))).toBeNull();
+    expect(decodeSavedCode(scoring({ fixtureId: 'fx' }))).toBeNull();
+    expect(decodeSavedCode(scoring({ fixtureId: 7, label: 'Match 4' }))).toBeNull();
+  });
+
+  it('reads a stream record as one with no scoring part, whatever the record carries', () => {
+    expect(decodeSavedCode(record({}))?.scoring).toBeNull();
+    expect(
+      decodeSavedCode(record({ scoring: { fixtureId: 'fx', label: 'L' } }))?.scoring,
+    ).toBeNull();
   });
 
   it('keeps a code with no exp unexpiring', () => {

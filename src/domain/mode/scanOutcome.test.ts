@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ModeCode } from '@/domain/mode/Mode';
-import { scanOutcome } from '@/domain/mode/scanOutcome';
+import { BUILT_MODES, scanOutcome } from '@/domain/mode/scanOutcome';
 
 const streamCode: ModeCode = {
   mode: 'stream',
@@ -20,27 +20,42 @@ describe('scanOutcome', () => {
     });
   });
 
-  it('says a scoring code is coming soon, whichever tile was tapped', () => {
-    expect(scanOutcome('stream', { outcome: 'code', code: scoringCode })).toEqual({
-      kind: 'comingSoon',
-      tapped: 'stream',
-      mode: 'scoring',
-    });
-    // From its own tile too: an unbuilt mode never opens, even on a match.
+  // Plan S2-1 Task 10: Remote Scoring is a built mode, so its code opens from its own tile in every build.
+  it('opens a scoring code from the Remote Scoring tile', () => {
     expect(scanOutcome('scoring', { outcome: 'code', code: scoringCode })).toEqual({
-      kind: 'comingSoon',
-      tapped: 'scoring',
-      mode: 'scoring',
+      kind: 'open',
+      code: scoringCode,
     });
   });
 
-  it('offers to switch when a built mode is scanned from another tile', () => {
-    // Only reachable once a second mode is built; S0 proves the branch exists.
+  it('offers to switch when a scoring code is scanned from another tile, and a stream code from the scoring tile', () => {
+    expect(scanOutcome('stream', { outcome: 'code', code: scoringCode })).toEqual({
+      kind: 'otherMode',
+      tapped: 'stream',
+      code: scoringCode,
+    });
     expect(scanOutcome('scoring', { outcome: 'code', code: streamCode })).toEqual({
       kind: 'otherMode',
       tapped: 'scoring',
       code: streamCode,
     });
+  });
+
+  // `recognise` reads no Dashboard code yet (S4 adds it), so this one is made by hand: a mode this build has not built
+  // is named and told it is coming soon, never opened, whichever tile was tapped.
+  it('says a code of a mode not built is coming soon, whichever tile was tapped', () => {
+    const dashboard = { mode: 'dashboard', raw: 'r', token: 't' } as unknown as ModeCode;
+    for (const tapped of ['stream', 'scoring', 'dashboard'] as const) {
+      expect(scanOutcome(tapped, { outcome: 'code', code: dashboard })).toEqual({
+        kind: 'comingSoon',
+        tapped,
+        mode: 'dashboard',
+      });
+    }
+  });
+
+  it('builds Live Stream and Remote Scoring, and not yet the Dashboard', () => {
+    expect([...BUILT_MODES]).toEqual(['stream', 'scoring']);
   });
 
   it('passes the plain outcomes through with the tapped tile', () => {

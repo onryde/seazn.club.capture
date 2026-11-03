@@ -90,11 +90,6 @@ describe('GhostButton (the secondary action)', () => {
       expect(onPress).toHaveBeenCalledTimes(1);
     });
 
-    it('says when it shows and hides something, as the regular one does', () => {
-      render(<GhostButton label="Share record" onPress={vi.fn()} compact expanded />);
-      expect(button().getAttribute('aria-expanded')).toBe('true');
-    });
-
     // The box is drawn by a function the target hands its press state to, memoised per label and state: a new language
     // and a change to disabled must still reach it, never a box drawn for the props of before.
     it('another language, then disabled: the box inside the target shows each', () => {

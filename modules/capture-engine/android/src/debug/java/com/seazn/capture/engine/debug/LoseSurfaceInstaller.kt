@@ -17,7 +17,7 @@ import com.seazn.capture.engine.PreviewSeam
 /**
  * Debug builds only, N42's device check: fills [PreviewSeam] so that, while a preview is attached,
  *
- *     adb shell am broadcast -a com.seazn.capture.debug.LOSE_SURFACE -p com.seazn.capture
+ *     adb shell am broadcast -a com.seazn.capture.debug.LOSE_SURFACE -p com.seazn.capture.dev
  *
  * lays the preview's SurfaceView out at 0 x 0 and asks nothing of its parents: the stuck state of 2026-10-26, a
  * SurfaceView with no size and no layout on its way. CapturePreviewView's relayout should mend it within two checks and

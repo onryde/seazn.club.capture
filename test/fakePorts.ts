@@ -19,6 +19,12 @@ import type {
 } from '@/services/devicePorts';
 import { createEndedNotice } from '@/services/endedNotice';
 import { createFakeCodePort, type FakeCodePort } from '@/services/fakeCodePort';
+import { createFakeRealtimePort, type FakeRealtimePort } from '@/services/fakeRealtimePort';
+import {
+  SINGLES_SEED,
+  createFakeScoringPort,
+  type FakeScoringPort,
+} from '@/services/fakeScoringPort';
 import { createMemoryKeyValueStore, type MemoryKeyValueStore } from '@/services/KeyValueStore';
 import { createLogger } from '@/services/logger';
 import { createModeStore } from '@/services/modeStore';
@@ -28,10 +34,13 @@ import type { RecordSendOutcome, RecordUploadPort } from '@/services/recordUploa
 import { createScanFlight } from '@/services/scanFlight';
 import { createRingRecord, parseRecordLine, type SessionRecord } from '@/services/sessionRecord';
 import { createStreamSettingsStore } from '@/services/streamSettingsStore';
+import { createTapQueueStore, type TapQueueStore } from '@/services/tapQueueStore';
 import type { UploadCredentialStore } from '@/services/uploadCredentialStore';
+import { createFakeLinkPort, type FakeLinkPort } from './fakeLinkPort';
 import { createFakePhotoPort, type FakePhotoPort } from './fakePhotoPort';
 import { createFakeScoringLinkPort, type FakeScoringLinkPort } from './fakeScoringLinkPort';
 import { createFakeSurfaces, type FakeSurfaces } from './fakeSurfaces';
+import { createMemoryQueueFiles, type MemoryQueueFiles } from './memoryQueueFiles';
 
 export const TEST_NOW = new Date('2026-10-03T13:00:00Z');
 
@@ -74,8 +83,27 @@ export type FakePorts = {
   readonly share: SharePort & { readonly shared: string[]; refuse(): void };
   /** `hold()`/`release()` pend a take; `calls` counts. */
   readonly photo: FakePhotoPort;
+  /** The store listing and the browser: `opened` lists each URL asked for, `refuse()` makes every later one fail. */
+  readonly link: FakeLinkPort;
   /** `hold()`/`release()` pend a request; `calls` counts. */
   readonly scoringLink: FakeScoringLinkPort;
+  /**
+   * S2: a fake server over the preview's singles match, folded by the real engine (`FakeServerControls`: revoke,
+   * goOffline, dropNextAnswer, ...), its events stamped by the phone's clock. Pass another `createFakeScoringPort(seed)`
+   * as the `scoring` override for a match of the test's own.
+   */
+  readonly scoring: FakeScoringPort;
+  /**
+   * S2: the real queue store over an in-memory folder (`queueFiles`: what was written, every call, `failNext`). A
+   * test that reopens the app builds another store over the same `queueFiles`.
+   */
+  readonly tapQueue: TapQueueStore;
+  readonly queueFiles: MemoryQueueFiles;
+  /**
+   * S2: the Realtime ping on a laptop. Nothing is said until a control is used: `restore()` joins, `drop()` loses the
+   * channel, `ping()` is another scorer's tap; `subscriptions` lists each grant and whether it is still open.
+   */
+  readonly realtime: FakeRealtimePort;
   /** The battery mode (R5): Unrestricted until `set`; `opened` counts App info's opens. */
   readonly power: FakePower;
   /** R4: no credential until `give`; the real store's own tests are `uploadCredentialStore.test.ts`. */
@@ -98,6 +126,7 @@ export function createFakePorts(
   // The real logger over the ring record: both are pure, so no double is needed (D34).
   const record = createRingRecord();
   const logger = createLogger({ record, now: () => now.getTime() });
+  const queueFiles = createMemoryQueueFiles();
   const fakes = {
     engine,
     scanner: createFakeCodeScanner(),
@@ -114,7 +143,16 @@ export function createFakePorts(
     record,
     share: fakeShare(),
     photo: createFakePhotoPort(),
+    link: createFakeLinkPort(),
     scoringLink: createFakeScoringLinkPort(),
+    // The server's events are stamped by the phone's clock (the `clock` override when a test gives one): the reconnect
+    // question counts only what was recorded since the phone's taps, and both must be on one clock.
+    scoring: createFakeScoringPort(SINGLES_SEED, {
+      stamp: () => (portOverrides.clock ?? (() => now))().getTime(),
+    }),
+    tapQueue: createTapQueueStore({ files: queueFiles, logger }),
+    queueFiles,
+    realtime: createFakeRealtimePort(),
     power: createFakePower(),
     uploadCredential: createFakeUploadCredential(),
     recordUpload: createFakeRecordUpload(),

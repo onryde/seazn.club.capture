@@ -1407,6 +1407,38 @@ race.
 
 ---
 
+### N43 — The web's record allow-list does not carry three keys the scoring runner writes
+
+**Status:** open — deferred to the next record contract change (web); owner ruling 43, 2026-11-02, is what added two of them
+**Where:** capture app · `src/hooks/scoringRunner.ts` (`stallFields`, `sayAsk`) · `src/services/recordContract.ts` (`fitLine`) · web record contract (vendored at `f0feab16c`)
+
+`fitLine` keeps only the keys in `RECORD_LINE_KEYS` (104, the web's own list) when Send record goes to Seazn, and drops
+the rest of that line's fields; Share record writes the record as it is. Three keys the scoring runner puts on a line are
+not in the list, so a record sent to Seazn has the line without them and a record shared by hand has them:
+
+- `said` on `scoring.stalled`: the rules version the server last named (the stall's reason is `rules`, `held` is the
+  one the phone sends under). Without it a sent record shows the stall and the version held but not what the server
+  wanted.
+- `foreign` and `queued` on `scoring.ask` (ruling 43): how many events another scorer made while the phone held `queued`
+  taps. `scoring.asked {answer}` is whole, since `answer` is on the list.
+
+Nothing is lost on the phone, and the line is still there in a sent record with its event name, its level and its other
+fields, so a reader sees that a question was asked and how it was answered. The counts are what a web-side reader of the
+sent record cannot see.
+
+A fourth line, `scoring.dropped {reason, count}` (review of the whole branch, 2026-11-03), needs nothing from the web's
+list: both keys are on it, so a sent record carries the line whole. It says that `count` taps left the queue without
+counting (the pad's "Not recorded" line, once however many), and why: `reason` is the server's own upper-snake word, or
+`NO_LONGER_LEGAL` when the phone's check dropped them against the ledger, or `OTHER`. The key is `reason` and not `code`
+because the scrub masks any field named `code` (`NEVER_KEYS`). Web follow-up, with the keys above: the record reader
+should know the event exists, since a record without it hid every such drop.
+
+**Deferred, not mended:** a key goes in the web's list only through a web change and `pnpm contracts:vendor`, and the
+test that holds the two lists equal (`recordContract.test.ts`) then moves with it. Asked for with the next change to the
+record contract, `said`, `foreign` and `queued` together. Until then the counts are read from a shared record.
+
+---
+
 ## P5 device spike (Android)
 
 The P5 findings, as an index. The full text, evidence and corrections for each

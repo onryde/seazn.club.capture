@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useKeepAwake } from '@/hooks/useKeepAwake';
-import { createFakePorts } from '../../test/fakePorts';
+import { createFakePorts, readRecord } from '../../test/fakePorts';
 import { pairCode } from '../../test/pairCode';
 import { savedStreamCode } from '../../test/fixtures/savedStream';
 import { wrapperFor } from '../../test/renderWithPorts';
@@ -71,5 +71,14 @@ describe('useKeepAwake', () => {
     act(() => fakes.engine.forceState({ kind: 'idle' }));
     await settle();
     expect(keepAwake.deactivateKeepAwake).toHaveBeenCalledExactlyOnceWith(TAG);
+  });
+
+  it('says so in the record when the phone refuses the hold, and stays out of the way', async () => {
+    keepAwake.activateKeepAwakeAsync.mockRejectedValueOnce(new Error('no native module'));
+    const fakes = mount(true);
+    act(() => fakes.engine.scene('paired-ready'));
+    await settle();
+    const refused = readRecord(fakes.record).filter((line) => line.event === 'keep-awake.refused');
+    expect(refused.map((line) => line.fields)).toEqual([{ action: 'hold', mode: 'stream' }]);
   });
 });
