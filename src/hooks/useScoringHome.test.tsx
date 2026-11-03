@@ -276,6 +276,38 @@ describe('useScoringRows, when it reads the saved match', () => {
     expect(hook.result.current.finish).toEqual(OVER);
   });
 
+  it('a tick that lands while a full read is still in flight does not discard that read: Finished shows', async () => {
+    vi.useFakeTimers();
+    const fakes = createFakePorts();
+    await leave(fakes, queueHolding(FAKE_MATCH, 0));
+    await leaveHistory(fakes, FAKE_MATCH, GAME_ONE_21_15);
+    // Another match is sending, so Home polls.
+    await leave(fakes, queueHolding('fx-other', 2));
+    const hook = rowsFor(fakes);
+    await act(() => vi.advanceTimersByTimeAsync(10));
+    expect(hook.result.current.finish).toBeNull();
+    // The match is decided; the return to the foreground reads again, and that read's ledger comes slowly.
+    await leaveHistory(fakes, FAKE_MATCH, DECIDED_MATCH);
+    let land: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (land = resolve));
+    const loadLedger = fakes.ports.tapQueue.loadLedger.bind(fakes.ports.tapQueue);
+    vi.spyOn(fakes.ports.tapQueue, 'loadLedger').mockImplementationOnce(async (id) => {
+      await gate;
+      return loadLedger(id);
+    });
+    act(() => fakes.foreground.leave());
+    act(() => fakes.foreground.fire());
+    await act(() => vi.advanceTimersByTimeAsync(10));
+    // A poll tick starts and lands while that read is out, and says nothing of the match.
+    const listed = vi.spyOn(fakes.ports.tapQueue, 'list');
+    await act(() => vi.advanceTimersByTimeAsync(SCORING_POLL_MS));
+    expect(listed).toHaveBeenCalled();
+    expect(hook.result.current.finish).toBeNull();
+    land();
+    await act(() => vi.advanceTimersByTimeAsync(10));
+    expect(hook.result.current.finish).toEqual(OVER);
+  });
+
   it('reads once at mount when no runner is stopping, and does not wait for one that is not there', async () => {
     const fakes = createFakePorts();
     await leave(fakes, queueHolding(FAKE_MATCH, 0));

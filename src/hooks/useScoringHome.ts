@@ -77,8 +77,9 @@ async function finishOfSaved(
  * the saved match's files are read on the tick that sees its last unsent tap gone, and on no other. A pad just left may
  * still be writing the match's last ledger and boot cache, so Home reads both again once that runner has stopped
  * (`ScoringHub.settled`). A list that fails shows the last cards (or none) and is recorded, never thrown. Only the newest
- * read is kept: one begun earlier that lands later never puts back what a newer one took away. Home re-renders only
- * when the cards would read differently.
+ * list read sets the rows and only the newest read that asked about the saved match sets the answer (a tick asks none,
+ * so it never discards a full read's answer): one begun earlier that lands later never puts back what a newer one took
+ * away. Home re-renders only when the cards would read differently.
  */
 export function useScoringRows(savedId: string | null = null): {
   readonly rows: readonly QueueRow[];
@@ -88,25 +89,36 @@ export function useScoringRows(savedId: string | null = null): {
   const ports = usePorts();
   const { tapQueue, foreground, logger } = ports;
   const [state, setState] = useState<Read>(NOTHING_READ);
-  const newest = useRef(0);
-  /** What the newest accepted read said: a list-only read keeps its answer about the saved match. */
+  /** The newest list read, of either kind: only it may set the rows. */
+  const newestList = useRef(0);
+  /** The newest read that asked about the saved match: only it may set the answer. A tick supersedes no such read. */
+  const newestAsk = useRef(0);
+  /** What the newest accepted reads said: a list-only read keeps the answer about the saved match. */
   const held = useRef<Read>(NOTHING_READ);
   const read = useCallback(
     (listOnly: boolean) => {
-      const mine = (newest.current += 1);
+      const listGen = (newestList.current += 1);
+      // A full read asks from the start, so a later one supersedes it; a tick asks only when it sees the last unsent
+      // tap gone, and then supersedes only earlier asks.
+      const fullGen = listOnly ? 0 : (newestAsk.current += 1);
       tapQueue
         .list()
         .then(async (rows) => {
-          const before = held.current;
-          const keep = listOnly && !unsentGone(before.rows, rows, savedId);
-          return { rows, finish: keep ? before.finish : await finishOfSaved(ports, savedId, rows) };
+          const asks = !listOnly || unsentGone(held.current.rows, rows, savedId);
+          const askGen = !asks || !listOnly ? fullGen : (newestAsk.current += 1);
+          const finish = asks ? await finishOfSaved(ports, savedId, rows) : null;
+          return { rows, finish, asks, askGen };
         })
         .then(
-          ({ rows, finish }) => {
-            if (mine !== newest.current) return;
-            const key = readKey(rows, finish);
-            if (key === held.current.key) return;
-            held.current = { key, rows, finish };
+          ({ rows, finish, asks, askGen }) => {
+            const now = held.current;
+            const next = {
+              rows: listGen === newestList.current ? rows : now.rows,
+              finish: asks && askGen === newestAsk.current ? finish : now.finish,
+            };
+            const key = readKey(next.rows, next.finish);
+            if (key === now.key) return;
+            held.current = { key, ...next };
             setState(held.current);
           },
           () => logger.warn('scoring.home-list-refused', {}),
