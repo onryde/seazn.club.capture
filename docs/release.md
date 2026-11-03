@@ -100,7 +100,27 @@ onryde/seazn.club.capture`).
    `1.0.0` until the first release). Each tag can be pushed once, so each
    release has its own version. The build number is the commit count, so it
    always goes up.
-2. **Tag main** once the pull request has merged:
+2. **Production serves Remote Scoring's routes** (design §7.1 and §13: "Production
+   must serve it before the app's production build scores"; "The endpoint's
+   production deploy goes with the 1.0.x release notes"). Before tagging,
+   confirm the web's production deploy answers the routes the app calls:
+   `GET /api/v1/device-link` (the bootstrap, new for this app) and
+   `GET /api/v1/public/fixtures/{id}/realtime-token` (new), with the fixture's
+   `events` and `rules` calls that go with them (design §7.2). With a real
+   production scoring link in hand, `device-link` is the quick check:
+
+   ```sh
+   curl -s -o /dev/null -w '%{http_code}\n' \
+     -H 'Authorization: Bearer <a production scoring link token>' \
+     https://seazn.club/api/v1/device-link
+   ```
+
+   It must not answer 404, which is a route production does not have. Without
+   these routes a production build reports every real scoring link as invalid
+   or offline, and no Remote Scoring match can open. If production lacks them,
+   hold the tag until the web's deploy has them.
+
+3. **Tag main** once the pull request has merged:
 
    ```sh
    git checkout main && git pull --ff-only
@@ -111,20 +131,23 @@ onryde/seazn.club.capture`).
    The workflow refuses a tag that does not match `app.json`'s version or is
    not on main.
 
-3. **Watch it.** The GitHub Action ends once EAS has the build (`--no-wait`).
+4. **Watch it.** The GitHub Action ends once EAS has the build (`--no-wait`).
    The Action's log line "Build number" names the count. The build and the
    submission run on expo.dev (`@onryde/capture`, under Builds and
    Submissions).
-4. **Test from Play.** Install it on a phone through the internal testing link.
+5. **Test from Play.** Install it on a phone through the internal testing link.
    It talks to seazn.club, so pair it with a production stream code, go live
    once, and tap Send record to Seazn once, which has only been run against
-   staging. Check the build number where the installed package reports it:
+   staging. Open one production scoring link too (Remote scoring on Home) and
+   score a rally: Remote Scoring has only been run against staging as well.
+   Check the build number where the installed package reports it:
    the version code in Play Console's App bundle explorer, or the record's
    `appVersion`, which reads `1.0.0-<count>`. Home's footer reads the app's
    embedded config, so it would show the count even if the package did not.
-5. **Promote** in Play Console: to closed testing, or to production with a
+6. **Promote** in Play Console: to closed testing, or to production with a
    staged rollout. Shipping to production is a product decision: today the
-   app is Live Stream only (AGENTS §1).
+   app is Live Stream and Remote Scoring for badminton (AGENTS §1; table
+   tennis is plan S2-2, and the Dashboard mode is S4).
 
 ## Why the build number is pinned
 
