@@ -4,6 +4,7 @@ import { asksBeforeOpening } from '@/domain/mode/otherMode';
 import { rowsKey, type MatchFinish, type QueueRow } from '@/domain/mode/scoringHome';
 import { selectEngineStatus } from '@/hooks/engineSelectors';
 import { readFinish } from '@/hooks/scoringFinish';
+import { scoringHubOf } from '@/hooks/scoringHub';
 import { dismissMatch } from '@/hooks/scoringOpen';
 import type { SaveFailed, SetStatusKey } from '@/hooks/useHome';
 import { ignoreUnexpected, type SetPanel } from '@/hooks/useCodeCheck';
@@ -27,6 +28,22 @@ const NOTHING_READ: Read = { key: '', rows: NO_ROWS, finish: null };
 /** What would change a card: the queues' key, and the saved match's result (the score names it, so the id is the key's). */
 const readKey = (rows: readonly QueueRow[], finish: MatchFinish | null): string =>
   `${rowsKey(rows)}\n#${finish === null ? '' : `${finish.fixtureId}|${finish.score}`}`;
+
+/** Whether the saved match had taps unsent in the last read and has none in this one: the sender emptied it. */
+function unsentGone(
+  before: readonly QueueRow[],
+  after: readonly QueueRow[],
+  saved: string | null,
+): boolean {
+  return saved !== null && unsentOf(before, saved) > 0 && unsentOf(after, saved) === 0;
+}
+
+function unsentOf(rows: readonly QueueRow[], saved: string): number {
+  const own = rows.find(
+    (row) => (row.kind === 'queue' ? row.queue.fixtureId : row.fixtureId) === saved,
+  );
+  return own?.kind === 'queue' ? own.queue.pending.length : 0;
+}
 
 /**
  * The saved match's files, asked whether it is over, only when nothing of it is unsent: a match with taps still going
@@ -54,11 +71,14 @@ async function finishOfSaved(
 
 /**
  * The queues on the phone's disk, for Home's Remote Scoring cards (plan S2-1 Task 10; design §5), and whether the saved
- * match `savedId` is over (owner ruling 41, 2026-11-02): read when Home mounts, on every return to the foreground and
- * after Home changes one, and every `SCORING_POLL_MS` only while some queue still has taps it can send (the background
- * sender empties it, and the card should say so). A list that fails shows the last cards (or none) and is recorded, never
- * thrown. Only the newest read is kept: one begun earlier that lands later never puts back what a newer one took away.
- * Home re-renders only when the cards would read differently.
+ * match `savedId` is over (owner ruling 41, 2026-11-02). Both are read when Home mounts, on every return to the
+ * foreground, after Home changes one, and when the saved match changes. Every `SCORING_POLL_MS`, only while some queue
+ * still has taps it can send (the background sender empties it, and the card should say so), Home reads the LIST alone;
+ * the saved match's files are read on the tick that sees its last unsent tap gone, and on no other. A pad just left may
+ * still be writing the match's last ledger and boot cache, so Home reads both again once that runner has stopped
+ * (`ScoringHub.settled`). A list that fails shows the last cards (or none) and is recorded, never thrown. Only the newest
+ * read is kept: one begun earlier that lands later never puts back what a newer one took away. Home re-renders only
+ * when the cards would read differently.
  */
 export function useScoringRows(savedId: string | null = null): {
   readonly rows: readonly QueueRow[];
@@ -69,32 +89,55 @@ export function useScoringRows(savedId: string | null = null): {
   const { tapQueue, foreground, logger } = ports;
   const [state, setState] = useState<Read>(NOTHING_READ);
   const newest = useRef(0);
-  const refresh = useCallback(() => {
-    const mine = (newest.current += 1);
-    tapQueue
-      .list()
-      .then(async (rows) => ({ rows, finish: await finishOfSaved(ports, savedId, rows) }))
-      .then(
-        ({ rows, finish }) => {
-          if (mine !== newest.current) return;
-          const key = readKey(rows, finish);
-          setState((prev) => (key === prev.key ? prev : { key, rows, finish }));
-        },
-        () => logger.warn('scoring.home-list-refused', {}),
-      );
-  }, [tapQueue, ports, savedId, logger]);
+  /** What the newest accepted read said: a list-only read keeps its answer about the saved match. */
+  const held = useRef<Read>(NOTHING_READ);
+  const read = useCallback(
+    (listOnly: boolean) => {
+      const mine = (newest.current += 1);
+      tapQueue
+        .list()
+        .then(async (rows) => {
+          const before = held.current;
+          const keep = listOnly && !unsentGone(before.rows, rows, savedId);
+          return { rows, finish: keep ? before.finish : await finishOfSaved(ports, savedId, rows) };
+        })
+        .then(
+          ({ rows, finish }) => {
+            if (mine !== newest.current) return;
+            const key = readKey(rows, finish);
+            if (key === held.current.key) return;
+            held.current = { key, rows, finish };
+            setState(held.current);
+          },
+          () => logger.warn('scoring.home-list-refused', {}),
+        );
+    },
+    [tapQueue, ports, savedId, logger],
+  );
+  const refresh = useCallback(() => read(false), [read]);
+  const tick = useCallback(() => read(true), [read]);
   useEffect(() => {
     refresh();
-    return foreground.subscribe(refresh);
-  }, [refresh, foreground]);
+    let mounted = true;
+    const again = (): void => {
+      if (mounted) refresh();
+    };
+    const stopping = savedId === null ? null : scoringHubOf(ports).settled(savedId);
+    stopping?.then(again, again);
+    const off = foreground.subscribe(refresh);
+    return () => {
+      mounted = false;
+      off();
+    };
+  }, [refresh, foreground, ports, savedId]);
   const sending = state.rows.some(
     (row) => row.kind === 'queue' && row.queue.pending.length > 0 && row.queue.dead === null,
   );
   useEffect(() => {
     if (!sending) return;
-    const timer = setInterval(refresh, SCORING_POLL_MS);
+    const timer = setInterval(tick, SCORING_POLL_MS);
     return () => clearInterval(timer);
-  }, [sending, refresh]);
+  }, [sending, tick]);
   return { rows: state.rows, finish: state.finish, refresh };
 }
 

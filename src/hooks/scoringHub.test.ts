@@ -174,6 +174,68 @@ describe('coming back to a match a runner is still saving', () => {
   });
 });
 
+describe('a match whose runner is still stopping (settled)', () => {
+  it('is none for a match nobody ran, and none once the runner’s saves have landed', async () => {
+    const fakes = await rig();
+    const hub = scoringHubOf(fakes.ports);
+    expect(hub.settled(FIXTURE)).toBeNull();
+    const handle = hub.focus(FIXTURE);
+    await flush();
+    expect(hub.settled(FIXTURE)).toBeNull();
+    handle.release();
+    await flush();
+    expect(hub.settled(FIXTURE)).toBeNull();
+  });
+
+  it('is the stop still saving after the pad left, and resolves once the last save has landed', async () => {
+    const fakes = await rig();
+    const hub = scoringHubOf(fakes.ports);
+    const handle = hub.focus(FIXTURE);
+    await flush();
+    let open: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    const real = fakes.tapQueue.saveLedger;
+    vi.spyOn(fakes.tapQueue, 'saveLedger').mockImplementation(async (id, events) => {
+      await gate;
+      return real(id, events);
+    });
+    handle.runner.dispatch({ kind: 'tap', tap: START, key: 'k1', at: AT });
+    await flush();
+    handle.release();
+    const stopping = hub.settled(FIXTURE);
+    expect(stopping).not.toBeNull();
+    let done = false;
+    void stopping?.then(() => (done = true));
+    await flush();
+    expect(done).toBe(false);
+    open();
+    await flush();
+    expect(done).toBe(true);
+    expect(hub.settled(FIXTURE)).toBeNull();
+  });
+
+  it('is asked per match: another match’s stop in flight is not this one’s', async () => {
+    const fakes = await rig();
+    const hub = scoringHubOf(fakes.ports);
+    const handle = hub.focus(FIXTURE);
+    await flush();
+    let open: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    const real = fakes.tapQueue.saveLedger;
+    vi.spyOn(fakes.tapQueue, 'saveLedger').mockImplementation(async (id, events) => {
+      await gate;
+      return real(id, events);
+    });
+    handle.runner.dispatch({ kind: 'tap', tap: START, key: 'k1', at: AT });
+    await flush();
+    handle.release();
+    expect(hub.settled(FIXTURE)).not.toBeNull();
+    expect(hub.settled('fx-never-run')).toBeNull();
+    open();
+    await flush();
+  });
+});
+
 describe('leaving a match', () => {
   it('with taps unsent hands them to a sender that sends them, never joins the channel, and lets go', async () => {
     const fakes = await rig();

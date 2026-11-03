@@ -179,7 +179,7 @@ function CurrentActions(props: Omit<ContinueProps, 'layout' | 'onClose'>) {
 }
 
 /** A finished match's words: what happened and the score in the scoreboard's lime, then its name. */
-function FinishedText({ current, layout }: { current: ScoringCurrent; layout?: CardShape }) {
+function FinishedText({ current }: { current: ScoringCurrent }) {
   const translator = useT();
   const score = current.finished?.score ?? '';
   return (
@@ -210,7 +210,7 @@ function FinishedCard(props: ContinueProps) {
   return (
     <CardFrame testID="scoring-continue" layout={layout} edge="saved">
       <PressableText layout={layout} onPress={props.onContinue}>
-        <FinishedText current={current} layout={layout} />
+        <FinishedText current={current} />
       </PressableText>
       <CardActions>
         <GhostButton

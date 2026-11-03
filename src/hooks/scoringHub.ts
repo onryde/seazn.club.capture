@@ -29,6 +29,12 @@ export type ScoringHub = {
   /** Dismiss: stops this match's runner, forgets its link, then deletes its queue, ledger and boot cache. */
   dismiss(fixtureId: string): Promise<void>;
   /**
+   * The stop of this match's runner that has not finished saving, or null when none is out: the pad has left and its last
+   * ledger and boot-cache writes may not have landed, so what a reader of the match's files saw may be one step behind
+   * (Home's Finished card reads again once this settles). Never rejects.
+   */
+  settled(fixtureId: string): Promise<void> | null;
+  /**
    * A scan is writing this match's link and code: no clean-up forgets the match until the returned release is called,
    * however many scans hold it. A second call of one release does nothing.
    */
@@ -75,10 +81,22 @@ function createScoringHub(ports: Ports): ScoringHub {
   /** Matches being dismissed: no sender is started for one, whoever lists its queue meanwhile. */
   const dismissing = new Set<string>();
 
+  /** The stops that have finished: `settled` answers null for the latest stop of a match once it is in here. */
+  const stopsDone = new WeakSet<Promise<void>>();
+
   const stopRunner = (id: string, runner: ScoringRunner): Promise<void> => {
     const done = runner.stop();
     stopping.set(id, done);
+    const mark = (): void => {
+      stopsDone.add(done);
+    };
+    done.then(mark, mark);
     return done;
+  };
+
+  const settled = (id: string): Promise<void> | null => {
+    const latest = stopping.get(id);
+    return latest === undefined || stopsDone.has(latest) ? null : latest;
   };
 
   /** Matches a scan is writing: its link lands before the code that names it, and no clean-up may take it in between. */
@@ -229,5 +247,5 @@ function createScoringHub(ports: Ports): ScoringHub {
     await ports.tapQueue.remove(id);
   };
 
-  return { focus, resume, dismiss, claim };
+  return { focus, resume, dismiss, claim, settled };
 }

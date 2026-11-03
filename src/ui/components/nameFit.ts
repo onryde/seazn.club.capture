@@ -13,6 +13,7 @@ const INNER_GAP = new RegExp(GAP);
  * one line (RN 0.86.3 `TextLayoutManager.adjustSpannableFontToFit` measures with no line cap and shrinks while the
  * lines exceed `numberOfLines`), so a name of this kind is shrunk to one line (`NameText`). A name with a gap in it
  * wraps at its gaps, as before.
+ * Limit, left as it is: Chinese, Japanese and Thai have no spaces, so a long name in them counts as one word here.
  */
 export function isOneWord(name: string): boolean {
   return !INNER_GAP.test(name.replace(EDGE_GAPS, ''));

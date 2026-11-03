@@ -1,6 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
-import { useContinueScoring, useScoringRows } from '@/hooks/useScoringHome';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { scoringHubOf } from '@/hooks/scoringHub';
+import { SCORING_POLL_MS, useContinueScoring, useScoringRows } from '@/hooks/useScoringHome';
 import { createFakePorts, readRecord } from '../../test/fakePorts';
 import { wrapperFor } from '../../test/renderWithPorts';
 import { DECIDED_MATCH, GAME_ONE_21_15 } from '../../test/badmintonLedger';
@@ -209,6 +210,111 @@ describe('useScoringRows, whether the saved match is over', () => {
     expect(hook.result.current.finish).toBeNull();
     const [row] = hook.result.current.rows;
     expect(row?.kind === 'queue' ? row.queue.pending.length : -1).toBe(2);
+  });
+});
+
+// Minor review items on ruling 41's card: the poll tick refreshes the list only (the saved match's files are read on
+// mount, on a return to the foreground and when the saved match changes), except on the tick that sees its last unsent
+// tap gone; and a decision made just before leaving the pad is read once the runner that was saving it has stopped.
+describe('useScoringRows, when it reads the saved match', () => {
+  const OVER = { fixtureId: FAKE_MATCH, score: '21–15, 21–18' };
+  const linkReads = (read: { mock: { calls: unknown[][] } }): unknown[] =>
+    read.mock.calls.map(([key]) => key).filter((key) => String(key).startsWith('scoring.link.'));
+  const rowsFor = (fakes: ReturnType<typeof createFakePorts>) =>
+    renderHook(() => useScoringRows(FAKE_MATCH), { wrapper: wrapperFor(fakes) });
+
+  afterEach(() => vi.useRealTimers());
+
+  it('reads the list on every tick and the saved match’s files on none: a decided match stays over', async () => {
+    vi.useFakeTimers();
+    const fakes = createFakePorts();
+    await leave(fakes, queueHolding(FAKE_MATCH, 0));
+    await leaveHistory(fakes, FAKE_MATCH, DECIDED_MATCH);
+    // Another match is sending, so Home polls.
+    await leave(fakes, queueHolding('fx-other', 2));
+    const read = vi.spyOn(fakes.ports.kv, 'get');
+    const hook = rowsFor(fakes);
+    await act(() => vi.advanceTimersByTimeAsync(10));
+    expect(hook.result.current.finish).toEqual(OVER);
+    const atMount = linkReads(read).length;
+    expect(atMount).toBeGreaterThan(0);
+    const listed = vi.spyOn(fakes.ports.tapQueue, 'list');
+    await act(() => vi.advanceTimersByTimeAsync(3 * SCORING_POLL_MS));
+    expect(listed).toHaveBeenCalledTimes(3);
+    expect(linkReads(read)).toHaveLength(atMount);
+    expect(hook.result.current.finish).toEqual(OVER);
+  });
+
+  it('reads them on the tick that sees the last unsent tap gone, and on no tick after it', async () => {
+    vi.useFakeTimers();
+    const fakes = createFakePorts();
+    await leave(fakes, queueHolding(FAKE_MATCH, 2));
+    await leaveHistory(fakes, FAKE_MATCH, DECIDED_MATCH);
+    const hook = rowsFor(fakes);
+    await act(() => vi.advanceTimersByTimeAsync(10));
+    expect(hook.result.current.finish).toBeNull();
+    await leave(fakes, queueHolding(FAKE_MATCH, 0));
+    await act(() => vi.advanceTimersByTimeAsync(SCORING_POLL_MS));
+    expect(hook.result.current.finish).toEqual(OVER);
+  });
+
+  it('reads them again once a runner that was saving the match has stopped: a decision just before the pad was left', async () => {
+    const fakes = createFakePorts();
+    await leave(fakes, queueHolding(FAKE_MATCH, 0));
+    await leaveHistory(fakes, FAKE_MATCH, GAME_ONE_21_15);
+    let stopped: () => void = () => undefined;
+    const stopping = new Promise<void>((resolve) => (stopped = resolve));
+    vi.spyOn(scoringHubOf(fakes.ports), 'settled').mockReturnValue(stopping);
+    const hook = rowsFor(fakes);
+    await act(async () => undefined);
+    // Home first looked while the runner's last writes were still out: the match reads as in play.
+    expect(hook.result.current.finish).toBeNull();
+    await leaveHistory(fakes, FAKE_MATCH, DECIDED_MATCH);
+    await act(async () => undefined);
+    expect(hook.result.current.finish).toBeNull();
+    await act(async () => stopped());
+    expect(hook.result.current.finish).toEqual(OVER);
+  });
+
+  it('reads once at mount when no runner is stopping, and does not wait for one that is not there', async () => {
+    const fakes = createFakePorts();
+    await leave(fakes, queueHolding(FAKE_MATCH, 0));
+    await leaveHistory(fakes, FAKE_MATCH, DECIDED_MATCH);
+    const read = vi.spyOn(fakes.ports.kv, 'get');
+    const settled = vi.spyOn(scoringHubOf(fakes.ports), 'settled');
+    const hook = rowsFor(fakes);
+    await act(async () => undefined);
+    expect(hook.result.current.finish).toEqual(OVER);
+    expect(settled).toHaveBeenCalledExactlyOnceWith(FAKE_MATCH);
+    expect(linkReads(read)).toHaveLength(1);
+  });
+
+  it('stops listening for a return to the foreground once Home has gone', async () => {
+    const fakes = createFakePorts();
+    await leave(fakes, queueHolding(FAKE_MATCH, 0));
+    const hook = rowsFor(fakes);
+    await act(async () => undefined);
+    const listed = vi.spyOn(fakes.ports.tapQueue, 'list');
+    hook.unmount();
+    act(() => fakes.foreground.leave());
+    act(() => fakes.foreground.fire());
+    await act(async () => undefined);
+    expect(listed).not.toHaveBeenCalled();
+  });
+
+  it('a runner that stops after Home has gone changes nothing and throws nothing', async () => {
+    const fakes = createFakePorts();
+    await leave(fakes, queueHolding(FAKE_MATCH, 0));
+    await leaveHistory(fakes, FAKE_MATCH, DECIDED_MATCH);
+    let stopped: () => void = () => undefined;
+    const stopping = new Promise<void>((resolve) => (stopped = resolve));
+    vi.spyOn(scoringHubOf(fakes.ports), 'settled').mockReturnValue(stopping);
+    const hook = rowsFor(fakes);
+    await act(async () => undefined);
+    const listed = vi.spyOn(fakes.ports.tapQueue, 'list');
+    hook.unmount();
+    await act(async () => stopped());
+    expect(listed).not.toHaveBeenCalled();
   });
 });
 

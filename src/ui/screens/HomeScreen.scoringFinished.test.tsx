@@ -4,6 +4,7 @@ import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
 import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
+import { scoringHubOf } from '@/hooks/scoringHub';
 import { createTapQueueStore } from '@/services/tapQueueStore';
 import { STORE_KEYS } from '@/services/modeStore';
 import { colour, layout } from '@/ui/theme/tokens';
@@ -254,6 +255,34 @@ describe('a decided match whose taps are not all sent', () => {
     expect(within(card()).getByText('2 taps not sent — tell the organiser')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /^Close/ })).toBeNull();
     expect(screen.getByRole('button', { name: 'Dismiss Match 4' })).toBeTruthy();
+  });
+});
+
+// A decision made just before leaving the pad lands in the ledger and boot cache after Home has first looked, since the
+// pad's unmount does not wait for the runner's last writes. Home reads again once the hub says the runner that was
+// saving the match has stopped (`ScoringHub.settled`; the hub's own tests hold a real runner's save to prove the
+// signal, here it is held by hand).
+describe('a pad just left', () => {
+  it('reads as Continue while the runner is still writing the decision, and Finished once it has stopped', async () => {
+    let stopped: () => void = () => undefined;
+    const stopping = new Promise<void>((resolve) => (stopped = resolve));
+    const home = await homeWith(
+      async (fakes) => {
+        await leave(fakes, queueHolding(FAKE_MATCH, 0));
+        await leaveHistory(fakes, FAKE_MATCH, GAME_ONE_21_15);
+        vi.spyOn(scoringHubOf(fakes.ports), 'settled').mockReturnValue(stopping);
+      },
+      { kvSeed: inMatch() },
+    );
+    expect(screen.queryByText(/Finished/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Forget' })).toBeTruthy();
+    // The runner's last write lands, then it has stopped.
+    await leaveHistory(home, FAKE_MATCH, DECIDED_MATCH);
+    await act(async () => stopped());
+    await screen.findByText(FINISHED);
+    expect(closeButton()).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Forget' })).toBeNull();
   });
 });
 
