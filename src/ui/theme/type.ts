@@ -210,6 +210,93 @@ export const typeScale = {
     lineHeight: 22,
     color: colour.ink,
   },
+  /**
+   * The sides in Match details (owner, 2026-11-01, option A: "we need a proper format"): the match label's face, mixed
+   * case as typed, a step up, since the card is read at arm's length before the match and has the room. Partners wrap,
+   * never cut; the doubles sample is one line at 320 in the card (padFit.test.ts).
+   */
+  matchName: {
+    fontFamily: font.displaySemibold,
+    fontSize: 26,
+    lineHeight: 30,
+    color: colour.ink,
+  },
+  /**
+   * The scoring pad's score (S2): the LED digits read across a court, so the most size a half can hold. Barlow
+   * Condensed 700 in lime, as the elapsed clock (the web pad's `.pad-led`), and `tabular-nums` so a 9 becoming 10 does
+   * not jump. padFit.test.ts holds it, the names and the games line in a half on a small phone.
+   */
+  /**
+   * The score a step up (owner ruling 14, 2026-10-31: "score centred and larger"), for a half tall enough to hold it
+   * (`scoreRole.ts`): the owner's phone without the preview row. The controller's size; the same face, tabular, lime.
+   */
+  scoreLarge: {
+    fontFamily: font.displayBold,
+    fontSize: 128,
+    lineHeight: 132,
+    fontVariant: ['tabular-nums'],
+    color: colour.lime,
+  },
+  score: {
+    fontFamily: font.displayBold,
+    fontSize: 96,
+    lineHeight: 100,
+    fontVariant: ['tabular-nums'],
+    color: colour.lime,
+  },
+  /**
+   * A finished game's score in its box on the pad's bottom row (owner ruling 16, 2026-10-31: a TV scoreboard's boxes):
+   * the score's face, tabular so the boxes keep one width, at `state`'s size on a 16 dp line, so a box and its two
+   * hairlines are the bottom row's own 18 (`halfNeeds`). Its colour is the box's: lime for a game won.
+   */
+  periodScore: {
+    fontFamily: font.displayBold,
+    fontSize: 15,
+    lineHeight: 16,
+    fontVariant: ['tabular-nums'],
+  },
+  /**
+   * The games tally in the pad's header (owner, 2026-11-01: "0:0 with lime light in place of preview"; larger, owner,
+   * 2026-11-02, into the room the badge gave back): the score's face, lime and tabular, at 46 on the header's own 48 dp
+   * line, so "1:0" (58.5 dp) stands whole in the 72 dp the row leaves it at 320 and the header stays one 48 dp row
+   * (padFit.test.ts: the row's height, not its room, is what stops it growing).
+   */
+  tally: {
+    fontFamily: font.displayBold,
+    fontSize: 46,
+    lineHeight: 48,
+    fontVariant: ['tabular-nums'],
+    color: colour.lime,
+  },
+  /**
+   * The count in the pad's send badge (owner, 2026-11-02): the score's face, tabular so 9 to 10 does not jump, at 18 on
+   * a 20 dp line. "99+" (25.8 dp) is the widest it draws (padFit.test.ts). Cream; the badge sets caution in trouble.
+   */
+  syncCount: {
+    fontFamily: font.displayBold,
+    fontSize: 18,
+    lineHeight: 20,
+    fontVariant: ['tabular-nums'],
+    color: colour.ink,
+  },
+  /** The score a step down, for a half too short for `score` (`scoreRole.ts` picks it from the half's own height). */
+  scoreCompact: {
+    fontFamily: font.displayBold,
+    fontSize: 64,
+    lineHeight: 68,
+    fontVariant: ['tabular-nums'],
+    color: colour.lime,
+  },
 } satisfies Record<string, TextStyle>;
 
 export type TypeRole = keyof typeof typeScale;
+
+/**
+ * The most a phone's font scale may grow a role's text, for the roles set in a room measured at their own size (review
+ * minor 4 of round 2, 2026-11-02). Every other role follows the phone's scale, as the rest of the app does.
+ * - `tally`: "1:0" never shrinks and has 72 dp at 320 beside Rules, History and the badge; at 1.15 it is 67.2 dp, where a 1.3
+ *   scale would make it 76.1 and push the row out of the screen (`padFit.test.ts`).
+ * - `syncCount`: the badge's slot is 56 dp and the widest count, "99+", is 55.8 in it, so it does not grow at all. The
+ *   badge's words are the screen reader's and are not drawn, so nothing is lost to a larger setting.
+ */
+export const maxFontScale: Partial<Record<TypeRole, number>> = { tally: 1.15, syncCount: 1 };

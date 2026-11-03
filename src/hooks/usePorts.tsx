@@ -21,14 +21,18 @@ import type { EndedNotice } from '@/services/endedNotice';
 import type { KeyValueStore } from '@/services/KeyValueStore';
 import type { Logger } from '@/services/logger';
 import type { ModeStore } from '@/services/modeStore';
+import type { LinkPort } from '@/services/linkPort';
 import type { PhotoPort } from '@/services/photoPort';
 import type { ProbeFlight } from '@/services/probeFlight';
+import type { RealtimePort } from '@/services/realtimePort';
 import type { RecordUploadPort } from '@/services/recordUploadPort';
 import type { RecordSendFlight } from '@/services/recordSendFlight';
 import type { ScanFlight } from '@/services/scanFlight';
 import type { ScoringLinkPort } from '@/services/scoringLinkPort';
+import type { ScoringPort } from '@/services/scoringPort';
 import type { SessionRecord } from '@/services/sessionRecord';
 import type { StreamSettingsStore } from '@/services/streamSettingsStore';
+import type { TapQueueStore } from '@/services/tapQueueStore';
 import type { Surfaces } from '@/services/surfaces';
 import type { UploadCredentialStore } from '@/services/uploadCredentialStore';
 
@@ -76,8 +80,16 @@ export type Ports = {
   readonly share: SharePort;
   /** Spec §8: a still to the gallery (one of the two calls that answer, Q2). */
   readonly photo: PhotoPort;
+  /** S2: a page outside the app: the store's listing and a scoring link in the browser (plan Task 9). */
+  readonly link: LinkPort;
   /** Spec §10: the match's Remote scoring link (the second call that answers). */
   readonly scoringLink: ScoringLinkPort;
+  /** S2: Remote scoring's calls to the web (bootstrap, ledger, rules, append, realtime grant), plain fetch. */
+  readonly scoring: ScoringPort;
+  /** S2: the taps a phone has made and the server has not yet accepted, one file per match; no secret in it. */
+  readonly tapQueue: TapQueueStore;
+  /** S2: the "something changed" ping from the server, a private Realtime channel; down means poll (plan Task 8). */
+  readonly realtime: RealtimePort;
   /** R5: the battery state and the app's settings page, Android only. */
   readonly power: PowerPort;
   /** R4: the credential Send record to Seazn may use (P10: inert while its switch is off). */

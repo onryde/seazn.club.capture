@@ -3,6 +3,7 @@ import { StyleSheet, View, type LayoutChangeEvent, type ViewProps } from 'react-
 import { SIDES, splitMatchLabel } from '@/domain/session/matchLabel';
 import { selectLabel } from '@/hooks/engineSelectors';
 import { useEngineSelector } from '@/hooks/useCaptureEngine';
+import { NameText } from '@/ui/components/NameText';
 import { Text } from '@/ui/components/Text';
 import { colour, layout } from '@/ui/theme/tokens';
 
@@ -90,14 +91,14 @@ const SideRow = memo(function SideRow({
 /** One side, or the block: one size, at most 2 lines, an ellipsis beyond (C2). */
 const Name = memo(function Name({ text }: { readonly text: string }) {
   return (
-    <Text
+    <NameText
       variant="label"
-      numberOfLines={layout.labelSideLines}
+      lines={layout.labelSideLines}
       style={styles.name}
       testID="match-label-line"
     >
       {text}
-    </Text>
+    </NameText>
   );
 });
 

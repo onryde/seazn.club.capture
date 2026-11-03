@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
 import { selectStateKind } from '@/hooks/engineSelectors';
 import { useEngineSelector } from '@/hooks/useCaptureEngine';
+import { holdScreenOn } from '@/hooks/keepAwake';
+import { usePorts } from '@/hooks/usePorts';
 
 const TAG = 'seazn-capture-session';
 
@@ -21,29 +23,15 @@ const TAG = 'seazn-capture-session';
  * interrupt capture. Unverifiable without a device: whether the override
  * survives iOS Low Power Mode, or OEM battery savers on Android.
  *
- * The module is loaded dynamically so a missing native module degrades to "the
- * screen may dim" rather than taking the app down at import.
+ * The hold itself, its dynamic import and its warning when refused are
+ * `holdScreenOn`'s, shared with the scoring pad's `useScreenAwake`.
  */
 export function useKeepAwake(): void {
   const stateKind = useEngineSelector(selectStateKind);
   const shouldStayAwake = stateKind !== 'idle' && stateKind !== 'ended';
-
-  useEffect(() => {
-    if (!shouldStayAwake) return;
-    let cancelled = false;
-
-    void import('expo-keep-awake')
-      .then((module) => {
-        if (!cancelled) return module.activateKeepAwakeAsync(TAG);
-        return undefined;
-      })
-      .catch(() => undefined);
-
-    return () => {
-      cancelled = true;
-      void import('expo-keep-awake')
-        .then((module) => module.deactivateKeepAwake(TAG))
-        .catch(() => undefined);
-    };
-  }, [shouldStayAwake]);
+  const { logger } = usePorts();
+  useEffect(
+    () => (shouldStayAwake ? holdScreenOn(TAG, 'stream', logger) : undefined),
+    [shouldStayAwake, logger],
+  );
 }

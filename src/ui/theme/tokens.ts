@@ -73,7 +73,7 @@ export const plateInk = colour.ground;
  * A pressed control (the controller's ruling, D3 fixes Batch 17, 2026-10-13; the owner has not ruled). The owner held
  * the sliders glyph on phone A and saw nothing change until it opened on lift: a 15% dim of a hairline on night. An
  * outlined control (IconButton, GhostButton) takes `colour.pressFill` and its edge goes cream (`ink`) while held, and its
- * box never moves; the Home tile's gear, which has no edge, takes the fill alone. Button's lime plate would step to a
+ * box never moves; a Settings row, which has no edge of its own, takes the fill alone. Button's lime plate would step to a
  * darker lime, which the palette does not have, so it dims to `plate`, and by the same ruling so does a Home tile; the
  * link, which is already underlined, dims to `link`.
  */
@@ -216,6 +216,11 @@ const base = {
   stageLines: 1,
   /** Board "Settings, landscape": the screen's vertical padding (the board's 12, under the portrait 16). */
   settingsPadV: 12,
+  /**
+   * The app Settings' row (owner, 2026-11-02: "consistent row height, generous touch targets"): every row of a group is at
+   * least this tall, and taller only for a helper line or a label that wraps. The Continue plate's height, 8 over `touch`.
+   */
+  settingsRow: 56,
   /** Spec §7: Home's title is the Seazn Club night logo, 200 × 70 (its 800 × 280 file's own 20:7). */
   logo: { width: 200, height: 70 },
   /** Q2 (owner, 2026-10-06): the logo is 160 × 56 in landscape, the board's "Home, landscape". */
@@ -301,10 +306,88 @@ const base = {
   switchInset: 3,
   /** Board "Settings": the off switch's lilac outline (measured 1.4 dp; drawn inside the 40 x 24, so on and off are one size). */
   switchBorder: 1.5,
+  /**
+   * The language list's LED (the app's Settings, owner 2026-11-02): a 22 dp ring, outlined as the off switch's track is,
+   * holding a 12 dp lime dot for the chosen language, as the switch's lime is lit when on.
+   */
+  radioRing: 22,
+  radioLed: 12,
   /** Board "Settings": a "Controls on the" segment is at least 66 dp wide (the board's Left and Right are 67 and 66). */
   segmentMin: 66,
   /** A segment's side padding: the board's English segments sit on the 66 floor, so this only matters to longer words (Linkerkant). */
   segmentPadX: 12,
+  /**
+   * The scoring pad (S2): each half's side bar at its left edge, lit lime on the serving side and lilac on the other
+   * (owner, 2026-11-02; the match label's C2 bars are lime and lilac by side).
+   */
+  padSideBar: 4,
+  /** A half's names as typed: at most this many lines of `label`, then an ellipsis. */
+  padNameLines: 2,
+  /**
+   * A name with no space in it is shrunk to one line rather than broken inside its word (device finding, 2026-11-02):
+   * the least it shrinks to, as a fraction of its size (0.6 of `label`'s 20 is 12 dp; a 24-letter word fits the Start
+   * screen's button at 0.63, nameFit.test.ts). iOS keeps to it and ends the name with an ellipsis beyond. React Native
+   * 0.86.3 on Android drops the prop (it sends `minimumFontSize` only, which JS cannot set) and shrinks to its own
+   * 4 dp, so there the floor holds for every name that fits above it.
+   */
+  nameFloor: 0.6,
+  /**
+   * A finished game's box in a half's bottom row (owner ruling 16): at least this wide, so a 9 and a 21 make boxes of
+   * one width and the two halves' columns line up. Two tabular digits of `periodScore`, its padding and its hairlines
+   * (padFit.test.ts).
+   */
+  padPeriodBox: 26,
+  /**
+   * The pad's strip: each slot's text takes this many lines of `metricUnit`. One (owner, 2026-10-31: "Yes to the 8
+   * dp"): with the court on the serving plate the strip has two slots, every fact fits one line at 320 dp in four
+   * languages, and each half gains 8 dp (padFit.test.ts).
+   */
+  padStripLines: 1,
+  /**
+   * The pad's last-tap sentence and a refusal in its place: this many lines of `control`, then an ellipsis. Three, not
+   * two: beside Dutch's "Ongedaan maken" two lines cut most refusals even at 360 (padFit.test.ts measures every one).
+   */
+  padLineLines: 3,
+  /**
+   * The send badge's slot in the pad header's right end, before Rules and History (owner ruling 20, 2026-10-31; the
+   * order, owner 2026-11-03; the owner's 2026-11-02 badge: an arrow and the count, no words): the widest badge, two
+   * hairlines of the heavier outline, its padding and the arrow's box and "99+" in `syncCount` (padFit.test.ts). Fixed, so
+   * the tally's room stays the same as the badge comes and goes; the games tally takes the rest of the row.
+   */
+  padSyncBox: 56,
+  /** The badge's arrow: drawn at this size in its 24-unit box, the arrow itself a little over half of it. */
+  padSyncGlyph: 18,
+  /** A History row's sentence (owner ruling 21): at most this many lines of `control` (padFit.test.ts). */
+  padHistoryLines: 2,
+  /**
+   * A History row's right column: the score, who recorded it and "Undone", right-aligned, a word wrapping to a second
+   * line where it is wider (fr _Un autre marqueur_, nl _Ongedaan gemaakt_), never cut. The sentence keeps two lines in
+   * what is left at 320 (padFit.test.ts).
+   */
+  padHistorySide: 88,
+  /** A tool's label: this many lines of `actionSecondary` (padFit.test.ts: every label, four languages, at 320). */
+  padToolLines: 2,
+  /**
+   * The Start screen's two sides (owner, 2026-11-01, option A): each button's least width. Two of them and their gap
+   * fit the pad's column at 320, so they stand side by side there and wider, and stack only on a narrower one; a name
+   * wraps inside its button (padFit.test.ts).
+   */
+  padTossMin: 120,
+  /** A side's button on the Start screen: a big target, half again the touch height and more. */
+  padTossHeight: 64,
+  /**
+   * Match details' rules table (owner, 2026-11-01, option A): the label column is as wide as the widest label in the
+   * operator's language, and at most this. Spanish's widest (_Cambio de lado_, 108) keeps one line; French's and
+   * Dutch's (_Changement de côté_, _Van kant wisselen_) wrap to two, so each value keeps 124 dp at 320 (padFit.test.ts).
+   */
+  padRuleLabelMax: 112,
+  /**
+   * The match plate's widest box (round 8 review; the match card, owner, 2026-11-01). A long match id (NCBA-2026-0417
+   * is a 123 dp plate) would leave the header's text 120.8 at 320 on the Not started card, and the competition's longest
+   * word (NORTHAMPTONSHIRE, 128.9) would break mid-word. Capped, the text keeps 132; a longer id wraps inside the plate,
+   * where it has 94 dp a line (padFit.test.ts).
+   */
+  padMatchPlateMax: 112,
 } as const;
 
 /** The cells the controls half's width is made of (`base` holds the shipped ones). */

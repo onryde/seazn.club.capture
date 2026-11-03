@@ -3,9 +3,9 @@ import type { Mode, ModeCode, Recognition } from '@/domain/mode/Mode';
 /**
  * Modes that exist in this build. A code for any other mode is recognised
  * and named, then told "coming soon" (spec decision 10) — never opened, never
- * handed to the browser. S2 adds 'scoring', S4 'dashboard'.
+ * handed to the browser. S4 adds 'dashboard'.
  */
-export const BUILT_MODES: readonly Mode[] = ['stream'];
+export const BUILT_MODES: readonly Mode[] = ['stream', 'scoring'];
 
 export type ScanOutcome =
   | { readonly kind: 'open'; readonly code: ModeCode }

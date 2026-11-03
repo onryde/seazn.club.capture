@@ -10,7 +10,13 @@ import { describe, expect, it } from 'vitest';
  * a seam: one mounted in the layout and not here (or the reverse) is tested
  * nowhere, or shipped untested. Task 30 added `useEngineSync` to both.
  */
-const SHELL_HOOKS = ['useReopenGate(', 'useEngineFollow()', 'useEngineSync()', 'useProtectCode()'];
+const SHELL_HOOKS = [
+  'useReopenGate(',
+  'useEngineFollow()',
+  'useEngineSync()',
+  'useProtectCode()',
+  'useScoringBackground()',
+];
 
 const root = join(__dirname, '..');
 
@@ -35,12 +41,63 @@ function bodyOf(source: string, name: string): string {
 }
 const body = (file: string, name: string) => bodyOf(readFileSync(join(root, file), 'utf8'), name);
 
+/** A file's code with its comments gone, by the compiler's printer (as `bodyOf`): a hook in a comment is not mounted. */
+function codeOf(source: string): string {
+  const file = ts.createSourceFile(
+    'screen.tsx',
+    source,
+    ts.ScriptTarget.Latest,
+    false,
+    ts.ScriptKind.TSX,
+  );
+  return ts.createPrinter({ removeComments: true }).printFile(file);
+}
+const code = (file: string) => codeOf(readFileSync(join(root, file), 'utf8'));
+
+/** `import { A, B } from '@/ui/screens/File'` in a file's code: the screen files it draws through, by name. */
+const SCREEN_IMPORT = /import\s*\{([^}]*)\}\s*from\s*['"]@\/ui\/screens\/([A-Za-z]+)['"]/g;
+function screensImported(source: string): Map<string, string> {
+  const named = new Map<string, string>();
+  for (const match of source.matchAll(SCREEN_IMPORT)) {
+    for (const name of (match[1] ?? '').split(',')) {
+      if (name.trim() !== '')
+        named.set(name.trim().replace(/^type\s+/, ''), `src/ui/screens/${match[2]}.tsx`);
+    }
+  }
+  return named;
+}
+
+/**
+ * Every file a sport draws through, from the screens `scoringScreens.ts` names: the screen, and the screens it imports,
+ * followed. The states every sport shares (`ScoringStateScreen`) are the generic ones, pinned on their own.
+ */
+const GENERIC_SCREENS = ['src/ui/screens/ScoringStateScreen.tsx'];
+function sportScreenFiles(): readonly string[] {
+  const table = code('src/ui/screens/scoringScreens.ts');
+  const imported = screensImported(table);
+  const entries = [...table.matchAll(/new Map[^[]*\[([\s\S]*?)\]\);/g)].flatMap((map) =>
+    [...(map[1] ?? '').matchAll(/\[[^,\]]+,\s*([A-Za-z]+)\s*\]/g)].map((entry) => entry[1] ?? ''),
+  );
+  const seen = new Set<string>();
+  const visit = (file: string) => {
+    if (seen.has(file) || GENERIC_SCREENS.includes(file)) return;
+    seen.add(file);
+    for (const next of screensImported(code(file)).values()) visit(next);
+  };
+  for (const name of entries) {
+    const file = imported.get(name);
+    if (file === undefined) throw new Error(`scoringScreens.ts names ${name} with no import`);
+    visit(file);
+  }
+  return [...seen];
+}
+
 describe('the test shell matches the app shell', () => {
   const shell = body('app/_layout.tsx', 'Shell');
   const routed = body('test/routedApp.tsx', 'RoutedApp');
 
-  it('checks four shell hooks (PV12: zero is a failure)', () => {
-    expect(SHELL_HOOKS).toHaveLength(4);
+  it('checks five shell hooks (PV12: zero is a failure)', () => {
+    expect(SHELL_HOOKS).toHaveLength(5);
   });
 
   it('does not count a hook that is only in a comment', () => {
@@ -56,7 +113,13 @@ describe('the test shell matches the app shell', () => {
       '}',
     ].join('\n');
     const shell = bodyOf(source, 'Shell');
-    expect(SHELL_HOOKS.map((hook) => shell.includes(hook))).toEqual([true, true, false, false]);
+    expect(SHELL_HOOKS.map((hook) => shell.includes(hook))).toEqual([
+      true,
+      true,
+      false,
+      false,
+      false,
+    ]);
   });
 
   it.each(SHELL_HOOKS)('mounts %s in both', (hook) => {
@@ -167,8 +230,8 @@ describe('the idle dim is mounted by Live Stream only', () => {
 /**
  * M3 of the Batch 5 review: `routedApp` maps each route to its screen by hand, so the route files Expo Router reads
  * are rendered by no test. Every path the navigation port moves to has its file (a renamed file is "Unmatched
- * route" on the phone), and each Settings route renders its own variant: Home's `from="home"` (no Diagnostics, Back
- * to Home), Live Stream's the default.
+ * route" on the phone), and each Settings route renders its own screen: the app's Settings from Home's gear (no
+ * Diagnostics, Back to Home), Live Stream's own (the default of `SettingsScreen`).
  */
 const PATHS_OF = /const PATH\b[^=]*=\s*\{([^}]*)\}/;
 
@@ -189,8 +252,8 @@ describe('every path the navigation moves to has its route file, and each Settin
     (match) => match[1] ?? '',
   );
 
-  it('reads four paths from the port (anti-vacuity)', () => {
-    expect(paths).toEqual(['/', '/stream', '/stream/settings', '/stream-settings']);
+  it('reads five paths from the port (anti-vacuity)', () => {
+    expect(paths).toEqual(['/', '/stream', '/stream/settings', '/settings', '/scoring']);
   });
 
   it('finds a file for each', () => {
@@ -198,14 +261,92 @@ describe('every path the navigation moves to has its route file, and each Settin
       'app/index.tsx',
       'app/stream/index.tsx',
       'app/stream/settings.tsx',
-      'app/stream-settings.tsx',
+      'app/settings.tsx',
+      'app/scoring/index.tsx',
     ]);
   });
 
-  it('renders Stream Settings from Home as the Home variant, and Live Stream’s as the default', () => {
-    expect(body('app/stream-settings.tsx', 'HomeStreamSettingsRoute')).toMatch(
-      /return <SettingsScreen from="home" ?\/>;/,
+  /**
+   * Remote Scoring (plan S2-1 Tasks 10 and 11): `routedApp` renders the route's screens by hand, so the route's own jobs
+   * are read here. It shows the saved match, drawn by its sport's own screen, else it goes Home. It holds nothing on:
+   * whether the screen stays on is the screens' (owner ruling 9, applied 2026-11-02), pinned below.
+   */
+  it('shows the saved match, else goes Home through the port, and does not hold the screen on itself', () => {
+    const route = body('app/scoring/index.tsx', 'ScoringRoute');
+    expect(route).toMatch(
+      /if \(fixtureId === null\)\s*navigation\.go\(["']home["']\);[\s\S]*return <ScoringMatchScreen fixtureId=\{fixtureId\} ?\/>;/,
     );
+    const source = code('app/scoring/index.tsx');
+    expect(source).not.toContain('useScreenAwake');
+    // A <Redirect> moves the router behind the port's back, which then believes it is still on /scoring.
+    expect(source).not.toContain('Redirect');
+  });
+
+  /**
+   * The screen is held on by a sport's pad and by the wait before it, and by nothing else: the states that need a person to
+   * act let it sleep. A sport's pad mounts one `KeepScreenOn`, behind `holdsScreen(card)` so the cards that end the scorer's
+   * part (view only, a dead link) let it go (the controller's ruling, 2026-11-02). Which files are a sport's is read from
+   * the route's table (`scoringScreens.ts`), so a second sport's pad is held to it without this test being edited.
+   */
+  it('reads the sport screens from the route’s table (anti-vacuity)', () => {
+    expect(sportScreenFiles()).toEqual([
+      'src/ui/screens/BadmintonMatchScreen.tsx',
+      'src/ui/screens/BadmintonPadScreen.tsx',
+    ]);
+  });
+
+  /**
+   * A pad is a sport screen that draws a `PadView` (it imports `padView`, whose `card` is what `holdsScreen` reads); the
+   * file that only picks between a pad and the shared states does not. Each pad mounts exactly one `KeepScreenOn`, behind
+   * `holdsScreen(view.card)`: a pad that holds the screen under a terminal card, or reads another card than its own, fails.
+   * No file is filtered out for already mounting it, and none is named.
+   */
+  const PADVIEW_IMPORT = /from\s*['"]@\/domain\/scoring\/padView['"]/;
+  const isPad = (file: string) => PADVIEW_IMPORT.test(code(file));
+
+  it('finds the pads among the sport screens, and a picker that is none (anti-vacuity)', () => {
+    const files = sportScreenFiles();
+    expect(files.filter(isPad).length).toBeGreaterThan(0);
+    expect(files.filter((file) => !isPad(file)).length).toBeGreaterThan(0);
+  });
+
+  it('mounts KeepScreenOn once in every pad, behind holdsScreen(view.card)', () => {
+    const pads = sportScreenFiles().filter(isPad);
+    expect(pads.length).toBeGreaterThan(0);
+    for (const file of pads) {
+      const source = code(file);
+      expect(source.match(/<KeepScreenOn\b/g), file).toHaveLength(1);
+      expect(
+        source.match(/\{holdsScreen\(view\.card\) \? <KeepScreenOn \/> : null\}/g),
+        file,
+      ).toHaveLength(1);
+    }
+  });
+
+  it('mounts it nowhere else in a sport’s screens: the picker between a pad and the states holds nothing', () => {
+    for (const file of sportScreenFiles().filter((one) => !isPad(one)))
+      expect(code(file), file).not.toContain('KeepScreenOn');
+  });
+
+  it('mounts KeepScreenOn in the state screen only while loading', () => {
+    const states = code('src/ui/screens/ScoringStateScreen.tsx');
+    expect(states).toMatch(/\{state\.kind === ['"]loading['"] \? <KeepScreenOn \/> : null\}/);
+    expect(states.match(/KeepScreenOn \/>/g)).toHaveLength(1);
+  });
+
+  /**
+   * The mirror in `routedApp` is the route file's function, hook for hook and return for return, run over the router
+   * double through the navigation port. A hook in one and not the other fails here.
+   */
+  it('has the routed mirror run what the route file runs', () => {
+    const asMirror = body('app/scoring/index.tsx', 'ScoringRoute')
+      .trim()
+      .replace('function ScoringRoute(', 'function ScoringRouted(');
+    expect(body('test/routedApp.tsx', 'ScoringRouted').trim()).toBe(asMirror);
+  });
+
+  it('renders the app’s Settings from Home’s gear as its own screen, and Live Stream’s as the default', () => {
+    expect(body('app/settings.tsx', 'AppSettingsRoute')).toMatch(/return <AppSettingsScreen ?\/>;/);
     expect(body('app/stream/settings.tsx', 'StreamSettingsRoute')).toMatch(
       /return <SettingsScreen ?\/>;/,
     );

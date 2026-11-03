@@ -16,6 +16,8 @@ concurrency:
 
 permissions:
   contents: read
+  # @seazn/engine is on GitHub Packages (plan S2-1 Task 1): the install reads it with this token.
+  packages: read
 
 jobs:
   assemble-debug:
@@ -45,11 +47,17 @@ jobs:
       - run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.0' > /dev/null
       # Reads the pnpm version from package.json `packageManager` (as check.yml).
       - uses: pnpm/action-setup@v4
+      # `registry-url` and `scope` write the @onryde registry and its `${NODE_AUTH_TOKEN}` credential to a
+      # user-level .npmrc: pnpm ignores a credential in the project's (.npmrc says why).
       - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
           cache: pnpm
+          registry-url: https://npm.pkg.github.com
+          scope: '@onryde'
       - run: pnpm install --frozen-lockfile
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # Disk: every NDK on the image but the build's own. The build's is react-native's version catalog's
       # `ndkVersion`: expo's root plugin reads it from the expoLibs catalog, which is built on that file, and
       # no gradle.properties key overrides it. Read here, never assumed; a catalog with none fails the job.
