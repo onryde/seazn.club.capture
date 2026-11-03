@@ -458,5 +458,18 @@
   "scoring.history.otherScorer": "Un autre marqueur",
   "scoring.history.undone": "Annulé",
   "scoring.history.sending": "Envoi",
-  "scoring.badminton.gameHeading": "Jeu {game}"
+  "scoring.badminton.gameHeading": "Jeu {game}",
+  "scoring.tabletennis.gameHeading": "Jeu {game}",
+  "scoring.tabletennis.last.start": "Match lancé\u00a0: {side} sert en premier",
+  "scoring.tabletennis.last.startUnknownServer": "Match lancé",
+  "scoring.tabletennis.last.rally": "Point enregistré\u00a0: {side}",
+  "scoring.tabletennis.last.game": "Point enregistré\u00a0: jeu {game} pour {side}",
+  "scoring.tabletennis.last.match": "Point enregistré\u00a0: match pour {side}",
+  "scoring.tabletennis.last.returns": "{point} · {returns} renvois",
+  "scoring.tabletennis.last.timeout": "Temps mort enregistré\u00a0: {side}",
+  "scoring.tabletennis.last.expedite": "Système accéléré lancé",
+  "scoring.tabletennis.last.sanction": "{level} enregistré\u00a0: {person}",
+  "scoring.tabletennis.last.setScore": "Score saisi\u00a0: {score}",
+  "scoring.tabletennis.card.warning": "Carton jaune",
+  "scoring.tabletennis.card.penalty": "Carton rouge"
 }

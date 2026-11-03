@@ -458,5 +458,18 @@
   "scoring.history.otherScorer": "Een andere scorer",
   "scoring.history.undone": "Ongedaan gemaakt",
   "scoring.history.sending": "Verzenden",
-  "scoring.badminton.gameHeading": "Game {game}"
+  "scoring.badminton.gameHeading": "Game {game}",
+  "scoring.tabletennis.gameHeading": "Game {game}",
+  "scoring.tabletennis.last.start": "Gestart: {side} serveert eerst",
+  "scoring.tabletennis.last.startUnknownServer": "Gestart",
+  "scoring.tabletennis.last.rally": "Punt vastgelegd: {side}",
+  "scoring.tabletennis.last.game": "Punt vastgelegd: game {game} voor {side}",
+  "scoring.tabletennis.last.match": "Punt vastgelegd: wedstrijd voor {side}",
+  "scoring.tabletennis.last.returns": "{point} · {returns} retours",
+  "scoring.tabletennis.last.timeout": "Time-out vastgelegd: {side}",
+  "scoring.tabletennis.last.expedite": "Versnellingssysteem gestart",
+  "scoring.tabletennis.last.sanction": "{level} vastgelegd: {person}",
+  "scoring.tabletennis.last.setScore": "Stand ingevoerd: {score}",
+  "scoring.tabletennis.card.warning": "Gele kaart",
+  "scoring.tabletennis.card.penalty": "Rode kaart"
 }

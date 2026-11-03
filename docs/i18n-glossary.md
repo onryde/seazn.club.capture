@@ -301,6 +301,29 @@ _Tap_ is es _toque_, fr _saisie_, nl _tap_, as on the pad. Committed without a `
 | Discard your {count} tap(s)?                                | ¿Descartar tu(s) {count} toque(s)?                                           | Abandonner votre/vos {count} saisie(s) ?                         | Je {count} tap(s) verwijderen?                                   | `scoring.ask.confirm.title`. fr has a no-break space before the question mark.                                                  |
 | Keep my taps                                                | Conservar toques                                                             | Garder mes saisies                                               | Mijn taps bewaren                                                | `scoring.ask.confirm.keep`. The safe answer, and what Back and the dim mean. es shortened to fit.                               |
 
+### Table tennis History words (S2-2 Task 3, 2026-11-03)
+
+The words for a table tennis match's History rows and the pad's last-tap line (`scoring.tabletennis.*`), in the one
+vocabulary: a point is _punto / point / punt_ here, where the web's console says _jugada / échange / rally_. The sport's
+terms follow the web's own dictionary (`event.tabletennis.*`): the timeout, the cards, the expedite system. Committed
+without a `_review` marker, as the rest of S2's copy; the translations are the controller's until a native reader checks
+them. A card's level is the umpire's colour, not the web's _warning_ and _penalty_.
+
+| English                                | Español                                    | Français                                  | Nederlands                               | Notes                                                                                                                    |
+| -------------------------------------- | ------------------------------------------ | ----------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Game {game} (a History heading)        | Juego {game}                               | Jeu {game}                                | Game {game}                              | `scoring.tabletennis.gameHeading`. As badminton's.                                                                       |
+| Match started — {side} serves first    | Partido iniciado: {side} saca primero      | Match lancé : {side} sert en premier      | Gestart: {side} serveert eerst           | `last.start`. The Start pick, or the first point's `serving`.                                                            |
+| Match started                          | Partido iniciado                           | Match lancé                               | Gestart                                  | `last.startUnknownServer`. Started elsewhere, or the first point named no server.                                        |
+| Point recorded — {side}                | Punto registrado: {side}                   | Point enregistré : {side}                 | Punt vastgelegd: {side}                  | `last.rally`. A point on the pad.                                                                                        |
+| Point recorded — game {game} to {side} | Punto registrado: juego {game} para {side} | Point enregistré : jeu {game} pour {side} | Punt vastgelegd: game {game} voor {side} | `last.game`. The point that won the game.                                                                                |
+| Point recorded — match to {side}       | Punto registrado: partido para {side}      | Point enregistré : match pour {side}      | Punt vastgelegd: wedstrijd voor {side}   | `last.match`. The point that won the match.                                                                              |
+| {point} · {returns} returns            | {point} · {returns} devoluciones           | {point} · {returns} renvois               | {point} · {returns} retours              | `last.returns`. Expedite (ITTF 2.15.2): the receiver's thirteenth good return; `{point}` is the sentence above.          |
+| Timeout recorded — {side}              | Tiempo muerto registrado: {side}           | Temps mort enregistré : {side}            | Time-out vastgelegd: {side}              | `last.timeout`. As the web: _tiempo muerto_, _temps mort_, _time-out_.                                                   |
+| Expedite started                       | Sistema de aceleración iniciado            | Système accéléré lancé                    | Versnellingssysteem gestart              | `last.expedite`. The web's _Sistema de aceleración_, _Système accéléré_, _Versnellingssysteem_.                          |
+| {level} recorded — {person}            | {level} registrada: {person}               | {level} enregistré : {person}             | {level} vastgelegd: {person}             | `last.sanction`. `{level}` is the card (next rows); `{person}` the player, or the side when none was named.              |
+| Yellow card / Red card                 | Tarjeta amarilla / Tarjeta roja            | Carton jaune / Carton rouge               | Gele kaart / Rode kaart                  | `card.warning` / `card.penalty`: the engine's `warning` and `penalty`, the ITTF umpire's two cards. fr _carton_ is masc. |
+| Score set — {score}                    | Puntos fijados: {score}                    | Score saisi : {score}                     | Stand ingevoerd: {score}                 | `last.setScore`. As badminton's.                                                                                         |
+
 ## App settings (2026-11-02)
 
 The app's own Settings, from the gear in Home's top-right corner (owner, 2026-11-02: "we should have common setting in a top

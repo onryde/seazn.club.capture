@@ -102,10 +102,12 @@ const NO_COLOUR_LITERALS = [
  * lots of conditions"). The match runtime and the kit are the same for every sport: a sport is its own module behind
  * `ScoringSport` (src/domain/scoring/scoringSport.ts), listed by its key in `sports.ts`, with its own screen. So a
  * generic scoring file may not name a sport's module, by value or by type: badminton's files (`badminton*`, and the
- * hooks and services named `*Badminton*`) and its sheets (`usePadSheets`: Sanction and Set score). Tests are free to.
+ * hooks and services named `*Badminton*`) and its sheets (`usePadSheets`: Sanction and Set score), and table tennis's
+ * (`tableTennis*`, and the hooks, services and screens named `*TableTennis*`: these import patterns match without regard
+ * to case, so one spelling holds both; `SPORT_OWN_FILES` below needs both). Tests are free to.
  */
 const SPORT_MODULES = {
-  group: ['**/*badminton*', '**/usePadSheets'],
+  group: ['**/*badminton*', '**/*tableTennis*', '**/usePadSheets'],
   message:
     'A generic scoring file names no sport (owner, 2026-11-02: pad per sport): ask the match’s sport (`ScoringSport`).',
 };
@@ -145,6 +147,8 @@ const SPORT_GENERIC_FILES = [
 const SPORT_OWN_FILES = [
   '**/*badminton*',
   '**/*Badminton*',
+  '**/*tableTennis*',
+  '**/*TableTennis*',
   'src/hooks/usePadSheets.ts',
   'src/domain/scoring/sports.ts',
 ];
