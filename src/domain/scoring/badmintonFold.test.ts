@@ -247,7 +247,7 @@ describe('foldBadminton: the games', () => {
       awaitingEnding: false,
       serverPicked: false,
     } satisfies BadmintonDisplay);
-    expect(badmintonPad(result).card).toEqual({ kind: 'resultRecorded' });
+    expect(badmintonPad(result).card).toEqual({ kind: 'resultRecorded', undoLeft: null });
   });
 
   // Another format (the four questions): a best of 1, to 21, decided by its one game.

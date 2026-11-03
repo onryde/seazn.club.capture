@@ -9,6 +9,7 @@ import type { ScoringMatch } from '@/hooks/padScreenModel';
 import { scoringHubOf } from '@/hooks/scoringHub';
 import type { RunnerSnapshot, ScoringRunner } from '@/hooks/scoringRunner';
 import { usePorts, type Ports } from '@/hooks/usePorts';
+import { useUndoWindow } from '@/hooks/useUndoWindow';
 import type { MessageKey } from '@/i18n/messages';
 import type { Logger } from '@/services/logger';
 
@@ -56,7 +57,10 @@ export function useScoringMatch<S extends SportTypes, Pad>(
     () => (snapshot.kind === 'ready' ? viewAs(sport, snapshot.state) : null),
     [snapshot, sport],
   );
-  const pad = usePad(ports, runner, view?.kind === 'pad' ? view : null);
+  // A decided match's Undo is open for 30 s from the moment this phone shows the result its own tap made (owner,
+  // 2026-11-03); the sport's pad hook is handed the pad with that window applied.
+  const windowed = useUndoWindow(ports, fixtureId, view?.kind === 'pad' ? view : null);
+  const pad = usePad(ports, runner, windowed);
   return resolved(snapshot, view, pad);
 }
 

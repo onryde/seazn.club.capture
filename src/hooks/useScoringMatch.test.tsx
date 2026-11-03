@@ -564,7 +564,8 @@ describe('a match another scorer finalizes while the pad shows', () => {
     const fakes = await rig();
     const view = await decidedByThisPhone(fakes);
     expect(pad(view.result.current).view.halves[0].value).toBe('21');
-    expect(pad(view.result.current).view.card).toEqual({ kind: 'resultRecorded' });
+    // The deciding tap has just been shown: the whole Undo window is open (owner, 2026-11-03).
+    expect(pad(view.result.current).view.card).toEqual({ kind: 'resultRecorded', undoLeft: 30 });
     expect(pad(view.result.current).view.lastTap?.undo).toBe(true);
     fakes.scoring.finalize();
     fakes.realtime.ping();

@@ -375,7 +375,7 @@ describe('badmintonPad: the decided match', () => {
 
   it('shows the result card over the final score, with no tool and no tap', () => {
     const view = badmintonPad(decided);
-    expect(view.card).toEqual({ kind: 'resultRecorded' });
+    expect(view.card).toEqual({ kind: 'resultRecorded', undoLeft: null });
     expect(view.tools).toEqual([]);
     expect(view.halves.map((half) => [half.value, half.tappable, half.serving])).toEqual([
       ['21', false, null],
@@ -424,7 +424,7 @@ describe('badmintonPad: the decided match', () => {
       ],
     ]);
     expect(view.halves.map((half) => half.value)).toEqual(['9', '4']);
-    expect(view.card).toEqual({ kind: 'resultRecorded' });
+    expect(view.card).toEqual({ kind: 'resultRecorded', undoLeft: null });
   });
 
   it('says the disqualified game apart: “Game 2: 9, disqualified”, and the other side’s “Game 2: 4”', () => {
@@ -476,7 +476,7 @@ describe('badmintonPad: the decided match', () => {
       slot: 'game',
       text: { key: 'scoring.badminton.gameOf', vars: { game: 1, bestOf: 1 } },
     });
-    expect(view.card).toEqual({ kind: 'resultRecorded' });
+    expect(view.card).toEqual({ kind: 'resultRecorded', undoLeft: null });
   });
 
   it('still offers Undo on this phone’s own last tap', () => {
@@ -719,7 +719,7 @@ describe('badmintonPad: the match details', () => {
 
   it('keeps them under a card', () => {
     const view = badmintonPad({ ...pre, phase: 'decided' });
-    expect(view.card).toEqual({ kind: 'resultRecorded' });
+    expect(view.card).toEqual({ kind: 'resultRecorded', undoLeft: null });
     expect(view.details.context.competition).toBe('Spring Open 2026');
   });
 });

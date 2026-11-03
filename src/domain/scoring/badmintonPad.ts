@@ -206,7 +206,10 @@ export function badmintonPad(
     tools: tools(state),
     card: null,
   };
-  return withCard(view, state.phase === 'decided' ? { kind: 'resultRecorded' } : null);
+  return withCard(
+    view,
+    state.phase === 'decided' ? { kind: 'resultRecorded', undoLeft: null } : null,
+  );
 }
 
 /** The tool ids `badmintonPad` gives, read back; anything else is null. */

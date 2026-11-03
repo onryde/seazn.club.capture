@@ -48,7 +48,7 @@ function mount(initial: PadSheetSnapshot | null) {
 
 const CARDS: readonly PadStateCard[] = [
   { kind: 'notStarted' },
-  { kind: 'resultRecorded' },
+  { kind: 'resultRecorded', undoLeft: 30 },
   { kind: 'viewOnly' },
   { kind: 'updateNeeded', unsent: 2 },
 ];

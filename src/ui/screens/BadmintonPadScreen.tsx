@@ -4,6 +4,7 @@ import type { BadmintonPadKey } from '@/domain/scoring/badmintonPad';
 import type { SanctionSheet } from '@/domain/scoring/badmintonSanction';
 import {
   cardPlacement,
+  hasUndoCell,
   holdsScreen,
   matchKnown,
   type PadHistoryGroup,
@@ -287,6 +288,7 @@ const PadLine = memo(function PadLine({
       lastTap={view.lastTap}
       refusal={line?.kind === 'refusal' ? words : null}
       note={line?.kind === 'note' ? words : null}
+      undoCell={hasUndoCell(view.card)}
       onUndo={onUndo}
     />
   );

@@ -19,13 +19,19 @@ type LastTapLineProps = {
    * count. One line, in full ink; never caution, since nothing failed.
    */
   readonly note?: string | null;
+  /**
+   * Whether the line has an Undo at all (default yes). Only a recorded result whose Undo window has closed has none
+   * (owner, 2026-11-03: `hasUndoCell`); every other pad keeps it in its place, disabled when it is not offered.
+   */
+  readonly undoCell?: boolean;
   readonly onUndo: () => void;
 };
 
 /**
  * Under the halves: what the last tap did ("Rally recorded — L. Chen"), or that it was not recorded, and the one Undo
  * (owner, 2026-10-31), which steps back through this phone's own taps. Undo is always in its place, enabled only when
- * it is offered, so the sentence beside it never changes width. The line reserves `padLineLines` lines (three), so a
+ * it is offered, so the sentence beside it never changes width; but for a decided match whose Undo window has closed
+ * (`undoCell`), where it is gone. The line reserves `padLineLines` lines (three), so a
  * sentence, a note under it or a refusal never moves the tool row under a thumb; a new sentence or note is announced
  * politely. With a note the sentence takes one line fewer, so the two keep within the reservation.
  */
@@ -33,6 +39,7 @@ export const LastTapLine = memo(function LastTapLine({
   lastTap,
   refusal,
   note = null,
+  undoCell = true,
   onUndo,
 }: LastTapLineProps) {
   const { t } = useT();
@@ -47,11 +54,13 @@ export const LastTapLine = memo(function LastTapLine({
           <Sentence sentence={sentence} note={note} />
         )}
       </View>
-      <GhostButton
-        label={t('scoring.pad.undo')}
-        onPress={onUndo}
-        disabled={lastTap?.undo !== true}
-      />
+      {undoCell ? (
+        <GhostButton
+          label={t('scoring.pad.undo')}
+          onPress={onUndo}
+          disabled={lastTap?.undo !== true}
+        />
+      ) : null}
     </View>
   );
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   cardPlacement,
+  hasUndoCell,
   holdsScreen,
   matchKnown,
   withCard,
@@ -72,7 +73,7 @@ const live: PadView<Key> = {
 
 const CARDS: readonly PadStateCard[] = [
   { kind: 'notStarted' },
-  { kind: 'resultRecorded' },
+  { kind: 'resultRecorded', undoLeft: 30 },
   { kind: 'viewOnly' },
   { kind: 'linkInvalid' },
   { kind: 'updateNeeded', unsent: 3 },
@@ -124,6 +125,26 @@ describe('holdsScreen', () => {
   });
 });
 
+describe('hasUndoCell', () => {
+  // Owner, 2026-11-03: once Undo closes on a decided match its button is gone; everywhere else it stays in its place.
+  it('drops the Undo only under a recorded result whose window is closed', () => {
+    expect(hasUndoCell({ kind: 'resultRecorded', undoLeft: null })).toBe(false);
+    expect(hasUndoCell({ kind: 'resultRecorded', undoLeft: 30 })).toBe(true);
+    expect(hasUndoCell({ kind: 'resultRecorded', undoLeft: 1 })).toBe(true);
+  });
+
+  it('keeps it in place on a pad with no card and under every other card', () => {
+    expect(hasUndoCell(null)).toBe(true);
+    expect(CARDS.map((card) => [card.kind, hasUndoCell(card)])).toEqual([
+      ['notStarted', true],
+      ['resultRecorded', true],
+      ['viewOnly', true],
+      ['linkInvalid', true],
+      ['updateNeeded', true],
+    ]);
+  });
+});
+
 describe('withCard', () => {
   it('leaves a pad with no card as it is', () => {
     expect(withCard(live, null)).toBe(live);
@@ -141,7 +162,7 @@ describe('withCard', () => {
   });
 
   it('keeps Undo under a recorded result, whose card says to use it on a mistake of this phone’s own', () => {
-    expect(withCard(live, { kind: 'resultRecorded' }).lastTap).toEqual({
+    expect(withCard(live, { kind: 'resultRecorded', undoLeft: 30 }).lastTap).toEqual({
       text: { key: 'k.last' },
       undo: true,
     });
@@ -179,7 +200,7 @@ describe('withCard', () => {
   });
 
   it('replaces a card already there (a preview card over a recorded result)', () => {
-    const recorded = withCard(live, { kind: 'resultRecorded' });
+    const recorded = withCard(live, { kind: 'resultRecorded', undoLeft: 30 });
     const viewOnly = withCard(recorded, { kind: 'viewOnly' });
     expect(viewOnly.card).toEqual({ kind: 'viewOnly' });
     expect(viewOnly.lastTap?.undo).toBe(false);

@@ -175,7 +175,11 @@ export type PadHistoryGroup<K extends string> = {
 /** Why the pad is not taking taps, said on a card (the web pad's own states, `device.*`). */
 export type PadStateCard =
   | { readonly kind: 'notStarted' }
-  | { readonly kind: 'resultRecorded' }
+  /**
+   * `undoLeft`: the whole seconds this phone's Undo stays open (owner, 2026-11-03), or null once it is closed or never
+   * was. A sport's pad says null; `withUndoWindow` (`undoWindow.ts`) fills it from the phone's clock.
+   */
+  | { readonly kind: 'resultRecorded'; readonly undoLeft: number | null }
   | { readonly kind: 'viewOnly' }
   | { readonly kind: 'linkInvalid' }
   | { readonly kind: 'updateNeeded'; readonly unsent: number };
@@ -253,6 +257,15 @@ export function matchKnown(card: PadStateCard | null): boolean {
 }
 
 /**
+ * Whether the last-tap line has an Undo at all: not under a recorded result whose Undo window is closed (owner,
+ * 2026-11-03), where the card tells the scorer to ask the organiser. Everywhere else it stays in its place, disabled
+ * when it is not offered, so the sentence beside it never changes width.
+ */
+export function hasUndoCell(card: PadStateCard | null): boolean {
+  return !(card?.kind === 'resultRecorded' && card.undoLeft === null);
+}
+
+/**
  * Whether the pad keeps the phone's screen on under this card (owner ruling 9, the screen stays on while the pad shows;
  * applied by the controller on 2026-11-02): on the pad and under the two cards the scorer is still waiting on (the match
  * not open yet, a recorded result they may undo a mistake in). Off under the three that need a person to act or end the
@@ -265,7 +278,8 @@ export function holdsScreen(card: PadStateCard | null): boolean {
 
 /**
  * Any sport's pad under a card: the halves stop taking taps and the tools go. Undo stays only under a recorded result,
- * whose card tells the scorer to use it on a mistake in this phone's own taps (the web's `device.resultRecorded`); a
+ * whose card tells the scorer to use it on a mistake in this phone's own taps (the web's `device.resultRecorded`) for
+ * as long as its window is open (`undoWindow.ts`); a
  * view-only match keeps the last tap with no Undo, and a card in place of the pad or of the controls drops the last
  * tap with it. A card replaces one already there, and takes the Start screen away: nothing is started under a card. No
  * card: the pad as it is.

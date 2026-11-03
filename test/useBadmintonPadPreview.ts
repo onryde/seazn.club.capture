@@ -3,6 +3,7 @@ import { badmintonHistory } from '@/domain/scoring/badmintonHistory';
 import { badmintonPad, type BadmintonPadKey } from '@/domain/scoring/badmintonPad';
 import { refusalLine, type PadLineWords } from '@/domain/scoring/padLine';
 import type { HalfFlash } from '@/domain/scoring/tapFlash';
+import { UNDO_WINDOW_SECONDS, withUndoWindow } from '@/domain/scoring/undoWindow';
 import {
   withCard,
   type PadSide,
@@ -111,8 +112,13 @@ export function useBadmintonPadPreview(): BadmintonPadPreview {
   const pick = usePick(pad, sample, startSample, sheets.cancel, clears);
   const actions = usePreviewActions({ pad, taps, sheets, starting, pick, setCardNote });
   useBackCloses(sheets.open, sheets.cancel);
+  // The preview has no clock, so a recorded result is shown with the whole Undo window open, as a tap has just made it.
   const view = useMemo(
-    () => withCard(badmintonPad(snapshot.display, snapshot.sync), snapshot.card),
+    () =>
+      withUndoWindow(
+        withCard(badmintonPad(snapshot.display, snapshot.sync), snapshot.card),
+        UNDO_WINDOW_SECONDS,
+      ),
     [snapshot],
   );
   const chosen = { card: snapshot.card?.kind ?? 'pad', sample } as const;
@@ -264,8 +270,9 @@ function nextSync(now: PadSync): PadSync {
   return SYNC_CYCLE[(at + 1) % SYNC_CYCLE.length] ?? SYNC_CYCLE[0] ?? now;
 }
 
-/** A card for the preview; the update card holds two made-up unsent taps. */
+/** A card for the preview; the update card holds two made-up unsent taps, the result card its Undo closed (see `view`). */
 function cardOf(choice: 'pad' | PadStateCard['kind']): PadStateCard | null {
   if (choice === 'pad') return null;
+  if (choice === 'resultRecorded') return { kind: 'resultRecorded', undoLeft: null };
   return choice === 'updateNeeded' ? { kind: 'updateNeeded', unsent: 2 } : { kind: choice };
 }

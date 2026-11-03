@@ -9,15 +9,31 @@ import { Text } from '@/ui/components/Text';
 export type TitledCard = Exclude<PadCard, { readonly kind: 'updateNeeded' }>;
 
 /** Each card's title and sentence: the web pad's own words where it has them (`device.*`). */
-const COPY: Readonly<Record<TitledCard['kind'], { title: MessageKey; body: MessageKey }>> = {
+const COPY: Readonly<
+  Record<Exclude<TitledCard['kind'], 'resultRecorded'>, { title: MessageKey; body: MessageKey }>
+> = {
   notStarted: { title: 'scoring.card.notStarted.title', body: 'scoring.card.notStarted.body' },
-  resultRecorded: {
-    title: 'scoring.card.resultRecorded.title',
-    body: 'scoring.card.resultRecorded.body',
-  },
   viewOnly: { title: 'scoring.card.viewOnly.title', body: 'scoring.card.viewOnly.body' },
   linkInvalid: { title: 'scoring.card.linkInvalid.title', body: 'scoring.card.linkInvalid.body' },
 };
+
+type Words = { readonly title: MessageKey; readonly body: MessageKey };
+
+/**
+ * A recorded result's sentence follows its Undo window (owner, 2026-11-03): it counts the seconds left while Undo is
+ * open, and once it is closed says only to ask the organiser.
+ */
+function wordsOf(card: TitledCard): Words {
+  if (card.kind !== 'resultRecorded') return COPY[card.kind];
+  const title = 'scoring.card.resultRecorded.title';
+  return card.undoLeft === null
+    ? { title, body: 'scoring.card.resultRecorded.bodyClosed' }
+    : { title, body: 'scoring.card.resultRecorded.bodyOpen' };
+}
+
+/** What a recorded result's Undo countdown fills in; none for any other sentence. */
+const fillsOf = (card: TitledCard): { readonly seconds: number } | undefined =>
+  card.kind === 'resultRecorded' && card.undoLeft !== null ? { seconds: card.undoLeft } : undefined;
 
 /**
  * Why the pad takes no tap, on a card: not started, a recorded result, view only, a dead link. The edge says which
@@ -33,12 +49,17 @@ export const PadStateCard = memo(function PadStateCard({
   readonly children?: ReactNode;
 }) {
   const { t } = useT();
-  const copy = COPY[card.kind];
+  const words = wordsOf(card);
+  const fills = fillsOf(card);
   return (
-    <EdgeCard testID="pad-card" edge={EDGE[card.kind]}>
-      <Text variant="panelTitle">{t(copy.title)}</Text>
+    <EdgeCard
+      testID="pad-card"
+      edge={EDGE[card.kind]}
+      live={fills === undefined ? 'polite' : 'none'}
+    >
+      <Text variant="panelTitle">{t(words.title)}</Text>
       {children}
-      <Text variant="body">{t(copy.body)}</Text>
+      <Text variant="body">{t(words.body, fills)}</Text>
     </EdgeCard>
   );
 });

@@ -240,6 +240,19 @@ numbers and punctuation, never translated. Committed without a `_review` marker,
 | Close (the card's button)                             | Cerrar              | Fermer            | Sluiten             | `home.scoring.close`. The word drawn.                                                          |
 | Close {match} (a screen reader's name for the button) | Cerrar {match}      | Fermer {match}    | {match} sluiten     | `home.scoring.closeMatch`. `{match}` is "another match" when the queue never learned the name. |
 
+### The result card's Undo window (owner, 2026-11-03)
+
+When this phone's own tap decides the match, the pad's _Result recorded_ card (`scoring.card.resultRecorded.*`) counts
+Undo down for 30 s, then says to ask the organiser. The words are the pad's own: _Undo_ (es _Deshacer_, fr _Annuler_, nl
+_Ongedaan maken_, as above) and _the organiser_. The countdown is `stream.peek.closesIn`'s idiom ("Closes in {seconds} s":
+es _Se cierra en_, fr _Se ferme dans_, nl _Sluit over_) with Undo as its subject. Committed without a `_review` marker,
+as the rest of S2's copy.
+
+| English                                                                                  | Español                                                                                                  | Français                                                                                                          | Nederlands                                                                                                   | Note                                                                                                                                 |
+| ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| The organiser finalises it. Spot a mistake in your own taps? Undo closes in {seconds} s. | El organizador lo finaliza. ¿Detectas un error en tus propios toques? Deshacer se cierra en {seconds} s. | L'organisateur le finalise. Vous repérez une erreur dans vos propres saisies ? Annuler se ferme dans {seconds} s. | De organisator maakt het definitief. Fout in je eigen taps opgemerkt? Ongedaan maken sluit over {seconds} s. | `bodyOpen`. `{seconds}` counts 30 down to 1. fr: a no-break space before the question mark.                                          |
+| The organiser finalises it. Ask them to correct any mistake.                             | El organizador lo finaliza. Pídele que corrija cualquier error.                                          | L'organisateur le finalise. Demandez-lui de corriger toute erreur.                                                | De organisator maakt het definitief. Vraag de organisator om een eventuele fout te corrigeren.               | `bodyClosed`. Also the card of a result the other scorer made, which never offers Undo. Replaces "Use Undo" (`resultRecorded.body`). |
+
 ### The match's own screens (S2-1 Task 11, 2026-11-02)
 
 What the scoring route shows when it is not the pad (design §4, §8): one card per state, the same in every sport.

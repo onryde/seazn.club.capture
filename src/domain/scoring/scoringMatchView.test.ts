@@ -149,7 +149,7 @@ describe('the pad and its card', () => {
 
   it('a decided match is the recorded result’s card, from the fold', () => {
     const decided = [start(), ...Array.from({ length: 42 }, () => rally('H'))];
-    expect(padOf(ready({}, decided)).view.card).toEqual({ kind: 'resultRecorded' });
+    expect(padOf(ready({}, decided)).view.card).toEqual({ kind: 'resultRecorded', undoLeft: null });
   });
 
   it('a closure a read brought, with nothing queued, is a card though the queue is not dead', () => {

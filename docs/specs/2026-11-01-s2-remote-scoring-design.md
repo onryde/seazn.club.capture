@@ -124,7 +124,12 @@ follows the session's record.
    icons; the send badge.
 6. **The end.** The engine ends the game and the match. The pad shows the result card; the organiser
    finalizes on the web; the pad turns view only. A disqualification asks to record the ending or
-   void the sanction (the existing `EndingPrompt`).
+   void the sanction (the existing `EndingPrompt`). Undo on the result closes 30 s after this
+   phone's own tap decided the match (owner, 2026-11-03), the seconds counted on the card; the end
+   of a game has no limit. The window opens when this phone first shows the decided state its own
+   tap made, and is held in memory for the launch (`useUndoWindow`): Home and back keeps it, a
+   restart shows a decided match with no Undo, and nothing reopens or restarts it. A result the
+   other scorer made offers none.
 7. **Leaving.** Back goes Home at any time (ruling 10). Unsent taps keep sending while the app is
    open; the Continue card says how many are left.
 

@@ -31,6 +31,27 @@ describe('LastTapLine', () => {
     expect(undo().getAttribute('aria-disabled')).toBe('true');
   });
 
+  // Owner, 2026-11-03: Undo closes 30 s after a match is decided; the line then has no Undo, and its sentence has the room.
+  it('has no Undo at all when its window is closed, and still says what the last tap did', () => {
+    renderWithPorts(
+      <LastTapLine
+        lastTap={{ text: rally, undo: false }}
+        refusal={null}
+        undoCell={false}
+        onUndo={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.getByTestId('last-tap-sentence').textContent).toBe(sentence);
+  });
+
+  it('keeps the cell when it is told nothing: Undo is in its place unless the window closed it', () => {
+    renderWithPorts(
+      <LastTapLine lastTap={{ text: rally, undo: true }} refusal={null} onUndo={vi.fn()} />,
+    );
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+  });
+
   it('has no sentence before the first tap, and Undo in its place, disabled', () => {
     renderWithPorts(<LastTapLine lastTap={null} refusal={null} onUndo={vi.fn()} />);
     expect(screen.getByTestId('last-tap').textContent).toBe(en['scoring.pad.undo']);
