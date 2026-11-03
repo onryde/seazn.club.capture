@@ -443,7 +443,7 @@
   "scoring.badminton.rules.interval.label": "Descanso",
   "scoring.badminton.rules.interval.value": "a los {point}",
   "scoring.badminton.rules.endsChange.label": "Cambio de lado",
-  "scoring.badminton.rules.endsChange.value": "tras cada juego, y a los {point} en el juego {game}",
+  "scoring.badminton.rules.endsChange.value": "tras cada juego y a los {point} en el juego {game}",
   "scoring.badminton.rules.endsChange.single": "a los {point}",
   "scoring.details.title": "Detalles del partido",
   "scoring.details.versus": "{first} contra {second}",

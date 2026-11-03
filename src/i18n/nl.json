@@ -443,7 +443,7 @@
   "scoring.badminton.rules.interval.label": "Pauze",
   "scoring.badminton.rules.interval.value": "bij {point}",
   "scoring.badminton.rules.endsChange.label": "Van kant wisselen",
-  "scoring.badminton.rules.endsChange.value": "na elke game, en bij {point} in game {game}",
+  "scoring.badminton.rules.endsChange.value": "na elke game en bij {point} in game {game}",
   "scoring.badminton.rules.endsChange.single": "bij {point}",
   "scoring.details.title": "Wedstrijddetails",
   "scoring.details.versus": "{first} tegen {second}",

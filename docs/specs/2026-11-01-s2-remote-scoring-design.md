@@ -179,7 +179,9 @@ details sheet:
 - a rules table of label → value rows.
 
 Each sport supplies its own rows (badminton: Format, Points, Cap, Interval, Ends change); the card
-knows no sport.
+knows no sport. Badminton's Ends change reads "after each game, and at 6 in game 3": ends change after
+every game and once more within the deciding game (BWF Law 8); a best of 1 reads "at 6" (owner,
+2026-11-03, "apply rec": "at 6 in game 3" alone read as a change in game 3 only).
 
 **Shared kit vs sport screen** (ruling 13). Sport-agnostic, reused by every sport: `PadView` and its
 cards and `cardPlacement`, the bounce guard, `TapFlash`, `LastTapLine`, `ToolRow`, `StepSheet`,
