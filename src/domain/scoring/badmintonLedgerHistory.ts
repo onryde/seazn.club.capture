@@ -49,15 +49,6 @@ export type LedgerEntry = {
 /** An event the pad has words for: what it did, and its facts. */
 export type Recorded = { readonly did: BadmintonDone; readonly facts: EventFacts };
 
-/** The event types the pad has words for. Anything else (a finalize, a timeout) is folded and never a row. */
-export const PAD_EVENT_TYPES: ReadonlySet<string> = new Set([
-  'core.start',
-  'badminton.rally',
-  'badminton.sanction',
-  'badminton.game.summary',
-  'core.forfeit',
-]);
-
 export function namesOf(seats: Readonly<Record<PadSide, BootstrapSide>>): BadmintonNames {
   const players = (seat: BootstrapSide): BadmintonSide => ({
     players: seat.members.length === 0 ? [seat.name] : seat.members.map((one) => one.fullName),
