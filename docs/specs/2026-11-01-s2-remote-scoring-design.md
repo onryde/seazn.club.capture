@@ -287,13 +287,17 @@ design surface.
 - **The reconnect question** (ruling 43, owner, 2026-11-02). Taps queued only by this phone, offline,
   go by themselves when the signal is back. But a ledger fetch that brings events _another scorer_
   made, while this phone has taps queued, stops the sender: nothing is sent until the scorer answers.
+  Only events recorded from the oldest queued tap's time (less a clock-skew margin) count, so a ledger
+  read again from the start does not count the whole match; one answer covers the queue until it empties,
+  and a tap already in flight is not counted as discarded (the controller's, 2026-11-03).
   Which events are foreign: the ledger's new events whose ids are not in the queue's `ownEventIds`
   and are not the copy of a tap the phone sent (its link, type and payload) whose answer was lost; a
   rally and its Undo that come together cancel, and another scorer's Undo of this phone's own event is
   nothing scored. The marker (`askedAbout`, the foreign ids) is in the queue file, so a kill and a
   reopen find the question standing, and it ends with the queue (nothing left to send or discard). The
-  pad shows a sheet over it, in the screen's language: "{n} scored elsewhere while you were offline"
-  (plural-aware, no sport named), the score as the server has it without the phone's taps, how many
+  pad shows a sheet over it (over any card but a dead link's, where the question is moot), in the
+  screen's language: "{n} scored elsewhere before your taps were sent" (plural-aware, no sport named;
+  it asks online too, since a concurrent scorer double-counts the same: the controller's, 2026-11-03), the score as the server has it without the phone's taps, how many
   taps wait, and two buttons. **Send my taps** lifts the question and runs the normal revalidate and
   send, on the ledger as it stands. **Discard them** opens a confirm with Keep as the default (the
   dim and Back both mean Keep); the confirm's Discard deletes the queue, sends nothing and keeps the
