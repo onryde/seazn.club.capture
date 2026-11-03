@@ -296,6 +296,26 @@ describe('the answer to the tap an Undo waits for, when the match will not take 
     },
   );
 
+  it.each([
+    ['a seq gap', { kind: 'accepted', seq: 4, eventId: 'ev-4', rulesVersion: 1 }, 'ledger'],
+    [
+      'a rules version bump',
+      { kind: 'accepted', seq: 2, eventId: 'ev-2', rulesVersion: 2 },
+      'rules',
+    ],
+  ] as const)(
+    'the answer carries %s and the fold cannot judge: the read it asked for keeps its hold, and the Undo is still owed a judgement',
+    (_name, answer, hold) => {
+      const { state, sent } = sentOnce();
+      const asked = { ...askedAndSaved(state), bootstrap: null };
+      const answered = step(asked, { kind: 'answered', sent, answer }, NOW);
+      expect(answered.state.sync.hold).toBe(hold);
+      expect(answered.state.sync.revalidateOwed).toBe(true);
+      expect(keysOf(answered.state)).toEqual(['u1']);
+      expect(droppedIn(answered.effects)).toEqual([]);
+    },
+  );
+
   it.each(UNJUDGED)(
     '%s, then the fold can judge: a legal Undo is judged and sent on that very step',
     (_name, bootstrap) => {
