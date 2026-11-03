@@ -7,7 +7,8 @@ import { ledgerOf, queuedOf, rally, sanction, start, voiding } from '../../../te
 // Plan S2-1 Task 7 (design §7.3): what each pad tap is on the wire. The top half is `home`, the bottom `away`; a rally is
 // `badminton.rally {wonBy}`, and the match's first rally names the picked side's entrant as `serving` (only while the
 // fold says the server shown is this phone's pick, `serverPicked`; the controller's ruling, 2026-11-02); Start is
-// `core.start {}`; a sanction `badminton.sanction {by, level, person}`; Set score `badminton.game.summary {home, away,
+// `core.start {}`; a sanction `badminton.sanction {by, level, person}` (no `person`, a team sanction, for a side that lists no
+// people); Set score `badminton.game.summary {home, away,
 // partial: true}`; a disqualification's ending `core.forfeit {by, reason: 'disqualified'}`, and nothing else ends a
 // match from this pad (a device link gets 403 for a settle, an abandon or any other forfeit).
 
@@ -211,11 +212,27 @@ describe('badmintonEventFor: sanctions and the set score', () => {
         { kind: 'sanction', side: 'first', level: 'warning', person },
         { bootstrap: teams, display: LIVE },
       );
-    expect(team('A')).toEqual({
+    expect(team('A')).toStrictEqual({
       type: 'badminton.sanction',
       payload: { by: 'ent-a', level: 'warning' },
     });
     expect(team('L. Chen')).toBeNull();
+  });
+
+  it('still names the person when a singles side is named as its one player', () => {
+    const singles: Bootstrap = {
+      ...BOOTSTRAP,
+      sides: { home: side('ent-home', [['p-sharma', 'A. Sharma']]), away: BOOTSTRAP.sides.away },
+    };
+    expect(
+      badmintonEventFor(
+        { kind: 'sanction', side: 'first', level: 'warning', person: 'A. Sharma' },
+        { bootstrap: singles, display: LIVE },
+      ),
+    ).toStrictEqual({
+      type: 'badminton.sanction',
+      payload: { by: 'ent-home', level: 'warning', person: 'p-sharma' },
+    });
   });
 
   it('sets the game’s points top first as home and away, a partial summary', () => {
