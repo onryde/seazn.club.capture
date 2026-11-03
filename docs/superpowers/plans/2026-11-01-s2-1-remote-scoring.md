@@ -435,7 +435,82 @@ useScoringMatch(fixtureId: string): PadScreenModel | { kind: 'loading' } | { kin
 - [ ] **Step 2:** Implement in small hooks (load, send loop, live, taps), each ≤ 25 lines.
 - [ ] **Step 3:** `pnpm check`. **Step 4:** Commit.
 
+#### Task 9 additions (from the Batch B reviews, 2026-11-02)
+
+The Sonnet per-task and Opus batch reviews of Tasks 3–6 found what the hook must own. Each is a test:
+
+- Every change (tap enqueue, undo, answers, fetches, rules) goes through one pure reducer on the latest
+  state; an abandoned send is fed back as `onAnswer(offline)` so `sending` never sticks; `sent` is the
+  key in flight, never the current head.
+- Retry waits and merge-before-send are enforced by sync itself (`nextSend(state, now)` and the hold):
+  the hook passes a real clock, calls `revalidate` on a `revalidate` hold, and `onReadFailed` for every
+  failed read; every bootstrap read goes through `onBootstrapStatus`, and the hook runs the
+  `reloadBootstrap` effect. Before every `nextSend` the hook calls `retryRules(state, now)` (a failed rules read is
+  re-asked every 15 s, even with nothing queued).
+- Effects run in order; a send goes only after the `persist` before it has resolved (Review Focus 1
+  holds only then).
+- An unresolved head (sent, no definitive answer; also one reopened after a kill) is resent with its key;
+  sync drops nothing while it is unresolved. Undo of an in-flight tap waits for its answer and voids the
+  returned id.
+- Read failures go through sync's exported reducer: a dead link or a queue-closing refusal makes the
+  queue dead; `tooLarge` is a visible state, never endless retries.
+- A refused save can come back (the next read promotes the temp file): re-save the queue; never say
+  "not recorded" without having saved the queue without that tap.
+- Realtime (Task 8 review): one owner of the subscription; every `onUp`, a rejoin included, owes a ledger
+  read (pings in the gap are lost); while down, poll every 15 s and resubscribe with a fresh grant
+  (the library retries an expired token forever), backing off so a grant refused every time cannot
+  loop; unsubscribe on unmount and in the background.
+- From Task 7: undo passes `undoTarget` only the queued taps in `legalQueued` (the list the display
+  uses); an `unfoldable` fold never reaches `revalidate` (an empty `legalQueued` would drop the whole
+  queue) and shows a visible state; the hook persists the toss beside the queue (a kill between Start and the first rally must not lose
+  it; without it the start names no server); a
+  discarded queued tap's "undone" line is the hook's; an abandoned match folds as decided, so the
+  closed/finished state comes from the bootstrap status or `viewOnly`; Task 11's HistoryCover draws
+  `sending`. Task 11: the rules table's Points row shows each game's own target (a deciding game to a
+  different score).
+- From the Batch C review: a link for any sport but badminton shows a visible "not on the phone yet"
+  state (nothing else checks `sportKey`; the fold would accept a table-tennis cfg); fold under the rules
+  sync holds (`{...bootstrap, cfg: rules.cfg}`) and re-save the boot cache when they change;
+  `tapQueueStore.ts` gains save/load/remove for `{fixtureId}.boot.json` (and the toss), removed on
+  Dismiss; the fold's in-flight double count (the server's copy fetched before the answer) is hidden
+  when the ledger holds an event at the sent `expected_seq + 1` with the same type and payload; the
+  model has members for unfoldable, tooLarge, an unreadable queue and an unsupported sport; a null from
+  `badmintonEventFor` gets a last-tap line; the fold is memoized; the head's payload goes through
+  `payloadForSend(queued, ledger)` BEFORE `markSending`, and the decided payload is written into the
+  queued head in the same step that marks the attempt (else the fold and sync's stand-in keep the old
+  stamp); the background sender
+  never subscribes to Realtime (one subscription; a second closes the first).
+- `ownEventIds` belong to one link.
+- Task 7 pins that the badminton pad never emits `core.settle` or `core.abandon`, and emits
+  `core.forfeit` only as a disqualification's ending (a device link gets 403 for the rest).
+- The tip comes from the ledger, never from `bootstrap.lastSeq`.
+- Sync marks the queue dead on a 401, a finalized and a cancelled match; the hook owns a carried-forward
+  `viewOnly` reason and the cards for an empty queue.
+- The tap is saved before the screen shows it.
+- `logger.protectLink(token)` when the link is loaded from the secure store.
+- Task 10 lists `unreadable` queue entries, with Dismiss.
+- The background sender for other matches' queues (ruling 29) is built here.
+- Dismiss stops that match's sender before `remove`, and deletes `{fixtureId}.boot.json` and the cached
+  ledger too.
+- A garbled queue file or a missing native module surfaces as a visible state, never as silence.
+- Task 7: `legalQueued` skips an illegal tap and goes on judging the ones behind it; it keys own events on
+  `ownEventIds` (the stand-in ledger event carries the phone's clock and a null `deviceLinkId`).
+- Task 9/11: when the link dies while a sheet (Match details, Set score, History) is open, the sheet
+  closes and the bad-link card shows (round 8 hardening, the controller's call).
+
 ## Batch D — into the app
+
+#### Task 10/11 hand-offs (from the Task 9 Opus review, 2026-11-02)
+
+- Task 10: mount `useScoringBackground()` once; the Continue card is built from `tapQueue.list()`,
+  unreadable queues included, and Dismiss goes through `scoringHubOf(ports).dismiss(id)`; a link that
+  dies with nothing queued forgets the link and the saved code (design §4.3); a fresh scan of a match
+  whose queue is dead re-reads the bootstrap (a new link for the same fixture revives it; the same dead
+  link shows the bad-link card with Dismiss).
+- Task 11: draw every `ScoringMatch` kind in en/es/fr/nl (loading/offline, linkGone, unreadable queue or
+  link, unsupportedSport, tooLarge, unfoldable, outdated with its unsent count); the pending Undo and
+  the HistoryCover `sending` rows; keep the screen on; the portrait route target; delete
+  `previewScoring`.
 
 ### Task 10: Scan, save, reopen and Home
 

@@ -54,16 +54,18 @@ There is no login anywhere. See
 [the decision record](docs/specs/2026-09-29-multi-mode-app-decisions.md).
 
 Home is the only screen outside a mode but one: three tiles, a Continue card
-when a mode can be resumed, and the language picker. The one other is Stream
-Settings opened from the gear in the top-right corner of Home's Live Stream
-tile, without the Diagnostics card: R2 of the D3 findings design (owner,
-2026-10-11; `docs/specs/2026-10-11-s1-d3-findings-design.md` section 1). The
-owner made it a gear on 2026-10-12 ("Instead of text, can we have icon in right
-top corner?"); a screen reader names it "Stream settings". It holds the two
-phone settings, the battery row and the record row, reachable before a scan.
-The gear shows only while no card stands above the tiles (the D3 fixes plan's
-ruling P6, the controller's:
-`docs/superpowers/plans/2026-10-11-s1-d3-fixes.md`). Scanning is the phone's
+when a mode can be resumed, and a gear in its top-right corner. The one other
+is the app's Settings, which that gear opens (owner, 2026-11-02: "we should
+have common setting in a top gear?", then "yes do it now"); a screen reader
+names the gear "Settings", and it always shows, cards or not. Settings has two
+sections of short rows, a label and a value, with no explanatory sentences
+(owner, same day: "make sure that it is clean display instead of printing
+text"): General (the language, the battery row and the record row) and Live
+Stream (its two phone settings). This supersedes the gear on the Live Stream
+tile that opened Stream Settings (R2 of the D3 findings design, owner,
+2026-10-11, made a gear on 2026-10-12) and the rule that hid it while a card
+stood above the tiles (the D3 fixes plan's ruling P6). The language picker
+left Home with it. Scanning is the phone's
 own code scanner, not a screen of ours.
 
 **Live Stream** keeps the four-screen shape of its own: **Scan** → **Paired** →
@@ -81,6 +83,15 @@ contract (vendored at web `f0feab16c`), behind `FEATURES.recordSend`, which is
 on: asked whether to turn Send record on with the endpoint on staging, the
 owner chose "On now (Recommended)" in the session on 2026-10-12. Push alerts go
 only to phones holding a Dashboard code (ruling 11).
+
+**Remote Scoring** is a working mode (S2; design
+`docs/specs/2026-11-01-s2-remote-scoring-design.md`, plan S2-1). Its taps,
+written to the match's ledger on the web, are its purpose, not an "upload" in
+the sense above. A scoring code is a match's `/score/{token}` link; there is
+no claim on first scan (S2 ruling 3, superseding decision-record ruling 9 for
+S2), so several scorers may write and the ledger's `expected_seq` keeps them
+honest. Each sport has its own pad screen over a shared kit, never one pad
+with sport conditions (S2 ruling 38; owner, 2026-11-02).
 
 Adding a fourth mode, or a screen outside a mode, is a product decision, not
 an implementation detail. Raise it; don't build it.
@@ -122,7 +133,11 @@ page in the main repo, not here. Do not grow the app to accommodate them.
   only two such calls.
 - **Never build a second state machine in TypeScript.** The aggregate lives in
   native. The TS layer is a *projection* of native events. Two authorities
-  disagree at 3-1 in the 40th over.
+  disagree at 3-1 in the 40th over. The rule is about the capture session.
+  Remote Scoring is JavaScript's, not native's: its match state is a fold of
+  the web's ledger by `@seazn/engine`, its queue and sync are pure reducers in
+  `src/domain/scoring/`, and the server's ledger is the one authority (design
+  §6.1–§6.4). Native plays no part in it.
 - Frames never approach the bridge. Preview is a native view.
 
 ## 3. Layering — enforced, not documented
@@ -131,8 +146,9 @@ page in the main repo, not here. Do not grow the app to accommodate them.
 app/               # Expo Router routes. Thin: they import ui, hooks and packages only.
   _layout.tsx      # the composition root: ports, language, reopen gate, orientation gate
   index.tsx        # Home
-  stream-settings.tsx  # Stream Settings from Home, no Diagnostics (R2 of the D3 findings design)
-  stream/          # Live Stream (landscape); S2/S4 add scoring/ and dashboard/
+  settings.tsx     # the app's Settings, from Home's gear (owner, 2026-11-02)
+  stream/          # Live Stream (landscape)
+  scoring/         # Remote Scoring (portrait): the sport's pad screen, from a table; S4 adds dashboard/
 src/
   domain/          # pure TS. No react, no react-native, no ui, no modules.
     mode/          # Mode, code recognition, saved codes, reopen and leave rules
@@ -141,6 +157,9 @@ src/
     credentials/   # QR v2 and the waiting fields, parsed (anti-corruption); publish credentials are native's;
                    # the record upload's credential, kept 24 h after its code goes (R4)
     policy/        # fallback strategy, degradation ladder
+    scoring/       # Remote Scoring: wire shapes, the tap queue, sync, the match reducer, and one
+                   # module set per sport behind `ScoringSport` (`sportFor`, a table). Generic files
+                   # never import a sport's: lint (`SPORT_MODULES`) enforces it
   i18n/            # en/es/fr/nl dictionaries, t()/tp(), formatTime(). Pure.
   ui/
     components/    # Text, Button, StatusLine, Tile, CodePanel, TurnCard, …
@@ -148,7 +167,9 @@ src/
     theme/         # tokens — the only source of colour
   hooks/           # the bridge from ports to screens: usePorts, useHome,
                    # useReopenGate, useOrientationGate, useCaptureEngine, …
-  services/        # ports (key-value store, device ports) + implementations
+  services/        # ports (key-value store, device ports) + implementations; Remote Scoring's:
+                   # the scoring port (the web's capture API), the tap queue store (a file per
+                   # match), the scoring link store (secure store) and the Realtime port
 modules/
   capture-engine/  # the engine port, the fake, and the native Expo module (StreamPack, Android)
   code-scanner/    # Expo Module. Google's code scanner (Android), iOS stub, fake.
@@ -175,7 +196,10 @@ contracts/         # the web's capture contracts, vendored and pinned
 - No `store/` — see §2. Session state is native-owned. What the app keeps
   itself (saved codes, the active mode, the language pick and, while
   `FEATURES.recordSend` is on, the upload credential, R4 of the D3 findings
-  design) sits behind the key-value store port in `services/`.
+  design) sits behind the key-value store port in `services/`. Remote
+  Scoring's link (origin, token and sport) is in the secure store under
+  `scoring.link.{id}`, and its unsent taps in one file per match behind the
+  tap queue store port (S2 design §6.1, §6.3).
 - `utils/` is where dead code hides. Put the function where it belongs.
 - Absolute imports via tsconfig paths (`@/domain`, `@/ui`).
 
@@ -433,27 +457,28 @@ Three rules travel with these tokens:
   (`app/stream/`), so on air it is only *leaving the mode* that is blocked:
   Home is hidden and Back says how to stop. A broadcast started remotely moves
   the app to Live Stream from wherever it is (A2).
-- **Stream Settings from Home** (R2 of the D3 findings design; owner,
-  2026-10-11) is the same screen with `from="home"`: no Diagnostics card
-  (nothing is paired), no LIVE plate, no on-air rules, and Back returns to
-  Home. Both variants carry the battery row (Android only; R5 of the D3
-  findings design; owner, 2026-10-11) and the record row: Share record,
-  outside the Diagnostics card so a phone sent Home by Replaced can still hand
-  its record over (N33), and Send record to Seazn when `FEATURES.recordSend`
-  is on, as it is (the owner's "On now (Recommended)", 2026-10-12, §1). From
-  Arming on, Send record is disabled with "Send it after the broadcast", so an
-  upload of up to 1 MB never starts on the broadcast's uplink; one started just
-  before Arming may finish on air, within the upload's 15 s bound. Share
-  record stays enabled (the controller's ruling, 2026-10-12). The battery row
-  reads the app's battery mode in Android's own words, _Unrestricted_,
-  _Optimized_ or _Restricted_, and its _App settings_ button opens this app's
-  App info page
-  (`ACTION_APPLICATION_DETAILS_SETTINGS`), where Battery is one tap away; a
-  path line under it says "Battery → Unrestricted" (R12 of the D3 findings
-  design; the controller's, 2026-10-12). It never prompts or nags. Its button
-  is the row's on-air protection: from Arming on it is disabled with "Change it
-  after the broadcast", because App info is one tap from Force stop (R13 of
-  the D3 findings design; the controller's, 2026-10-12).
+- **The app's Settings** (Home's gear; owner, 2026-11-02, §1) has no
+  Diagnostics card, no LIVE plate and no on-air rules of its own, and Back
+  returns to Home. The reopen gate leaves it in place while a stream is paired
+  and not armed; arming or going live moves the app to Live Stream (A2). It
+  and Live Stream's own Settings both carry the battery row (Android only; R5
+  of the D3 findings design; owner, 2026-10-11) and the record row: Share
+  record, outside the Diagnostics card so a phone sent Home by Replaced can
+  still hand its record over (N33), and Send record to Seazn when
+  `FEATURES.recordSend` is on, as it is (the owner's "On now (Recommended)",
+  2026-10-12, §1). From Arming on, Send record is disabled with "Send it after
+  the broadcast", so an upload of up to 1 MB never starts on the broadcast's
+  uplink; one started just before Arming may finish on air, within the
+  upload's 15 s bound. Share record stays enabled (the controller's ruling,
+  2026-10-12). The battery row reads the app's battery mode in Android's own
+  words, _Unrestricted_, _Optimized_ or _Restricted_, and opens this app's App
+  info page (`ACTION_APPLICATION_DETAILS_SETTINGS`), where Battery is one tap
+  away; a path line says "Battery → Unrestricted" (R12 of the D3 findings
+  design; the controller's, 2026-10-12). It never prompts or nags. From Arming
+  on it is disabled, because App info is one tap from Force stop (R13 of the
+  D3 findings design; the controller's, 2026-10-12): Live Stream's Settings
+  says "Change it after the broadcast" on its _App settings_ button, the app's
+  Settings "After the broadcast" on the row.
 - The audio meter is permanent, not in Settings. Nothing downstream
   normalises — a quiet mic reaches YouTube quiet.
 - One persistent status line that always says something true. Never an
@@ -491,9 +516,12 @@ Three rules travel with these tokens:
   launch, the engine instance with it) and the language, which changes only
   when the operator picks one. The theme may join them; today it is plain
   imported tokens. Telemetry never goes in context.
-- No React Query. The endpoints JS calls (the code check, and the record upload
-  behind `RecordUploadPort`: R3 of the D3 findings design; owner, 2026-10-11)
-  sit behind ports with plain `fetch`; the rest are native's.
+- No React Query. The endpoints JS calls (the code check, the record upload
+  behind `RecordUploadPort`: R3 of the D3 findings design; owner, 2026-10-11,
+  and Remote Scoring's capture API behind the scoring port) sit behind ports
+  with plain `fetch`; the rest are native's. Realtime is one subscription per
+  match, owned by the focused match (the hub's, `scoringHub.ts`), only as a
+  nudge to read again (S2 design §6.3).
 - `React.memo` and no anonymous functions in render, for HUD components
   specifically. This is the rare app where that is load-bearing.
 - Animations on Reanimated worklets — UI thread, never JS.
@@ -542,7 +570,7 @@ thermal member. Only transport trouble degrades a session.
   phone stops beating within one to a few minutes of locking (D3 Task 2b, and
   2026-10-11 22:06–22:09Z); not a clean threshold. The foreground service and
   the wake lock do not prevent it. The operator may choose _Unrestricted_ from
-  the battery row in Stream Settings (R5 of the D3 findings design; owner,
+  the battery row in Settings (R5 of the D3 findings design; owner,
   2026-10-11); the app never asks for `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`.
   A start while the Live Stream view is not showing must still deliver video
   (N28). Keep-awake with the idle dim stays the default path for a remote Go
@@ -653,7 +681,12 @@ thermal member. Only transport trouble degrades a session.
   queued for 42 minutes. A build on a real handset is still a prerequisite for
   anything native (it gated P5), but it is a local one: `pnpm expo prebuild -p
   android --no-install`, then `pnpm expo run:android --no-bundler` or
-  `./gradlew assembleDebug|assembleRelease`, installed with `adb`. The one
+  `./gradlew assembleDebug|assembleRelease`, installed with `adb`. A local build is the dev twin,
+  `com.seazn.capture.dev`, named "Seazn Capture (dev)" with the scheme
+  `seazn-capture-dev`, so it installs beside the Play app; only `eas.json`'s
+  `production` profile sets `APP_VARIANT=production` and builds
+  `com.seazn.capture` (owner, 2026-10-30, option 2; `appVariant` in
+  `app.config.ts`). Switching variant needs a fresh prebuild. The one
   exception (owner, 2026-10-28: "Full EAS cloud", "only for prod release",
   "like we can tag then trigger eas?"): a `v<version>` tag on main runs
   `.github/workflows/release.yml`, which builds the app bundle on EAS with
@@ -682,7 +715,12 @@ thermal member. Only transport trouble degrades a session.
   `expo-screen-orientation` for the orientation gate; `expo-brightness` for
   the idle dim (on Android the window's brightness only: its `WRITE_SETTINGS`
   permission is blocked in `app.json`); `expo-localization` for
-  the phone's language. No AsyncStorage.
+  the phone's language. No AsyncStorage. `expo-file-system` for Remote
+  Scoring's tap queue (write a `.tmp`, then move it over the file; on Android
+  the move deletes then renames, so a read promotes a lone `.tmp`), `@seazn/engine`
+  (pinned exactly, from GitHub Packages: the credential lives in the user
+  config, never the project's `.npmrc`) for the fold, and
+  `@supabase/realtime-js` (pinned) for the nudge.
 - Expo Updates: check on launch only, and **never apply while the phone is
   paired or holding a broadcast**. A paired phone is waiting for a match, and a
   remote Go live can arrive at any moment. A phone updating at 2pm on a

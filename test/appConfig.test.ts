@@ -7,6 +7,7 @@ import type { ConfigContext, ExpoConfig } from 'expo/config';
 import type { ExportedConfig } from 'expo/config-plugins';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import appConfig, {
+  appVariant,
   buildNumber,
   countedAtBuild,
   GRADLE_VERSION_CODE,
@@ -26,6 +27,7 @@ const count = Number(
 const base: ExpoConfig = {
   name: 'Seazn Capture',
   slug: 'capture',
+  scheme: 'seazn-capture',
   version: '1.0.0',
   android: { package: 'com.seazn.capture' },
   ios: { bundleIdentifier: 'com.seazn.capture' },
@@ -36,6 +38,7 @@ const context = (projectRoot: string) =>
 const made: string[] = [];
 afterEach(() => {
   for (const dir of made.splice(0)) rmSync(dir, { recursive: true, force: true });
+  vi.unstubAllEnvs();
 });
 
 describe('the build number (app.config.ts)', () => {
@@ -44,8 +47,6 @@ describe('the build number (app.config.ts)', () => {
     expect(config.android?.versionCode).toBe(count);
     expect(config.ios?.buildNumber).toBe(String(count));
     expect(config.version).toBe('1.0.0');
-    expect(config.android?.package).toBe('com.seazn.capture');
-    expect(config.ios?.bundleIdentifier).toBe('com.seazn.capture');
   });
 
   it('registers the build.gradle mod that reads the count when Gradle builds (review round 2)', () => {
@@ -68,6 +69,68 @@ describe('the build number (app.config.ts)', () => {
     made.push(dir);
     execFileSync('git', ['init', '-q', dir]);
     expect(() => buildNumber(dir)).toThrow();
+  });
+});
+
+/**
+ * Two installs on one phone (owner, 2026-10-30, option 2): the store build keeps app.json's identity, every other build
+ * is the dev twin. Expected values are literals, never derived from appVariant.
+ */
+describe('the app variant (app.config.ts)', () => {
+  it('keeps app.json’s package, name and scheme for the store build', () => {
+    vi.stubEnv('APP_VARIANT', 'production');
+    const config = appConfig(context(root));
+    expect(config.android?.package).toBe('com.seazn.capture');
+    expect(config.ios?.bundleIdentifier).toBe('com.seazn.capture');
+    expect(config.name).toBe('Seazn Capture');
+    expect(config.scheme).toBe('seazn-capture');
+  });
+
+  it('makes any build without the store word the dev twin, so a local build never takes the Play package', () => {
+    vi.stubEnv('APP_VARIANT', '');
+    const config = appConfig(context(root));
+    expect(config.android?.package).toBe('com.seazn.capture.dev');
+    expect(config.ios?.bundleIdentifier).toBe('com.seazn.capture.dev');
+    expect(config.name).toBe('Seazn Capture (dev)');
+    expect(config.scheme).toBe('seazn-capture-dev');
+  });
+
+  it.each(['development', 'Production', 'preview'])('reads %s as the dev twin', (word) => {
+    expect(appVariant(base, { APP_VARIANT: word }).android?.package).toBe('com.seazn.capture.dev');
+  });
+
+  it('is the dev twin with the variable unset', () => {
+    expect(appVariant(base, {}).android?.package).toBe('com.seazn.capture.dev');
+  });
+
+  it('keeps the build number and the rest of android on both variants', () => {
+    for (const word of ['production', '']) {
+      vi.stubEnv('APP_VARIANT', word);
+      const config = appConfig(context(root));
+      expect(config.android?.versionCode).toBe(count);
+      expect(config.ios?.buildNumber).toBe(String(count));
+    }
+  });
+});
+
+/**
+ * The config's `extra` is EAS's alone (plan S2-1 Task 11): the Remote scoring preview that read the variant word from it
+ * is gone, so the running app is told nothing of the variant. Expected values are literals.
+ */
+describe('the extra the running app reads (app.config.ts)', () => {
+  it.each(['production', '', 'development'])(
+    'keeps EAS’s project id and adds no variant word, with APP_VARIANT %j',
+    (word) => {
+      vi.stubEnv('APP_VARIANT', word);
+      const withEas = { ...base, extra: { eas: { projectId: 'made-up-project' } } };
+      const config = appConfig({ config: withEas, projectRoot: root } as unknown as ConfigContext);
+      expect(config.extra).toEqual({ eas: { projectId: 'made-up-project' } });
+    },
+  );
+
+  it('leaves extra unset when the config has none', () => {
+    vi.stubEnv('APP_VARIANT', 'production');
+    expect(appConfig(context(root)).extra).toBeUndefined();
   });
 });
 

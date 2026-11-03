@@ -97,12 +97,70 @@ const NO_COLOUR_LITERALS = [
   { selector: `JSXAttribute[name.name=${COLOUR_PROP}] ${NAMED_COLOUR}`, message: COLOUR_MESSAGE },
 ];
 
-/** The ui import rule, for a given list of services the files may not import. */
-function uiRestrictedImports(services, message) {
+/**
+ * Pad per sport (owner, 2026-11-02: "pad per sport must, instead of creating a single pad and adjusting and adding
+ * lots of conditions"). The match runtime and the kit are the same for every sport: a sport is its own module behind
+ * `ScoringSport` (src/domain/scoring/scoringSport.ts), listed by its key in `sports.ts`, with its own screen. So a
+ * generic scoring file may not name a sport's module, by value or by type: badminton's files (`badminton*`, and the
+ * hooks and services named `*Badminton*`) and its sheets (`usePadSheets`: Sanction and Set score). Tests are free to.
+ */
+const SPORT_MODULES = {
+  group: ['**/*badminton*', '**/usePadSheets'],
+  message:
+    'A generic scoring file names no sport (owner, 2026-11-02: pad per sport): ask the match’s sport (`ScoringSport`).',
+};
+
+/**
+ * Every scoring file, by where it lives, so a file added tomorrow is held without anyone remembering to list it (the
+ * Batch D review): the match runtime and its model, the hooks that drive them, the home's cards, the route and the
+ * screens every sport shares. The kit (`src/ui/components`) is held below, with the ui rule. What is NOT generic is the
+ * sport's own, listed in `SPORT_OWN_FILES`.
+ */
+const SPORT_GENERIC_FILES = [
+  'src/domain/scoring/**/*.{ts,tsx}',
+  'src/domain/mode/scoringHome.ts',
+  'src/hooks/*coring*.{ts,tsx}',
+  'src/hooks/usePad*.{ts,tsx}',
+  'src/hooks/padScreenModel.ts',
+  // The ports and stores the match runtime reads and writes through: the server's, the link's, the queue's. A name does
+  // not hold them (`tapQueueStore` has no "scoring" in it), so they are listed.
+  'src/services/scoringPort.ts',
+  'src/services/fetchScoringPort.ts',
+  'src/services/tapQueueStore.ts',
+  'src/services/scoringLinkStore.ts',
+  'src/services/scoringLinkPort.ts',
+  // The pad's words every sport shares (`padText`), as its hook (`usePadText`) already is.
+  'src/i18n/padText.ts',
+  // The route and the screens that pick a sport's screen or draw the states every sport shares (plan S2-1 Task 11); the
+  // table they read (`scoringScreens.ts`) is the one place that names the sports' screens, as `sports.ts` names the sports.
+  'app/scoring/**/*.{ts,tsx}',
+];
+
+/**
+ * A sport's own files, free to name its modules: whatever is named for it (`badminton*`, `*Badminton*`: globs are case
+ * sensitive here, so both), its sheets (`usePadSheets`: Sanction and Set score are badminton's), and the table that
+ * lists the sports by key. (The table of their screens, `src/ui/screens/scoringScreens.ts`, is no generic file either: the
+ * globs above match `Scoring*` with a capital, which it has not.)
+ */
+const SPORT_OWN_FILES = [
+  '**/*badminton*',
+  '**/*Badminton*',
+  'src/hooks/usePadSheets.ts',
+  'src/domain/scoring/sports.ts',
+];
+
+/** The screens every sport shares: the sport picker and the states. Held to the ui import rule as well (see below). */
+const SPORT_GENERIC_SCREENS = ['src/ui/screens/Scoring*.{ts,tsx}'];
+
+/** The ui import rule, for a given list of services the files may not import, and any further groups. */
+function uiRestrictedImports(services, message, ...more) {
   return [
     'error',
     {
-      patterns: [{ group: [...UI_NATIVE_IMPORTS, services], allowTypeImports: true, message }],
+      patterns: [
+        { group: [...UI_NATIVE_IMPORTS, services], allowTypeImports: true, message },
+        ...more,
+      ],
     },
   ];
 }
@@ -112,9 +170,10 @@ function uiRestrictedImports(services, message) {
  *
  * `domain/` must stay pure TypeScript so its tests run in milliseconds with no
  * React Native preset. That purity is enforced here, not by convention: the
- * domain policy below grants one external-module allowance, `qrcode-generator`
- * (a pure JS encoder), and no other, so any import of react, react-native or
- * expo from src/domain fails the build.
+ * domain policy below grants two external-module allowances, `qrcode-generator`
+ * (a pure JS encoder) and `@seazn/engine` at its phone subpaths (pure TS over
+ * zod), and no other, so any import of react, react-native or expo from
+ * src/domain fails the build.
  */
 export default [
   {
@@ -167,16 +226,28 @@ export default [
           checkAllOrigins: true,
           policies: [
             {
-              // One external allowance, `qrcode-generator` below, and no other: this is the
-              // domain purity rule.
+              // Two external allowances, `qrcode-generator` and `@seazn/engine`'s phone subpaths
+              // below, and no other: this is the domain purity rule.
               from: { element: { type: 'domain' } },
               allow: [
                 { to: { element: { type: 'domain' } } },
                 { to: { element: { type: 'contracts' } } },
-                // The one external package domain may name: a pure JS encoder with no react or
+                // The first external package domain may name: a pure JS encoder with no react or
                 // react-native in it (the Seazn QR's modules, src/domain/qr). Named by source, so
                 // `react` and the rest stay refused.
                 { to: { module: { origin: 'external', source: 'qrcode-generator' } } },
+                // The second (plan S2-1 Task 1): Seazn's scoring engine, at the subpaths its own
+                // `phone-subpaths.json` names, pure TS over zod. Not `testkit` (vitest, fast-check) or the
+                // web's subpaths; not zod itself, which domain never names (test/domainBoundary.test.ts).
+                {
+                  to: {
+                    module: {
+                      origin: 'external',
+                      source: '@seazn/engine',
+                      internalPath: ['core', 'sport', 'sports', 'sports/*', 'pad'],
+                    },
+                  },
+                },
               ],
             },
             {
@@ -275,6 +346,31 @@ export default [
         'Screens reach native capabilities through ports (spec §9)',
       ),
     },
+  },
+  {
+    // The kit draws any sport's pad (padView.ts): it names no sport (SPORT_MODULES). Repeats the ui rule, since this
+    // block's `no-restricted-imports` replaces the one above for these files. ShellFrame keeps its insets exception. The
+    // screens every sport shares (the sport picker, the states) are held the same way.
+    files: ['src/ui/components/**/*.{ts,tsx}', ...SPORT_GENERIC_SCREENS],
+    ignores: [
+      'src/ui/components/ShellFrame.tsx',
+      '**/*.test.ts',
+      '**/*.test.tsx',
+      ...SPORT_OWN_FILES,
+    ],
+    rules: {
+      'no-restricted-imports': uiRestrictedImports(
+        '@/services/*',
+        'Screens reach native capabilities through ports (spec §9)',
+        SPORT_MODULES,
+      ),
+    },
+  },
+  {
+    // The match runtime is the same for every sport (SPORT_MODULES). Tests may drive it with any sport's fixtures.
+    files: SPORT_GENERIC_FILES,
+    ignores: ['**/*.test.ts', '**/*.test.tsx', ...SPORT_OWN_FILES],
+    rules: { 'no-restricted-imports': ['error', { patterns: [SPORT_MODULES] }] },
   },
   {
     // Colour comes from the theme and nowhere else (AGENTS §5). Repeats NO_ANY:

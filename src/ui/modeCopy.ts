@@ -10,9 +10,9 @@ export const MODE_PURPOSE: Readonly<Record<Mode, MessageKey>> = {
   dashboard: 'home.tile.dashboard.purpose',
 };
 
-/** Which code opens a mode. Unbuilt modes say "Coming soon"; S2 and S4 add theirs. */
+/** Which code opens a mode. An unbuilt mode says "Coming soon"; S4 adds the Dashboard's. */
 export const MODE_HINT: Readonly<Record<Mode, MessageKey>> = {
   stream: 'home.tile.stream.hint',
-  scoring: 'home.tile.comingSoon',
+  scoring: 'home.tile.scoring.hint',
   dashboard: 'home.tile.comingSoon',
 };

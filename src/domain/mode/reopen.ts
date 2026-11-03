@@ -18,6 +18,7 @@ export type SavedState = {
 
 export type ReopenTarget =
   | { readonly go: 'stream' }
+  | { readonly go: 'scoring' }
   | {
       readonly go: 'home';
       /** `venueTz` is the saved waiting fields' zone, so the notice reads in venue time (spec §2). */
@@ -38,19 +39,23 @@ export type ReopenTarget =
  * a saved code goes Home, to the Continue card. A permanent failure keeps its
  * code; the viewfinder then leaves for Home with the card (spec §5), and the
  * operator's Stop goes Home. A fatal end over a code the server ended forgets it, so it lands on the `home` branch
- * above once the follow has written. S0 builds only Live Stream; S2 and S4 widen the union.
+ * above once the follow has written. Remote Scoring (plan S2-1 Task 10) reopens after those, when `scoring` says the
+ * cold start found its match saved and the mode active (`reopensScoring`); S4 widens the union again.
  */
 export function reopenTarget(input: {
   engine: EngineStatus;
   saved: SavedState;
   now: Date;
   resumed: boolean;
+  /** `reopensScoring` for this decision; left out, Remote Scoring is not reopened. */
+  scoring?: boolean;
 }): ReopenTarget {
   const { engine, saved, now } = input;
   const code = saved.codes.stream;
   if (engine === 'live') return { go: 'stream' };
   if (engine === 'paired') return { go: code === undefined ? 'home' : 'stream' };
   if (input.resumed) return { go: 'stream' };
+  if (input.scoring === true) return { go: 'scoring' };
   if (saved.active !== 'stream' || code === undefined) return { go: 'home' };
   if (code.expiresAt !== null && isExpired(code, now)) {
     return {
@@ -84,6 +89,16 @@ export function orphanedSession(input: {
   if (engine === 'paired') return code === undefined;
   if (engine !== 'stopped' && engine !== 'failed') return false;
   return code === undefined || isExpired(code, now);
+}
+
+/**
+ * Remote Scoring reopens at a cold start only (plan S2-1 Task 10; design §4 step 1, "the app reopens into the match"),
+ * as Live Stream's re-pair does, and only while its match is saved and it was the last mode. A visit to Home, or a
+ * return to the foreground from it, never pulls the scorer back in: Back goes Home freely (ruling 10).
+ */
+export function reopensScoring(input: { saved: SavedState; coldStart: boolean }): boolean {
+  const { saved } = input;
+  return input.coldStart && saved.active === 'scoring' && saved.codes.scoring?.scoring != null;
 }
 
 /** The cold-start re-pair's conditions, on an Idle engine (amendment, Process death and reopen). */

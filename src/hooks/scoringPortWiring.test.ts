@@ -1,0 +1,49 @@
+import { describe, expect, it } from 'vitest';
+import { scoringPortFor } from '@/hooks/scoringPortWiring';
+import type { ScoringFetch } from '@/services/fetchScoringPort';
+import { createLogger } from '@/services/logger';
+import { createRingRecord } from '@/services/sessionRecord';
+import { FAKE_SCORING_SECRET } from '../../test/fakeScoringLinkPort';
+
+const FIXTURE = '6f0c5a52-3d1e-4a0b-8f55-0c2f6d7b9e10';
+
+/** A server that is never reached, so what the port asked is all a test sees. */
+function wiring(hosts: readonly string[]) {
+  const asked: string[] = [];
+  const fetch: ScoringFetch = async (url) => {
+    asked.push(url);
+    return { status: 503, headers: { get: () => null }, text: async () => '' };
+  };
+  const logger = createLogger({ record: createRingRecord(), now: () => 0 });
+  return { port: scoringPortFor({ fetch, logger, hosts }), asked };
+}
+
+/**
+ * The inert seam (AGENTS §13, class 1): `createNativePorts` is not run by any test, so the rule it wires lives in
+ * this one function and is tested here: the port sends only to the build's own host, `hosts[0]`, and a build that has
+ * none sends nowhere.
+ */
+describe('which host the composition root’s scoring port trusts', () => {
+  it('the build’s own host, and no other', async () => {
+    const { port, asked } = wiring(['stg.seazn.club']);
+    const token = FAKE_SCORING_SECRET;
+    await port.events({ origin: 'https://stg.seazn.club', token }, FIXTURE, 0);
+    await port.events({ origin: 'https://seazn.club', token }, FIXTURE, 0);
+    expect(asked).toEqual([`https://stg.seazn.club/api/v1/fixtures/${FIXTURE}/events?since_seq=0`]);
+  });
+
+  it('the production build’s host is production’s alone', async () => {
+    const { port, asked } = wiring(['seazn.club']);
+    const token = FAKE_SCORING_SECRET;
+    await port.rules({ origin: 'https://stg.seazn.club', token }, FIXTURE);
+    await port.rules({ origin: 'https://seazn.club', token }, FIXTURE);
+    expect(asked).toEqual([`https://seazn.club/api/v1/fixtures/${FIXTURE}/rules`]);
+  });
+
+  it('a build with no host sends nowhere', async () => {
+    const { port, asked } = wiring([]);
+    const link = { origin: 'https://stg.seazn.club', token: FAKE_SCORING_SECRET };
+    expect(await port.bootstrap(link)).toEqual({ kind: 'offline' });
+    expect(asked).toEqual([]);
+  });
+});

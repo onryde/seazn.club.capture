@@ -121,6 +121,17 @@ vi.mock('@/ui/components/FadeOut', async () => {
   return { FadeOut };
 });
 
+// A pad half's flash is a Reanimated worklet; its own suite (TapFlash.test.tsx) draws the real one. The stand-in
+// carries the cue it was given (`flashCue`), so a screen test sees which half was told a tap of its own counted.
+vi.mock('@/ui/components/TapFlash', async () => {
+  const { createElement } = await import('react');
+  const { View } = await import('react-native');
+  return {
+    TapFlash: ({ cue }: { cue: number }) =>
+      createElement(View, { testID: 'tap-flash', dataSet: { cue: String(cue) } } as ViewProps),
+  };
+});
+
 // The hold's fill is a Reanimated worklet; tests read whether it is running and its tone.
 vi.mock('@/ui/components/HoldFill', async () => {
   const { createElement } = await import('react');

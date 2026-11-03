@@ -16,6 +16,8 @@ concurrency:
 
 permissions:
   contents: read
+  # @seazn/engine is on GitHub Packages (plan S2-1 Task 1): the install reads it with this token.
+  packages: read
 
 jobs:
   bridge-contract:
@@ -35,11 +37,17 @@ jobs:
             modules/capture-engine/android/core/gradle/wrapper/gradle-wrapper.properties
       # Reads the pnpm version from package.json `packageManager` (as check.yml).
       - uses: pnpm/action-setup@v4
+      # `registry-url` and `scope` write the @onryde registry and its `${NODE_AUTH_TOKEN}` credential to a
+      # user-level .npmrc: pnpm ignores a credential in the project's (.npmrc says why).
       - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
           cache: pnpm
+          registry-url: https://npm.pkg.github.com
+          scope: '@onryde'
       - run: pnpm install --frozen-lockfile
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: ./gradlew :host:installDist --no-daemon --console=plain
         working-directory: modules/capture-engine/android/core
       - run: pnpm vitest run --project bridge

@@ -13,14 +13,19 @@ export const GLYPH_NAMES = [
   'qr',
   'back',
   'pulse',
+  'info',
+  'history',
+  'up',
+  'upBlocked',
 ] as const;
 export type GlyphName = (typeof GLYPH_NAMES)[number];
 
 /**
  * What a glyph is drawn in, by the canvas: ink on a readiness chip (its outline carries the state),
- * ink2, cream at 80%, on an icon-row button; lime, the LED, for the Diagnostics heading's pulse (the board).
+ * ink2, cream at 80%, on an icon-row button; lime, the LED, for the Diagnostics heading's pulse (the board); caution
+ * orange for the pad's send badge when the taps cannot go (never red: red means ON AIR, AGENTS §5).
  */
-export type GlyphTone = 'ink' | 'ink2' | 'lime';
+export type GlyphTone = 'ink' | 'ink2' | 'lime' | 'caution';
 
 type GlyphProps = {
   readonly name: GlyphName;
@@ -70,6 +75,10 @@ const DRAWINGS: Record<GlyphName, (props: { slashed: boolean }) => ReactElement>
   qr: QrGlyph,
   back: BackGlyph,
   pulse: PulseGlyph,
+  info: InfoGlyph,
+  history: HistoryGlyph,
+  up: UpGlyph,
+  upBlocked: UpBlockedGlyph,
 };
 
 function CameraGlyph({ slashed }: { slashed: boolean }) {
@@ -143,4 +152,36 @@ function BackGlyph() {
  */
 function PulseGlyph() {
   return <Path d="M2 12h5l2.5-8 4 16 2.5-8h6" />;
+}
+
+/** Match rules on the pad's top bar (owner ruling 20, 2026-10-31): an i in a ring, the shutter's ring, the network's dot. */
+function InfoGlyph() {
+  return (
+    <>
+      <Circle cx={12} cy={12} r={9} />
+      <Path d="M12 11v6" />
+      <Circle cx={12} cy={7.5} r={1} />
+    </>
+  );
+}
+
+/**
+ * History on the pad's top bar (owner ruling 20): a clock whose ring runs back to an arrowhead at the top left, its
+ * hands at about four.
+ */
+function HistoryGlyph() {
+  return <Path d="M3 12a9 9 0 1 0 2.64-6.36L3 8.3M3 3.5v4.8h4.8M12 7.5V12l3 2" />;
+}
+
+/** The pad's send badge (owner, 2026-11-02: "green uparrow for sending"): an arrow up, the taps on their way. */
+function UpGlyph() {
+  return <Path d="M12 19V5M6 11l6-6 6 6" />;
+}
+
+/**
+ * The same arrow stopped under a bar: the taps cannot go (offline, refused, a server that keeps saying no). The shape
+ * says it with the badge's caution colour, so it does not rest on telling lime from orange.
+ */
+function UpBlockedGlyph() {
+  return <Path d="M12 20V10M7 14l5-5 5 5M5 4h14" />;
 }

@@ -3,14 +3,21 @@ import { type Result, err } from '@/domain/Result';
 import type { CodeError, WaitingFields } from '@/domain/credentials/waitingFields';
 import type { ModeCode } from '@/domain/mode/Mode';
 import type { SavedStream } from '@/domain/mode/savedCode';
+import type { ScoringOpen } from '@/hooks/scoringOpen';
 import type { HomePanel, StreamCode } from '@/hooks/useHome';
+import { useScoringCheck } from '@/hooks/useScoringCheck';
 import { usePorts } from '@/hooks/usePorts';
 import type { CodePort } from '@/services/codePort';
 import type { Logger } from '@/services/logger';
 import type { ModeStore } from '@/services/modeStore';
 
 export type SetPanel = Dispatch<SetStateAction<HomePanel | null>>;
-export type OpenCode = (code: ModeCode, stream: SavedStream | null) => Promise<void>;
+/** A scoring code is opened with the match the server named (the scan's bootstrap, or the saved match's); any other mode with none. */
+export type OpenCode = (
+  code: ModeCode,
+  stream: SavedStream | null,
+  scoring?: ScoringOpen | null,
+) => Promise<void>;
 export type OpenOrCheck = (code: ModeCode) => Promise<void>;
 type Answer = Result<WaitingFields, CodeError>;
 
@@ -49,7 +56,8 @@ export function useCodeCheck(
 }
 
 /**
- * Spec §1: a stream code is checked with the server before anything is saved.
+ * Spec §1: a stream code is checked with the server before anything is saved; a scoring link is read from it too
+ * (`useScoringCheck`).
  * The scan flight is still up while this runs, so a second tap is ignored
  * until the answer is in. A store that is not ready is not asked (R12), nor is
  * a code that ran out while its panel sat open (a Try again; a code with no
@@ -58,8 +66,10 @@ export function useCodeCheck(
  */
 function useOpenOrCheck(openCode: OpenCode, setPanel: SetPanel): OpenOrCheck {
   const { code: port, modeStore, logger, clock } = usePorts();
+  const checkScoring = useScoringCheck(openCode, setPanel);
   return useCallback(
     async (code: ModeCode) => {
+      if (code.mode === 'scoring') return checkScoring(code);
       if (code.mode !== 'stream') return openCode(code, null);
       if (!isReady(modeStore)) return;
       if (code.expiresAt !== null && code.expiresAt.getTime() <= clock().getTime()) {
@@ -78,7 +88,7 @@ function useOpenOrCheck(openCode: OpenCode, setPanel: SetPanel): OpenOrCheck {
         tapToPair: false,
       });
     },
-    [port, modeStore, logger, clock, openCode, setPanel],
+    [port, modeStore, logger, clock, openCode, setPanel, checkScoring],
   );
 }
 

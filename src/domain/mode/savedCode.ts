@@ -19,6 +19,17 @@ export type SavedStream = {
 };
 
 /**
+ * What a scoring code keeps beside the mode (plan S2-1 Task 10): the match it opened, which is the key of its link in
+ * the secure store (`scoring.link.{fixtureId}`) and of its queue file, and what Home calls the match. The link's token
+ * is not here: the secure store holds it once, under the link's own key, so a new link for the same match is one write.
+ */
+export type SavedScoring = {
+  readonly fixtureId: string;
+  /** The organiser's own words for the match ("Match 4"), as of the last bootstrap; may be empty. */
+  readonly label: string;
+};
+
+/**
  * A code kept so the app can reopen into its mode (S0 spec §4). Scores,
  * approvals and engine state are never saved — native owns the engine.
  *
@@ -37,20 +48,30 @@ export type SavedCode = {
   readonly expiresAt: Date | null;
   /** Stream codes only, and required for them: a stream record without one is dropped. */
   readonly stream: SavedStream | null;
+  /** Scoring codes only, and required for them: a scoring record without one is dropped. */
+  readonly scoring: SavedScoring | null;
 };
 
 const VERSION = 3;
 const MODES: readonly Mode[] = ['stream', 'scoring', 'dashboard'];
 
-export function savedCodeFrom(code: ModeCode, now: Date, stream: SavedStream | null): SavedCode {
+export function savedCodeFrom(
+  code: ModeCode,
+  now: Date,
+  stream: SavedStream | null,
+  scoring: SavedScoring | null = null,
+): SavedCode {
   const isStream = code.mode === 'stream';
+  const isScoring = code.mode === 'scoring';
   return {
     mode: code.mode,
-    raw: code.raw,
+    // A scoring link's token is the secure store's, under its own key: never a second copy here.
+    raw: isScoring ? '' : code.raw,
     slot: isStream ? code.slot : null,
     savedAt: now,
     expiresAt: isStream ? code.expiresAt : null,
     stream: isStream ? stream : null,
+    scoring: isScoring ? scoring : null,
   };
 }
 
@@ -75,6 +96,7 @@ export function encodeSavedCode(code: SavedCode): string {
             codeUrl: code.stream.codeUrl,
             tapToPair: code.stream.tapToPair,
           },
+    scoring: code.scoring === null ? null : { ...code.scoring },
   });
 }
 
@@ -92,6 +114,8 @@ export function decodeSavedCode(text: string): SavedCode | null {
   if (!isTimeOrNull(data.expiresAt) || !isSlotOrNull(data.slot)) return null;
   const stream = decodeStream(data.stream);
   if (stream === false || (mode === 'stream' && stream === null)) return null;
+  const scoring = mode === 'scoring' ? decodeScoring(data.scoring) : null;
+  if (mode === 'scoring' && scoring === null) return null;
   return {
     mode,
     raw: data.raw,
@@ -99,7 +123,17 @@ export function decodeSavedCode(text: string): SavedCode | null {
     savedAt: new Date(data.savedAt),
     expiresAt: data.expiresAt === null ? null : new Date(data.expiresAt),
     stream,
+    scoring,
   };
+}
+
+/** A scoring part that does not read (no match named) is no part: the record is dropped. */
+function decodeScoring(value: unknown): SavedScoring | null {
+  if (!isRecord(value) || typeof value.fixtureId !== 'string' || value.fixtureId === '')
+    return null;
+  return typeof value.label === 'string'
+    ? { fixtureId: value.fixtureId, label: value.label }
+    : null;
 }
 
 /**

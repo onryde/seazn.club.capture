@@ -13,8 +13,6 @@ import { colour, layout, radius, space } from '@/ui/theme/tokens';
 type GhostButtonProps = {
   label: string;
   onPress: () => void;
-  /** Set only on a button that shows and hides something, like the language list. */
-  expanded?: boolean;
   /**
    * The board's smaller box (Share record): 37 dp tall, 12 dp text. The button is still a `touch` tall target, and
    * the outlined box is drawn inside it, centred: a screen reader reads a node's bounds, so the target is a real
@@ -26,22 +24,24 @@ type GhostButtonProps = {
    * by its caller. Pressable folds `disabled` into the accessibility state; the label drops to the inert ink.
    */
   disabled?: boolean;
+  /** What a screen reader says where the visible word is not enough alone (two cards' Dismiss); the label is still drawn. */
+  accessibilityLabel?: string;
 };
 
 /** The secondary action beside a lime plate: outlined, never a second lime. */
 export const GhostButton = memo(function GhostButton({
   label,
   onPress,
-  expanded,
   compact = false,
   disabled = false,
+  accessibilityLabel,
 }: GhostButtonProps) {
   const labelStyle = disabled ? styles.labelOff : undefined;
   const compactBox = useCompactBox(label, labelStyle);
   return (
     <Pressable
       accessibilityRole="button"
-      aria-expanded={expanded}
+      accessibilityLabel={accessibilityLabel}
       disabled={disabled}
       onPress={onPress}
       style={compact ? styles.target : ghostStyle}

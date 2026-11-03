@@ -265,3 +265,25 @@ describe('MatchLabel reports its height (R-F5)', () => {
     ).not.toThrow();
   });
 });
+
+// Device finding, 2026-11-02: a long single-word name broke inside its word (NameText). Each side is one line the phone
+// shrinks to fit when it has no gap; a side with gaps keeps its two lines.
+describe('MatchLabel, a side that is one long word', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('is one line a side, and a side with gaps beside it keeps its two', () => {
+    pairedWith('TEest002ashokashTEest002 v Ana Ruiz / Bea Lima');
+    const rows = screen.getAllByTestId('match-label-line');
+    expect(rows.map((row) => row.textContent)).toEqual([
+      'TEest002ashokashTEest002',
+      'Ana Ruiz / Bea Lima',
+    ]);
+    expect(rows.map(linesAllowed)).toEqual([1, 2]);
+  });
+
+  it('is one line when it is the only side too', () => {
+    pairedWith('TEest002ashokashTEest002');
+    expect(linesAllowed(screen.getByTestId('match-label-line'))).toBe(1);
+  });
+});

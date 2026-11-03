@@ -37,6 +37,7 @@
         "buildType": "app-bundle"
       },
       "env": {
+        "APP_VARIANT": "production",
         "EXPO_PUBLIC_SEAZN_ENV": "production"
       }
     }

@@ -105,7 +105,7 @@ follows the session's record.
    (S0's reopen gate) and the Continue card can name it.
 2. **Bootstrap.** The app asks the web what the link is (§7.1): the match, its rules, the sides, the
    state of the division, and whether the link still works. While it asks, the screen says so in one
-   line. No signal: the last bootstrap saved for this link is used, and the sync dot says offline.
+   line. No signal: the last bootstrap saved for this link is used, and the send badge says offline.
 3. **The card or the screen it leads to:**
    - link not valid → the bad-link card (the existing `PadStateCard` `linkInvalid`); the saved link
      is forgotten, and its unsent taps, if any, are handled as §6.3's leftovers;
@@ -121,10 +121,19 @@ follows the session's record.
 5. **Score.** Tap a half to give that side the rally. The half flashes; the last-tap line says what
    was recorded, with Undo. Undo works while this phone's tap is the latest in the match; once
    another scorer has scored since, it is disabled with "Another scorer has scored since" (ruling 28). Sanction per side; Set score before a game's first rally; the ⓘ and ↺
-   icons; the sync dot.
+   icons; the send badge.
 6. **The end.** The engine ends the game and the match. The pad shows the result card; the organiser
    finalizes on the web; the pad turns view only. A disqualification asks to record the ending or
-   void the sanction (the existing `EndingPrompt`).
+   void the sanction (the existing `EndingPrompt`). Undo on the result closes 45 s after this
+   phone's own tap decided the match (owner, 2026-11-03; first 30 s, then 45 s after testing build 823), the seconds counted on the card; the end
+   of a game has no limit. The window starts at the dispatched tap that takes the match from not
+   decided to decided (the reducer, `scoringMatchWindow.ts`), never at a frame the pad happened to
+   show, and the hub holds it in memory for the launch: Home and back keeps it. A restart, a leave
+   (scanning another match) and then a rescan, and a Dismiss, Forget or Close, all show a decided
+   match with no Undo, whatever order the ledger and the bootstrap arrive in, and nothing reopens or
+   restarts it. Undo is refused by the reducer once the window has closed, so a press cannot land
+   after the 45 s. A result the other scorer made offers none; a tap queued while offline follows
+   the same rule, and the reconnect question can still discard it.
 7. **Leaving.** Back goes Home at any time (ruling 10). Unsent taps keep sending while the app is
    open; the Continue card says how many are left.
 
@@ -133,15 +142,26 @@ follows the session's record.
 The kit and the badminton screen exist on `feat/s2-pad-ui` and are the design of record. A builder
 reads the components rather than this section for pixel detail; this section names what S2 keeps.
 
-**Top bar** (every state but the bad-link card): Back; the games won, "1:0" top:bottom, LED lime 30 dp
-(`tally` role; a disqualified game counts for nobody); ⓘ Match details and ↺ History, 48 dp round icon
-buttons; the sync dot and its word (Synced, Sending N, Offline · N unsent, Update needed).
+**Top bar** (every state but the bad-link card): Back; the games won, "1:0" top:bottom, LED lime 46 dp
+(`tally` role, the header's own 48 dp line; a disqualified game counts for nobody); then at the right end
+the send badge, then ⓘ Match details and ↺ History, 48 dp round icon buttons, History last (owner,
+2026-11-03: "have sync icon first then info, history"). The send badge (owner, 2026-11-02: "remove sending word and have a
+symbol/icon like green uparrow for sending", "1 yes" on the proposal, and "can we incrase the size of 0:0
+fit in that space"): no words, an up arrow and the count in a 48 dp outlined badge, lime arrow in a quiet
+outline while taps are on their way, and when they cannot go (offline, a dead link, a server that keeps
+refusing: `stallOf`) the same badge in caution orange with a heavier outline and the arrow stopped under a
+bar, so it does not rest on telling lime from orange. Nothing waiting is no badge, though its 56 dp slot
+stays so the tally's room stays the same. "99+" is the widest it draws. A tap opens History; a screen reader hears
+the words ("8 taps can't be sent") and the History hint.
 
 **Strip**, one line: "Game N of M" at the left, the interval ("Interval at 11", "Interval") at the far
 right.
 
 **Halves** (`ScoreHalf`), the whole half is the button: the side's names as typed; the SERVING plate
-with the court (SERVING · RIGHT); the score centred, `scoreLarge` 128, else `score` 96, else
+with the court (SERVING · RIGHT); the bar at the half's left edge, lit lime on the serving side and lilac
+on the other, moving at once when the serve changes (owner, 2026-11-02: "lime color changes who is
+serving"; the sport decides it, `PadHalf.bar`, so none is lit while no server is known, before the match
+starts or once it is over; decorative, the plate says who serves); the score centred, `scoreLarge` 128, else `score` 96, else
 `scoreCompact` 64, by the half's measured height (`scoreRole`); the bottom row with the finished games'
 boxes (the winner's lime digits and hairline, a DQ box in caution) and the hint "Tap: rally to
 {side}"; the lime flash (`TapFlash`, ~300 ms, none under reduce motion).
@@ -151,7 +171,7 @@ Sanction for each side, and Set score only before a game's first rally.
 
 **Covers:** the sanction steps (`StepSheet`), Set score (`ScoreEntrySheet`, titled "Set score · Game
 N", in-progress scores only), the ending prompt (`EndingPrompt`), Match details (`MatchDetailsSheet`:
-`MatchDetails` then `RuleLines`), History (`HistoryCover`). One cover at a time; the pad is hidden from
+`MatchCard`), History (`HistoryCover`). One cover at a time; the pad is hidden from
 a screen reader under it; Back closes it.
 
 **Cards:** Not started (Match details and the rules), Start screen (`TossPicker` and Start match),
@@ -168,19 +188,23 @@ details sheet:
 - a rules table of label → value rows.
 
 Each sport supplies its own rows (badminton: Format, Points, Cap, Interval, Ends change); the card
-knows no sport.
+knows no sport. Badminton's Ends change reads "after each game, and at 6 in game 3": ends change after
+every game and once more within the deciding game (BWF Law 8); a best of 1 reads "at 6" (owner,
+2026-11-03, "apply rec": "at 6 in game 3" alone read as a change in game 3 only).
 
 **Shared kit vs sport screen** (ruling 13). Sport-agnostic, reused by every sport: `PadView` and its
 cards and `cardPlacement`, the bounce guard, `TapFlash`, `LastTapLine`, `ToolRow`, `StepSheet`,
-`ScoreEntrySheet`, `EndingPrompt`, `SyncDot`, `UpdateBanner`, `RefusalBanner`, `PadStrip`,
-`MatchDetails`, `MatchDetailsSheet`, `RuleLines`, `HistoryCover`, `TossPicker`, `PadStateCard`, the
+`ScoreEntrySheet`, `EndingPrompt`, `SyncBadge`, `AskSheet`, `UpdateBanner`, `RefusalBanner`, `PadStrip`,
+`MatchCard`, `MatchDetailsSheet`, `HistoryCover`, `TossPicker`, `PadStateCard`, the
 tally. Sport-specific: the domain view (`badmintonPad.ts`, `badmintonSanction.ts`, `badmintonRules.ts`,
 `badmintonHistory.ts`) and the screen that lays the kit out. Table tennis is expected to reuse
 badminton's screen with its own domain view (one engine kernel, `setbased`). A sport with a clock
 (football, hockey) adds a clock part to the kit when its turn comes, following the web's `PadClockBar`.
 
-**Fit**, held by the fit tests: 320 and 360 dp wide, four languages, singles and doubles. At 320 dp the
-sync word may take three lines in es, fr and nl.
+**Fit**, held by the fit tests: 320 and 360 dp wide, four languages, singles and doubles. The send badge has
+no words (owner, 2026-11-02, the top bar above), so the sync state takes one fixed slot, `layout.padSyncBox`,
+in every language; `padFit.test.ts` holds the widest thing it draws, "99+", inside the slot and the tally in
+the room that is left at 320 dp.
 
 ## 6. The app's side
 
@@ -225,6 +249,21 @@ design surface.
   match's queue file: the web's ledger carries only the device link, which the phone and a browser on
   the same link share. If the app's data is cleared, older taps read "Another scorer" in History and
   cannot be undone (_the controller's_).
+- **Leaving a match keeps its own ids for a day** (owner ruling 46, 2026-11-03). A match is left when
+  nothing of it is left to send: another match's scan replaces it, or its background sender has sent
+  the last tap of a match nobody holds. Its queue, ledger and boot cache go as before, but the ids of
+  this phone's own taps are first written, stamped with the time, to a small file of their own
+  (`{id}.own.json`), and kept for 24 h. Scanning the same match again within the day reads them back as
+  own: a volunteer who scans another court's code by mistake and then their own finds History saying
+  "This phone" and Undo reaching their latest tap. The file is not a queue. Home never lists it, so it
+  is no Continue or Dismiss card, no unsent tap and no work for a sender, and the queue writer's
+  refusal of a link secret covers it. What is older than 24 h goes at the next launch or return to the
+  foreground (the hub's resume, which already sweeps what nothing wants), and a read past the day
+  ignores it whatever has swept. A match with taps still unsent is not left: it stays Home's leftover
+  as before, and its ids are kept when its sender has drained it. Dismiss (a bad-link panel, a
+  leftover, Close on a Finished match) and Forget on a dead link keep nothing: they say the match is
+  done or that its link is gone, and a fresh link is another device link whose events these ids would
+  not undo.
 
 ### 6.3 The queue
 
@@ -236,18 +275,77 @@ design surface.
   - accepted → the event joins the ledger, leaves the queue;
   - 409 `SEQ_CONFLICT` (another scorer wrote since this phone's `expected_seq`; the body may carry
     `current_seq`) → fetch `GET …/events?since_seq=`, fold, and send the queue again on the new
-    `expected_seq`; a queued event the new ledger makes illegal is dropped with a refusal line (as
-    the web pipeline does);
+    `expected_seq`; a queued event the new ledger makes illegal is dropped, said on the pad's
+    line and in the record as `scoring.dropped {reason, count}` (as the web pipeline does);
   - 426 `ENGINE_OUTDATED` (the app's engine epoch is behind the server's) → the Update needed state;
     the queue is kept and counted;
-  - 409 `FIXTURE_RULES_CHANGED` (the organiser corrected the match's format; the `rules_version` the
-    phone sent is stale) → reload the rules (`GET /api/v1/fixtures/{id}/rules`), fold again, and send
-    the queue again with the new `rules_version`. The queue is kept: a correction never drops a tap.
-    An event the new rules make illegal is refused as below;
-  - any other refusal (4xx) → that event leaves the queue, the last-tap line says the tap did not
-    count, the ledger is fetched again;
+  - 409 `FIXTURE_RULES_CHANGED` (the `rules_version` the phone sent is not the match's: the web refuses
+    any version but its own, `!==`, before it looks at the seq) → reload the rules
+    (`GET /api/v1/fixtures/{id}/rules`), fold again, and send the queue again with the version the read
+    gives. The queue is kept: a correction never drops a tap. An event the new rules make illegal is
+    refused as below. Two rules, both from the 2026-11-02 device stall (a staging match the phone
+    guessed at version 1 for, which the web held at its default 0, so every send was refused for good):
+    - **The default is 0.** A match nobody has corrected is at `rules_version` 0 (the web's column
+      default, `min(0)`), so the phone holds 0 until a rules read tells it otherwise, and never guesses
+      a version it has not read. The fake server starts at 0 as the web does.
+    - **A lower version is taken when the refusal named it.** A read normally only ever raises the
+      phone's version, since a lower one is a lagging read. But a refusal that names a version _below_
+      the one held says the phone is ahead of the server, which only a guess can be, so the rules read
+      of that same named version is taken though it is lower (`rulesSaid` in `sync.ts`). Any other lower
+      read is still no news. _Caveat, replica lag:_ the rule trusts a read that agrees with the
+      refusal, never a read alone; a rules read served from a lagging replica names an older version
+      than the one the refusal named, so it is not adopted, and the phone keeps sending under what it
+      holds and is refused again. If no read ever agrees with the server, that is a **stall**, not a
+      loop to wait out: the sixth refusal in a row, of either kind (a conflict or new rules), puts one
+      `scoring.stalled` line in the record and the send badge in its can't-send colour, and the pause
+      between tries grows from 15 s to 60 s until a tap is taken or the queue empties. An
+      ALREADY_DECIDED whose status read never lands counts into the same run (`decided`: the server
+      answered, the phone never learned why, and the tap goes again), so that loop is said too.
+      _Residual case (the round 2 review, 2026-11-02):_ a refusal that is itself stale (it named version
+      v before the organiser's second correction) and a lagging replica's rules read naming the same v
+      agree with each other, so the phone adopts v for one pass although the match is already at v + 1.
+      The next send is refused naming v + 1 and a read that agrees raises it again, but a revalidation
+      that runs in the one pass, under rules that are one correction behind, could drop a queued tap
+      those rules call illegal and the real ones allow (said as "did not count"). It needs two
+      corrections inside a replica's lag; it is accepted and not mended, and a tap dropped so is a
+      `scoring.dropped` line in the record, never silent;
+  - any other refusal (4xx) is read by what it says (`closes` and `refused` in `sync.ts`). A 401 (a link
+    the door does not take), a 402 (an account that must pay), a 404 (the match is gone) and a 403 (the
+    result is carried forward, the match is finalized, or this link may not make the write) close the
+    whole queue (`QueueDead`): every tap is kept, nothing more is sent, and the pad says so. The one 403
+    that is about a single tap is a bare one answering a void or a forfeit (the link may not make that
+    one write): that tap alone is refused, as below. A 422 `ALREADY_DECIDED` holds its tap while the
+    bootstrap's status is read: a finalized or cancelled match closes the queue, any other status refuses
+    that tap alone. Every other 4xx (a 400, another 422, a 409 that is neither of the two above) → that
+    event leaves the queue, the last-tap line says the tap did not count (once, however many went), the
+    ledger is fetched again, and the record gets `scoring.dropped {reason, count}`;
   - no network, timeout, 5xx → stay queued, retry with backoff, with the same `idempotency_key`, so a
-    tap the server accepted before the answer was lost is not counted twice; the sync dot says offline and counts.
+    tap the server accepted before the answer was lost is not counted twice; the send badge says offline and counts.
+- **The reconnect question** (ruling 43, owner, 2026-11-02). Taps queued only by this phone, offline,
+  go by themselves when the signal is back. But a ledger fetch that brings events _another scorer_
+  made, while this phone has taps queued, stops the sender: nothing is sent until the scorer answers.
+  Only events recorded from the oldest queued tap's time (less a clock-skew margin) count, so a ledger
+  read again from the start does not count the whole match; one answer covers the queue until it empties,
+  and a tap already in flight is not counted as discarded (the controller's, 2026-11-03).
+  Which events are foreign: the ledger's new events whose ids are not in the queue's `ownEventIds`
+  and are not the copy of a tap the phone sent (its link, type and payload) whose answer was lost; a
+  rally and its Undo that come together cancel, and another scorer's Undo of this phone's own event is
+  nothing scored. The marker (`askedAbout`, the foreign ids) is in the queue file, so a kill and a
+  reopen find the question standing, and it ends with the queue (nothing left to send or discard). The
+  pad shows a sheet over it (over any card but a dead link's, where the question is moot), in the
+  screen's language: "{n} scored elsewhere before your taps were sent" (plural-aware, no sport named;
+  it asks online too, since a concurrent scorer double-counts the same: the controller's, 2026-11-03), the score as the server has it without the phone's taps, how many
+  taps wait, and two buttons. **Send my taps** lifts the question and runs the normal revalidate and
+  send, on the ledger as it stands. **Discard them** opens a confirm with Keep as the default (the
+  dim and Back both mean Keep); the confirm's Discard deletes the queue, sends nothing and keeps the
+  event whose answer was lost, which is the phone's own now. More foreign events while the sheet is
+  open raise the count and the score, and a revalidation that drops every tap the question was about
+  ends it. The badge shows the can't-send state ("{n} taps waiting for your answer"), and no stall is
+  said for it. A background sender (no screen) holds without asking and never sends; the next pad to
+  open on that match asks. The record gets `scoring.ask {foreign, queued}` when it begins and
+  `scoring.asked {answer}` (`send`, `discard`, or `moot` when the taps went another way). The web's
+  record allow-list does not carry `foreign` or `queued`, so Send record drops them and Share record
+  keeps them (`_FINDINGS.md` N43). Back on the sheet leaves the pad for Home, as the ending prompt does.
 - Undo of a tap still in the queue removes it from the queue; nothing is sent (_the controller's_).
 - Other scorers' events arrive in real time, as on the web (ruling 27): the web's Supabase Realtime
   channel carries a "something changed" ping with no payload (`use-fixture-stream.ts`), its token from
@@ -263,8 +361,10 @@ design surface.
   taps not sent — tell the organiser" with Dismiss; Dismiss deletes that queue. Nothing else
   discards a tap.
 - Store: the queue holds no secret, and secure store is the wrong place for a growing list.
-  _The controller's_ pick is a small JSON file per match through `expo-file-system`, written
-  atomically (temp file and rename); the builder checks it autolinks inside Expo's range (AGENTS §13
+  _The controller's_ pick is a small JSON file per match through `expo-file-system`, written to a
+  `.tmp` and moved over the file. The move is not atomic on Android (it deletes the target, then
+  renames: `expoQueueFiles.ts`, AGENTS §11), so a kill between the two leaves only the `.tmp`, and a
+  read promotes it if it decodes (`tapQueueStore`); the builder checks it autolinks inside Expo's range (AGENTS §13
   failure class 4). The scoring link's token stays in secure store with the saved codes.
 
 ### 6.4 History comes from the ledger
@@ -297,7 +397,10 @@ line says "Counted once". Hardened on `feat/s2-pad-ui` (§11).
 
 ### 6.6 Screen and lifecycle
 
-- The screen is kept on while the pad shows; brightness untouched (ruling 9; `holdScreenOn`).
+- The screen is kept on while the pad shows; brightness untouched (ruling 9; `holdScreenOn`). The exception, the
+  controller's ruling of 2026-11-02: the pad's view-only, bad-link and update-needed cards, and the full-screen states that
+  need a person to act, let it sleep (`holdsScreen`; the wait before the pad and the not-started and recorded-result
+  cards keep it).
 - Portrait only (decision record ruling 4); the turn card asks for upright (`/scoring` routeTarget).
 - Leaving the mode while a broadcast is held is S1's rule and unchanged; Remote Scoring holds no
   broadcast.

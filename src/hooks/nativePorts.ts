@@ -4,10 +4,12 @@ import { router } from 'expo-router';
 import { Linking, Platform } from 'react-native';
 import { loadCaptureEngineNative } from '@/engine/nativeModule';
 import { appVersionOf } from '@/hooks/appVersion';
+import { realtimePortFor } from '@/hooks/realtimePortWiring';
 import { chooseCodePort } from '@/hooks/codePortWiring';
 import { chooseEngine, routedRecordFor } from '@/hooks/engineWiring';
 import { photoPortFor } from '@/hooks/photoPortWiring';
 import { scoringLinkPortFor } from '@/hooks/scoringLinkPortWiring';
+import { scoringPortFor } from '@/hooks/scoringPortWiring';
 import type { Ports } from '@/hooks/usePorts';
 import { createNativeCodeScanner } from '@/scanner/nativeCodeScanner';
 import { createEndedNotice } from '@/services/endedNotice';
@@ -19,8 +21,10 @@ import { createScanFlight } from '@/services/scanFlight';
 import { createExpoRouterNavigation } from '@/services/native/expoRouterNavigation';
 import { createNativeBack } from '@/services/native/nativeBack';
 import { createNativeForeground } from '@/services/native/nativeForeground';
+import { createNativeLink } from '@/services/native/nativeLink';
 import { createNativeMotion } from '@/services/native/nativeMotion';
 import { createNativeOrientationLock } from '@/services/native/nativeOrientationLock';
+import { createExpoQueueFiles } from '@/services/native/expoQueueFiles';
 import { createNativePower } from '@/services/native/nativePower';
 import { createNativeScreen } from '@/services/native/nativeScreen';
 import { createNativeShare } from '@/services/native/nativeShare';
@@ -32,6 +36,7 @@ import { createRecordSendFlight } from '@/services/recordSendFlight';
 import { createRecordUploadPort } from '@/services/recordUploadPort';
 import { createRingRecord } from '@/services/sessionRecord';
 import { createStreamSettingsStore } from '@/services/streamSettingsStore';
+import { createTapQueueStore } from '@/services/tapQueueStore';
 import { createUploadCredentialStore } from '@/services/uploadCredentialStore';
 
 /**
@@ -116,7 +121,16 @@ export function createNativePorts(
     // A development build with the fake engine and a native module still calls the real `takePhoto`, which
     // fails with no camera open: the line says so, truthfully. There is no second gate to keep.
     photo: photoPortFor(native),
+    // S2: the update banner's two buttons (plan Task 9); the browser's URL holds the scoring link's token.
+    link: createNativeLink(),
     scoringLink: scoringLinkPortFor(native, { logger, hosts }),
+    // S2: plain fetch (AGENTS §8), to the build's host only. The match runner (`scoringRunner.ts`) calls it, and the live
+    // owner (`scoringLive.ts`) asks it for the Realtime token.
+    scoring: scoringPortFor({ fetch: (url, init) => fetch(url, init), logger, hosts }),
+    // S2: one JSON file per match in the document directory. The runner, the hub and Home's cards read and write it.
+    tapQueue: createTapQueueStore({ files: createExpoQueueFiles(), logger }),
+    // S2: the real `@supabase/realtime-js` over the runtime's WebSocket. The focused match's live owner (`scoringLive.ts`) subscribes.
+    realtime: realtimePortFor({ logger }),
     power: createNativePower({
       native,
       os: Platform.OS,

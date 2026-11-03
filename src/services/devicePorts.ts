@@ -35,9 +35,12 @@ export interface ForegroundPort {
 
 /**
  * Settings (with Diagnostics inside it, spec §6) sits inside Live Stream (AGENTS §6): on air, only leaving the mode is
- * blocked. `homeSettings` is the same screen opened from Home's Live Stream tile, outside any mode (R2, P8).
+ * blocked. `settings` is the app's own Settings, opened from the gear in Home's corner, outside any mode (owner,
+ * 2026-11-02; it replaces R2's gear on the Live Stream tile).
+ * `scoring` is Remote Scoring (plan S2-1 Tasks 10 and 11): the match scanned from Home's Remote Scoring tile, drawn by
+ * its sport's pad. A path that reaches it with no match saved goes Home.
  */
-export type Route = 'home' | 'stream' | 'streamSettings' | 'homeSettings';
+export type Route = 'home' | 'stream' | 'streamSettings' | 'settings' | 'scoring';
 
 /**
  * Live Stream's sub-screens, pushed over the mounted viewfinder (D19). Named
@@ -48,9 +51,14 @@ export function isStreamSubRoute(route: Route): boolean {
   return route === 'streamSettings';
 }
 
-/** R2, P8: the one screen outside a mode that is not Home itself. The reopen gate treats it as Home. */
+/**
+ * P8: the screens that are Home's own, not a mode's: Settings from Home's gear, and Remote Scoring, which has no
+ * broadcast to protect (ruling 10: Back goes Home freely, and Home stays where it was put). The reopen gate treats
+ * them as Home, so a return to the foreground stays on them, and a broadcast moves them to Live Stream as it moves
+ * Home (A2).
+ */
 export function isHomeSubRoute(route: Route): boolean {
-  return route === 'homeSettings';
+  return route === 'settings' || route === 'scoring';
 }
 
 /**
