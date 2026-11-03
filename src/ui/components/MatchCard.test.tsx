@@ -199,7 +199,7 @@ describe('MatchCard: the rules table', () => {
       '21, win by 2',
       '30',
       'at 11',
-      'at 11 in game 3',
+      'after each game, and at 11 in game 3',
     ]);
     for (const row of allById('match-card-row')) expect(style(row).flexDirection).toBe('row');
     for (const label of allById('match-card-label'))

@@ -36,13 +36,15 @@ export type BadmintonRuleKey =
   | 'scoring.badminton.rules.interval.label'
   | 'scoring.badminton.rules.interval.value'
   | 'scoring.badminton.rules.endsChange.label'
-  | 'scoring.badminton.rules.endsChange.value';
+  | 'scoring.badminton.rules.endsChange.value'
+  | 'scoring.badminton.rules.endsChange.single';
 
 /**
  * The rules table's rows (owner, 2026-11-01, option A: "a proper format also it can change per sport"), in the brief's
  * order: Format (its plural form is the translator's: "Best of 1 game"), Points (a game's points and lead, and the
- * deciding game's own target when it differs: "21, win by 2, game 3 to 15"), Cap, Interval, and Ends change, at the
- * deciding game's interval point, in the deciding game, which is the last a match can have (game 1 of a best of 1).
+ * deciding game's own target when it differs: "21, win by 2, game 3 to 15"), Cap, Interval, and Ends change: after
+ * each game, and at the deciding game's interval point in the deciding game, the last a match can have
+ * (`endsChangeOf`).
  * `MatchCard` draws any sport's rows; it knows nothing of badminton.
  */
 export function badmintonRuleRows(rules: BadmintonRules): readonly PadRuleRow<BadmintonRuleKey>[] {
@@ -58,10 +60,7 @@ export function badmintonRuleRows(rules: BadmintonRules): readonly PadRuleRow<Ba
       key: 'scoring.badminton.rules.interval.value',
       vars: { point: rules.intervalPoint },
     }),
-    row('endsChange', {
-      key: 'scoring.badminton.rules.endsChange.value',
-      vars: { point: rules.decidingIntervalPoint, game: rules.bestOf },
-    }),
+    row('endsChange', endsChangeOf(rules)),
   ];
 }
 
@@ -75,6 +74,22 @@ function pointsOf(rules: BadmintonRules): PadText<BadmintonRuleKey> {
     key: 'scoring.badminton.rules.points.deciding',
     vars: { points, winBy, game: rules.bestOf, deciding: decidingPoints },
   };
+}
+
+/**
+ * Ends change after every game, and once more within the deciding game at its interval point (BWF Law 8; owner,
+ * 2026-11-03: the row had read as a change in game 3 only). A best of 1 has no game after it: only the point.
+ */
+function endsChangeOf(rules: BadmintonRules): PadText<BadmintonRuleKey> {
+  return rules.bestOf === 1
+    ? {
+        key: 'scoring.badminton.rules.endsChange.single',
+        vars: { point: rules.decidingIntervalPoint },
+      }
+    : {
+        key: 'scoring.badminton.rules.endsChange.value',
+        vars: { point: rules.decidingIntervalPoint, game: rules.bestOf },
+      };
 }
 
 type RuleName = 'format' | 'points' | 'cap' | 'interval' | 'endsChange';

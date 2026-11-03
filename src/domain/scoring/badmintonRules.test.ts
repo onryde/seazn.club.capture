@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { badmintonRuleRows, type BadmintonRules } from '@/domain/scoring/badmintonRules';
+import en from '@/i18n/en.json';
 
 // Owner ruling 15 (2026-10-31): Match details carry the match's rules; owner, 2026-11-01 (option A): as a table, a
 // label and a value a row, the sport supplying the rows. In the brief's order: Format, Points, Cap, Interval, Ends
@@ -42,7 +43,17 @@ describe('badmintonRuleRows: the rules table’s rows, as dictionary keys and fi
     ]);
   });
 
-  it('changes ends in game 1 of a best of 1, and counts one game (the plural’s `one` form is the translator’s)', () => {
+  // Owner, 2026-11-03 ("apply rec" on "Ends change: after each game, and at 6 in game 3"): the row was read as ends
+  // changing only in game 3. Ends change after every game, and once more within the deciding game.
+  it('says ends change after each game, and at the deciding game’s interval point in that game', () => {
+    expect(en['scoring.badminton.rules.endsChange.value']).toBe(
+      'after each game, and at {point} in game {game}',
+    );
+    expect(en['scoring.badminton.rules.endsChange.single']).toBe('at {point}');
+  });
+
+  // The plural's `one` form ("Best of 1 game") is the translator's.
+  it('changes ends at the interval point of a best of 1, its only game, and counts one game', () => {
     const rows = badmintonRuleRows({
       bestOf: 1,
       points: 15,
@@ -54,8 +65,8 @@ describe('badmintonRuleRows: the rules table’s rows, as dictionary keys and fi
     });
     expect(rows[0]?.value).toEqual({ key: 'scoring.badminton.rules.bestOf.other', count: 1 });
     expect(rows[4]?.value).toEqual({
-      key: 'scoring.badminton.rules.endsChange.value',
-      vars: { point: 8, game: 1 },
+      key: 'scoring.badminton.rules.endsChange.single',
+      vars: { point: 8 },
     });
   });
 
