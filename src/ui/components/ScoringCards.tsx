@@ -1,5 +1,5 @@
 import { memo, useCallback, type ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View, type PressableStateCallbackType } from 'react-native';
 import type { ScoringCurrent, ScoringLeftover } from '@/domain/mode/scoringHome';
 import { useT } from '@/hooks/useLanguage';
 import type { Translator } from '@/i18n/translate';
@@ -7,14 +7,16 @@ import { Button } from '@/ui/components/Button';
 import { rowCardPadding, type CardShape } from '@/ui/components/cardShape';
 import { GhostButton } from '@/ui/components/GhostButton';
 import { Text } from '@/ui/components/Text';
-import { colour, radius, space } from '@/ui/theme/tokens';
+import { colour, layout as sizes, radius, space } from '@/ui/theme/tokens';
 
 /**
  * Home's Remote Scoring cards (plan S2-1 Task 10; design §5, §6.3, ruling 29). What each says is `scoringHome`'s
  * decision; the words are here, in the order the operator needs them: which match, what is unsent, what to do. A live
  * queue is only counted, because it is still sending; a queue that can never send, or cannot be read, is told to the
  * organiser, in orange (a failure reads orange, never red). Its Dismiss asks first (owner ruling B, 2026-11-02), and
- * each card's button carries its match in its name, so two cards never both read just "Dismiss".
+ * each card's button carries its match in its name, so two cards never both read just "Dismiss". A match that is over
+ * with every tap sent is a card of its own (owner ruling 41, 2026-11-02): Finished with the score, its words a press
+ * target that opens the match, and Close, the one button, which lets it go.
  */
 
 /** The edge: lime for the saved match, quiet for taps elsewhere that are still sending, orange for a failure. */
@@ -42,6 +44,35 @@ function CardText(props: { layout: CardShape | undefined; children: ReactNode })
   );
 }
 
+/**
+ * The words as a press target (a finished match's card opens the match): the same column, at least a `touch` tall, and the
+ * press fill while it is held, as the plates and ghosts have (never a dim alone). It reads to a screen reader as one
+ * button named by its words.
+ */
+function PressableText(props: {
+  layout: CardShape | undefined;
+  onPress: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={props.onPress}
+      style={props.layout === 'row' ? rowBody : stackedBody}
+    >
+      {props.children}
+    </Pressable>
+  );
+}
+
+/** Module-level so render allocates no function (the press state is Pressable's). */
+function stackedBody({ pressed }: PressableStateCallbackType) {
+  return pressed ? stackedPressed : stackedIdle;
+}
+function rowBody({ pressed }: PressableStateCallbackType) {
+  return pressed ? rowPressed : rowIdle;
+}
+
 /** The buttons: they wrap under each other where the card is too narrow for both (`scoringHomeFit`). */
 function CardActions(props: { children: ReactNode }) {
   return (
@@ -51,10 +82,14 @@ function CardActions(props: { children: ReactNode }) {
   );
 }
 
-/** A screen reader's name for a card's Dismiss: its match, or "another match" for a queue that never learned one. */
-function dismissName(label: string, translator: Translator): string {
+/** A screen reader's name for a card's Dismiss or Close: its match, or "another match" for one that never learned its name. */
+function nameFor(
+  key: 'home.scoring.dismissMatch' | 'home.scoring.closeMatch',
+  label: string,
+  translator: Translator,
+): string {
   const match = label === '' ? translator.t('home.scoring.matchFallback') : label;
-  return translator.t('home.scoring.dismissMatch', { match });
+  return translator.t(key, { match });
 }
 
 /** A Dismiss button for one match: the short word drawn, the match in its name. */
@@ -69,7 +104,7 @@ function DismissButton(props: {
   return (
     <GhostButton
       label={translator.t('home.scoring.dismiss')}
-      accessibilityLabel={dismissName(props.label, translator)}
+      accessibilityLabel={nameFor('home.scoring.dismissMatch', props.label, translator)}
       onPress={press}
     />
   );
@@ -91,6 +126,8 @@ type ContinueProps = {
   onForget: (fixtureId: string) => void;
   /** Dismiss: taps would be discarded, so Home asks first. */
   onDismiss: (fixtureId: string) => void;
+  /** Close, on a finished match: lets it go with no question while nothing is unsent, and asks if a tap has appeared since. */
+  onClose: (fixtureId: string) => void;
 };
 
 /** The saved match's words: the title, its name, and what is unsent. */
@@ -120,7 +157,7 @@ function CurrentText({ current, layout }: { current: ScoringCurrent; layout?: Ca
  * Forget when nothing is unsent, Dismiss when the taps can never go, nothing while they are still sending: a Dismiss
  * on a live queue would discard taps that are about to be sent (ruling 29).
  */
-function CurrentActions(props: Omit<ContinueProps, 'layout'>) {
+function CurrentActions(props: Omit<ContinueProps, 'layout' | 'onClose'>) {
   const translator = useT();
   const { current, onForget } = props;
   const forget = useCallback(() => onForget(current.fixtureId), [onForget, current.fixtureId]);
@@ -141,9 +178,55 @@ function CurrentActions(props: Omit<ContinueProps, 'layout'>) {
   );
 }
 
+/** A finished match's words: what happened and the score in the scoreboard's lime, then its name. */
+function FinishedText({ current }: { current: ScoringCurrent }) {
+  const translator = useT();
+  const score = current.finished?.score ?? '';
+  return (
+    <>
+      <Text variant="state" style={styles.final}>
+        {score === ''
+          ? translator.t('home.scoring.finished')
+          : translator.t('home.scoring.finishedScore', { score })}
+      </Text>
+      {current.label === '' ? null : (
+        <Text variant="control" style={styles.line}>
+          {current.label}
+        </Text>
+      )}
+    </>
+  );
+}
+
+/**
+ * A match that is over, every tap sent (owner ruling 41, 2026-11-02): its words open the match, as they stand (the pad's
+ * result card, or its view-only one once the organiser has finalized it), and Close, the one button, lets it go. There is
+ * no Forget and no Continue: the match is not in play, and closing it loses nothing.
+ */
+function FinishedCard(props: ContinueProps) {
+  const translator = useT();
+  const { current, layout, onClose } = props;
+  const close = useCallback(() => onClose(current.fixtureId), [onClose, current.fixtureId]);
+  return (
+    <CardFrame testID="scoring-continue" layout={layout} edge="saved">
+      <PressableText layout={layout} onPress={props.onContinue}>
+        <FinishedText current={current} />
+      </PressableText>
+      <CardActions>
+        <GhostButton
+          label={translator.t('home.scoring.close')}
+          accessibilityLabel={nameFor('home.scoring.closeMatch', current.label, translator)}
+          onPress={close}
+        />
+      </CardActions>
+    </CardFrame>
+  );
+}
+
 /** The saved match: Continue opens the pad; the second button lets the match go when it holds nothing that can send. */
 export const ScoringContinueCard = memo(function ScoringContinueCard(props: ContinueProps) {
   const { current, layout } = props;
+  if (current.finished !== null) return <FinishedCard {...props} />;
   return (
     <CardFrame
       testID="scoring-continue"
@@ -231,6 +314,9 @@ const styles = StyleSheet.create({
   title: { color: colour.ink },
   line: { color: colour.ink },
   failing: { color: colour.caution },
+  // A finished match's title: the LED lime on night, as the elapsed clock and the scoring pad's digits are.
+  final: { color: colour.lime },
+  pressed: { backgroundColor: colour.pressFill },
   // Wraps: the 200 dp plate and a second button are wider than the card at 320 dp, and in nl/es at 360 (scoringHomeFit).
   actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: space.sm },
 });
@@ -254,3 +340,13 @@ const rowStyles = StyleSheet.create({
   // The words take what the buttons leave and wrap inside it, never behind them.
   text: { flex: 1, minWidth: 0, gap: space.xs },
 });
+
+// A press target is never shorter than a `touch`, a one-line title included; the words sit in the middle of it.
+const body = StyleSheet.create({
+  stacked: { minHeight: sizes.touch, justifyContent: 'center', gap: space.xs },
+  row: { flex: 1, minWidth: 0, minHeight: sizes.touch, justifyContent: 'center', gap: space.xs },
+});
+const stackedIdle = body.stacked;
+const rowIdle = body.row;
+const stackedPressed = [body.stacked, styles.pressed];
+const rowPressed = [body.row, styles.pressed];

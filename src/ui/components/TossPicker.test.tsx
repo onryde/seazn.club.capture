@@ -5,6 +5,7 @@ import en from '@/i18n/en.json';
 import { TossPicker } from '@/ui/components/TossPicker';
 import { colour, layout, plateInk, space } from '@/ui/theme/tokens';
 import { edgeOf, fillOf } from '../../../test/pressState';
+import { linesAllowed } from '../../../test/linesAllowed';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
 // Owner, 2026-11-01, option A: "Who serves first?" with the two sides as two big buttons, the names as typed, one
@@ -90,5 +91,32 @@ describe('TossPicker', () => {
       expect(getComputedStyle(name).whiteSpace).not.toBe('nowrap');
       expect(getComputedStyle(name).webkitLineClamp).toBe('');
     }
+  });
+});
+
+// Device finding, 2026-11-02: a long single-word name broke inside its word on the serving pick ("TEest002ashokash" over
+// "ok"). A name with no space is one line the phone shrinks to fit (NameText); a doubles name still wraps at its gaps.
+describe('TossPicker, a name that is one long word', () => {
+  const WORD = 'TEest002ashokashTEest002';
+  const LONG_SIDES: readonly [PadStartSide, PadStartSide] = [
+    { side: 'first', label: WORD },
+    { side: 'second', label: 'L. Chen / M. Wong' },
+  ];
+
+  it.each([null, 'first' as const])(
+    'is one line, never wrapped inside its word, picked %s',
+    (picked) => {
+      renderWithPorts(
+        <TossPicker ask="Who serves first?" sides={LONG_SIDES} picked={picked} onPick={vi.fn()} />,
+      );
+      expect(linesAllowed(screen.getByText(WORD))).toBe(1);
+    },
+  );
+
+  it('leaves the doubles name beside it wrapping at its gaps, with no cap', () => {
+    renderWithPorts(
+      <TossPicker ask="Who serves first?" sides={LONG_SIDES} picked={null} onPick={vi.fn()} />,
+    );
+    expect(linesAllowed(screen.getByText('L. Chen / M. Wong'))).toBe(Infinity);
   });
 });

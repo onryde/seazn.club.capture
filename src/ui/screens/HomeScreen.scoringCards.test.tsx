@@ -8,7 +8,7 @@ import nl from '@/i18n/nl.json';
 import { STORE_KEYS } from '@/services/modeStore';
 import { colour } from '@/ui/theme/tokens';
 import { HomeScreen } from '@/ui/screens/HomeScreen';
-import { createFakePorts, readRecord, TEST_NOW, type FakePorts } from '../../../test/fakePorts';
+import { createFakePorts, readRecord, type FakePorts } from '../../../test/fakePorts';
 import { savedStreamCode } from '../../../test/fixtures/savedStream';
 import { pairCode } from '../../../test/pairCode';
 import { edgeOf } from '../../../test/pressState';
@@ -19,6 +19,7 @@ import {
   FAKE_MATCH,
   LINK,
   STORED_LINK,
+  inMatch,
   leave,
   linkKey,
   queueHolding,
@@ -27,22 +28,6 @@ import {
 // Plan S2-1 Task 10, Home's Remote Scoring cards (design §5, §6.3, ruling 29): the saved match with what is unsent, and
 // every other match whose taps are still queued. A live queue is only counted (it is still sending); a queue that can
 // never send, or cannot be read, is told to the organiser and can be dismissed. Nothing else discards a tap.
-
-const savedMatch = (fixtureId = FAKE_MATCH, label = FAKE_LABEL): string =>
-  encodeSavedCode({
-    mode: 'scoring',
-    raw: '',
-    slot: null,
-    savedAt: TEST_NOW,
-    expiresAt: null,
-    stream: null,
-    scoring: { fixtureId, label },
-  });
-const inMatch = (fixtureId = FAKE_MATCH, label = FAKE_LABEL) => ({
-  [STORE_KEYS.active]: 'scoring',
-  [STORE_KEYS.code('scoring')]: savedMatch(fixtureId, label),
-  [linkKey(fixtureId)]: STORED_LINK,
-});
 
 /** Home over fake ports: the disk and the store seeded first, as a launch finds them. */
 async function homeWith(

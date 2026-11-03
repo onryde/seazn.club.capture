@@ -115,6 +115,7 @@ export const firstTo3: ScoringSport<FirstTo3> = {
   refusalFor: () => 'notNow',
   notStarted: () => false,
   decided: (display) => Math.max(display.points.first, display.points.second) >= 3,
+  resultLine: (display) => `${display.points.first}–${display.points.second}`,
   awaitingEnding: () => false,
   undoneOf: (display) => (display.lastTap?.kind === 'point' ? display.lastTap.side : null),
   showUndone: (display, side) => ({ ...display, lastTap: { kind: 'undone', side } }),

@@ -46,7 +46,8 @@ export function wanting<S extends SportTypes>(state: MatchState<S>, now: number)
 const showsNoPad = (state: MatchState): boolean =>
   state.bootstrap === null || CARD_SCREENS.has(state.bootstrap.screen);
 
-function isDecided<S extends SportTypes>(state: MatchState<S>): boolean {
+/** The sport says the match is decided: the one rule, for the pad's bootstrap pacing and for Home's Finished card. */
+export function isDecided<S extends SportTypes>(state: MatchState<S>): boolean {
   const fold = foldOfState(state);
   return fold !== null && fold.kind === 'folded' && state.sport.decided(fold.display);
 }

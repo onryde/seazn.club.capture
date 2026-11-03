@@ -11,6 +11,7 @@ import { typeScale } from '@/ui/theme/type';
 import { declaredStyle } from '../../../test/declaredStyle';
 import { layOut } from '../../../test/layOut';
 import { edgeOf, fillOf } from '../../../test/pressState';
+import { linesAllowed } from '../../../test/linesAllowed';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
 // Owner, 2026-11-01, option A, on build 715: the Start screen and the Not started card "looks like paste some text, we
@@ -419,5 +420,18 @@ describe('MatchCard: the four questions (hardening)', () => {
     expect(style(byId('match-card-v')).marginLeft).toBe(
       `${layout.labelBar + layout.labelBarGap}px`,
     );
+  });
+});
+
+// Device finding, 2026-11-02: a long single-word name broke inside its word (NameText). The card never cuts a name, so a
+// name with gaps wraps with no cap; one with none is one line the phone shrinks to fit.
+describe('MatchCard: a side that is one long word', () => {
+  const WORD = 'TEest002ashokashTEest002';
+
+  it('is one line, and the doubles side beside it wraps with no cap', () => {
+    renderCard({ ...DOUBLES, sides: [WORD, 'L. Chen / M. Wong'] });
+    const names = allById('match-card-name');
+    expect(text(names)).toEqual([WORD, 'L. Chen / M. Wong']);
+    expect(names.map(linesAllowed)).toEqual([1, Infinity]);
   });
 });

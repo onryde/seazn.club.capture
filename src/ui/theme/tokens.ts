@@ -324,6 +324,14 @@ const base = {
   /** A half's names as typed: at most this many lines of `label`, then an ellipsis. */
   padNameLines: 2,
   /**
+   * A name with no space in it is shrunk to one line rather than broken inside its word (device finding, 2026-11-02):
+   * the least it shrinks to, as a fraction of its size (0.6 of `label`'s 20 is 12 dp; a 24-letter word fits the Start
+   * screen's button at 0.63, nameFit.test.ts). iOS keeps to it and ends the name with an ellipsis beyond. React Native
+   * 0.86.3 on Android drops the prop (it sends `minimumFontSize` only, which JS cannot set) and shrinks to its own
+   * 4 dp, so there the floor holds for every name that fits above it.
+   */
+  nameFloor: 0.6,
+  /**
    * A finished game's box in a half's bottom row (owner ruling 16): at least this wide, so a 9 and a 21 make boxes of
    * one width and the two halves' columns line up. Two tabular digits of `periodScore`, its padding and its hairlines
    * (padFit.test.ts).

@@ -53,6 +53,7 @@ describe('scoringHome', () => {
       label: 'Match 4',
       unsent: 3,
       state: 'live',
+      finished: null,
     });
   });
 
@@ -62,6 +63,7 @@ describe('scoringHome', () => {
       label: 'Match 4',
       unsent: 0,
       state: 'live',
+      finished: null,
     });
   });
 
@@ -73,13 +75,13 @@ describe('scoringHome', () => {
   it('is dead when its queue can send no more, and says how many taps wait', () => {
     expect(
       scoringHome(saved('fx-4', 'Match 4'), [queue('fx-4', 2, { dead: 'LINK_REVOKED' })]).current,
-    ).toEqual({ fixtureId: 'fx-4', label: 'Match 4', unsent: 2, state: 'dead' });
+    ).toEqual({ fixtureId: 'fx-4', label: 'Match 4', unsent: 2, state: 'dead', finished: null });
   });
 
   it('a dead queue with nothing in it is not dead news', () => {
     expect(
       scoringHome(saved('fx-4', 'Match 4'), [queue('fx-4', 0, { dead: 'finalized' })]).current,
-    ).toEqual({ fixtureId: 'fx-4', label: 'Match 4', unsent: 0, state: 'live' });
+    ).toEqual({ fixtureId: 'fx-4', label: 'Match 4', unsent: 0, state: 'live', finished: null });
   });
 
   it('is unreadable when its queue file cannot be read: the count is unknown', () => {
@@ -88,6 +90,7 @@ describe('scoringHome', () => {
       label: 'Match 4',
       unsent: 0,
       state: 'unreadable',
+      finished: null,
     });
   });
 
@@ -136,6 +139,7 @@ describe('scoringHome, which row is the saved match’s', () => {
       label: 'Match 2',
       unsent: 2,
       state: 'live',
+      finished: null,
     });
     expect(home.leftovers).toEqual([
       { kind: 'live', fixtureId: 'fx-1', label: 'Label of fx-1', unsent: 5 },
@@ -148,6 +152,75 @@ describe('scoringHome, which row is the saved match’s', () => {
       current: null,
       leftovers: [{ kind: 'live', fixtureId: 'fx-2', label: 'Label of fx-2', unsent: 2 }],
     });
+  });
+});
+
+/**
+ * A finished match (owner ruling 41, 2026-11-02): the saved match is over and every tap of this phone has reached the
+ * server. Only then does its card say so and offer Close; taps still unsent keep the count and no Close, and a match
+ * the phone cannot read stays a plain Continue (the decision is the files', never a guess).
+ */
+describe('scoringHome, a finished match', () => {
+  const over = { fixtureId: 'fx-4', score: '21–15, 21–18' };
+
+  it('is finished when the match is over and nothing is unsent, with its score', () => {
+    expect(scoringHome(saved('fx-4', 'Match 4'), [queue('fx-4', 0)], over).current).toEqual({
+      fixtureId: 'fx-4',
+      label: 'Match 4',
+      unsent: 0,
+      state: 'live',
+      finished: { score: '21–15, 21–18' },
+    });
+  });
+
+  it('is finished with no queue file at all: another scorer may have taken every tap', () => {
+    expect(scoringHome(saved('fx-4', 'Match 4'), [], over).current?.finished).toEqual({
+      score: '21–15, 21–18',
+    });
+  });
+
+  it('is finished when its queue says finalized with nothing left in it', () => {
+    const rows = [queue('fx-4', 0, { dead: 'finalized' })];
+    expect(scoringHome(saved('fx-4', 'Match 4'), rows, over).current?.finished).toEqual({
+      score: '21–15, 21–18',
+    });
+  });
+
+  it('is not finished while taps are unsent: the count stands, and Close waits for the server', () => {
+    const current = scoringHome(saved('fx-4', 'Match 4'), [queue('fx-4', 2)], over).current;
+    expect(current?.finished).toBeNull();
+    expect(current?.unsent).toBe(2);
+  });
+
+  it('is not finished when its unsent taps can never go: that card says so and offers Dismiss', () => {
+    const rows = [queue('fx-4', 2, { dead: 'LINK_REVOKED' })];
+    const current = scoringHome(saved('fx-4', 'Match 4'), rows, over).current;
+    expect(current?.finished).toBeNull();
+    expect(current?.state).toBe('dead');
+  });
+
+  it('is not finished when its queue cannot be read: what is unsent is unknown', () => {
+    const current = scoringHome(saved('fx-4', 'Match 4'), [unreadable('fx-4')], over).current;
+    expect(current?.finished).toBeNull();
+    expect(current?.state).toBe('unreadable');
+  });
+
+  it('is not finished when nothing says so: a match the phone cannot judge is Continue', () => {
+    expect(scoringHome(saved('fx-4', 'Match 4'), [queue('fx-4', 0)], null).current?.finished).toBe(
+      null,
+    );
+    expect(scoringHome(saved('fx-4', 'Match 4'), [queue('fx-4', 0)]).current?.finished).toBe(null);
+  });
+
+  it('does not borrow another match’s result: it says finished only of the saved match', () => {
+    const other = { fixtureId: 'fx-9', score: '21–0' };
+    expect(
+      scoringHome(saved('fx-4', 'Match 4'), [queue('fx-4', 0)], other).current?.finished,
+    ).toBeNull();
+  });
+
+  it('says nothing of it with no saved match', () => {
+    expect(scoringHome(null, [], over)).toEqual({ current: null, leftovers: [] });
   });
 });
 

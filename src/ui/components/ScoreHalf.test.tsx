@@ -387,3 +387,21 @@ describe('ScoreHalf', () => {
     expect(screen.getByTestId('half-first').getAttribute('aria-label')).toBe(name);
   });
 });
+
+// Device finding, 2026-11-02: a long single-word name broke inside its word (NameText). One line the phone shrinks to
+// fit; a name with gaps keeps its two lines.
+describe('ScoreHalf, a name that is one long word', () => {
+  const WORD = 'TEest002ashokashTEest002';
+
+  it('is one line, never wrapped inside its word', () => {
+    renderWithPorts(<ScoreHalf half={{ ...gameOne, label: WORD }} flash={0} onTap={vi.fn()} />);
+    expect(linesAllowed(screen.getByText(WORD))).toBe(1);
+  });
+
+  it('keeps two lines for a name with gaps in it', () => {
+    renderWithPorts(
+      <ScoreHalf half={{ ...gameOne, label: 'A. Sharma / R. Iyer' }} flash={0} onTap={vi.fn()} />,
+    );
+    expect(linesAllowed(screen.getByText('A. Sharma / R. Iyer'))).toBe(layout.padNameLines);
+  });
+});

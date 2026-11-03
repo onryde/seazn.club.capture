@@ -13,7 +13,12 @@ import {
   type SavedStream,
 } from '@/domain/mode/savedCode';
 import { scanOutcome, type ScanOutcome } from '@/domain/mode/scanOutcome';
-import { scoringHome, type QueueRow, type ScoringHome } from '@/domain/mode/scoringHome';
+import {
+  scoringHome,
+  type MatchFinish,
+  type QueueRow,
+  type ScoringHome,
+} from '@/domain/mode/scoringHome';
 import type { CaptureEnginePort } from '@/engine/CaptureEnginePort';
 import type { UnpairReason } from '@/domain/session/Pairing';
 import {
@@ -177,8 +182,8 @@ export function useHome(): { view: HomeView; actions: HomeActions } {
   const { openOrCheck, retryCheck } = useCodeCheck(openCode, panel, setPanel);
   const handle = useHandleScan(openOrCheck, setPanel, setStatusKey);
   const tapTile = useTapTile(handle, setPanel, setStatusKey);
-  const { rows, refresh } = useScoringRows();
-  const view = useHomeView(snapshot, panel, statusKey, rows);
+  const { rows, finish, refresh } = useScoringRows(savedMatchId(snapshot));
+  const view = useHomeView(snapshot, panel, statusKey, rows, finish);
   const panelActions = usePanelActions(panel, tapTile, openOrCheck, setPanel);
   const continueStream = useContinue(setStatusKey, saveFailed);
   const forgetStream = useForget(setStatusKey, saveFailed);
@@ -267,6 +272,13 @@ function useOpenCode(
     },
     [ports, modeStore, clock, navigation, engine, logger, pair, setStatusKey, saveFailed, setPanel],
   );
+}
+
+/** The match the saved scoring code names, as the store holds it now (null: none, or the store has not loaded). */
+function savedMatchId(snapshot: ModeStoreSnapshot): string | null {
+  return snapshot.status === 'ready'
+    ? (snapshot.saved.codes.scoring?.scoring?.fixtureId ?? null)
+    : null;
 }
 
 /** The match the saved scoring code names, read before an open replaces it. */
@@ -412,6 +424,7 @@ function useHomeView(
   panel: HomePanel | null,
   statusKey: MessageKey | null,
   rows: readonly QueueRow[],
+  finish: MatchFinish | null,
 ): HomeView {
   const { t } = useT();
   const { clock } = usePorts();
@@ -423,7 +436,7 @@ function useHomeView(
   const panelTime = panel?.kind === 'expired' ? format(panel.at, null) : null;
   const continueCopy = useContinueCopy(continueCode);
   const match = ready?.saved.codes.scoring ?? null;
-  const scoring = useMemo(() => scoringHome(match, rows), [match, rows]);
+  const scoring = useMemo(() => scoringHome(match, rows, finish), [match, rows, finish]);
   return {
     statusText: statusText(ready, statusKey, t, format),
     panel,
