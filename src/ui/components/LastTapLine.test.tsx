@@ -31,7 +31,7 @@ describe('LastTapLine', () => {
     expect(undo().getAttribute('aria-disabled')).toBe('true');
   });
 
-  // Owner, 2026-11-03: Undo closes 30 s after a match is decided; the line then has no Undo, and its sentence has the room.
+  // Owner, 2026-11-03: Undo closes 45 s after a match is decided; the line then has no Undo, and its sentence has the room.
   it('has no Undo at all when its window is closed, and still says what the last tap did', () => {
     renderWithPorts(
       <LastTapLine

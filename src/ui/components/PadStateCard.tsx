@@ -48,7 +48,7 @@ export const PadStateCard = memo(function PadStateCard({
 /**
  * A recorded result and its Undo window (owner, 2026-11-03). The title and the sentence are the card's live region: said
  * politely once when the card appears, and once more when the window closes and the sentence changes in the same
- * node. The seconds are outside it, so the card is not read out thirty times; the card itself is no live region. A
+ * node. The seconds are outside it, so the card is not read out every second; the card itself is no live region. A
  * screen reader reaches the digits by a swipe, and whether it says the card as described is the device check's.
  */
 const RecordedResult = memo(function RecordedResult({ card }: { readonly card: ResultCard }) {
