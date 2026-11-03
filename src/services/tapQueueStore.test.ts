@@ -1204,6 +1204,16 @@ describe('leaving a match keeps this phone’s own tap ids for a day (owner ruli
     expect(await store.loadKept(FIXTURE, LEFT + 24 * HOUR + 1)).toBeNull();
   });
 
+  // Review of 956ce30: a phone clock set back after leaving still reads the ids, and one set back by more than a day
+  // does not, so a stamp far from now is never kept for ever.
+  it('keeps them when the clock is set back, within a day either way', async () => {
+    const { store } = storeOver();
+    await played(store);
+    await store.leave(FIXTURE, LEFT);
+    expect(await store.loadKept(FIXTURE, LEFT - HOUR)).toEqual(['ev-1', 'ev-2']);
+    expect(await store.loadKept(FIXTURE, LEFT - 24 * HOUR - 1)).toBeNull();
+  });
+
   it('has nothing to keep for a match with no own taps: no file is written, and an older one goes', async () => {
     const files = createMemoryQueueFiles();
     const { store } = storeOver(files);

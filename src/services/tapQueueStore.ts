@@ -113,7 +113,11 @@ const FILE_VERSION = 1;
 const FIXTURE_ID = /^[A-Za-z0-9_-]{1,100}$/;
 /** A queue's own files: `{id}.json`, its temp `{id}.json.tmp` and its set-aside `{id}.json.bad`. A ledger's dot breaks it. */
 const QUEUE_FILE = /^([A-Za-z0-9_-]{1,100})\.json(?:\.tmp|\.bad)?$/;
-/** The kept ids of a left match: `{id}.own.json` and its temp. A queue's regex never matches them: its id has no dot. */
+/**
+ * The kept ids of a left match: `{id}.own.json` and its temp. A queue's regex never matches them: its id has no dot.
+ * That is a second fence, not the load-bearing one: `listEntries` lists only an id with a queue main file, so a kept
+ * file alone is never a card, unsent work, a sender or a poll (review of 956ce30).
+ */
 const KEPT_FILE = /^([A-Za-z0-9_-]{1,100})\.own\.json(?:\.tmp)?$/;
 /** The shape of a scoring link's secret (`dl_` and base64url), matched loosely: better a refusal than a leak. */
 const LINK_SECRET = /dl_[A-Za-z0-9_-]{20,}/;
