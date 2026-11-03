@@ -84,8 +84,8 @@ export function BadmintonPadScreen({ model }: { readonly model: BadmintonPadMode
 }
 
 /**
- * Owner ruling 20 (2026-10-31): Home, then at the right end Rules and History, round icon buttons as Home's gear, and
- * the sync status in its fixed box. Between them, where the Preview tag was, the games tally in lime (owner,
+ * Owner ruling 20 (2026-10-31): Home, then at the right end the sync status in its fixed box, then Rules and History,
+ * round icon buttons as Home's gear, last (owner, 2026-11-03). Between Home and the end, where the Preview tag was, the games tally in lime (owner,
  * 2026-11-01). The tally, Rules and History need a match
  * (`matchKnown`): none on a dead link's card. One 48 dp row at 320 and 360 dp in four languages (padFit.test.ts).
  */
@@ -110,7 +110,10 @@ const PadHeader = memo(function PadHeader({
   );
 });
 
-/** The top bar's right end: Match details and History while the match is known, then the send badge in its slot (a tap on it opens History). */
+/**
+ * The top bar's right end: the send badge in its slot (a tap on it opens History), then Match details and History,
+ * last, while the match is known (owner, 2026-11-03: "have sync icon first then info, history").
+ */
 const HeaderEnd = memo(function HeaderEnd({
   sync,
   known,
@@ -122,10 +125,10 @@ const HeaderEnd = memo(function HeaderEnd({
 }) {
   return (
     <View testID="pad-header-end" style={styles.end}>
-      {known ? <MatchIcons actions={actions} /> : null}
       <View testID="sync-box" style={styles.sync}>
         <SyncBadge sync={sync} onPress={known ? actions.history : null} />
       </View>
+      {known ? <MatchIcons actions={actions} /> : null}
     </View>
   );
 });

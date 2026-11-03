@@ -933,16 +933,17 @@ describe('BadmintonPadScreen: Match details', () => {
   const LINES = rowsSaid(en);
 
   // Owner ruling 20: "Order: Back, Preview tag, then the right end holds [Rules][History] then the sync status"; the
-  // games tally took the tag's place (owner, 2026-11-01).
-  it('stands in the top bar after Back and the games tally, then History, then the send badge', () => {
+  // games tally took the tag's place (owner, 2026-11-01); the sync status moved before the icons (owner, 2026-11-03:
+  // "have sync icon first then info, history").
+  it('stands in the top bar after Back, the games tally and the send badge, then History last', () => {
     renderPad();
     press(CHIP.sync);
     const order = [
       screen.getByRole('button', { name: en['stream.home'] }),
       screen.getByTestId('tally'),
+      screen.getByTestId('sync'),
       rulesButton(),
       screen.getByRole('button', { name: en['scoring.history.title'] }),
-      screen.getByTestId('sync'),
     ];
     const follows = (a: Node | null, b: Node | null) =>
       a !== null &&
@@ -993,6 +994,16 @@ describe('BadmintonPadScreen: Match details', () => {
     ]);
     expect(getComputedStyle(screen.getByTestId('sync-box')).width).toBe(`${layout.padSyncBox}px`);
     expect(getComputedStyle(screen.getByTestId('tally')).flexShrink).toBe('0');
+  });
+
+  // Owner, 2026-11-03: "have sync icon first then info, history", Match details and History at the very end.
+  it('puts the sync box first in the end group, then Match details, then History last', () => {
+    renderPad();
+    const end = screen.getByTestId('pad-header-end');
+    const kids = [...end.children];
+    expect(
+      kids.map((kid) => kid.getAttribute('data-testid') ?? kid.getAttribute('aria-label')),
+    ).toEqual(['sync-box', en['scoring.details.title'], en['scoring.history.title']]);
   });
 
   it('opens Match details over the pad, which it hides from a screen reader, and changes no score', () => {
