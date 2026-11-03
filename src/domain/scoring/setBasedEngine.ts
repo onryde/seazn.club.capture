@@ -10,10 +10,12 @@ import { voidTargetOf, type BootstrapSide, type LedgerEvent } from '@/domain/sco
  */
 
 /**
- * A side's lineup as the web's browser pad builds it (`toLineupSlot`, web scorepad/registry.tsx): every member starting,
- * in pair order (else the order listed), and the pair order itself when the team sheet declared one. The engine names
- * a doubles server from it (`pairOrderOf`, engine sports/squad-state.ts), for the sports that rotate the pair; a slot
- * with none declares none, as the web leaves it out.
+ * A side's lineup for the engine. The web's browser pad builds each slot from the row's own `slot` and `order_no`
+ * (`toLineupSlot`, web scorepad/registry.tsx); the device-link bootstrap sends neither, so the phone marks every row
+ * starting and numbers `orderNo` by pair order, else by the order listed. It also carries the pair order itself when
+ * the team sheet declared one: the engine names a doubles server from it (`pairOrderOf`, engine
+ * sports/squad-state.ts), for the sports that rotate the pair; a slot with none declares none, as the web leaves it
+ * out.
  */
 export function lineupOf(side: BootstrapSide): LineupPair['home'] {
   return {

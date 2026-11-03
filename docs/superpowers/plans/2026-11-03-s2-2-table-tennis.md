@@ -12,7 +12,7 @@ table tennis would share word for word is lifted once into set-based shared modu
 learns a sport's name.
 
 **Tech Stack:** Expo SDK 57 / React Native 0.86.3 / Hermes; `@seazn/engine` = `@onryde/seazn-engine`
-1.1.0 (`tabletennis`, `tabletennisPadRules`, `setBasedServeContext`); vitest on react-native-web.
+2.0.0 (`tabletennis`, `tabletennisPadRules`, `setBasedServeContext`); vitest on react-native-web.
 
 **Spec:** `docs/specs/2026-11-03-s2-2-table-tennis-design.md` (approved 2026-11-03, rulings 48–52),
 on top of `docs/specs/2026-11-01-s2-remote-scoring-design.md`. Read both; this plan argues from them.
@@ -22,8 +22,9 @@ on top of `docs/specs/2026-11-01-s2-remote-scoring-design.md`. Read both; this p
 - AGENTS.md in full: §3 layering (lint), §4 one parser per wire shape, no `any`, §5 tokens only, §8 memo
   and no anonymous functions in render on the pad, §10 the four questions, mutate every guard once, no
   expected value derived from the code under test, §12 functions 10–25 lines, JSX ≤ 3 deep.
-- Engine stays `@onryde/seazn-engine` 1.1.0. No bump, no 2.0 API (engine #18 is unreleased).
-- Sport key `'tabletennis'`; epoch `foldEpochOf('tabletennis')` (2 at 1.1.0), never a literal. Rules
+- Engine is `@onryde/seazn-engine` 2.0.0 (ruling 53). The phone's subpaths are unchanged from 1.1.0, and no 2.0
+  API (Swiss, scheduling) is used.
+- Sport key `'tabletennis'`; epoch `foldEpochOf('tabletennis')` (2 at 2.0.0), never a literal. Rules
   version from the bootstrap and the rules read only (S2 §6.3, default 0).
 - Rule facts from `tabletennisPadRules` and the folded `cfg` (bestOf, setTo, scoreBound, deuceNote,
   expediteScoreFloor 9, expediteReturns 13, expediteReturnsCreditable, sanctionLevels

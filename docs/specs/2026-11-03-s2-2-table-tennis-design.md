@@ -44,9 +44,9 @@ organiser's final, with the console agreeing point for point (§8).
 - No doubles "which player won it" step (S2 ruling 5). The web's scorer chips are not ported.
 - No serve-anchor tile (ruling 49 replaces it with the Start screen's pick).
 - No enforcement of expedite's 10-minute trigger: the umpire decides when to start it, as on the web.
-- No engine change and no engine bump: `@seazn/engine` 1.1.0 already has the `tabletennis` kernel and
-  `tabletennisPadRules` inside the phone's subpaths (`phone-subpaths.json`). Engine 2.0 (the Swiss
-  work, unreleased) does not touch table tennis and is not taken.
+- No engine change: `@seazn/engine` has the `tabletennis` kernel and `tabletennisPadRules` inside the phone's
+  subpaths (`phone-subpaths.json`). The phone takes 2.0.0 (ruling 53): its subpaths are unchanged from 1.1.0, and
+  its breaking changes (the Swiss work) do not touch table tennis or anything the phone uses.
 - No change to badminton's screen or behaviour.
 
 **Anti-goals**
@@ -66,6 +66,7 @@ organiser's final, with the console agreeing point for point (§8).
 | 50  | While Expedite is on, one tool, "13 returns · {receiver}", gives the receiver the point and records the 13 returns ("Yes Ok", 2026-11-03).                                                          |
 | 51  | If the engine cannot name the server (the Start pick was lost), a "Who is serving?" tool appears once; the next point carries the answer, and the tool goes for the match ("Ask once", 2026-11-03). |
 | 52  | The tools row: Card for each side, one tap each, as badminton; Timeout, Expedite and Set score in a More sheet; 13 returns joins the row while Expedite is on ("Cards + More", 2026-11-03).         |
+| 53  | S2-2 takes @seazn/engine 2.0.0 ("use engine 2.0.0", 2026-11-03). The phone's subpaths are unchanged from 1.1.0; badminton and table tennis keep epoch 2.                                            |
 
 ## 4. How a scorer meets it
 
