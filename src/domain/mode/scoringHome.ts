@@ -20,7 +20,9 @@ export type MatchFinish = { readonly fixtureId: string; readonly score: string }
 
 /**
  * The saved match. `dead`: its queue holds taps it can never send (the link is gone, the match is closed): the card
- * says so and Continue still opens the pad, which says why. `unreadable`: its file cannot be read, and the count is unknown.
+ * says so and Continue still opens the pad, which says why. `asked`: its queue is held for the scorer's answer to the
+ * reconnect question (owner ruling 43): nothing is sent until the pad is opened and the scorer chooses, so it is not
+ * sending. `unreadable`: its file cannot be read, and the count is unknown.
  * `finished`: the match is over and every tap of this phone has reached the server (owner ruling 41, 2026-11-02): the card
  * says Finished with the score and offers Close, and nothing is lost by closing it. Null while a tap is unsent, dead or
  * unreadable, and while the files do not say the match is over.
@@ -29,13 +31,15 @@ export type ScoringCurrent = {
   readonly fixtureId: string;
   readonly label: string;
   readonly unsent: number;
-  readonly state: 'live' | 'dead' | 'unreadable';
+  readonly state: 'live' | 'asked' | 'dead' | 'unreadable';
   readonly finished: { readonly score: string } | null;
 };
 
 /**
  * Another match's taps. `live` still send, in the background, while the app is open: no Dismiss, it would discard unsent
  * taps. `dead` can never send and `unreadable` cannot be read: each is told to the organiser and can be dismissed.
+ * `asked` is held for the scorer's answer, which only that match's pad takes: it sends nothing by itself, so it too can be
+ * dismissed (Home asks first), the way out of a held queue the scorer does not want to open.
  */
 export type ScoringLeftover =
   | {
@@ -45,7 +49,7 @@ export type ScoringLeftover =
       readonly unsent: number;
     }
   | {
-      readonly kind: 'dead';
+      readonly kind: 'asked' | 'dead';
       readonly fixtureId: string;
       readonly label: string;
       readonly unsent: number;
@@ -90,12 +94,21 @@ function finishedOf(
 const idOf = (row: QueueRow): string =>
   row.kind === 'queue' ? row.queue.fixtureId : row.fixtureId;
 
-/** A queue with taps in it and a way to send them is live; a dead word with nothing queued is no news. */
+/**
+ * What a queue with taps in it is doing: `dead` when nothing can send it (that comes first: the question is moot on a dead
+ * link), `asked` when it is held for the scorer's answer (a marker with events in it), else `live`. A dead word or a
+ * marker with nothing queued is no news.
+ */
+function kindOf(queue: MatchQueue): 'live' | 'asked' | 'dead' {
+  if (queue.pending.length === 0) return 'live';
+  if (queue.dead !== null) return 'dead';
+  return (queue.askedAbout?.length ?? 0) > 0 ? 'asked' : 'live';
+}
+
 function stateOf(row: QueueRow | undefined): Pick<ScoringCurrent, 'unsent' | 'state'> {
   if (row === undefined) return { unsent: 0, state: 'live' };
   if (row.kind === 'unreadable') return { unsent: 0, state: 'unreadable' };
-  const unsent = row.queue.pending.length;
-  return { unsent, state: unsent > 0 && row.queue.dead !== null ? 'dead' : 'live' };
+  return { unsent: row.queue.pending.length, state: kindOf(row.queue) };
 }
 
 function leftoverOf(row: QueueRow): readonly ScoringLeftover[] {
@@ -104,7 +117,7 @@ function leftoverOf(row: QueueRow): readonly ScoringLeftover[] {
   const unsent = queue.pending.length;
   if (unsent === 0) return [];
   const { fixtureId, label } = queue;
-  return [{ kind: queue.dead === null ? 'live' : 'dead', fixtureId, label, unsent }];
+  return [{ kind: kindOf(queue), fixtureId, label, unsent }];
 }
 
 /** What would change a card: the same string is the same cards, so Home re-renders only when the disk really moved. */
@@ -112,7 +125,7 @@ export function rowsKey(rows: readonly QueueRow[]): string {
   return rows
     .map((row) =>
       row.kind === 'queue'
-        ? `${row.queue.fixtureId}|${row.queue.label}|${row.queue.pending.length}|${row.queue.dead ?? ''}`
+        ? `${row.queue.fixtureId}|${row.queue.label}|${row.queue.pending.length}|${row.queue.dead ?? ''}|${kindOf(row.queue)}`
         : `!${row.fixtureId}`,
     )
     .join('\n');

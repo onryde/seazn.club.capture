@@ -105,9 +105,24 @@ type Server = {
   finalized: boolean;
   forbidden: string | null;
   limitMs: number | null;
+  /** Where an event's `recordedAt` comes from, in epoch ms; null: a second apart from `FIRST_EVENT_MS`. */
+  readonly stamp: (() => number) | null;
 };
 
-export function createFakeScoringPort(seed: FakeMatchSeed): FakeScoringPort {
+/** Options of the fake server. */
+export type FakeScoringOptions = {
+  /**
+   * Stamps each event the server writes (epoch ms), for a test on a clock of its own: the reconnect question counts only
+   * what was recorded since the phone's taps (`CLOCK_SKEW_MS`), so such a test's server events and taps share one clock.
+   * Unset, events are a second apart from a fixed start and a ledger is the same on every run.
+   */
+  readonly stamp?: () => number;
+};
+
+export function createFakeScoringPort(
+  seed: FakeMatchSeed,
+  options: FakeScoringOptions = {},
+): FakeScoringPort {
   const server: Server = {
     seed,
     lineups: { home: lineupOf(seed.sides.home), away: lineupOf(seed.sides.away) },
@@ -123,6 +138,7 @@ export function createFakeScoringPort(seed: FakeMatchSeed): FakeScoringPort {
     finalized: false,
     forbidden: null,
     limitMs: null,
+    stamp: options.stamp ?? null,
   };
   for (const event of seed.events) writeOther(server, event.type, event.payload);
   return {
@@ -266,7 +282,7 @@ function write(
     seq,
     type,
     payload,
-    recordedAt: new Date(FIRST_EVENT_MS + seq * 1000).toISOString(),
+    recordedAt: new Date(server.stamp?.() ?? FIRST_EVENT_MS + seq * 1000).toISOString(),
     voids,
     deviceLinkId,
   };

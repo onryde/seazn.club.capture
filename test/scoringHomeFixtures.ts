@@ -22,7 +22,7 @@ export const linkKey = (fixtureId: string) => `scoring.link.${fixtureId}`;
 export function queueHolding(
   fixtureId: string,
   taps: number,
-  over: { label?: string; dead?: QueueDead | null } = {},
+  over: { label?: string; dead?: QueueDead | null; askedAbout?: readonly string[] } = {},
 ): MatchQueue {
   return {
     fixtureId,
@@ -30,6 +30,7 @@ export function queueHolding(
     pending: Array.from({ length: taps }, (_, i) => queuedOf(`${fixtureId}-k${i}`, rally('H'))),
     ownEventIds: [],
     dead: over.dead ?? null,
+    ...(over.askedAbout === undefined ? {} : { askedAbout: over.askedAbout }),
   };
 }
 

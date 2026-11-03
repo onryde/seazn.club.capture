@@ -112,14 +112,17 @@ export const voiding = (seq: number): Spec => ({
 
 export const eventId = (seq: number) => `ev-${seq}`;
 
-/** The specs numbered from seq 1, as the server's ledger holds them, a second apart. */
-export function ledgerOf(specs: readonly Spec[]): LedgerEvent[] {
+/** Where a ledger's clock starts unless the test says: the first event is a second after it. */
+export const LEDGER_FROM = '2026-11-01T10:00:00.000Z';
+
+/** The specs numbered from seq 1, as the server's ledger holds them, a second apart from `from` on. */
+export function ledgerOf(specs: readonly Spec[], from: string = LEDGER_FROM): LedgerEvent[] {
   return specs.map((spec, i) => ({
     id: eventId(i + 1),
     seq: i + 1,
     type: spec.type,
     payload: spec.payload,
-    recordedAt: new Date(Date.parse('2026-11-01T10:00:00.000Z') + (i + 1) * 1000).toISOString(),
+    recordedAt: new Date(Date.parse(from) + (i + 1) * 1000).toISOString(),
     voids: spec.voids === undefined ? null : eventId(spec.voids),
     deviceLinkId: spec.link === undefined ? BROWSER_LINK : spec.link,
   }));

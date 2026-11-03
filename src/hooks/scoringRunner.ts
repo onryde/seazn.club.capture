@@ -1,14 +1,14 @@
 import type { PadOutcome } from '@/domain/scoring/padLine';
 import type { BootCache, MatchQueue } from '@/domain/scoring/queue';
 import { openMatch, step, wakeAt } from '@/domain/scoring/scoringMatch';
-import { askOf } from '@/domain/scoring/scoringMatchAsk';
+import { askSaying, type AskSaid } from '@/domain/scoring/scoringMatchAsk';
 import { stallOf, type Stall } from '@/domain/scoring/scoringMatchStall';
-import type {
-  MatchEffect,
-  MatchEvent,
-  MatchHeld,
-  MatchState,
-  SaveEffect,
+import {
+  type MatchEffect,
+  type MatchEvent,
+  type MatchHeld,
+  type MatchState,
+  type SaveEffect,
 } from '@/domain/scoring/scoringMatchState';
 import type { AnySport } from '@/domain/scoring/scoringSport';
 import { sportFor } from '@/domain/scoring/sports';
@@ -84,7 +84,8 @@ export function createScoringRunner(ports: RunnerPorts, options: Options): Scori
   let started = false;
   let idled = false;
   let stalled: Stall | null = null;
-  let asked = false;
+  /** The reconnect question in the record: not said, said and standing, or said moot while a dead link hides it. */
+  let asked: AskSaid = 'idle';
   let wakeTimer: { at: number; id: ReturnType<typeof setTimeout> } | null = null;
   const sending = new Set<Promise<void>>();
   const listeners = new Set<() => void>();
@@ -112,19 +113,15 @@ export function createScoringRunner(ports: RunnerPorts, options: Options): Scori
   };
 
   /**
-   * The reconnect question (owner ruling 43) is said once when it begins, with the counts, and once when it ends, with
-   * the answer: `send` or `discard`, or `moot` when it ended by itself (everything it was about was taken back, or no
-   * taps were left). Only the screen's runner says it: a sender with no screen holds the queue without asking, and
-   * the screen that opens next asks (and says so). A question hidden by a dead link or an app too old has not ended.
+   * What the record says of the reconnect question (owner ruling 43): the rules are `askSaying`'s. Only the screen's
+   * runner says it: a sender with no screen holds the queue without asking, and the screen that opens next asks (and says
+   * so).
    */
   const sayAsk = (current: MatchState, event: MatchEvent | null): void => {
     if (mode !== 'focused') return;
-    const ask = askOf(current);
-    if ((ask !== null) === asked) return;
-    asked = ask !== null;
-    if (ask !== null) return void ports.logger.info('scoring.ask', { ...ask });
-    if (event?.kind === 'answerAsk') ports.logger.info('scoring.asked', { answer: event.answer });
-    else if (!isAsking(current.sync)) ports.logger.info('scoring.asked', { answer: 'moot' });
+    const saying = askSaying(asked, current, event?.kind === 'answerAsk' ? event.answer : null);
+    asked = saying.said;
+    if (saying.line !== null) ports.logger.info(saying.line.event, { ...saying.line.fields });
   };
 
   /**

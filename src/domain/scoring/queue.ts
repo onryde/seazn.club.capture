@@ -81,6 +81,13 @@ export type MatchQueue = {
    * with the queue so a kill and a reopen find the question still standing. Absent: nothing is asked.
    */
   readonly askedAbout?: readonly string[];
+  /**
+   * The keys of the taps waiting when the scorer answered the reconnect question with Send (round 4, item 1b): one
+   * answer covers the queue as it stood, so while every tap waiting is in this list, events another scorer makes are not
+   * asked about again. A tap queued since is not in it. Kept with the queue (a kill mid-drain does not ask again), and
+   * dropped when the queue empties. Absent: no such answer.
+   */
+  readonly answeredSend?: readonly string[];
 };
 
 /**

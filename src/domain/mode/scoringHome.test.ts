@@ -14,7 +14,7 @@ const tap = (key: string): QueuedEvent => ({
 const queue = (
   fixtureId: string,
   taps: number,
-  over: { label?: string; dead?: QueueDead | null } = {},
+  over: { label?: string; dead?: QueueDead | null; askedAbout?: readonly string[] } = {},
 ): QueueRow => {
   const value: MatchQueue = {
     fixtureId,
@@ -22,6 +22,7 @@ const queue = (
     pending: Array.from({ length: taps }, (_, i) => tap(`${fixtureId}-${i}`)),
     ownEventIds: [],
     dead: over.dead ?? null,
+    ...(over.askedAbout === undefined ? {} : { askedAbout: over.askedAbout }),
   };
   return { kind: 'queue', queue: value };
 };
@@ -243,5 +244,57 @@ describe('rowsKey', () => {
       rowsKey([queue('fx-1', 2, { label: 'Match 1' }), queue('fx-2', 0)]),
     );
     expect(rowsKey([])).toBe('');
+  });
+});
+
+// The reconnect question (owner ruling 43; round 4, item 6): a queue held for the scorer's answer sends nothing, so Home
+// does not call it sending. It is its own state, until the scorer answers on the pad.
+describe('scoringHome, a queue held for the scorer’s answer', () => {
+  const held = { askedAbout: ['ev-9'] };
+
+  it('is asked on the saved match, with its unsent count', () => {
+    expect(scoringHome(saved('fx-4', 'Match 4'), [queue('fx-4', 2, held)]).current).toEqual({
+      fixtureId: 'fx-4',
+      label: 'Match 4',
+      unsent: 2,
+      state: 'asked',
+      finished: null,
+    });
+  });
+
+  it('is asked on another match’s queue: a leftover of its own kind', () => {
+    const home = scoringHome(null, [queue('fx-1', 3, { ...held, label: 'Match 1' })]);
+    expect(home.leftovers).toEqual([
+      { kind: 'asked', fixtureId: 'fx-1', label: 'Match 1', unsent: 3 },
+    ]);
+  });
+
+  it('a dead link comes first: the question is moot there, and what is told is that the taps can never go', () => {
+    const own = scoringHome(saved('fx-4', 'Match 4'), [
+      queue('fx-4', 2, { ...held, dead: 'LINK_REVOKED' }),
+    ]);
+    expect(own.current?.state).toBe('dead');
+    const other = scoringHome(null, [queue('fx-1', 1, { ...held, dead: 'finalized' })]);
+    expect(other.leftovers.map((leftover) => leftover.kind)).toEqual(['dead']);
+  });
+
+  it('a question marker with no tap left is nothing: live and no card', () => {
+    expect(scoringHome(saved('fx-4', 'Match 4'), [queue('fx-4', 0, held)]).current?.state).toBe(
+      'live',
+    );
+    expect(scoringHome(null, [queue('fx-1', 0, held)]).leftovers).toEqual([]);
+  });
+
+  it('an empty list of events is no question', () => {
+    const home = scoringHome(saved('fx-4', 'Match 4'), [queue('fx-4', 2, { askedAbout: [] })]);
+    expect(home.current?.state).toBe('live');
+  });
+
+  it('is a change of cards: the key moves when a queue becomes held, and stays when it is held about more', () => {
+    const plain = rowsKey([queue('fx-4', 2)]);
+    const one = rowsKey([queue('fx-4', 2, { askedAbout: ['ev-9'] })]);
+    const two = rowsKey([queue('fx-4', 2, { askedAbout: ['ev-9', 'ev-10'] })]);
+    expect(one).not.toBe(plain);
+    expect(two).toBe(one);
   });
 });

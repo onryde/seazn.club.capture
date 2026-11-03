@@ -134,6 +134,24 @@ describe('the phone reconnects with taps queued and another scorer’s event in 
     expect(lines(fakes, 'scoring.asked').map((line) => line.fields)).toEqual([{ answer: 'send' }]);
   });
 
+  it('Send covers the queue as it stood: the web scoring while the taps go is not asked about again', async () => {
+    const fakes = createFakePorts({ clock: timerClock });
+    const runner = await reconnected(fakes);
+    runner.dispatch({ kind: 'answerAsk', answer: 'send' });
+    // Another rally lands before the first tap does: the tap is turned back, fetches, and goes again on top of it.
+    fakes.scoring.addOtherScorerEvent('badminton.rally', { wonBy: HOME });
+    runner.dispatch({ kind: 'read' });
+    for (let seconds = 0; seconds < 40; seconds += 1) {
+      await wait(1);
+      expect(askOf(stateOf(runner)), `${seconds}s`).toBeNull();
+    }
+    expect(stateOf(runner).sync.queue.pending).toEqual([]);
+    expect(await ledgerSize(fakes)).toBe(8);
+    expect(stateOf(runner).sync.queue.answeredSend).toBeUndefined();
+    expect(lines(fakes, 'scoring.ask')).toHaveLength(1);
+    expect(lines(fakes, 'scoring.asked').map((line) => line.fields)).toEqual([{ answer: 'send' }]);
+  });
+
   it('Discard: nothing reaches the server, the queue is gone, and the record says Discard once', async () => {
     const fakes = createFakePorts({ clock: timerClock });
     const runner = await reconnected(fakes);
@@ -175,7 +193,7 @@ describe('the phone reconnects with taps queued and another scorer’s event in 
 });
 
 describe('a question that is not answered', () => {
-  it('a link that dies while the sheet stands is no answer: the taps are kept, and nothing is said of it', async () => {
+  it('a link that dies while the sheet stands is no answer: the taps are kept, and the question is moot, said once', async () => {
     const fakes = createFakePorts({ clock: timerClock });
     const runner = await reconnected(fakes);
     fakes.scoring.revoke();
@@ -184,6 +202,49 @@ describe('a question that is not answered', () => {
     expect(stateOf(runner).sync.queue.dead).not.toBeNull();
     expect(stateOf(runner).sync.queue.pending).toHaveLength(2);
     expect(askOf(stateOf(runner))).toBeNull();
+    runner.dispatch({ kind: 'read' });
+    await wait(60);
+    expect(lines(fakes, 'scoring.asked').map((line) => line.fields)).toEqual([{ answer: 'moot' }]);
+    expect(lines(fakes, 'scoring.ask')).toHaveLength(1);
+  });
+
+  /** The match's status read again, as a bootstrap read brings it: the organiser locks the result, and may open it again. */
+  const readStatus = (runner: ScoringRunner, status: string, epochRequired?: number): void => {
+    const { bootstrap } = stateOf(runner);
+    if (bootstrap === null) throw new Error('no bootstrap held');
+    runner.dispatch({
+      kind: 'bootstrapRead',
+      bootstrap: { ...bootstrap, status, epochRequired: epochRequired ?? bootstrap.epochRequired },
+    });
+  };
+
+  it('a question the match closing hides is moot, said once however long the wait, and an answer after it is said all the same', async () => {
+    const fakes = createFakePorts({ clock: timerClock });
+    const runner = await reconnected(fakes);
+    readStatus(runner, 'finalized');
+    await wait(60);
+    expect(askOf(stateOf(runner))).toBeNull();
+    expect(lines(fakes, 'scoring.asked').map((line) => line.fields)).toEqual([{ answer: 'moot' }]);
+    expect(lines(fakes, 'scoring.ask')).toHaveLength(1);
+    runner.dispatch({ kind: 'answerAsk', answer: 'discard' });
+    await wait(3);
+    expect(lines(fakes, 'scoring.asked').map((line) => line.fields)).toEqual([
+      { answer: 'moot' },
+      { answer: 'discard' },
+    ]);
+  });
+
+  it('a question an app too old hides is not moot, and when it comes back it is not asked again', async () => {
+    const fakes = createFakePorts({ clock: timerClock });
+    const runner = await reconnected(fakes);
+    readStatus(runner, 'in_play', 99);
+    await wait(3);
+    expect(askOf(stateOf(runner))).toBeNull();
+    expect(lines(fakes, 'scoring.asked')).toHaveLength(0);
+    readStatus(runner, 'in_play', 2);
+    await wait(3);
+    expect(askOf(stateOf(runner))).toEqual({ foreign: 1, queued: 2 });
+    expect(lines(fakes, 'scoring.ask')).toHaveLength(1);
     expect(lines(fakes, 'scoring.asked')).toHaveLength(0);
   });
 

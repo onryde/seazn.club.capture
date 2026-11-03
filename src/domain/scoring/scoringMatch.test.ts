@@ -420,7 +420,8 @@ describe('the answer to a send', () => {
       NOW,
     );
     expect(conflict.effects).toContainEqual({ kind: 'fetch', since: 1 });
-    const brought = ledgerOf([start(), rally('A')]).slice(1);
+    // Recorded after the phone's tap (made at 10:30, `queuedOf`): the other scorer's.
+    const brought = ledgerOf([start(), rally('A')], '2026-11-01T10:31:00.000Z').slice(1);
     const landed = step(conflict.state, { kind: 'saved', n: 99 }, NOW).state;
     const merged = step(landed, { kind: 'fetched', events: brought }, NOW);
     expect(sendsOf(merged.effects)).toEqual([]);

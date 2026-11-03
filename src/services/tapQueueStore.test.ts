@@ -105,6 +105,17 @@ describe('save and load', () => {
     expect(await store.load(FIXTURE)).not.toHaveProperty('askedAbout');
   });
 
+  // Round 4, item 1b: the scorer's Send covers the queue as it stood, across a kill mid-drain.
+  it('round-trips the answer to the question: the keys it covered, and no field when none stands', async () => {
+    const { store } = storeOver();
+    await store.save(queue({ answeredSend: ['k1', 'k2'] }));
+    expect((await store.load(FIXTURE))?.answeredSend).toEqual(['k1', 'k2']);
+    await store.save(queue({ answeredSend: undefined }));
+    expect(await store.load(FIXTURE)).not.toHaveProperty('answeredSend');
+    await store.save(queue({ answeredSend: [] }));
+    expect(await store.load(FIXTURE)).not.toHaveProperty('answeredSend');
+  });
+
   it('round-trips a dead queue for each word', async () => {
     const words = [
       'LINK_INVALID',
@@ -521,6 +532,8 @@ describe('a file that cannot be read', () => {
     ['own ids that are not text', text({ v: 1, ...queue(), ownEventIds: [1] })],
     ['a question about ids that are not text', text({ v: 1, ...queue(), askedAbout: [1] })],
     ['a question that is not a list', text({ v: 1, ...queue(), askedAbout: 'ev-9' })],
+    ['an answer covering keys that are not text', text({ v: 1, ...queue(), answeredSend: [1] })],
+    ['an answer that is not a list', text({ v: 1, ...queue(), answeredSend: 'k1' })],
     ['an own id that is empty', text({ v: 1, ...queue(), ownEventIds: [''] })],
     ['a dead word nobody knows', text({ v: 1, ...queue(), dead: 'vanished' })],
     ['a dead word of the wrong type', text({ v: 1, ...queue(), dead: 5 })],

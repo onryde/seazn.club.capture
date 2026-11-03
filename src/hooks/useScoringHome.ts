@@ -142,8 +142,14 @@ export function useScoringRows(savedId: string | null = null): {
       off();
     };
   }, [refresh, foreground, ports, savedId]);
+  // A queue held for the scorer's answer (`askedAbout`) sends nothing and nothing on the disk will move until the pad is
+  // opened and answered, so it is not polled for (round 4, item 6).
   const sending = state.rows.some(
-    (row) => row.kind === 'queue' && row.queue.pending.length > 0 && row.queue.dead === null,
+    (row) =>
+      row.kind === 'queue' &&
+      row.queue.pending.length > 0 &&
+      row.queue.dead === null &&
+      (row.queue.askedAbout?.length ?? 0) === 0,
   );
   useEffect(() => {
     if (!sending) return;

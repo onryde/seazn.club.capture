@@ -191,11 +191,19 @@ function useSaveScore(
   );
 }
 
+/**
+ * Whether the question is put now: it stands, and the scorer can answer it. Over every card but a dead link's (round 4,
+ * item 4; the controller's ruling, 2026-11-03): under a view-only match, a match not yet started or a recorded result the
+ * taps are still queued and the scorer must still choose, while a dead link takes both answers away and the question is
+ * moot there (the runner says so).
+ */
+const asking = (snapshot: PadSheetSnapshot): boolean =>
+  (snapshot.ask ?? null) !== null && snapshot.card?.kind !== 'linkInvalid';
+
 /** Whether an open sheet has no place now: no pad under it; the question over it; or its confirm with no question left. */
 function staleSheet(sheet: NonNullable<Sheet>, snapshot: PadSheetSnapshot | null): boolean {
   if (snapshot === null) return true;
-  const asking = (snapshot.ask ?? null) !== null && snapshot.card === null;
-  return asking ? sheet.kind !== 'discard' : sheet.kind === 'discard';
+  return asking(snapshot) ? sheet.kind !== 'discard' : sheet.kind === 'discard';
 }
 
 function sheetFor(id: string): Sheet {
@@ -210,8 +218,8 @@ function sheetView(sheet: Sheet, snapshot: PadSheetSnapshot | null): PadSheetVie
   if (snapshot === null) return null;
   const { display, history, card, ask = null } = snapshot;
   // The reconnect question stands over everything while it stands (nothing is sent until it is answered), and its
-  // confirm over it. Under a card there is no pad to ask over, and the badge says it.
-  if (ask !== null && card === null) {
+  // confirm over it, a card or none.
+  if (ask !== null && asking(snapshot)) {
     return { kind: sheet?.kind === 'discard' ? 'discard' : 'ask', ask };
   }
   // Under a card the pad takes no tap (`withCard`): the ending prompt goes with the tools while the ending waits, and is

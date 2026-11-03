@@ -268,6 +268,80 @@ describe('other matches’ taps on Home', () => {
   });
 });
 
+// A queue held for the scorer's answer to the reconnect question (owner ruling 43; round 4, item 6): it sends nothing,
+// so the card does not say "not sent yet" as if it were sending; it says it waits for the scorer, in orange as the pad's
+// badge does, and the way on is the pad.
+describe('a queue held for the scorer’s answer', () => {
+  const held = { askedAbout: ['ev-9'] };
+
+  it.each([
+    [1, '1 tap waiting for your answer'],
+    [3, '3 taps waiting for your answer'],
+  ])(
+    'the saved match says %s waiting for the answer, and offers Continue only',
+    async (taps, line) => {
+      await homeWith((fakes) => leave(fakes, queueHolding(FAKE_MATCH, taps, held)), {
+        kvSeed: inMatch(),
+      });
+      const card = continueCard() as HTMLElement;
+      expect(within(card).getByText(line)).toBeTruthy();
+      expect(within(card).queryByText(/not sent yet/)).toBeNull();
+      expect(button('Continue')).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Forget' })).toBeNull();
+      expect(screen.queryByRole('button', { name: /^Dismiss/ })).toBeNull();
+    },
+  );
+
+  it('the saved match’s card is orange: the edge and the sentence, never red', async () => {
+    await homeWith((fakes) => leave(fakes, queueHolding(FAKE_MATCH, 2, held)), {
+      kvSeed: inMatch(),
+    });
+    const card = continueCard() as HTMLElement;
+    expect(getComputedStyle(card).borderTopColor).toBe(edgeOf(colour.caution));
+    expect(getComputedStyle(within(card).getByText('2 taps waiting for your answer')).color).toBe(
+      edgeOf(colour.caution),
+    );
+  });
+
+  it('another match’s queue names its match, says it waits for the answer, and Dismiss (asked first) deletes it', async () => {
+    const home = await homeWith((fakes) =>
+      leave(fakes, queueHolding('fx-old', 4, { label: 'Match 7', ...held })),
+    );
+    const [card] = leftovers();
+    expect(within(card as HTMLElement).getByText('Match 7')).toBeTruthy();
+    expect(within(card as HTMLElement).getByText('4 taps waiting for your answer')).toBeTruthy();
+    expect(getComputedStyle(card as HTMLElement).borderTopColor).toBe(edgeOf(colour.caution));
+    await dismissThrough(card as HTMLElement, 'Match 7');
+    await waitFor(() => expect(leftovers()).toHaveLength(0));
+    expect(await home.tapQueue.load('fx-old')).toBeNull();
+  });
+
+  it('a dead link says it can never send, not that it waits for an answer', async () => {
+    await homeWith(
+      (fakes) => leave(fakes, queueHolding(FAKE_MATCH, 2, { dead: 'LINK_REVOKED', ...held })),
+      { kvSeed: inMatch() },
+    );
+    const card = continueCard() as HTMLElement;
+    expect(within(card).getByText('2 taps not sent — tell the organiser')).toBeTruthy();
+    expect(within(card).queryByText(/waiting for your answer/)).toBeNull();
+  });
+
+  it.each([
+    ['es', es],
+    ['fr', fr],
+    ['nl', nl],
+  ])('%s: the card says it in the pad’s own words', async (lang, d) => {
+    await homeWith((fakes) => leave(fakes, queueHolding(FAKE_MATCH, 3, held)), {
+      kvSeed: inMatch(),
+      deviceLanguages: [lang],
+    });
+    const words = (d as Record<string, string>)['scoring.sync.asked.other'].replace('{count}', '3');
+    expect(
+      within(continueCard() as HTMLElement).getByText(words.replace(/\u00a0/g, ' ')),
+    ).toBeTruthy();
+  });
+});
+
 describe('what a card does not touch', () => {
   it('a Dismiss on another match leaves the saved match, its code and its link alone', async () => {
     const home = await homeWith(

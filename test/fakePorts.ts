@@ -89,8 +89,8 @@ export type FakePorts = {
   readonly scoringLink: FakeScoringLinkPort;
   /**
    * S2: a fake server over the preview's singles match, folded by the real engine (`FakeServerControls`: revoke,
-   * goOffline, dropNextAnswer, ...). Pass another `createFakeScoringPort(seed)` as the `scoring` override for a match
-   * of the test's own.
+   * goOffline, dropNextAnswer, ...), its events stamped by the phone's clock. Pass another `createFakeScoringPort(seed)`
+   * as the `scoring` override for a match of the test's own.
    */
   readonly scoring: FakeScoringPort;
   /**
@@ -145,7 +145,11 @@ export function createFakePorts(
     photo: createFakePhotoPort(),
     link: createFakeLinkPort(),
     scoringLink: createFakeScoringLinkPort(),
-    scoring: createFakeScoringPort(SINGLES_SEED),
+    // The server's events are stamped by the phone's clock (the `clock` override when a test gives one): the reconnect
+    // question counts only what was recorded since the phone's taps, and both must be on one clock.
+    scoring: createFakeScoringPort(SINGLES_SEED, {
+      stamp: () => (portOverrides.clock ?? (() => now))().getTime(),
+    }),
     tapQueue: createTapQueueStore({ files: queueFiles, logger }),
     queueFiles,
     realtime: createFakeRealtimePort(),

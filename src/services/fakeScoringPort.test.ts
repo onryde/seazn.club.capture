@@ -91,6 +91,23 @@ describe('the fake reads like the server', () => {
     });
   });
 
+  // Round 4: the reconnect question counts only what was recorded since the phone's taps, so a test on a clock needs
+  // the server's events on that clock too.
+  it('stamps the events from the clock it is given, and a second apart from a fixed start when it has none', async () => {
+    let now = Date.parse('2026-11-03T12:00:00.000Z');
+    const timed = createFakeScoringPort(FRESH, { stamp: () => now });
+    await timed.append(LINK, 'fixture-1', start());
+    now += 90_000;
+    await timed.append(LINK, 'fixture-1', rally(1, HOME, { serving: HOME }));
+    expect((await ledgerOf(timed)).map((event) => event.recordedAt)).toEqual([
+      '2026-11-03T12:00:00.000Z',
+      '2026-11-03T12:01:30.000Z',
+    ]);
+    const fixed = createFakeScoringPort(FRESH);
+    await fixed.append(LINK, 'fixture-1', start());
+    expect((await ledgerOf(fixed))[0].recordedAt).toBe('2026-11-01T10:00:01.000Z');
+  });
+
   it('bootstrap follows the ledger: the tip moves with every accepted tap', async () => {
     const port = createFakeScoringPort(FRESH);
     await port.append(LINK, 'fixture-1', start());

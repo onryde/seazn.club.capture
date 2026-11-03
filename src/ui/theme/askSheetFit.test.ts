@@ -128,9 +128,44 @@ describe('the question’s sentences at 320 and 360 in four languages', () => {
       '320 nl': 3,
       '360 en': 2,
       '360 es': 3,
-      '360 fr': 3,
-      '360 nl': 2,
+      '360 fr': 2,
+      '360 nl': 3,
     });
+  });
+
+  // Round 4, item 1a (the controller's ruling, 2026-11-03): the question is asked online too (a 409, then a fetch with a
+  // web event while a tap is queued: two scorers at once double-count just the same), so its title says what happened
+  // and not where the phone was. Anti-vacuity: the words each language used before.
+  it('the title does not say the phone was offline, in any language, in either number', () => {
+    const OFFLINE = /offline|hors ligne|conexión/i;
+    for (const lang of LANGS)
+      for (const key of ['scoring.ask.title.one', 'scoring.ask.title.other'])
+        expect(word(lang, key), `${lang} ${key}`).not.toMatch(OFFLINE);
+    for (const old of [
+      '{count} score added elsewhere while you were offline',
+      '{count} anotación en otro dispositivo mientras no tenías conexión',
+      '{count} point marqué ailleurs pendant que vous étiez hors ligne',
+      '{count} score elders genoteerd terwijl je offline was',
+    ])
+      expect(old).toMatch(OFFLINE);
+  });
+
+  it('the title says the scores came before the taps were sent, in every language', () => {
+    expect(plural('en', 'scoring.ask.title', 1)).toBe(
+      '1 score added elsewhere before your taps were sent',
+    );
+    expect(plural('en', 'scoring.ask.title', 3)).toBe(
+      '3 scores added elsewhere before your taps were sent',
+    );
+    expect(plural('es', 'scoring.ask.title', 3)).toBe(
+      '3 anotaciones en otro dispositivo antes de enviar tus toques',
+    );
+    expect(plural('fr', 'scoring.ask.title', 3)).toBe(
+      "3 points marqués ailleurs avant l'envoi de vos saisies",
+    );
+    expect(plural('nl', 'scoring.ask.title', 3)).toBe(
+      '3 scores elders genoteerd voordat je taps zijn verzonden',
+    );
   });
 
   it('the sentence under the score takes 3 lines at most, for 1, 2 and 128 taps', () => {

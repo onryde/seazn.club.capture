@@ -45,6 +45,42 @@ describe('useScoringRows', () => {
   });
 });
 
+// A queue held for the scorer's answer to the reconnect question sends nothing (round 4, item 6): Home does not poll the
+// disk for it, since nothing on the disk will move until the scorer opens the pad and answers.
+describe('useScoringRows, polling', () => {
+  afterEach(() => vi.useRealTimers());
+  const polled = async (...queues: ReturnType<typeof queueHolding>[]) => {
+    vi.useFakeTimers();
+    const fakes = createFakePorts();
+    for (const queue of queues) await leave(fakes, queue);
+    renderHook(() => useScoringRows(), { wrapper: wrapperFor(fakes) });
+    await act(() => vi.advanceTimersByTimeAsync(10));
+    const listed = vi.spyOn(fakes.ports.tapQueue, 'list');
+    await act(() => vi.advanceTimersByTimeAsync(3 * SCORING_POLL_MS));
+    return listed.mock.calls.length;
+  };
+
+  it('polls while a queue is sending', async () => {
+    expect(await polled(queueHolding('fx-a', 2))).toBe(3);
+  });
+
+  it('does not poll for a queue held for the scorer’s answer', async () => {
+    expect(await polled(queueHolding('fx-a', 2, { askedAbout: ['ev-9'] }))).toBe(0);
+  });
+
+  it('polls when one queue is held and another is sending: the sending one moves', async () => {
+    expect(
+      await polled(queueHolding('fx-a', 2, { askedAbout: ['ev-9'] }), queueHolding('fx-b', 1)),
+    ).toBe(3);
+  });
+
+  it('does not poll for a queue that can never send, held or not', async () => {
+    expect(
+      await polled(queueHolding('fx-a', 2, { dead: 'LINK_REVOKED', askedAbout: ['ev-9'] })),
+    ).toBe(0);
+  });
+});
+
 // Home's Finished card (owner ruling 41, 2026-11-02): the saved match is read from the phone's files for the one
 // question the queue list cannot answer, whether it is over. Asked only when nothing of it is unsent.
 describe('useScoringRows, whether the saved match is over', () => {

@@ -146,12 +146,15 @@ const step = (state: SyncState, effects: readonly SyncEffect[]): SyncStep => ({
 
 /**
  * With nothing queued there is nothing to count or to ask: the refusal run is over, and so is a reconnect question
- * (`askedAbout`: the scorer has no taps left to send or discard).
+ * (`askedAbout`: the scorer has no taps left to send or discard) and the answer to one (`answeredSend`: the queue it
+ * covered has emptied once).
  */
 function settled(state: SyncState): SyncState {
   if (state.queue.pending.length > 0) return state;
   const run = state.refusedRun === null ? state : { ...state, refusedRun: null };
-  return run.queue.askedAbout === undefined ? run : { ...run, queue: withoutQuestion(run.queue) };
+  const { askedAbout, answeredSend } = run.queue;
+  if (askedAbout === undefined && answeredSend === undefined) return run;
+  return { ...run, queue: { ...withoutQuestion(run.queue), answeredSend: undefined } };
 }
 
 /** The queue with no reconnect question standing (a copy: the file's other fields are untouched). */

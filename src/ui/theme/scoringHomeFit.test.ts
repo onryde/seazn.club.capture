@@ -49,6 +49,8 @@ function sentencesIn(lang: Lang): string[] {
     said(lang, 'home.scoring.deadHere.one', { count: 1 }),
     said(lang, 'home.scoring.deadHere.other', { count: 128 }),
     said(lang, 'home.scoring.unreadable'),
+    said(lang, 'scoring.sync.asked.one', { count: 1 }),
+    said(lang, 'scoring.sync.asked.other', { count: 128 }),
     said(lang, 'home.scoring.elsewhere.one', { count: 1, match: LONG_LABEL }),
     said(lang, 'home.scoring.elsewhere.other', { count: 128, match: LONG_LABEL }),
     said(lang, 'home.scoring.elsewhere.other', {
@@ -94,7 +96,7 @@ describe('the cards’ words at 320 and 360 dp, in four languages', () => {
       '360 fr': 2,
       '360 nl': 2,
     });
-    expect(measured).toBe(2 * 4 * 8);
+    expect(measured).toBe(2 * 4 * 10);
   });
 
   it('no word is wider than the card’s inner width: nothing is cut off at the edge', () => {
@@ -180,6 +182,8 @@ function cardsAt(width: number, lang: Lang) {
     linesOf(text, column, measure);
   const dead = said(lang, 'home.scoring.deadHere.other', { count: 128 });
   const unreadable = said(lang, 'home.scoring.unreadable');
+  // A queue held for the scorer's answer: the pad's own words, on the saved card and on a leftover's, in a dead one's place.
+  const asked = said(lang, 'scoring.sync.asked.other', { count: 128 });
   const elsewhere = said(lang, 'home.scoring.elsewhere.other', { count: 128, match: LONG_LABEL });
   return {
     /** The saved match: title, its name, its sentence. */
@@ -192,7 +196,11 @@ function cardsAt(width: number, lang: Lang) {
           space.xs +
           lines(LONG_LABEL, saved, geistLine) * typeScale.control.lineHeight +
           space.xs +
-          Math.max(lines(dead, saved, geistLine), lines(unreadable, saved, geistLine)) *
+          Math.max(
+            lines(dead, saved, geistLine),
+            lines(unreadable, saved, geistLine),
+            lines(asked, saved, geistLine),
+          ) *
             typeScale.control.lineHeight,
       ),
     /** A dead leftover: its name as the title, then its sentence. */
@@ -203,7 +211,8 @@ function cardsAt(width: number, lang: Lang) {
         GHOST_MIN,
         lines(LONG_LABEL, left, state) * typeScale.state.lineHeight +
           space.xs +
-          lines(dead, left, geistLine) * typeScale.control.lineHeight,
+          Math.max(lines(dead, left, geistLine), lines(asked, left, geistLine)) *
+            typeScale.control.lineHeight,
       ),
     /** A leftover still sending, the sentence alone, naming the longest match. */
     liveLeftover:

@@ -247,7 +247,11 @@ describe('what the pad says of the transport', () => {
   // The reconnect question (owner ruling 43): the badge reads "can't send" while it stands, and the pad carries what the
   // sheet asks: how many were scored elsewhere, how many taps wait, and the score as the server has it, without them.
   describe('the reconnect question', () => {
-    const foreign = { kind: 'fetched', events: ledgerOf([start(), rally('A')]).slice(1) } as const;
+    // Recorded after the phone's taps (made at 10:30, `queuedOf`): another scorer's.
+    const foreign = {
+      kind: 'fetched',
+      events: ledgerOf([start(), rally('A')], '2026-11-01T10:31:00.000Z').slice(1),
+    } as const;
     const questioned = () => step(unsent(), foreign, NOW).state;
 
     it('is a can’t-send badge with the count of the taps waiting', () => {

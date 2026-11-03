@@ -110,10 +110,14 @@ function DismissButton(props: {
   );
 }
 
-/** The sentence under a match's name: what is unsent and what that means; null when there is nothing to say. */
+/**
+ * The sentence under a match's name: what is unsent and what that means; null when there is nothing to say. A queue held
+ * for the scorer's answer says the pad's own words (`scoring.sync.asked`): it is not sending, it is waiting for them.
+ */
 function currentSentence(current: ScoringCurrent, t: Translator): string | null {
   if (current.state === 'unreadable') return t.t('home.scoring.unreadable');
   if (current.unsent === 0) return null;
+  if (current.state === 'asked') return t.tp('scoring.sync.asked', current.unsent);
   const key = current.state === 'dead' ? 'home.scoring.deadHere' : 'home.scoring.unsent';
   return t.tp(key, current.unsent);
 }
@@ -155,7 +159,8 @@ function CurrentText({ current, layout }: { current: ScoringCurrent; layout?: Ca
 
 /**
  * Forget when nothing is unsent, Dismiss when the taps can never go, nothing while they are still sending: a Dismiss
- * on a live queue would discard taps that are about to be sent (ruling 29).
+ * on a live queue would discard taps that are about to be sent (ruling 29). Nor while they wait for the scorer's answer:
+ * Continue opens the pad, which asks, and the question names what a discard would cost.
  */
 function CurrentActions(props: Omit<ContinueProps, 'layout' | 'onClose'>) {
   const translator = useT();
@@ -164,7 +169,7 @@ function CurrentActions(props: Omit<ContinueProps, 'layout' | 'onClose'>) {
   return (
     <CardActions>
       <Button label={translator.t('home.continue.open')} onPress={props.onContinue} />
-      {current.state !== 'live' ? (
+      {current.state === 'dead' || current.state === 'unreadable' ? (
         <DismissButton
           fixtureId={current.fixtureId}
           label={current.label}
@@ -257,18 +262,19 @@ function leftoverLabel(leftover: ScoringLeftover): string {
 function leftoverSentence(leftover: ScoringLeftover, translator: Translator): string {
   if (leftover.kind === 'unreadable') return translator.t('home.scoring.unreadable');
   if (leftover.kind === 'dead') return translator.tp('home.scoring.deadHere', leftover.unsent);
+  if (leftover.kind === 'asked') return translator.tp('scoring.sync.asked', leftover.unsent);
   const label = leftoverLabel(leftover);
   const match = label === '' ? translator.t('home.scoring.matchFallback') : label;
   return translator.tp('home.scoring.elsewhere', leftover.unsent, { match });
 }
 
-/** A dead queue names its match in a title, its sentence under it; the others are the sentence alone. */
+/** A dead or held queue names its match in a title, its sentence under it; the others are the sentence alone. */
 function LeftoverText({ leftover, layout }: { leftover: ScoringLeftover; layout?: CardShape }) {
   const translator = useT();
   const label = leftoverLabel(leftover);
   return (
     <CardText layout={layout}>
-      {leftover.kind === 'dead' && label !== '' ? (
+      {(leftover.kind === 'dead' || leftover.kind === 'asked') && label !== '' ? (
         <Text variant="state" style={styles.title}>
           {label}
         </Text>
@@ -280,7 +286,10 @@ function LeftoverText({ leftover, layout }: { leftover: ScoringLeftover; layout?
   );
 }
 
-/** Another match's taps. Still sending: counted, with nothing to do. Dead or unreadable: told, with Dismiss. */
+/**
+ * Another match's taps. Still sending: counted, with nothing to do. Dead, unreadable or held for the scorer's answer:
+ * told, with Dismiss (a held queue sends nothing by itself, and only its own pad takes the answer).
+ */
 export const ScoringLeftoverCard = memo(function ScoringLeftoverCard(props: LeftoverProps) {
   const { leftover, layout } = props;
   const failing = leftover.kind !== 'live';
