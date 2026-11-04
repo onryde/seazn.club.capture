@@ -279,6 +279,12 @@ modify `src/ui/screens/scoringScreens.ts` (a `tabletennis` row), `src/ui/theme/p
 - [ ] **Step 2:** Implement. **Step 3:** Fit tests green; a string that does not fit is shortened in the
       dictionary, never a smaller type. **Step 4:** Commit. **Batch C Opus review.**
 
+**Task 8b** (added 2026-11-04 on the device check; owner rulings 54 and 55, design §5.3): the tools row is
+re-cut. Set score and Expedite are cells, the cards move into More, and a tap on Expedite asks "Start
+Expedite?" first. The tools table of Task 8 above is superseded by design §5.3; the fit cases and copy
+follow the cells' new rooms (four cells for Set score, Expedite, Who is serving? and More; three for 13
+returns).
+
 ## Batch D — the exit bar
 
 ### Task 9: On the phone (owner's hands)

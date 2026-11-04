@@ -31,8 +31,8 @@ import type { MessageKey } from '@/i18n/messages';
  * A table tennis match on the pad screen (plan S2-2 Task 7): the generic match (`useScoringMatch`) with table tennis's pad
  * hook, as `useBadmintonMatch` is badminton's. What is table tennis's here: a half is a rally that may carry the held
  * answer to Who is serving? (`useHeldServing`), 13 returns is a point of its own on a cell that stays on screen, the
- * sheets are Card, More, Who is serving? and Set score (`useTableTennisSheets`), and there is no ending prompt: table
- * tennis declares no sanction ending.
+ * sheets are More (with the Card steps in its place), Start Expedite?, Who is serving? and Set score
+ * (`useTableTennisSheets`), and there is no ending prompt: table tennis declares no sanction ending.
  */
 
 /**

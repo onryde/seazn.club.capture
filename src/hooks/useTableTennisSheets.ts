@@ -18,11 +18,15 @@ import {
   type TableTennisCard,
 } from '@/domain/scoring/tableTennisSanction';
 import {
+  EXPEDITE_START,
   parseTableTennisTool,
   tableTennisDetails,
+  tableTennisExpediteConfirm,
+  tableTennisExpediteOffered,
   tableTennisMoreItems,
   tableTennisMoreOptions,
   tableTennisServingTitle,
+  tableTennisSetScoreOffered,
   type TableTennisDisplay,
   type TableTennisMoreItem,
   type TableTennisPadKey,
@@ -38,8 +42,9 @@ import {
 } from '@/hooks/usePadSheetParts';
 
 /**
- * The sheets over the table tennis pad (plan S2-2 Task 7; design §4.7, §5.3): the Card steps, More, Who is serving?, Set
- * score, Match details and History, and the reconnect question over them all. Badminton's twin is `usePadSheets`; what
+ * The sheets over the table tennis pad (plan S2-2 Task 7; design §4.7, §5.3; owner rulings 54 and 55): More (the cards and
+ * the timeouts) with the Card steps that take its place, the Start Expedite? question, Who is serving?, Set score, Match
+ * details and History, and the reconnect question over them all. Badminton's twin is `usePadSheets`; what
  * the two share (the bounce window of a sheet appearing, Set score's fields, the question) is `usePadSheetParts`.
  */
 
@@ -67,12 +72,13 @@ export type StepFacts = {
 };
 
 /**
- * What is over the pad: a Card step, the More sheet, Who is serving?, the Set score fields, Match details or History (a
- * cover the full height of the pad), or the reconnect question and its confirm over all of them.
+ * What is over the pad: a Card step, the More sheet, the Start Expedite? question, Who is serving?, the Set score fields,
+ * Match details or History (a cover the full height of the pad), or the reconnect question and its confirm over all of them.
  */
 export type TableTennisSheetView =
   | { readonly kind: 'card'; readonly sheet: StepFacts }
   | { readonly kind: 'more'; readonly sheet: StepFacts }
+  | { readonly kind: 'expedite'; readonly sheet: StepFacts }
   | { readonly kind: 'serving'; readonly sheet: StepFacts }
   | {
       readonly kind: 'setScore';
@@ -90,6 +96,7 @@ export type TableTennisSheetView =
 type Sheet =
   | { readonly kind: 'card'; readonly step: CardStep }
   | { readonly kind: 'more' }
+  | { readonly kind: 'expedite' }
   | { readonly kind: 'serving' }
   | { readonly kind: 'setScore' }
   | { readonly kind: 'details' }
@@ -98,6 +105,8 @@ type Sheet =
   | null;
 
 const MORE: Sheet = { kind: 'more' };
+const EXPEDITE: Sheet = { kind: 'expedite' };
+const SET_SCORE: Sheet = { kind: 'setScore' };
 const SERVING: Sheet = { kind: 'serving' };
 const DETAILS: Sheet = { kind: 'details' };
 const HISTORY: Sheet = { kind: 'history' };
@@ -172,7 +181,7 @@ function useServe(setSheet: SetSheet, record: Recording, pad: TableTennisSheetDr
   );
 }
 
-/** A choice on the sheet open: the Card's next step or the card recorded, a More item, or a side for the serve. */
+/** A choice on the sheet open: the Card's next step or the card recorded, a More item, Start Expedite?, or a side for the serve. */
 function useChoose(
   sheet: Sheet,
   setSheet: SetSheet,
@@ -188,6 +197,7 @@ function useChoose(
       if (sheet.kind === 'card')
         return chooseOnCard(sheet.step, id, display, setSheet, record, pad);
       if (sheet.kind === 'more') return chooseOnMore(id, display, setSheet, record, pad);
+      if (sheet.kind === 'expedite') return chooseOnExpedite(id, setSheet, record, pad);
       const side = sideOf(id);
       if (sheet.kind === 'serving' && side !== null) serve(side);
     },
@@ -210,9 +220,9 @@ function chooseOnCard(
 }
 
 /**
- * The More sheet's item: a timeout or Expedite recorded at once, Set score opening its own sheet in More's place. An item
- * is taken only while More still lists it for the display as it is now (fix round 1): the sheet was drawn before, and
- * another scorer may have started Expedite or a game since. Then the sheet closes and nothing is made.
+ * The More sheet's item: a timeout recorded at once, a Card opening its steps in More's place. An item is taken only while
+ * More still lists it for the display as it is now (fix round 1): the sheet was drawn before, and the match may have
+ * stopped recording it since. Then the sheet closes and nothing is made.
  */
 function chooseOnMore(
   id: string,
@@ -224,18 +234,35 @@ function chooseOnMore(
   const item = MORE_ITEMS.find((each) => each === id);
   if (item === undefined) return;
   if (!tableTennisMoreItems(display).includes(item)) return setSheet(null);
-  if (item === 'setScore') return setSheet({ kind: 'setScore' });
+  if (item === 'card.first' || item === 'card.second') {
+    return setSheet({ kind: 'card', step: startCard(item === 'card.first' ? 'first' : 'second') });
+  }
   setSheet(null);
-  if (item === 'expedite') record('expedite', () => pad.expedite());
-  else record('timeout', () => pad.timeout(item === 'timeout.first' ? 'first' : 'second'));
+  record('timeout', () => pad.timeout(item === 'timeout.first' ? 'first' : 'second'));
+}
+
+/**
+ * Start in the Start Expedite? question (ruling 55): Expedite recorded, once, and the question leaves with it. Only Start
+ * records; Cancel, the dim and Back close the sheet and leave the match as it was. That Expedite is still on offer is the
+ * sheet's own rule (`staleSheet`): the question closes the moment it is not.
+ */
+function chooseOnExpedite(
+  id: string,
+  setSheet: SetSheet,
+  record: Recording,
+  pad: TableTennisSheetDriver,
+): void {
+  if (id !== EXPEDITE_START) return;
+  setSheet(null);
+  record('expedite', () => pad.expedite());
 }
 
 /** Every item the More sheet can list (`tableTennisMoreItems`); a choice outside it is nobody's. */
 const MORE_ITEMS: readonly TableTennisMoreItem[] = [
+  'card.first',
+  'card.second',
   'timeout.first',
   'timeout.second',
-  'expedite',
-  'setScore',
 ];
 
 /** The side a serving choice names: its id is the half, as the Start screen's. */
@@ -244,9 +271,9 @@ function sideOf(id: string): PadSide | null {
 }
 
 /**
- * The step on screen a double tap can reach, by name: a Card's level or person; More; Who is serving?; Set score; Match
- * details, whose dim takes the second touch on its icon; the question and its confirm. Not History: its one button is not
- * under its icon.
+ * The step on screen a double tap can reach, by name: a Card's level or person; More; Start Expedite? (whose Start lies
+ * under the cell it was opened from); Who is serving?; Set score; Match details, whose dim takes the second touch on its
+ * icon; the question and its confirm. Not History: its one button is not under its icon.
  */
 function guardedStep(sheet: Sheet, view: TableTennisSheetView | null): string | null {
   if (view?.kind === 'card' && sheet?.kind === 'card') return sheet.step.step;
@@ -258,15 +285,16 @@ function staleSheet(sheet: NonNullable<Sheet>, snapshot: TableTennisSheetSnapsho
   if (snapshot === null || staleByAsk(sheet.kind, snapshot)) return true;
   const { display } = snapshot;
   if (sheet.kind === 'serving') return !display.anchorNeeded;
-  const items = tableTennisMoreItems(display);
-  if (sheet.kind === 'setScore') return !items.includes('setScore');
-  return sheet.kind === 'more' && items.length === 0;
+  if (sheet.kind === 'setScore') return !tableTennisSetScoreOffered(display);
+  if (sheet.kind === 'expedite') return !tableTennisExpediteOffered(display);
+  return sheet.kind === 'more' && tableTennisMoreItems(display).length === 0;
 }
 
 function sheetFor(id: string): Sheet {
   const parsed = parseTableTennisTool(id);
   if (parsed === null) return null;
-  if ('card' in parsed) return { kind: 'card', step: startCard(parsed.card) };
+  if ('setScore' in parsed) return SET_SCORE;
+  if ('expedite' in parsed) return EXPEDITE;
   if ('more' in parsed) return MORE;
   return 'serving' in parsed ? SERVING : null;
 }
@@ -287,6 +315,8 @@ function sheetView(
       return { kind: 'card', sheet: cardSheet(sheet.step, display.sides) };
     case 'more':
       return { kind: 'more', sheet: moreSheet(display) };
+    case 'expedite':
+      return { kind: 'expedite', sheet: expediteSheet() };
     case 'serving':
       return { kind: 'serving', sheet: servingSheet(display) };
     case 'setScore':
@@ -309,6 +339,16 @@ function moreSheet(display: TableTennisDisplay): StepFacts {
       label,
       tone: 'standard',
     })),
+  };
+}
+
+/** Start Expedite? (ruling 55): the owner's question and its one choice; Cancel is the sheet's own. */
+function expediteSheet(): StepFacts {
+  const { title, body, options } = tableTennisExpediteConfirm;
+  return {
+    title,
+    body,
+    options: options.map(({ id, label }) => ({ id, label, tone: 'standard' })),
   };
 }
 

@@ -220,9 +220,9 @@ describe('tableTennisSport: Undo', () => {
 });
 
 describe('tableTennisSport: the pad', () => {
-  it('is table tennis’s: a Card for each side and More while the match is on, none before it starts', () => {
+  it('is table tennis’s: Expedite and More in a game under way (rulings 54 and 55), none before the match starts', () => {
     const live = tableTennisSport.pad(displayOf(anchored('H', 'A')), { kind: 'synced' });
-    expect(live.tools.map((tool) => tool.id)).toEqual(['card.first', 'card.second', 'more']);
+    expect(live.tools.map((tool) => tool.id)).toEqual(['expedite', 'more']);
     expect(live.halves.map((half) => half.value)).toEqual(['1', '1']);
     expect(tableTennisSport.pad(displayOf([]), { kind: 'synced' }).tools).toEqual([]);
   });

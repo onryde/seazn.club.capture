@@ -2,21 +2,25 @@ import { describe, expect, it } from 'vitest';
 import type { PadView } from '@/domain/scoring/padView';
 import {
   parseTableTennisTool,
+  tableTennisExpediteConfirm,
+  tableTennisExpediteOffered,
   tableTennisMoreItems,
   tableTennisMoreOptions,
   tableTennisPad,
   tableTennisServingTitle,
+  tableTennisSetScoreOffered,
   withHeldServing,
   type TableTennisDisplay,
   type TableTennisLastTap,
 } from '@/domain/scoring/tableTennisPad';
+import { cardSheet, startCard } from '@/domain/scoring/tableTennisSanction';
 import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
 import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
 import type { MessageKey } from '@/i18n/messages';
 
-// The table tennis pad (design §5, ruling 52's tools table is the acceptance table for §5.3). Displays are written out
+// The table tennis pad (design §5; the tools table of rulings 54 and 55 is the acceptance table for §5.3). Displays are written out
 // by hand: the fold (tableTennisFold.test.ts) decides every fact, and this only draws them.
 
 /** Game 1 of a best of 5, singles, before the first point, the Start pick standing in as the server. */
@@ -380,92 +384,125 @@ describe('tableTennisPad: the strip', () => {
   });
 });
 
-// Task 8 fix round 1 (the controller's sheet-title ruling): the cells of a four-cell row are shortened to fit, but the sheets
-// they open say the full words, and a screen reader never hears an abbreviation. The copy is pinned here by hand, in all four
-// languages, apart from the cell's shortened `tool.*` copy, which padFit.test.ts measures.
+// Task 8 fix round 1 (the controller's sheet-title ruling), and Task 8b: a cell that shortens a word to fit the row (the
+// Expedite cell, drawn "Exped.") is read to a screen reader as the full term, and the sheets they open say the full words.
+// The copy is pinned here by hand, in all four languages, apart from the cells' shortened `tool.*` copy, which
+// padFit.test.ts measures.
 describe('tableTennisPad: the sheets say the full words the cells shorten', () => {
   const full = {
-    en: { card: 'Card', serving: 'Who is serving?' },
-    es: { card: 'Tarjeta', serving: '¿Quién saca?' },
-    fr: { card: 'Carton', serving: 'Qui sert\u00a0?' },
-    nl: { card: 'Kaart', serving: 'Wie serveert?' },
+    en: { card: 'Card', serving: 'Who is serving?', expedite: 'Expedite' },
+    es: { card: 'Tarjeta', serving: '¿Quién saca?', expedite: 'Sistema de aceleración' },
+    fr: { card: 'Carton', serving: 'Qui sert ?', expedite: 'Système accéléré' },
+    nl: { card: 'Kaart', serving: 'Wie serveert?', expedite: 'Versnelling' },
   } as const;
 
   it.each(Object.entries({ en, es, fr, nl }))(
-    '%s: the Card sheet is titled with the full word and Who is serving? with ruling 51’s words',
+    '%s: the Card sheet is titled with the full word, Who is serving? with ruling 51’s words, and the Expedite cell is spoken as the full term',
     (name, dictionary: Record<string, string>) => {
       const words = full[name as keyof typeof full];
       expect(dictionary['scoring.tabletennis.sheet.card']).toBe(words.card);
       expect(dictionary['scoring.tabletennis.sheet.serving']).toBe(words.serving);
+      expect(dictionary['scoring.tabletennis.tool.expediteSaid']).toBe(words.expedite);
     },
   );
 
-  it('keeps the cells short where the sheets are not: the cell is not the sheet’s title in es and fr', () => {
-    expect([es, fr].map((d) => d['scoring.tabletennis.tool.card'])).toEqual(['Tarj.', 'Carte']);
+  it('draws the Expedite cell shortened in es, fr, nl and en: four languages, a word that fits four cells', () => {
+    expect([en, es, fr, nl].map((d) => d['scoring.tabletennis.tool.expedite'])).toEqual([
+      'Exped.',
+      'Sist. acel.',
+      'Syst. accél.',
+      'Versn.',
+    ]);
   });
 
-  it('gives a Card cell the full word to a screen reader, and no other cell a spoken name', () => {
-    const [first, second, serving, more] = tableTennisPad(unanchored).tools;
-    expect([first?.said, second?.said]).toEqual([
-      { key: 'scoring.tabletennis.sheet.card' },
-      { key: 'scoring.tabletennis.sheet.card' },
+  it('gives the Expedite cell the full term to a screen reader, and no other cell a spoken name', () => {
+    const cells = tableTennisPad({ ...pre, anchorNeeded: true, serverPicked: false }).tools;
+    expect(cells.map((tool) => [tool.id, tool.said])).toEqual([
+      ['setScore', undefined],
+      ['expedite', { key: 'scoring.tabletennis.tool.expediteSaid' }],
+      ['serving', undefined],
+      ['more', undefined],
     ]);
-    expect([serving?.said, more?.said]).toEqual([undefined, undefined]);
   });
 });
 
-// Ruling 52 and design §5.3: one row, at most four cells. This is the acceptance table, a row at a time.
+// Owner rulings 54 and 55 (2026-11-04, supersedes ruling 52's cells) and design §5.3: one row, at most four cells, in
+// order. This is the acceptance table, a row at a time; the expected ids and words are the table's, never the code's.
 describe('tableTennisPad: the tools', () => {
-  describe('Card · {top}, Card · {bottom}: live, and the match records cards', () => {
-    it('offers a Card for each side, the side’s names beneath, in the caution outline', () => {
-      expect(tableTennisPad(live).tools.slice(0, 2)).toEqual([
-        {
-          id: 'card.first',
-          label: { key: 'scoring.tabletennis.tool.card' },
-          said: { key: 'scoring.tabletennis.sheet.card' },
-          detail: 'A. Sharma',
-          kind: 'destructive',
-          enabled: true,
-        },
-        {
-          id: 'card.second',
-          label: { key: 'scoring.tabletennis.tool.card' },
-          said: { key: 'scoring.tabletennis.sheet.card' },
-          detail: 'L. Chen',
-          kind: 'destructive',
-          enabled: true,
-        },
-      ]);
-      expect(en['scoring.tabletennis.tool.card']).toBe('Card');
+  const betweenGames: TableTennisDisplay = { ...live, phase: 'betweenGames' };
+  /** Started elsewhere, no first server named, before the game's first point: the row's fullest state. */
+  const unanchoredPre: TableTennisDisplay = {
+    ...pre,
+    server: null,
+    serveNumber: null,
+    serverPicked: false,
+    anchorNeeded: true,
+  };
+
+  describe('Set score: when More listed it before, the game’s first point not yet played', () => {
+    it('is the first cell before the match’s first point and between games, a plain outline', () => {
+      expect(tableTennisPad(pre).tools[0]).toEqual({
+        id: 'setScore',
+        label: { key: 'scoring.tabletennis.tool.setScore' },
+        detail: null,
+        kind: 'standard',
+        enabled: true,
+      });
+      expect(ids(tableTennisPad(betweenGames))[0]).toBe('setScore');
+      expect(en['scoring.tabletennis.tool.setScore']).toBe('Set score');
     });
 
-    it('names a doubles side as its partners joined', () => {
-      expect(
-        tableTennisPad(doubles)
-          .tools.slice(0, 2)
-          .map((tool) => tool.detail),
-      ).toEqual(['A. Sharma / R. Iyer', 'L. Chen / M. Wong']);
+    it('is gone after the game’s first point, and for a game under way', () => {
+      expect(ids(tableTennisPad(live))).not.toContain('setScore');
+      expect(ids(tableTennisPad({ ...live, points: { first: 1, second: 0 } }))).not.toContain(
+        'setScore',
+      );
     });
 
-    it('offers them before the first point and between games, as badminton’s Sanction is', () => {
-      expect(ids(tableTennisPad(pre))).toContain('card.first');
-      expect(ids(tableTennisPad({ ...live, phase: 'betweenGames' }))).toContain('card.second');
-    });
-
-    it('hides them when the match does not record cards', () => {
-      const records = { ...live.records, sanctions: false };
-      expect(ids(tableTennisPad({ ...live, records }))).toEqual(['more']);
-    });
-
-    it('hides them on the Start screen and once the match is decided', () => {
+    it('is not drawn on the Start screen or once the match is decided', () => {
       expect(tableTennisPad({ ...pre, phase: 'notStarted' }).tools).toEqual([]);
-      expect(tableTennisPad({ ...live, phase: 'decided' }).tools).toEqual([]);
+      expect(ids(tableTennisPad({ ...pre, phase: 'decided' }))).toEqual([]);
+    });
+
+    it('does not depend on what the match records: no timeouts, no cards, no Expedite', () => {
+      const records = { timeouts: false, sanctions: false, expedite: false };
+      expect(ids(tableTennisPad({ ...pre, expedite: 'off', records }))).toEqual(['setScore']);
     });
   });
 
-  describe('13 returns · {receiver}: Expedite in force, the server known (ruling 50)', () => {
+  describe('Expedite: when More listed it before, and it is not in force (ruling 55)', () => {
+    it('is a cell after Set score, a plain outline, drawn shortened and spoken as the full term', () => {
+      const cell = tableTennisPad(live).tools[0];
+      expect(cell).toEqual({
+        id: 'expedite',
+        label: { key: 'scoring.tabletennis.tool.expedite' },
+        said: { key: 'scoring.tabletennis.tool.expediteSaid' },
+        detail: null,
+        kind: 'standard',
+        enabled: true,
+      });
+      expect(ids(tableTennisPad(pre)).slice(0, 2)).toEqual(['setScore', 'expedite']);
+    });
+
+    it('is gone once Expedite is in force, and when it cannot be started', () => {
+      expect(ids(tableTennisPad(expedited))).not.toContain('expedite');
+      expect(ids(tableTennisPad({ ...live, expedite: 'off' }))).not.toContain('expedite');
+    });
+
+    it('is gone when the match does not record Expedite', () => {
+      const records = { ...live.records, expedite: false };
+      expect(ids(tableTennisPad({ ...live, expedite: 'off', records }))).not.toContain('expedite');
+    });
+
+    it('is not drawn on the Start screen or once the match is decided', () => {
+      expect(ids(tableTennisPad({ ...live, phase: 'decided' }))).toEqual([]);
+      expect(ids(tableTennisPad({ ...pre, phase: 'notStarted' }))).toEqual([]);
+    });
+  });
+
+  describe('13 returns · {receiver}: Expedite in force, the server known (rulings 50 and 54)', () => {
     it('gives the receiving side the point, and says the receiver beneath: the server’s opponent', () => {
-      const [, , returns] = tableTennisPad(expedited).tools;
+      const returns = returnsCell(tableTennisPad(expedited));
       expect(returns).toEqual({
         id: 'returns.first',
         label: { key: 'scoring.tabletennis.tool.returns', vars: { returns: 13 } },
@@ -473,8 +510,13 @@ describe('tableTennisPad: the tools', () => {
         kind: 'standard',
         enabled: true,
       });
-      // Shortened from "{returns} returns" to fit four cells in a row at 320 dp (padFit.test.ts, plan S2-2 Task 8).
-      expect(en['scoring.tabletennis.tool.returns']).toBe('{returns} shots');
+      // The full term comes back (ruling 54): at most three cells share its row, which leaves it 72.67 dp at 320.
+      expect(en['scoring.tabletennis.tool.returns']).toBe('{returns} returns');
+    });
+
+    it('takes the Expedite cell’s place once Expedite is on: the first cell of a game under way', () => {
+      expect(ids(tableTennisPad(live))).toEqual(['expedite', 'more']);
+      expect(ids(tableTennisPad(expedited))).toEqual(['returns.first', 'more']);
     });
 
     it('follows the serve: the other side serving, the other side receiving', () => {
@@ -507,7 +549,7 @@ describe('tableTennisPad: the tools', () => {
 
   describe('Who is serving?: the server unknown for want of an anchor (ruling 51)', () => {
     it('is offered when the pad needs the answer', () => {
-      const [, , serving] = tableTennisPad(unanchored).tools;
+      const serving = tableTennisPad(unanchored).tools.find((tool) => tool.id === 'serving');
       expect(serving).toEqual({
         id: 'serving',
         label: { key: 'scoring.tabletennis.tool.serving' },
@@ -515,7 +557,8 @@ describe('tableTennisPad: the tools', () => {
         kind: 'standard',
         enabled: true,
       });
-      // The owner's "Who is serving?" (ruling 51), shortened to fit four cells in a row at 320 dp (padFit.test.ts, Task 8).
+      // The owner's "Who is serving?" (ruling 51), shortened to fit four cells in a row at 320 dp (padFit.test.ts, Task 8):
+      // Set score, Expedite, this and More share a row before the game's first point, and the full words do not fit there.
       expect(en['scoring.tabletennis.tool.serving']).toBe('Whose serve?');
     });
 
@@ -534,7 +577,14 @@ describe('tableTennisPad: the tools', () => {
     expect(ids(both)).toContain('serving');
   });
 
-  describe('More: live, and the sheet has at least one item', () => {
+  it('never offers Expedite and 13 returns together: Expedite is either offered or in force', () => {
+    for (const display of [pre, live, expedited, unanchored, unanchoredPre, betweenGames]) {
+      const row = ids(tableTennisPad(display));
+      expect(row.includes('expedite') && row.some((id) => id.startsWith('returns.'))).toBe(false);
+    }
+  });
+
+  describe('More: live, and the sheet has at least one item (cards and timeouts)', () => {
     it('is the last cell, a plain outline with no second line', () => {
       expect(tableTennisPad(live).tools.at(-1)).toEqual({
         id: 'more',
@@ -546,61 +596,72 @@ describe('tableTennisPad: the tools', () => {
       expect(en['scoring.tabletennis.tool.more']).toBe('More');
     });
 
-    it('is not drawn when nothing is in it: no timeouts, Expedite not offered, a game under way', () => {
+    it('is not drawn when nothing is in it: no timeouts and no cards', () => {
       const bare: TableTennisDisplay = {
         ...live,
         expedite: 'off',
-        records: { timeouts: false, sanctions: true, expedite: false },
-      };
-      expect(tableTennisMoreItems(bare)).toEqual([]);
-      expect(ids(tableTennisPad(bare))).toEqual(['card.first', 'card.second']);
-    });
-
-    it('is drawn for Set score alone, between games', () => {
-      const setScoreOnly: TableTennisDisplay = {
-        ...live,
-        phase: 'betweenGames',
-        expedite: 'off',
         records: { timeouts: false, sanctions: false, expedite: false },
       };
-      expect(ids(tableTennisPad(setScoreOnly))).toEqual(['more']);
+      expect(tableTennisMoreItems(bare)).toEqual([]);
+      expect(ids(tableTennisPad(bare))).toEqual([]);
+    });
+
+    it('is drawn for the cards alone, or the timeouts alone', () => {
+      const cards = { timeouts: false, sanctions: true, expedite: false };
+      const timeouts = { timeouts: true, sanctions: false, expedite: false };
+      expect(ids(tableTennisPad({ ...live, expedite: 'off', records: cards }))).toEqual(['more']);
+      expect(ids(tableTennisPad({ ...live, expedite: 'off', records: timeouts }))).toEqual([
+        'more',
+      ]);
+    });
+
+    it('is not drawn for Set score or Expedite alone: they are cells of their own, not More’s', () => {
+      const none = { timeouts: false, sanctions: false, expedite: true };
+      expect(ids(tableTennisPad({ ...pre, records: none }))).toEqual(['setScore', 'expedite']);
     });
   });
 
-  it('puts the cells in order: the cards, 13 returns or Who is serving?, then More: four at most', () => {
-    expect(ids(tableTennisPad(expedited))).toEqual([
-      'card.first',
-      'card.second',
+  it('puts the cells in order: Set score, Expedite, 13 returns or Who is serving?, then More: four at most', () => {
+    expect(ids(tableTennisPad(unanchoredPre))).toEqual(['setScore', 'expedite', 'serving', 'more']);
+    expect(ids(tableTennisPad(pre))).toEqual(['setScore', 'expedite', 'more']);
+    expect(ids(tableTennisPad({ ...expedited, phase: 'betweenGames' }))).toEqual([
+      'setScore',
       'returns.first',
       'more',
     ]);
-    expect(ids(tableTennisPad(unanchored))).toEqual([
-      'card.first',
-      'card.second',
-      'serving',
-      'more',
-    ]);
-    expect(ids(tableTennisPad(live))).toEqual(['card.first', 'card.second', 'more']);
-    for (const display of [live, expedited, unanchored, doubles, pre]) {
+    expect(ids(tableTennisPad(unanchored))).toEqual(['expedite', 'serving', 'more']);
+    for (const display of [
+      live,
+      expedited,
+      unanchored,
+      unanchoredPre,
+      doubles,
+      pre,
+      betweenGames,
+    ]) {
       expect(tableTennisPad(display).tools.length).toBeLessThanOrEqual(4);
     }
   });
 
   it('reads its own tool ids back, and nothing else', () => {
-    expect(parseTableTennisTool('card.first')).toEqual({ card: 'first' });
-    expect(parseTableTennisTool('card.second')).toEqual({ card: 'second' });
+    expect(parseTableTennisTool('setScore')).toEqual({ setScore: true });
+    expect(parseTableTennisTool('expedite')).toEqual({ expedite: true });
     expect(parseTableTennisTool('returns.first')).toEqual({ returns: 'first' });
     expect(parseTableTennisTool('returns.second')).toEqual({ returns: 'second' });
     expect(parseTableTennisTool('serving')).toEqual({ serving: true });
     expect(parseTableTennisTool('more')).toEqual({ more: true });
+    // The Card cells are gone (ruling 54): a card is a More item, not a tool.
     for (const id of [
       '',
       'card',
+      'card.first',
+      'card.second',
       'card.third',
       'undo',
       'MORE',
       'sanction.first',
-      'setScore',
+      'Expedite',
+      'set-score',
       'returns',
       'returns.third',
       'returns.',
@@ -610,7 +671,7 @@ describe('tableTennisPad: the tools', () => {
   });
 
   it('reads back every id the pad gives', () => {
-    for (const display of [live, expedited, unanchored]) {
+    for (const display of [live, expedited, unanchored, unanchoredPre, pre, betweenGames]) {
       for (const id of ids(tableTennisPad(display))) {
         expect(parseTableTennisTool(id), id).not.toBeNull();
       }
@@ -618,36 +679,53 @@ describe('tableTennisPad: the tools', () => {
   });
 });
 
-describe('tableTennisMoreItems: what the More sheet lists (design §4, §5.3)', () => {
-  it('lists a timeout for each side, then Expedite when it is offered, in a game under way', () => {
-    expect(tableTennisMoreItems(live)).toEqual(['timeout.first', 'timeout.second', 'expedite']);
+describe('tableTennisSetScoreOffered and tableTennisExpediteOffered: the sheets’ stale checks', () => {
+  it('offers Set score before a game’s first point: before the match’s, and between games', () => {
+    expect(tableTennisSetScoreOffered(pre)).toBe(true);
+    expect(tableTennisSetScoreOffered({ ...live, phase: 'betweenGames' })).toBe(true);
   });
 
-  it('adds Set score before a game’s first point: before the match’s, and between games', () => {
-    expect(tableTennisMoreItems(pre)).toEqual([
+  it('offers no Set score once a game is under way, on the Start screen or when decided', () => {
+    expect(tableTennisSetScoreOffered(live)).toBe(false);
+    expect(tableTennisSetScoreOffered({ ...pre, phase: 'notStarted' })).toBe(false);
+    expect(tableTennisSetScoreOffered({ ...pre, phase: 'decided' })).toBe(false);
+  });
+
+  it('offers Expedite while the display says it is offered, and only then', () => {
+    expect(tableTennisExpediteOffered(live)).toBe(true);
+    expect(tableTennisExpediteOffered(pre)).toBe(true);
+    expect(tableTennisExpediteOffered(expedited)).toBe(false);
+    expect(tableTennisExpediteOffered({ ...live, expedite: 'off' })).toBe(false);
+    expect(tableTennisExpediteOffered({ ...live, phase: 'decided' })).toBe(false);
+    expect(tableTennisExpediteOffered({ ...pre, phase: 'notStarted' })).toBe(false);
+  });
+});
+
+describe('tableTennisMoreItems: what the More sheet lists (design §4, §5.3; ruling 54)', () => {
+  it('lists a Card for each side, then a timeout for each, in a game under way', () => {
+    expect(tableTennisMoreItems(live)).toEqual([
+      'card.first',
+      'card.second',
       'timeout.first',
       'timeout.second',
-      'expedite',
-      'setScore',
     ]);
-    expect(tableTennisMoreItems({ ...live, phase: 'betweenGames' })).toContain('setScore');
   });
 
-  it('offers no Set score once a game is under way', () => {
-    expect(tableTennisMoreItems(live)).not.toContain('setScore');
+  it('lists the same before a game’s first point and between games: Set score and Expedite are cells', () => {
+    const same = ['card.first', 'card.second', 'timeout.first', 'timeout.second'];
+    expect(tableTennisMoreItems(pre)).toEqual(same);
+    expect(tableTennisMoreItems({ ...live, phase: 'betweenGames' })).toEqual(same);
+    expect(tableTennisMoreItems(expedited)).toEqual(same);
   });
 
-  it('drops Expedite once it is in force, or when it cannot be started', () => {
-    expect(tableTennisMoreItems(expedited)).toEqual(['timeout.first', 'timeout.second']);
-    expect(tableTennisMoreItems({ ...live, expedite: 'off' })).toEqual([
-      'timeout.first',
-      'timeout.second',
-    ]);
+  it('drops the cards when the match does not record them', () => {
+    const records = { ...live.records, sanctions: false };
+    expect(tableTennisMoreItems({ ...live, records })).toEqual(['timeout.first', 'timeout.second']);
   });
 
   it('drops the timeouts when the match does not record them', () => {
     const records = { ...live.records, timeouts: false };
-    expect(tableTennisMoreItems({ ...live, records })).toEqual(['expedite']);
+    expect(tableTennisMoreItems({ ...live, records })).toEqual(['card.first', 'card.second']);
   });
 
   it('lists nothing on the Start screen or once the match is decided', () => {
@@ -657,8 +735,16 @@ describe('tableTennisMoreItems: what the More sheet lists (design §4, §5.3)', 
 });
 
 describe('tableTennisMoreOptions: the sheet’s choices, in words', () => {
-  it('says a timeout with its side, and Expedite and Set score alone, in the list’s order', () => {
+  it('says a card and a timeout with their side, the full words, in the list’s order', () => {
     expect(tableTennisMoreOptions(pre)).toEqual([
+      {
+        id: 'card.first',
+        label: { key: 'scoring.tabletennis.more.card', vars: { side: 'A. Sharma' } },
+      },
+      {
+        id: 'card.second',
+        label: { key: 'scoring.tabletennis.more.card', vars: { side: 'L. Chen' } },
+      },
       {
         id: 'timeout.first',
         label: { key: 'scoring.tabletennis.more.timeout', vars: { side: 'A. Sharma' } },
@@ -667,12 +753,28 @@ describe('tableTennisMoreOptions: the sheet’s choices, in words', () => {
         id: 'timeout.second',
         label: { key: 'scoring.tabletennis.more.timeout', vars: { side: 'L. Chen' } },
       },
-      { id: 'expedite', label: { key: 'scoring.tabletennis.more.expedite' } },
-      { id: 'setScore', label: { key: 'scoring.tabletennis.more.setScore' } },
     ]);
-    expect(en['scoring.tabletennis.more.timeout']).toBe('Timeout · {side}');
-    expect(en['scoring.tabletennis.more.expedite']).toBe('Expedite');
-    expect(en['scoring.tabletennis.more.setScore']).toBe('Set score');
+  });
+
+  it('says them in all four languages, as the owner’s ruling 54 words them', () => {
+    expect(
+      [en, es, fr, nl].map((d) => [
+        d['scoring.tabletennis.more.card'],
+        d['scoring.tabletennis.more.timeout'],
+      ]),
+    ).toEqual([
+      ['Card · {side}', 'Timeout · {side}'],
+      ['Tarjeta · {side}', 'Tiempo muerto · {side}'],
+      ['Carton · {side}', 'Temps mort · {side}'],
+      ['Kaart · {side}', 'Time-out · {side}'],
+    ]);
+  });
+
+  it('names a doubles side as its partners joined', () => {
+    expect(tableTennisMoreOptions(doubles)[0]?.label).toEqual({
+      key: 'scoring.tabletennis.more.card',
+      vars: { side: 'A. Sharma / R. Iyer' },
+    });
   });
 
   it('lists exactly what tableTennisMoreItems lists', () => {
@@ -682,6 +784,50 @@ describe('tableTennisMoreOptions: the sheet’s choices, in words', () => {
       );
     }
   });
+});
+
+// Ruling 55 (owner, 2026-11-04, "Confirm sheet (Recommended)"): a tap on the Expedite cell asks first. The words are the
+// owner's, in four languages; Cancel is the kit's.
+describe('tableTennisExpediteConfirm: Start Expedite? (ruling 55)', () => {
+  it('asks the question, says it stays on, and offers one choice, Start', () => {
+    expect(tableTennisExpediteConfirm).toEqual({
+      title: { key: 'scoring.tabletennis.expedite.title' },
+      body: { key: 'scoring.tabletennis.expedite.body' },
+      options: [{ id: 'start', label: { key: 'scoring.tabletennis.expedite.start' } }],
+    });
+  });
+
+  it.each([
+    ['en', en, ['Start Expedite?', 'It stays on for the rest of the match.', 'Start']],
+    [
+      'es',
+      es,
+      [
+        '¿Iniciar el sistema de aceleración?',
+        'Sigue activo hasta el final del partido.',
+        'Iniciar',
+      ],
+    ],
+    [
+      'fr',
+      fr,
+      ['Lancer le système accéléré ?', "Il reste actif jusqu'à la fin du match.", 'Lancer'],
+    ],
+    [
+      'nl',
+      nl,
+      ['Versnelling starten?', 'Het blijft aan tot het einde van de wedstrijd.', 'Starten'],
+    ],
+  ] as const)(
+    '%s: says it in its own words',
+    (_lang, dictionary: Record<string, string>, words) => {
+      expect([
+        dictionary['scoring.tabletennis.expedite.title'],
+        dictionary['scoring.tabletennis.expedite.body'],
+        dictionary['scoring.tabletennis.expedite.start'],
+      ]).toEqual(words);
+    },
+  );
 });
 
 describe('tableTennisPad: the decided match', () => {
@@ -1038,6 +1184,9 @@ describe('tableTennisPad: its words', () => {
     ...lastTaps.flatMap((lastTap) => keysIn(tableTennisPad({ ...live, lastTap }).lastTap)),
     ...keysIn(tableTennisMoreOptions(pre)),
     ...keysIn(tableTennisServingTitle),
+    ...keysIn(tableTennisExpediteConfirm),
+    // The Card sheet's title is the sanction module's, since the Card cells became More items (ruling 54).
+    ...keysIn(cardSheet(startCard('first'), live.sides)),
     ...keysIn(tableTennisPad({ ...pre, rules: { ...pre.rules, finalSetTo: 7 } }).details),
     ...keysIn(
       tableTennisPad({ ...pre, records: { timeouts: true, sanctions: true, expedite: true } })

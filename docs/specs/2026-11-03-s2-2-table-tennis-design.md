@@ -20,8 +20,8 @@ browser pad see the same match.
 The web pad (`apps/web/src/components/v2/scorepad/v3/skins/tabletennis.tsx`, web `9fbfd4c7a8`) does
 all of this; the phone matches it (ruling 48), with the differences §4 names: the Start pick and a
 "Who is serving?" tool only when needed, in place of the web's anchor tile (rulings 49, 51); 13
-returns chosen before the point, not after (ruling 50); and the tools row with a More sheet (ruling
-52).
+returns chosen before the point, not after (ruling 50); and the tools row, with Set score and Expedite in
+it and the cards and timeouts in a More sheet (rulings 52, 54 and 55).
 
 Success: a real table tennis match on staging, scored on the owner's OnePlus from the first serve to the
 organiser's final, with the console agreeing point for point (§8).
@@ -59,14 +59,16 @@ organiser's final, with the console agreeing point for point (§8).
 
 ## 3. The owner's rulings (S2-2)
 
-| #   | Ruling                                                                                                                                                                                              |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 48  | The table tennis pad matches the web pad: points, the serve, Expedite, yellow and red cards ("C", 2026-11-03), not a points-only pad.                                                               |
-| 49  | Start match asks who serves first, as badminton does; there is no separate serve-anchor tile ("yes", 2026-11-03).                                                                                   |
-| 50  | While Expedite is on, one tool, "13 returns · {receiver}", gives the receiver the point and records the 13 returns ("Yes Ok", 2026-11-03).                                                          |
-| 51  | If the engine cannot name the server (the Start pick was lost), a "Who is serving?" tool appears once; the next point carries the answer, and the tool goes for the match ("Ask once", 2026-11-03). |
-| 52  | The tools row: Card for each side, one tap each, as badminton; Timeout, Expedite and Set score in a More sheet; 13 returns joins the row while Expedite is on ("Cards + More", 2026-11-03).         |
-| 53  | S2-2 takes @seazn/engine 2.0.0 ("use engine 2.0.0", 2026-11-03). The phone's subpaths are unchanged from 1.1.0; badminton and table tennis keep epoch 2.                                            |
+| #   | Ruling                                                                                                                                                                                                                                                                                                               |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 48  | The table tennis pad matches the web pad: points, the serve, Expedite, yellow and red cards ("C", 2026-11-03), not a points-only pad.                                                                                                                                                                                |
+| 49  | Start match asks who serves first, as badminton does; there is no separate serve-anchor tile ("yes", 2026-11-03).                                                                                                                                                                                                    |
+| 50  | While Expedite is on, one tool, "13 returns · {receiver}", gives the receiver the point and records the 13 returns ("Yes Ok", 2026-11-03).                                                                                                                                                                           |
+| 51  | If the engine cannot name the server (the Start pick was lost), a "Who is serving?" tool appears once; the next point carries the answer, and the tool goes for the match ("Ask once", 2026-11-03).                                                                                                                  |
+| 52  | The tools row: Card for each side, one tap each, as badminton; Timeout, Expedite and Set score in a More sheet; 13 returns joins the row while Expedite is on ("Cards + More", 2026-11-03).                                                                                                                          |
+| 53  | S2-2 takes @seazn/engine 2.0.0 ("use engine 2.0.0", 2026-11-03). The phone's subpaths are unchanged from 1.1.0; badminton and table tennis keep epoch 2.                                                                                                                                                             |
+| 54  | "can we move card to More and keep set score and Expedite in main then after first score hide the set score as usual and if click expedite then show the button with name as currently?" (2026-11-04). It supersedes ruling 52's cells: Card leaves the row for More; Set score and Expedite leave More for the row. |
+| 55  | A tap on the row's Expedite opens a confirm sheet, "Start Expedite? It stays on for the rest of the match", with Start and Cancel; nothing records until Start ("Confirm sheet (Recommended)", 2026-11-04).                                                                                                          |
 
 ## 4. How a scorer meets it
 
@@ -92,11 +94,14 @@ As the S2 design §4, with these differences.
 3. **Score.** Tap the half of the side that won the point. The serving plate and the lime bar follow
    the engine: two serves each, one each from 10–10 (from one short of the game's target), one each
    for the rest of the match once Expedite is on.
-4. **Expedite** (in More). Records `tabletennis.expedite.start {}`. Offered while the match is live,
+4. **Expedite** (a cell of the row, ruling 54, asking first, ruling 55). Records `tabletennis.expedite.start {}`. Offered while the match is live,
    the match's own `cfg.records.expedite` is on, Expedite is not already in force, and not both sides
    have `expediteScoreFloor` (9) or more in the open game: the web's rule (`tabletennis.tsx:298-303,
 801-806`). From then on the strip says "Expedite" for the rest of the match, the serve changes
-   every point, and the 13 returns tool shows (ruling 50).
+   every point, and the 13 returns tool shows (ruling 50). A tap on the cell opens the question "Start Expedite? It stays
+   on for the rest of the match." with Start and Cancel; only Start records, Back and Cancel record nothing, and the
+   question closes by itself if Expedite is no longer on offer while it shows (another scorer started it). Once it is
+   on, the cell is gone and the 13 returns cell takes its place.
 5. **13 returns.** One tap gives the point to the side receiving now and records `returns: 13`. It
    shows only while Expedite is on and the engine names the server, and it credits the receiver only
    (`expediteReturnsCreditable(serving, receiver)` true), so it can never credit the server. It does
@@ -107,18 +112,18 @@ As the S2 design §4, with these differences.
    web). It is a rally like any other for Undo, History, the queue and the bounce guard. **Difference
    from the web:** the web adds the returns after the point, in its rally dock; the phone sends each
    tap at once, so the reason is chosen before the tap, by tapping this tool instead of the half.
-6. **Timeout** (in More, one per side). Records `tabletennis.timeout {by}`. Always offered while live
+6. **Timeout** (in More, one per side, ruling 54). Records `tabletennis.timeout {by}`. Always offered while live
    and `cfg.records.timeouts` is on: the engine accepts any number and the web never disables it
    (`kernel.js:545-551`; `tabletennis.tsx:752-764`). ITTF's one per match is the umpire's to keep
    (_the controller's_, following the web).
-7. **Cards.** Yellow (`warning`) and red (`penalty`), from `tabletennisPadRules.sanctionLevels`, never
+7. **Cards** (in More: Card · {top}, Card · {bottom}; ruling 54). Yellow (`warning`) and red (`penalty`), from `tabletennisPadRules.sanctionLevels`, never
    a list of our own. The level, then the player only if the side has more than one; a side with one
    player is stamped automatically; a side with no named player sends `{by, level}` by the side
    (S2-1 learning: a team named only). There is no ending step: table tennis declares no sanction
    ending, so the ending prompt never shows. A red card's point is not added by the engine; the
    umpire taps it as a point, as on the paper sheet (`kernel.ts`, "NONE of these touches the score").
    Offered only while `cfg.records.sanctions` is on.
-8. **Set score** (in More). As badminton's: before a game's first point, `tabletennis.game.summary {home, away}`
+8. **Set score** (a cell of the row, ruling 54, until the game's first point is played). As badminton's: before a game's first point, `tabletennis.game.summary {home, away}`
    with steppers from 0 to `scoreBound(cfg)`.
 
 ## 5. The screen
@@ -153,21 +158,39 @@ does not show them either).
 
 ### 5.3 Tools
 
-Ruling 52. One row, `ToolRow` as it is, at most four cells:
+Rulings 54 and 55 (2026-11-04), which supersede ruling 52's cells. One row, `ToolRow` as it is, in this order, at
+most four cells. Each cell shows under the same condition its item had in More:
 
-| Cell                    | When                                             | Opens / does          |
-| ----------------------- | ------------------------------------------------ | --------------------- |
-| Card · {top}            | live, `records.sanctions`                        | the card steps (§4.7) |
-| Card · {bottom}         | live, `records.sanctions`                        | the card steps        |
-| 13 returns · {receiver} | Expedite in force, server known (ruling 50)      | the point, at once    |
-| Who is serving?         | server unknown for want of an anchor (ruling 51) | the two-side sheet    |
-| More                    | live, and the sheet has at least one item        | the More sheet        |
+| Cell                    | When                                                                      | Opens / does                                       |
+| ----------------------- | ------------------------------------------------------------------------- | -------------------------------------------------- |
+| Set score               | before the game's first point: `pre` or `betweenGames`, as More listed it | the Set score sheet, bounded by `rules.scoreBound` |
+| Expedite                | Expedite is on offer (§4.4), as More listed it                            | the confirm sheet (below); Start records           |
+| 13 returns · {receiver} | Expedite in force, server known (ruling 50)                               | the point, at once                                 |
+| Who is serving?         | server unknown for want of an anchor (ruling 51)                          | the two-side sheet                                 |
+| More                    | live, and the sheet has at least one item                                 | the More sheet                                     |
 
-13 returns and Who is serving? never show together (one needs the server known, the other unknown).
-The **More sheet** (a `StepSheet`, one cover at a time, Back closes it): Timeout · {top}, Timeout ·
-{bottom}, Expedite, Set score, each listed only when §4 offers it. A More with nothing in it is not
-drawn (_the controller's_). Choosing an item records it (Timeout, Expedite) or opens its own sheet
-(Set score) in place of More's.
+Expedite and 13 returns never show together: one is offered, the other in force, so once Expedite is on its cell is gone
+and 13 returns takes its place ("show the button with name as currently"). 13 returns and Who is serving? never show
+together (one needs the server known, the other unknown). After the game's first point there is no Set score cell, as
+there was no Set score item. The most that stand together are Set score, Expedite, Who is serving? and More (a match
+another scorer started, before its first point): four.
+
+The **More sheet** (a `StepSheet`, one cover at a time, Back closes it): Card · {top}, Card · {bottom}, Timeout · {top},
+Timeout · {bottom}, each listed only when §4 offers it (Cards while the match records them, Timeouts while it records
+those). A More with nothing in it is not drawn (_the controller's_). The sheet is full width, so a Card says its full word.
+Choosing a Card opens the card steps (§4.7, the level and then the player) in More's place; choosing a Timeout records it.
+Set score and Expedite are no longer in More.
+
+The **Expedite confirm** (ruling 55; a `StepSheet`, one cover at a time): "Start Expedite?", "It stays on for the rest of
+the match.", Start and Cancel. Cancel, the dim and Back close it and record nothing. It takes no Start in the bounce
+window of its appearing (the second touch of a double tap on the cell lands on Start), and a second Start counts once.
+It goes stale and closes, as the More re-check does, if Expedite is no longer on offer while it shows.
+
+**Copy.** The cells are fitted to the most that can share their row (Set score, Expedite, Who is serving? and More: four,
+48 dp of text at 320 dp; 13 returns: three, 72.67 dp), and a word that does not fit is shortened in the dictionary, never
+in the type. The owner's full terms return wherever they fit: 13 returns reads "returns / renvois / retours" again
+(es "golpes": the full term does not fit). _Expedite_ and _Who is serving?_ do not fit a row of four and are shortened
+(the Expedite cell is drawn "Exped." and spoken as the full term).
 
 ### 5.4 Match details
 
@@ -227,7 +250,8 @@ As S2 §10, on a table tennis match, plus:
 
 ## 9. Open for the owner
 
-Nothing open. Rulings 51 and 52 answered the builder check's two questions (2026-11-03).
+Nothing open. Rulings 51 and 52 answered the builder check's two questions (2026-11-03); rulings 54 and 55 re-cut the
+tools row on the device check (2026-11-04).
 
 ## 10. Left to the builder
 

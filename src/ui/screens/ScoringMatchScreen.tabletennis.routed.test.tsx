@@ -162,11 +162,42 @@ describe('a table tennis match from the scan to the pad', () => {
     expect([score('first'), score('second')]).toEqual(['0', '0']);
   });
 
-  it('draws the Card for each side and More, and neither 13 returns nor Who is serving?', async () => {
+  it('draws Set score, Expedite and More before the first point: no Card cell, no 13 returns, no Who is serving?', async () => {
     await started();
     expect(tools()).toEqual([
-      `${en['scoring.tabletennis.sheet.card']}, A. Sharma`,
-      `${en['scoring.tabletennis.sheet.card']}, L. Chen`,
+      en['scoring.tabletennis.tool.setScore'],
+      en['scoring.tabletennis.tool.expediteSaid'],
+      en['scoring.tabletennis.tool.more'],
+    ]);
+    expect(drawn()).toEqual([
+      en['scoring.tabletennis.tool.setScore'],
+      en['scoring.tabletennis.tool.expedite'],
+      en['scoring.tabletennis.tool.more'],
+    ]);
+  });
+
+  it('the first point takes Set score away, and the scan-to-Expedite path ends in the 13 returns cell', async () => {
+    const app = await scanned();
+    app.setNow(new Date(TEST_NOW.getTime() - 60_000));
+    act(() => fireEvent.click(screen.getByRole('radio', { name: 'L. Chen' })));
+    press(en['scoring.start.confirm']);
+    app.setNow(TEST_NOW);
+    await flush(200);
+    expect(tools()).toContain(en['scoring.tabletennis.tool.setScore']);
+    await rally(app, 'first');
+    expect(tools()).toEqual([
+      en['scoring.tabletennis.tool.expediteSaid'],
+      en['scoring.tabletennis.tool.more'],
+    ]);
+    await tool(app, en['scoring.tabletennis.tool.expediteSaid']);
+    expect(
+      within(screen.getByTestId('step-sheet')).getByText(en['scoring.tabletennis.expedite.title']),
+    ).toBeTruthy();
+    await choose(app, en['scoring.tabletennis.expedite.start']);
+    expect(sheet()).toBeNull();
+    expect(stripNote()).toBe(en['scoring.tabletennis.note.expedite']);
+    expect(tools()).toEqual([
+      `${fill(en['scoring.tabletennis.tool.returns'], { returns: 13 })}, L. Chen`,
       en['scoring.tabletennis.tool.more'],
     ]);
   });
@@ -194,10 +225,10 @@ describe('More', () => {
       .getAllByRole('button')
       .map((button) => button.textContent);
     expect(choices).toEqual([
+      fill(en['scoring.tabletennis.more.card'], { side: 'A. Sharma' }),
+      fill(en['scoring.tabletennis.more.card'], { side: 'L. Chen' }),
       timeout,
       fill(en['scoring.tabletennis.more.timeout'], { side: 'L. Chen' }),
-      en['scoring.tabletennis.more.expedite'],
-      en['scoring.tabletennis.more.setScore'],
       en['scoring.sheet.cancel'],
     ]);
     await choose(app, timeout);
@@ -214,22 +245,62 @@ describe('More', () => {
     ]);
   });
 
-  it('Expedite: the strip says Expedite, the serve changes every point, and 13 returns joins the row', async () => {
+  it('a Card chosen in More opens the card steps in its place, and records for the side', async () => {
+    const app = await started();
+    await tool(app, en['scoring.tabletennis.tool.more']);
+    await choose(app, fill(en['scoring.tabletennis.more.card'], { side: 'L. Chen' }));
+    expect(
+      within(screen.getByTestId('step-sheet')).getByText(en['scoring.tabletennis.sheet.card']),
+    ).toBeTruthy();
+    await choose(app, en['scoring.tabletennis.card.penalty']);
+    expect(sheet()).toBeNull();
+    expect(lastTap()).toBe(
+      fill(en['scoring.tabletennis.last.sanction'], {
+        level: en['scoring.tabletennis.card.penalty'],
+        person: 'L. Chen',
+      }),
+    );
+  });
+});
+
+describe('Expedite', () => {
+  it('the strip says Expedite, the serve changes every point, and 13 returns takes the cell’s place', async () => {
     const app = await started();
     await rally(app, 'first');
     expect(stripNote()).toBe('');
-    await tool(app, en['scoring.tabletennis.tool.more']);
-    await choose(app, en['scoring.tabletennis.more.expedite']);
+    await tool(app, en['scoring.tabletennis.tool.expediteSaid']);
+    // The cell asks first (ruling 55): nothing is recorded until Start.
+    expect(stripNote()).toBe('');
+    await choose(app, en['scoring.tabletennis.expedite.start']);
     expect(sheet()).toBeNull();
     expect(stripNote()).toBe(en['scoring.tabletennis.note.expedite']);
     expect(lastTap()).toBe(en['scoring.tabletennis.last.expedite']);
     const returns = fill(en['scoring.tabletennis.tool.returns'], { returns: 13 });
     expect(tools().filter((name) => name?.startsWith(returns))).toHaveLength(1);
-    // Expedite is in force for the rest of the match, so More no longer lists it.
+    expect(tools()).not.toContain(en['scoring.tabletennis.tool.expediteSaid']);
+    // Expedite is in force for the rest of the match, so Undo is its only way back (and More never listed it).
     await tool(app, en['scoring.tabletennis.tool.more']);
     expect(
-      within(screen.getByTestId('step-sheet')).queryByText(en['scoring.tabletennis.more.expedite']),
+      within(screen.getByTestId('step-sheet')).queryByText(
+        en['scoring.tabletennis.tool.expediteSaid'],
+      ),
     ).toBeNull();
+  });
+
+  it('Undo of the start brings the Expedite cell back', async () => {
+    const app = await started();
+    await rally(app, 'first');
+    await tool(app, en['scoring.tabletennis.tool.expediteSaid']);
+    await choose(app, en['scoring.tabletennis.expedite.start']);
+    expect(tools()).not.toContain(en['scoring.tabletennis.tool.expediteSaid']);
+    aSecondOn(app);
+    press(en['scoring.pad.undo']);
+    await flush(400);
+    expect(tools()).toEqual([
+      en['scoring.tabletennis.tool.expediteSaid'],
+      en['scoring.tabletennis.tool.more'],
+    ]);
+    expect(stripNote()).toBe('');
   });
 
   // ITTF 2.15.4: Expedite begun between rallies resumes with service by the player who received in the rally before. L. Chen
@@ -237,17 +308,12 @@ describe('More', () => {
   it('13 returns gives the point to the side receiving, said so, and Undo takes it back', async () => {
     const app = await started();
     await rally(app, 'first');
-    await tool(app, en['scoring.tabletennis.tool.more']);
-    await choose(app, en['scoring.tabletennis.more.expedite']);
+    await tool(app, en['scoring.tabletennis.tool.expediteSaid']);
+    await choose(app, en['scoring.tabletennis.expedite.start']);
     expect(plate('first')).toBe(en['scoring.tabletennis.serving.first']);
     expect(plate('second')).toBeNull();
     const returns = `${fill(en['scoring.tabletennis.tool.returns'], { returns: 13 })}, L. Chen`;
-    expect(tools()).toEqual([
-      `${en['scoring.tabletennis.sheet.card']}, A. Sharma`,
-      `${en['scoring.tabletennis.sheet.card']}, L. Chen`,
-      returns,
-      en['scoring.tabletennis.tool.more'],
-    ]);
+    expect(tools()).toEqual([returns, en['scoring.tabletennis.tool.more']]);
     aSecondOn(app);
     press(returns);
     await flush(400);
@@ -306,37 +372,42 @@ describe('in four languages', () => {
     ['fr', fr],
     ['nl', nl],
   ] as const)(
-    '%s: the pad, its plate, its strip and its tools are said in the phone’s language',
+    '%s: the pad, its plate, its strip, its tools and the Start Expedite? question are said in the phone’s language',
     async (lang, words) => {
       const app = await started({ deviceLanguages: [lang] }, words);
       expect(plate('second')).toBe(words['scoring.tabletennis.serving.first']);
       expect(screen.getByTestId('strip-game').textContent).toBe(
         fill(words['scoring.tabletennis.gameOf'], { game: 1, bestOf: 5 }),
       );
-      // A screen reader hears the Card's full word; the cell draws the shortened one (es "Tarj.", fr "Carte"), and the
-      // sheet it opens is titled with the full word.
+      // Before the first point: Set score, Expedite and More. A screen reader hears Expedite's full term; the cell draws the
+      // shortened word (en "Exped.", es "Sist. acel.", fr "Syst. accél.", nl "Versn.").
       expect(tools()).toEqual([
-        `${words['scoring.tabletennis.sheet.card']}, A. Sharma`,
-        `${words['scoring.tabletennis.sheet.card']}, L. Chen`,
+        words['scoring.tabletennis.tool.setScore'],
+        words['scoring.tabletennis.tool.expediteSaid'],
         words['scoring.tabletennis.tool.more'],
       ]);
-      expect(drawn().slice(0, 2)).toEqual([
-        `${words['scoring.tabletennis.tool.card']}A. Sharma`,
-        `${words['scoring.tabletennis.tool.card']}L. Chen`,
+      expect(drawn()).toEqual([
+        words['scoring.tabletennis.tool.setScore'],
+        words['scoring.tabletennis.tool.expedite'],
+        words['scoring.tabletennis.tool.more'],
       ]);
-      await tool(app, `${words['scoring.tabletennis.sheet.card']}, A. Sharma`);
+      // A Card is More's, in full words, and the sheet it opens is titled with the full word.
+      await tool(app, words['scoring.tabletennis.tool.more']);
+      await choose(app, fill(words['scoring.tabletennis.more.card'], { side: 'A. Sharma' }));
       expect(
         within(screen.getByTestId('step-sheet')).getByText(words['scoring.tabletennis.sheet.card']),
       ).toBeTruthy();
       await choose(app, words['scoring.sheet.cancel']);
       expect(sheet()).toBeNull();
       await rally(app, 'first');
-      await tool(app, words['scoring.tabletennis.tool.more']);
-      await choose(app, words['scoring.tabletennis.more.expedite']);
+      // The question: its title, its sentence and its Start are the phone's language (textContent keeps French's no-break space).
+      await tool(app, words['scoring.tabletennis.tool.expediteSaid']);
+      const asked = screen.getByTestId('step-sheet').textContent ?? '';
+      expect(asked).toContain(words['scoring.tabletennis.expedite.title']);
+      expect(asked).toContain(words['scoring.tabletennis.expedite.body']);
+      await choose(app, words['scoring.tabletennis.expedite.start']);
       expect(stripNote()).toBe(words['scoring.tabletennis.note.expedite']);
       expect(tools()).toEqual([
-        `${words['scoring.tabletennis.sheet.card']}, A. Sharma`,
-        `${words['scoring.tabletennis.sheet.card']}, L. Chen`,
         `${fill(words['scoring.tabletennis.tool.returns'], { returns: 13 })}, L. Chen`,
         words['scoring.tabletennis.tool.more'],
       ]);
@@ -375,6 +446,35 @@ describe('the four questions', () => {
     });
     await flush(2_000);
     expect(append).toHaveBeenCalledTimes(1);
+  });
+
+  it('a Start chosen twice in the bounce window records Expedite once', async () => {
+    const app = await started();
+    await rally(app, 'first');
+    await tool(app, en['scoring.tabletennis.tool.expediteSaid']);
+    const start = screen.getByRole('button', { name: en['scoring.tabletennis.expedite.start'] });
+    const append = vi.spyOn(app.scoring, 'append');
+    aSecondOn(app);
+    act(() => {
+      fireEvent.click(start);
+      fireEvent.click(start);
+    });
+    await flush(2_000);
+    expect(append).toHaveBeenCalledTimes(1);
+  });
+
+  it('the app sent away and back with the Expedite question open leaves it open, and Cancel records nothing', async () => {
+    const app = await started();
+    await rally(app, 'first');
+    await tool(app, en['scoring.tabletennis.tool.expediteSaid']);
+    await backgroundAndBack(app);
+    await flush(500);
+    expect(screen.getByTestId('step-sheet')).toBeTruthy();
+    const append = vi.spyOn(app.scoring, 'append');
+    await choose(app, en['scoring.sheet.cancel']);
+    expect(sheet()).toBeNull();
+    expect(append).not.toHaveBeenCalled();
+    expect(stripNote()).toBe('');
   });
 
   it('the app sent away and back with More open leaves the pad as it was', async () => {

@@ -63,6 +63,13 @@ const EXPEDITED = snapshotOf([...anchored('H', 'A'), expedite()]);
 const UNANCHORED = snapshotOf([start()]);
 const DOUBLES_LIVE = snapshotOf(anchored('H', 'A'), { bootstrap: DOUBLES });
 const DECIDED = snapshotOf(DECIDED_3_0);
+/** The live match as its config leaves it with no cards recorded: More lists the timeouts only. */
+const NO_CARDS = snapshotOf(anchored('H', 'A'), {
+  bootstrap: {
+    ...SINGLES,
+    cfg: { records: { timeouts: true, sanctions: false, substitutions: false, expedite: true } },
+  },
+});
 
 /** The match as it stands with the question put: two taps queued, the web's rally brought in by the first read. */
 function asked(): TableTennisSheetSnapshot {
@@ -135,100 +142,124 @@ const optionsOf = (view: unknown) =>
   (view as { sheet: { options: { id: string; label: unknown; tone: string }[] } }).sheet.options;
 const optionIds = (view: unknown) => optionsOf(view).map((option) => option.id);
 
-describe('Card (design §4.7): the level, then the player only of a pair', () => {
-  it('opens the level step for the side whose Card was pressed: yellow, then red, from the engine', () => {
-    const { result } = mount(LIVE);
-    act(() => result.current.actions.tool('card.second'));
-    expect(result.current.view).toMatchObject({
+/** Opens a Card step from More, as the scorer does (ruling 54: the Card cells are More's items): More, past its bounce window, the item. */
+async function openCard(
+  view: ReturnType<typeof mount>,
+  item: 'card.first' | 'card.second',
+): Promise<void> {
+  act(() => view.result.current.actions.tool('more'));
+  await view.wait();
+  act(() => view.result.current.actions.choose(item));
+}
+
+describe('Card (design §4.7, ruling 54): in More; the level, then the player only of a pair', () => {
+  it('opens the level step for the side whose Card was chosen in More: yellow, then red, from the engine', async () => {
+    const view = mount(LIVE);
+    await openCard(view, 'card.second');
+    expect(view.result.current.view).toMatchObject({
       kind: 'card',
       sheet: { title: { key: 'scoring.tabletennis.sheet.card' }, body: 'L. Chen' },
     });
-    expect(optionIds(result.current.view)).toEqual(['warning', 'penalty']);
+    expect(optionIds(view.result.current.view)).toEqual(['warning', 'penalty']);
+  });
+
+  it('takes More’s place: one cover at a time', async () => {
+    const view = mount(LIVE);
+    act(() => view.result.current.actions.tool('more'));
+    expect(view.result.current.view?.kind).toBe('more');
+    await view.wait();
+    act(() => view.result.current.actions.choose('card.first'));
+    expect(view.result.current.view?.kind).toBe('card');
   });
 
   it('records a singles card at once with the side’s one player, and closes the sheet', async () => {
-    const { result, calls, recorded, wait } = mount(LIVE);
-    act(() => result.current.actions.tool('card.second'));
-    await wait();
-    act(() => result.current.actions.choose('penalty'));
-    expect(calls).toEqual([['card', { side: 'second', level: 'penalty', person: 'L. Chen' }]]);
-    expect(recorded).toEqual(['sanction']);
-    expect(result.current.view).toBeNull();
-    expect(result.current.open).toBe(false);
+    const view = mount(LIVE);
+    await openCard(view, 'card.second');
+    await view.wait();
+    act(() => view.result.current.actions.choose('penalty'));
+    expect(view.calls).toEqual([['card', { side: 'second', level: 'penalty', person: 'L. Chen' }]]);
+    expect(view.recorded).toEqual(['sanction']);
+    expect(view.result.current.view).toBeNull();
+    expect(view.result.current.open).toBe(false);
   });
 
   it('asks a pair which player, then records with that player', async () => {
-    const { result, calls, wait } = mount(DOUBLES_LIVE);
-    act(() => result.current.actions.tool('card.first'));
-    await wait();
-    act(() => result.current.actions.choose('warning'));
-    expect(result.current.view).toMatchObject({
+    const view = mount(DOUBLES_LIVE);
+    await openCard(view, 'card.first');
+    await view.wait();
+    act(() => view.result.current.actions.choose('warning'));
+    expect(view.result.current.view).toMatchObject({
       kind: 'card',
       sheet: { title: { key: 'scoring.sanction.who' } },
     });
-    expect(optionIds(result.current.view)).toEqual(['0', '1']);
-    expect(calls).toEqual([]);
-    await wait();
-    act(() => result.current.actions.choose('1'));
-    expect(calls).toEqual([['card', { side: 'first', level: 'warning', person: 'R. Iyer' }]]);
-    expect(result.current.view).toBeNull();
+    expect(optionIds(view.result.current.view)).toEqual(['0', '1']);
+    expect(view.calls).toEqual([]);
+    await view.wait();
+    act(() => view.result.current.actions.choose('1'));
+    expect(view.calls).toEqual([['card', { side: 'first', level: 'warning', person: 'R. Iyer' }]]);
+    expect(view.result.current.view).toBeNull();
   });
 
-  it('takes no choice in the bounce window of its step appearing: the second touch of a double tap', () => {
-    const { result, calls } = mount(LIVE);
-    act(() => result.current.actions.tool('card.first'));
-    act(() => result.current.actions.choose('warning'));
-    expect(calls).toEqual([]);
-    expect(result.current.view?.kind).toBe('card');
+  it('takes no choice in the bounce window of its step appearing: the second touch of a double tap on More’s item', async () => {
+    const view = mount(LIVE);
+    await openCard(view, 'card.first');
+    act(() => view.result.current.actions.choose('warning'));
+    expect(view.calls).toEqual([]);
+    expect(view.result.current.view?.kind).toBe('card');
   });
 
   it('leaves the step as it is for a choice it does not offer', async () => {
-    const { result, calls, wait } = mount(LIVE);
-    act(() => result.current.actions.tool('card.first'));
-    await wait();
-    act(() => result.current.actions.choose('disqualification'));
-    expect(calls).toEqual([]);
-    expect(optionIds(result.current.view)).toEqual(['warning', 'penalty']);
+    const view = mount(LIVE);
+    await openCard(view, 'card.first');
+    await view.wait();
+    act(() => view.result.current.actions.choose('disqualification'));
+    expect(view.calls).toEqual([]);
+    expect(optionIds(view.result.current.view)).toEqual(['warning', 'penalty']);
   });
 
   it('Cancel closes it with nothing recorded', async () => {
-    const { result, calls, wait } = mount(LIVE);
-    act(() => result.current.actions.tool('card.first'));
-    await wait();
-    act(() => result.current.actions.cancel());
-    expect(result.current.view).toBeNull();
-    expect(calls).toEqual([]);
+    const view = mount(LIVE);
+    await openCard(view, 'card.first');
+    await view.wait();
+    act(() => view.result.current.actions.cancel());
+    expect(view.result.current.view).toBeNull();
+    expect(view.calls).toEqual([]);
   });
 });
 
-describe('More (design §5.3): its items record at once, or open Set score in its place', () => {
-  it('lists a timeout for each side and Expedite while it is offered', () => {
+describe('More (design §5.3, ruling 54): the cards and the timeouts; the timeouts record at once', () => {
+  it('lists a Card for each side, then a timeout for each, the full words with the side as typed', () => {
     const { result } = mount(LIVE);
     act(() => result.current.actions.tool('more'));
     expect(result.current.view).toMatchObject({
       kind: 'more',
       sheet: { title: { key: 'scoring.tabletennis.tool.more' }, body: null },
     });
-    expect(optionIds(result.current.view)).toEqual(['timeout.first', 'timeout.second', 'expedite']);
-    expect(optionsOf(result.current.view)[1].label).toEqual({
-      key: 'scoring.tabletennis.more.timeout',
-      vars: { side: 'L. Chen' },
-    });
+    expect(optionIds(result.current.view)).toEqual([
+      'card.first',
+      'card.second',
+      'timeout.first',
+      'timeout.second',
+    ]);
+    expect(optionsOf(result.current.view).map((option) => option.label)).toEqual([
+      { key: 'scoring.tabletennis.more.card', vars: { side: 'A. Sharma' } },
+      { key: 'scoring.tabletennis.more.card', vars: { side: 'L. Chen' } },
+      { key: 'scoring.tabletennis.more.timeout', vars: { side: 'A. Sharma' } },
+      { key: 'scoring.tabletennis.more.timeout', vars: { side: 'L. Chen' } },
+    ]);
   });
 
-  it('hides Expedite once it is in force', () => {
-    const { result } = mount(EXPEDITED);
-    act(() => result.current.actions.tool('more'));
-    expect(optionIds(result.current.view)).toEqual(['timeout.first', 'timeout.second']);
-  });
-
-  it('offers Set score before a game’s first point, and not in the middle of a game', () => {
-    const before = mount(UNANCHORED);
-    act(() => before.result.current.actions.tool('more'));
-    expect(optionIds(before.result.current.view)).toContain('setScore');
-    const during = mount(LIVE);
-    act(() => during.result.current.actions.tool('more'));
-    expect(optionIds(during.result.current.view)).not.toContain('setScore');
+  it('lists neither Expedite nor Set score, whichever the display offers: they are cells', () => {
+    for (const snapshot of [LIVE, EXPEDITED, UNANCHORED]) {
+      const { result } = mount(snapshot);
+      act(() => result.current.actions.tool('more'));
+      expect(optionIds(result.current.view)).toEqual([
+        'card.first',
+        'card.second',
+        'timeout.first',
+        'timeout.second',
+      ]);
+    }
   });
 
   it('a timeout records at once for the side listed, and the sheet leaves with it', async () => {
@@ -241,55 +272,38 @@ describe('More (design §5.3): its items record at once, or open Set score in it
     expect(result.current.view).toBeNull();
   });
 
-  it('Expedite records at once', async () => {
-    const { result, calls, recorded, wait } = mount(LIVE);
-    act(() => result.current.actions.tool('more'));
-    await wait();
-    act(() => result.current.actions.choose('expedite'));
-    expect(calls).toEqual([['expedite']]);
-    expect(recorded).toEqual(['expedite']);
-    expect(result.current.view).toBeNull();
-  });
-
   it('takes no item in the bounce window of More appearing: the second touch of a double tap on the tool', () => {
     const { result, calls } = mount(LIVE);
     act(() => result.current.actions.tool('more'));
     act(() => result.current.actions.choose('timeout.first'));
+    act(() => result.current.actions.choose('card.first'));
     expect(calls).toEqual([]);
     expect(result.current.view?.kind).toBe('more');
   });
 
-  it('an id More does not list does nothing', async () => {
-    const { result, calls, wait } = mount(LIVE);
+  it('an id More does not list does nothing: not a forfeit, and no longer Expedite or Set score', async () => {
+    const { result, calls, wait } = mount(UNANCHORED);
     act(() => result.current.actions.tool('more'));
     await wait();
-    act(() => result.current.actions.choose('forfeit'));
-    expect(calls).toEqual([]);
-    expect(result.current.view?.kind).toBe('more');
+    for (const id of ['forfeit', 'expedite', 'setScore']) {
+      act(() => result.current.actions.choose(id));
+      expect(calls, id).toEqual([]);
+      expect(result.current.view?.kind, id).toBe('more');
+    }
   });
 
   // Task 7 fix round 1 (M2): an item is taken only if More still lists it at the moment of the choice. The sheet was
-  // drawn from the display before, and another scorer may have moved it since (a second Expedite, a game under way).
-  it('an item the display no longer lists closes the sheet and does nothing: Expedite chosen after it is in force', async () => {
+  // drawn from the display before, and another scorer may have moved it since (here, the match stops recording cards).
+  it('an item the display no longer lists closes the sheet and does nothing', async () => {
     const { result, rerender, calls, wait } = mount(LIVE);
     act(() => result.current.actions.tool('more'));
     await wait();
-    rerender({ snapshot: EXPEDITED });
+    rerender({ snapshot: NO_CARDS });
     expect(result.current.view?.kind).toBe('more');
-    act(() => result.current.actions.choose('expedite'));
+    act(() => result.current.actions.choose('card.first'));
     expect(calls).toEqual([]);
     expect(result.current.view).toBeNull();
     expect(result.current.open).toBe(false);
-  });
-
-  it('Set score chosen after a game is under way opens nothing, and closes the sheet', async () => {
-    const { result, rerender, calls, wait } = mount(UNANCHORED);
-    act(() => result.current.actions.tool('more'));
-    await wait();
-    rerender({ snapshot: LIVE });
-    act(() => result.current.actions.choose('setScore'));
-    expect(calls).toEqual([]);
-    expect(result.current.view).toBeNull();
   });
 
   it('a timeout still listed is taken, with the display as it moved', async () => {
@@ -301,11 +315,20 @@ describe('More (design §5.3): its items record at once, or open Set score in it
     expect(calls).toEqual([['timeout', 'second']]);
   });
 
-  it('Set score takes More’s place: the game, the names, the points so far and the engine’s bound', async () => {
-    const { result, wait } = mount(UNANCHORED);
+  it('More goes away when nothing is left in it', () => {
+    const { result, rerender } = mount(LIVE);
     act(() => result.current.actions.tool('more'));
-    await wait();
-    act(() => result.current.actions.choose('setScore'));
+    expect(result.current.view?.kind).toBe('more');
+    rerender({ snapshot: DECIDED });
+    expect(result.current.view).toBeNull();
+    expect(result.current.open).toBe(false);
+  });
+});
+
+describe('Set score (design §5.3, ruling 54): a cell of its own, before a game’s first point', () => {
+  it('opens at once from its cell: the game, the names, the points so far and the engine’s bound', () => {
+    const { result } = mount(UNANCHORED);
+    act(() => result.current.actions.tool('setScore'));
     expect(result.current.view).toEqual({
       kind: 'setScore',
       game: 1,
@@ -317,9 +340,7 @@ describe('More (design §5.3): its items record at once, or open Set score in it
 
   it('saves Set score as typed through the bounce memory, and closes', async () => {
     const { result, calls, recorded, wait } = mount(UNANCHORED);
-    act(() => result.current.actions.tool('more'));
-    await wait();
-    act(() => result.current.actions.choose('setScore'));
+    act(() => result.current.actions.tool('setScore'));
     await wait();
     act(() => result.current.actions.saveScore('7', '5'));
     expect(calls).toEqual([['setScore', 7, 5]]);
@@ -329,9 +350,7 @@ describe('More (design §5.3): its items record at once, or open Set score in it
 
   it('refuses a score that is not whole numbers, records nothing, and closes the sheet', async () => {
     const { result, calls, refused, wait } = mount(UNANCHORED);
-    act(() => result.current.actions.tool('more'));
-    await wait();
-    act(() => result.current.actions.choose('setScore'));
+    act(() => result.current.actions.tool('setScore'));
     await wait();
     act(() => result.current.actions.saveScore('7', 'x'));
     expect(calls).toEqual([]);
@@ -343,9 +362,7 @@ describe('More (design §5.3): its items record at once, or open Set score in it
   // under the open sheet ends that, and a save would be a game score set into the middle of a game.
   it('goes away when a point lands under it: Set score is no longer on offer', async () => {
     const { result, rerender, wait } = mount(UNANCHORED);
-    act(() => result.current.actions.tool('more'));
-    await wait();
-    act(() => result.current.actions.choose('setScore'));
+    act(() => result.current.actions.tool('setScore'));
     await wait();
     expect(result.current.view?.kind).toBe('setScore');
     rerender({ snapshot: LIVE });
@@ -353,32 +370,126 @@ describe('More (design §5.3): its items record at once, or open Set score in it
     expect(result.current.open).toBe(false);
   });
 
+  it('a press on its cell after a game is under way opens nothing', () => {
+    const { result } = mount(LIVE);
+    act(() => result.current.actions.tool('setScore'));
+    expect(result.current.view).toBeNull();
+    expect(result.current.open).toBe(false);
+  });
+
   it('stays while the display moves but still offers Set score', async () => {
-    const { result, rerender, wait } = mount(UNANCHORED);
-    act(() => result.current.actions.tool('more'));
-    await wait();
-    act(() => result.current.actions.choose('setScore'));
+    const { result, rerender } = mount(UNANCHORED);
+    act(() => result.current.actions.tool('setScore'));
     rerender({ snapshot: snapshotOf([start(), expedite()]) });
     expect(result.current.view?.kind).toBe('setScore');
   });
 
-  it('Set score takes no save in the bounce window of the sheet appearing', async () => {
-    const { result, calls, wait } = mount(UNANCHORED);
-    act(() => result.current.actions.tool('more'));
-    await wait();
-    act(() => result.current.actions.choose('setScore'));
+  it('takes no save in the bounce window of the sheet appearing', () => {
+    const { result, calls } = mount(UNANCHORED);
+    act(() => result.current.actions.tool('setScore'));
     act(() => result.current.actions.saveScore('7', '5'));
     expect(calls).toEqual([]);
     expect(result.current.view?.kind).toBe('setScore');
   });
+});
 
-  it('More goes away when nothing is left in it', () => {
-    const { result, rerender } = mount(LIVE);
-    act(() => result.current.actions.tool('more'));
-    expect(result.current.view?.kind).toBe('more');
-    rerender({ snapshot: DECIDED });
+describe('Expedite (ruling 55): a cell that asks first, "Start Expedite?"', () => {
+  it('opens the question from its cell: the words, one choice, Start', () => {
+    const { result, calls } = mount(LIVE);
+    act(() => result.current.actions.tool('expedite'));
+    expect(result.current.view).toEqual({
+      kind: 'expedite',
+      sheet: {
+        title: { key: 'scoring.tabletennis.expedite.title' },
+        body: { key: 'scoring.tabletennis.expedite.body' },
+        options: [
+          { id: 'start', label: { key: 'scoring.tabletennis.expedite.start' }, tone: 'standard' },
+        ],
+      },
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it('Start records Expedite once, through the bounce memory, and the question leaves with it', async () => {
+    const { result, calls, recorded, wait } = mount(LIVE);
+    act(() => result.current.actions.tool('expedite'));
+    await wait();
+    act(() => result.current.actions.choose('start'));
+    expect(calls).toEqual([['expedite']]);
+    expect(recorded).toEqual(['expedite']);
     expect(result.current.view).toBeNull();
     expect(result.current.open).toBe(false);
+  });
+
+  it('Cancel closes it and records nothing', async () => {
+    const { result, calls, recorded, wait } = mount(LIVE);
+    act(() => result.current.actions.tool('expedite'));
+    await wait();
+    act(() => result.current.actions.cancel());
+    expect(result.current.view).toBeNull();
+    expect(calls).toEqual([]);
+    expect(recorded).toEqual([]);
+  });
+
+  it('takes no Start in the bounce window of the question appearing: the second touch of a double tap on the cell', () => {
+    const { result, calls } = mount(LIVE);
+    act(() => result.current.actions.tool('expedite'));
+    act(() => result.current.actions.choose('start'));
+    expect(calls).toEqual([]);
+    expect(result.current.view?.kind).toBe('expedite');
+  });
+
+  it('does nothing for a choice that is not Start', async () => {
+    const { result, calls, wait } = mount(LIVE);
+    act(() => result.current.actions.tool('expedite'));
+    await wait();
+    for (const id of ['expedite', 'timeout.first', 'first', '']) {
+      act(() => result.current.actions.choose(id));
+      expect(calls, id).toEqual([]);
+      expect(result.current.view?.kind, id).toBe('expedite');
+    }
+  });
+
+  it('a choice with no question open does nothing', async () => {
+    const { result, calls, wait } = mount(LIVE);
+    await wait();
+    act(() => result.current.actions.choose('start'));
+    expect(calls).toEqual([]);
+  });
+
+  // Ruling 55's stale rule, as More's re-check: the question was drawn while Expedite was on offer, and another scorer may
+  // have started it since. Then nothing is left to ask, and a Start would record a second Expedite.
+  it('goes away when Expedite is no longer offered under it: another scorer started it', async () => {
+    const { result, rerender, calls, wait } = mount(LIVE);
+    act(() => result.current.actions.tool('expedite'));
+    await wait();
+    expect(result.current.view?.kind).toBe('expedite');
+    rerender({ snapshot: EXPEDITED });
+    expect(result.current.view).toBeNull();
+    expect(result.current.open).toBe(false);
+    act(() => result.current.actions.choose('start'));
+    expect(calls).toEqual([]);
+  });
+
+  it('stays while the display moves but still offers Expedite', async () => {
+    const { result, rerender } = mount(UNANCHORED);
+    act(() => result.current.actions.tool('expedite'));
+    rerender({ snapshot: LIVE });
+    expect(result.current.view?.kind).toBe('expedite');
+  });
+
+  it('a press on its cell after Expedite is in force opens nothing', () => {
+    const { result } = mount(EXPEDITED);
+    act(() => result.current.actions.tool('expedite'));
+    expect(result.current.view).toBeNull();
+    expect(result.current.open).toBe(false);
+  });
+
+  it('a tool replaces the question, as it does any sheet', () => {
+    const { result } = mount(LIVE);
+    act(() => result.current.actions.tool('expedite'));
+    act(() => result.current.actions.tool('more'));
+    expect(result.current.view?.kind).toBe('more');
   });
 });
 
@@ -447,7 +558,17 @@ describe('Who is serving? (design §4.2, ruling 51): two sides, one answer', () 
 });
 
 describe('the tools that open no sheet', () => {
-  const NOBODYS = ['', 'returns.first', 'returns.second', 'undo', 'card.third', 'MORE'];
+  // The Card cells are gone (ruling 54): an id that once opened the Card steps now opens nothing.
+  const NOBODYS = [
+    '',
+    'returns.first',
+    'returns.second',
+    'undo',
+    'card.first',
+    'card.second',
+    'card.third',
+    'MORE',
+  ];
 
   it.each(NOBODYS)('opens nothing for the id %j', (id) => {
     const { result } = mount(LIVE);

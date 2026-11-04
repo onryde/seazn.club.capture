@@ -230,15 +230,19 @@ export type TableTennisPadKey =
   | 'scoring.tabletennis.serverPerson'
   | 'scoring.tabletennis.note.expedite'
   | 'scoring.tabletennis.note.deuce'
-  | 'scoring.tabletennis.tool.card'
+  | 'scoring.tabletennis.tool.setScore'
+  | 'scoring.tabletennis.tool.expedite'
+  | 'scoring.tabletennis.tool.expediteSaid'
   | 'scoring.tabletennis.tool.returns'
   | 'scoring.tabletennis.tool.serving'
   | 'scoring.tabletennis.tool.more'
   | 'scoring.tabletennis.sheet.card'
   | 'scoring.tabletennis.sheet.serving'
+  | 'scoring.tabletennis.more.card'
   | 'scoring.tabletennis.more.timeout'
-  | 'scoring.tabletennis.more.expedite'
-  | 'scoring.tabletennis.more.setScore'
+  | 'scoring.tabletennis.expedite.title'
+  | 'scoring.tabletennis.expedite.body'
+  | 'scoring.tabletennis.expedite.start'
   | 'scoring.tabletennis.held'
   | TableTennisRuleKey;
 
@@ -277,11 +281,11 @@ const takesPoints = (display: TableTennisDisplay) =>
   started(display) && display.phase !== 'decided';
 
 /**
- * The pad for a table tennis match (design §5; the owner's rulings 48 to 52, 2026-11-03): the first side on top, the
- * second below, each with its finished games' scores and, on the server's, the serving plate with the engine's serve
- * number and in doubles the player; the game of how many and one note (Expedite, else Deuce) in the strip; and a Card
- * for each side, 13 returns or Who is serving?, and More in the tool row. A decided match is the recorded result's card
- * over the final score. Before the match starts, the Start screen's question in the halves' place, and no tools. `sync`
+ * The pad for a table tennis match (design §5; the owner's rulings 48 to 55): the first side on top, the second below,
+ * each with its finished games' scores and, on the server's, the serving plate with the engine's serve number and in
+ * doubles the player; the game of how many and one note (Expedite, else Deuce) in the strip; and in the tool row Set
+ * score and Expedite while they are offered, 13 returns or Who is serving?, and More (the cards and the timeouts). A
+ * decided match is the recorded result's card over the final score. Before the match starts, the Start screen's question in the halves' place, and no tools. `sync`
  * is the transport's word, not the match's.
  */
 export function tableTennisPad(
@@ -376,7 +380,7 @@ function noteOf(display: TableTennisDisplay): Text | null {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// The tools (ruling 52, design §5.3)
+// The tools (rulings 54 and 55, which supersede ruling 52's cells; design §5.3)
 // ---------------------------------------------------------------------------------------------------------------
 
 /** The cells with no second line: a plain outline, usable. */
@@ -384,6 +388,8 @@ const PLAIN = { detail: null, kind: 'standard', enabled: true } as const;
 
 /** The 13 returns cell's id: `returns.` and the side it credits, the receiver it was drawn for. */
 const RETURNS = 'returns.';
+const SET_SCORE = 'setScore';
+const EXPEDITE = 'expedite';
 const SERVING = 'serving';
 const MORE = 'more';
 
@@ -393,24 +399,67 @@ const MORE = 'more';
  */
 export const tableTennisServingTitle: Text = { key: 'scoring.tabletennis.sheet.serving' };
 
-function tools(display: TableTennisDisplay): readonly Tool[] {
-  if (!started(display)) return [];
-  return [...cards(display), ...serveTool(display), ...moreTool(display)];
+/** The id of the Expedite confirm's one choice (ruling 55): Cancel is the kit's, and records nothing. */
+export const EXPEDITE_START = 'start';
+
+/**
+ * The question a tap on the Expedite cell asks first (ruling 55; the owner, 2026-11-04): "Start Expedite? It stays on for
+ * the rest of the match", Start or Cancel. Nothing is recorded until Start. The sheet itself is the hook's.
+ */
+export const tableTennisExpediteConfirm = {
+  title: { key: 'scoring.tabletennis.expedite.title' },
+  body: { key: 'scoring.tabletennis.expedite.body' },
+  options: [{ id: EXPEDITE_START, label: { key: 'scoring.tabletennis.expedite.start' } }],
+} as const satisfies {
+  readonly title: Text;
+  readonly body: Text;
+  readonly options: readonly { readonly id: string; readonly label: Text }[];
+};
+
+/** Set score is on offer before a game's first point: before the match's, and between games (as More listed it). */
+export function tableTennisSetScoreOffered(display: TableTennisDisplay): boolean {
+  return takesPoints(display) && (display.phase === 'pre' || display.phase === 'betweenGames');
 }
 
-/** A Card for each side, while the match records cards: the umpire's yellow and red, chosen in the sheet. */
-function cards(display: TableTennisDisplay): readonly Tool[] {
-  if (!display.records.sanctions) return [];
-  const card = (side: PadSide): Tool => ({
-    id: `card.${side}`,
-    label: { key: 'scoring.tabletennis.tool.card' },
-    // The cell is shortened to fit four to a row (es "Tarj."); a screen reader hears the sheet's full word.
-    said: { key: 'scoring.tabletennis.sheet.card' },
-    detail: sideNames(display.sides[side]),
-    kind: 'destructive',
-    enabled: true,
-  });
-  return [card('first'), card('second')];
+/** Expedite is on offer while the display says so (the engine's rule: live, recorded, not in force, not both at 9). */
+export function tableTennisExpediteOffered(display: TableTennisDisplay): boolean {
+  return takesPoints(display) && display.expedite === 'offered';
+}
+
+/**
+ * The cells, in order, at most four (ruling 54): Set score and Expedite while each is offered, 13 returns or Who is
+ * serving?, and More. Expedite and 13 returns never share a row (one is offered, the other in force), nor do 13 returns
+ * and Who is serving?, so no more than four ever stand together.
+ */
+function tools(display: TableTennisDisplay): readonly Tool[] {
+  if (!started(display)) return [];
+  return [
+    ...setScoreTool(display),
+    ...expediteTool(display),
+    ...serveTool(display),
+    ...moreTool(display),
+  ];
+}
+
+function setScoreTool(display: TableTennisDisplay): readonly Tool[] {
+  if (!tableTennisSetScoreOffered(display)) return [];
+  return [{ id: SET_SCORE, label: { key: 'scoring.tabletennis.tool.setScore' }, ...PLAIN }];
+}
+
+/**
+ * Expedite: a cell until it is in force, and then 13 returns takes its place. Four cells leave a word 48 dp at 320, so the
+ * drawn word is shortened and a screen reader hears the full term (`said`).
+ */
+function expediteTool(display: TableTennisDisplay): readonly Tool[] {
+  if (!tableTennisExpediteOffered(display)) return [];
+  return [
+    {
+      id: EXPEDITE,
+      label: { key: 'scoring.tabletennis.tool.expedite' },
+      said: { key: 'scoring.tabletennis.tool.expediteSaid' },
+      ...PLAIN,
+    },
+  ];
 }
 
 /** Who is serving? when the pad needs the answer, else 13 returns when it is offered, never both (rulings 50 and 51). */
@@ -454,57 +503,57 @@ function moreTool(display: TableTennisDisplay): readonly Tool[] {
 export function parseTableTennisTool(
   id: string,
 ):
-  | { readonly card: PadSide }
+  | { readonly setScore: true }
+  | { readonly expedite: true }
   | { readonly returns: PadSide }
   | { readonly serving: true }
   | { readonly more: true }
   | null {
-  if (id === 'card.first') return { card: 'first' };
-  if (id === 'card.second') return { card: 'second' };
+  if (id === SET_SCORE) return { setScore: true };
+  if (id === EXPEDITE) return { expedite: true };
   if (id === `${RETURNS}first`) return { returns: 'first' };
   if (id === `${RETURNS}second`) return { returns: 'second' };
   if (id === SERVING) return { serving: true };
   return id === MORE ? { more: true } : null;
 }
 
-/** What the More sheet can list: a timeout for each side, Expedite, and Set score. */
-export type TableTennisMoreItem = 'timeout.first' | 'timeout.second' | 'expedite' | 'setScore';
+/** What the More sheet can list: a Card for each side and a timeout for each (Set score and Expedite are cells). */
+export type TableTennisMoreItem = 'card.first' | 'card.second' | 'timeout.first' | 'timeout.second';
 
 /**
- * The More sheet's items, each listed only when design §4 offers it: a timeout for each side while the match records
- * them (the engine accepts any number; ITTF's one is the umpire's to keep), Expedite while it is offered, and Set score
- * before a game's first point. Nothing on the Start screen or once the match is decided.
+ * The More sheet's items, each listed only when design §4 offers it: a Card for each side while the match records cards,
+ * then a timeout for each while it records them (the engine accepts any number; ITTF's one is the umpire's to keep).
+ * Nothing on the Start screen or once the match is decided.
  */
 export function tableTennisMoreItems(display: TableTennisDisplay): readonly TableTennisMoreItem[] {
   if (!takesPoints(display)) return [];
   const items: TableTennisMoreItem[] = [];
+  if (display.records.sanctions) items.push('card.first', 'card.second');
   if (display.records.timeouts) items.push('timeout.first', 'timeout.second');
-  if (display.expedite === 'offered') items.push('expedite');
-  if (display.phase === 'pre' || display.phase === 'betweenGames') items.push('setScore');
   return items;
 }
 
 /** One choice in the More sheet: the item and its words. */
 export type TableTennisMoreOption = { readonly id: TableTennisMoreItem; readonly label: Text };
 
-/** The More sheet's choices in words, in the items' order. */
+/**
+ * The More sheet's choices in words, in the items' order. The sheet is full width, so a Card says its full word: the cell
+ * it replaced was shortened to fit four to a row.
+ */
 export function tableTennisMoreOptions(
   display: TableTennisDisplay,
 ): readonly TableTennisMoreOption[] {
-  const timeout = (side: PadSide): Text => ({
-    key: 'scoring.tabletennis.more.timeout',
-    vars: { side: sideNames(display.sides[side]) },
-  });
+  const side = (of: PadSide) => sideNames(display.sides[of]);
   const label = (item: TableTennisMoreItem): Text => {
     switch (item) {
+      case 'card.first':
+        return { key: 'scoring.tabletennis.more.card', vars: { side: side('first') } };
+      case 'card.second':
+        return { key: 'scoring.tabletennis.more.card', vars: { side: side('second') } };
       case 'timeout.first':
-        return timeout('first');
+        return { key: 'scoring.tabletennis.more.timeout', vars: { side: side('first') } };
       case 'timeout.second':
-        return timeout('second');
-      case 'expedite':
-        return { key: 'scoring.tabletennis.more.expedite' };
-      case 'setScore':
-        return { key: 'scoring.tabletennis.more.setScore' };
+        return { key: 'scoring.tabletennis.more.timeout', vars: { side: side('second') } };
     }
   };
   return tableTennisMoreItems(display).map((id) => ({ id, label: label(id) }));

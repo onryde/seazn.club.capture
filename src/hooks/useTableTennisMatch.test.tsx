@@ -223,11 +223,12 @@ describe('a point', () => {
   });
 });
 
-describe('Card', () => {
-  it('records a singles card with the side’s one player: the level, and the sheet leaves with it', async () => {
+describe('Card (ruling 54: More’s items)', () => {
+  it('records a singles card with the side’s one player: More, the Card, the level, and the sheet leaves with it', async () => {
     const fakes = await rig();
     const view = await started(fakes);
-    await press(view, 'card.second');
+    await press(view, 'more');
+    await choose(view, 'card.second');
     expect(pad(view).sheet?.kind).toBe('card');
     await choose(view, 'warning');
     expect(pad(view).sheet).toBeNull();
@@ -242,7 +243,8 @@ describe('Card', () => {
     const seed = TABLE_TENNIS_DOUBLES_SEED;
     const fakes = await rig(seed);
     const view = await started(fakes, seed);
-    await press(view, 'card.first');
+    await press(view, 'more');
+    await choose(view, 'card.first');
     await choose(view, 'penalty');
     expect(pad(view).sheet).toMatchObject({
       kind: 'card',
@@ -256,7 +258,7 @@ describe('Card', () => {
   });
 });
 
-describe('More', () => {
+describe('More (ruling 54: the cards and the timeouts)', () => {
   it('records a timeout for the side listed, and closes', async () => {
     const fakes = await rig();
     const view = await started(fakes);
@@ -270,29 +272,10 @@ describe('More', () => {
     });
   });
 
-  it('records Expedite, which then disappears from More and puts 13 returns in the tools row', async () => {
-    const fakes = await rig();
-    const view = await started(fakes);
-    act_(view, (actions) => actions.tapHalf('first'));
-    await flush();
-    await wait();
-    await press(view, 'more');
-    expect(optionIds(pad(view).sheet)).toEqual(['timeout.first', 'timeout.second', 'expedite']);
-    await choose(view, 'expedite');
-    expect((await ledger(fakes)).at(-1)?.type).toBe('tabletennis.expedite.start');
-    expect(pad(view).view.strip).toContainEqual({
-      slot: 'note',
-      text: { key: 'scoring.tabletennis.note.expedite' },
-    });
-    expect(returnsCell(pad(view).view)).toBeDefined();
-    await press(view, 'more');
-    expect(optionIds(pad(view).sheet)).toEqual(['timeout.first', 'timeout.second']);
-  });
-
-  it('Set score takes More’s place and records a game’s score before its first point', async () => {
+  it('Set score is a cell of its own, and records a game’s score before its first point', async () => {
     const { fakes, view } = await unanchored();
-    await press(view, 'more');
-    await choose(view, 'setScore');
+    expect(toolIds(pad(view).view)).toEqual(['setScore', 'expedite', 'serving', 'more']);
+    await press(view, 'setScore');
     expect(pad(view).sheet).toMatchObject({ kind: 'setScore', game: 1, bound: 31 });
     act_(view, (actions) => actions.saveScore('7', '5'));
     await flush();
@@ -303,24 +286,13 @@ describe('More', () => {
     });
   });
 
-  // Fix round 1 (M2): another scorer started Expedite while More was open; choosing it now is a second start.
-  it('Expedite chosen after another scorer started it closes the sheet and queues nothing', async () => {
-    const fakes = await rig();
-    const view = await started(fakes);
+  it('Set score is gone from the row once the game’s first point is played', async () => {
+    const { view } = await unanchored();
+    expect(toolIds(pad(view).view)).toContain('setScore');
     act_(view, (actions) => actions.tapHalf('first'));
     await flush();
     await wait();
-    await press(view, 'more');
-    expect(pad(view).sheet?.kind).toBe('more');
-    fakes.scoring.addOtherScorerEvent('tabletennis.expedite.start', {});
-    fakes.realtime.ping();
-    await flush();
-    act_(view, (actions) => actions.choose('expedite'));
-    await flush();
-    await wait();
-    expect(pad(view).sheet).toBeNull();
-    const starts = (await typesOf(fakes)).filter((type) => type === 'tabletennis.expedite.start');
-    expect(starts).toHaveLength(1);
+    expect(toolIds(pad(view).view)).not.toContain('setScore');
   });
 
   it('Back closes the sheet and falls through with none open', async () => {
@@ -340,10 +312,122 @@ describe('More', () => {
   });
 });
 
+describe('Expedite (ruling 55): its cell asks first, and Start records it', () => {
+  /** A game under way, so Expedite is on offer: the first side served and won the first point; the bounce windows are over. */
+  async function underWay() {
+    const fakes = await rig();
+    const view = await started(fakes);
+    act_(view, (actions) => actions.tapHalf('first'));
+    await flush();
+    await wait();
+    return { fakes, view };
+  }
+  const startsIn = async (fakes: FakePorts) =>
+    (await typesOf(fakes)).filter((type) => type === 'tabletennis.expedite.start');
+
+  it('opens the question and records nothing; Cancel closes it and leaves the cell', async () => {
+    const { fakes, view } = await underWay();
+    expect(toolIds(pad(view).view)).toEqual(['expedite', 'more']);
+    await press(view, 'expedite');
+    expect(pad(view).sheet?.kind).toBe('expedite');
+    expect(optionIds(pad(view).sheet)).toEqual(['start']);
+    act_(view, (actions) => actions.cancel());
+    await flush();
+    expect(pad(view).sheet).toBeNull();
+    expect(await startsIn(fakes)).toEqual([]);
+    expect(toolIds(pad(view).view)).toEqual(['expedite', 'more']);
+  });
+
+  it('Start records one expedite.start: the cell is gone, 13 returns shows with the receiver, the strip says Expedite', async () => {
+    const { fakes, view } = await underWay();
+    await press(view, 'expedite');
+    await choose(view, 'start');
+    expect(pad(view).sheet).toBeNull();
+    expect(await startsIn(fakes)).toHaveLength(1);
+    expect(toolIds(pad(view).view)).not.toContain('expedite');
+    // The cell names the receiver: the side without the serving plate (ITTF 2.15.2), never the server.
+    const receiver = pad(view).view.halves.find((half) => half.serving === null);
+    expect(receiver).toBeDefined();
+    expect(returnsCell(pad(view).view)).toMatchObject({
+      id: `returns.${receiver?.side}`,
+      detail: receiver?.label,
+    });
+    expect(pad(view).view.strip).toContainEqual({
+      slot: 'note',
+      text: { key: 'scoring.tabletennis.note.expedite' },
+    });
+  });
+
+  it('a second Start in the same moment, a double tap, records once', async () => {
+    const { fakes, view } = await underWay();
+    await press(view, 'expedite');
+    act(() => {
+      pad(view).actions.choose('start');
+      pad(view).actions.choose('start');
+    });
+    await flush();
+    expect(await startsIn(fakes)).toHaveLength(1);
+  });
+
+  it('a Start inside the bounce window of the question appearing records nothing: the second touch of a double tap on the cell', async () => {
+    const { fakes, view } = await underWay();
+    act(() => {
+      pad(view).actions.tool('expedite');
+      pad(view).actions.choose('start');
+    });
+    await flush();
+    expect(pad(view).sheet?.kind).toBe('expedite');
+    expect(await startsIn(fakes)).toEqual([]);
+  });
+
+  it('Undo of the start brings the cell back, and takes 13 returns away', async () => {
+    const { fakes, view } = await underWay();
+    await press(view, 'expedite');
+    await choose(view, 'start');
+    expect(toolIds(pad(view).view)).not.toContain('expedite');
+    act_(view, (actions) => actions.undo());
+    await flush();
+    await wait();
+    expect((await ledger(fakes)).at(-1)?.type).toBe('core.void');
+    expect(toolIds(pad(view).view)).toEqual(['expedite', 'more']);
+    expect(pad(view).view.lastTap?.text).toMatchObject({
+      key: 'scoring.tabletennis.undone.expedite',
+    });
+  });
+
+  // Ruling 55's stale rule: another scorer started Expedite while the question was open. Nothing is left to ask, and a Start
+  // would be a second start.
+  it('closes when another scorer starts Expedite under it, and a Start then queues nothing', async () => {
+    const { fakes, view } = await underWay();
+    await press(view, 'expedite');
+    expect(pad(view).sheet?.kind).toBe('expedite');
+    fakes.scoring.addOtherScorerEvent('tabletennis.expedite.start', {});
+    fakes.realtime.ping();
+    await flush();
+    expect(pad(view).sheet).toBeNull();
+    act_(view, (actions) => actions.choose('start'));
+    await flush();
+    await wait();
+    expect(await startsIn(fakes)).toHaveLength(1);
+  });
+
+  it('Back closes the question and records nothing', async () => {
+    const { fakes, view } = await underWay();
+    await press(view, 'expedite');
+    let handled = false;
+    act(() => {
+      handled = fakes.back.press();
+    });
+    expect(handled).toBe(true);
+    expect(pad(view).sheet).toBeNull();
+    expect(await startsIn(fakes)).toEqual([]);
+  });
+});
+
 describe('Who is serving? (ruling 51): the answer is held, and the next point carries it', () => {
   it('is offered for a match another scorer started, and not for one this phone started', async () => {
     const { view } = await unanchored();
-    expect(toolIds(pad(view).view)).toEqual(['card.first', 'card.second', 'serving', 'more']);
+    expect(toolIds(pad(view).view)).toEqual(['setScore', 'expedite', 'serving', 'more']);
     const fakes = await rig();
     const mine = await started(fakes);
     expect(toolIds(pad(mine).view)).not.toContain('serving');
@@ -426,8 +510,7 @@ describe('Who is serving? (ruling 51): the answer is held, and the next point ca
   it('a Set score the match refuses keeps the answer: nothing moved', async () => {
     const { fakes, view } = await unanchored();
     await answer(view, 'second');
-    await press(view, 'more');
-    await choose(view, 'setScore');
+    await press(view, 'setScore');
     // Beyond the bound (31): refused on the line, the sheet stays, and nothing is queued.
     act_(view, (actions) => actions.saveScore('40', '2'));
     await flush();
@@ -472,8 +555,7 @@ describe('Who is serving? (ruling 51): the answer is held, and the next point ca
   it('is cleared when a Set score is queued: the score it was meant for has moved', async () => {
     const { fakes, view } = await unanchored();
     await answer(view, 'second');
-    await press(view, 'more');
-    await choose(view, 'setScore');
+    await press(view, 'setScore');
     act_(view, (actions) => actions.saveScore('3', '2'));
     await flush();
     await wait();
@@ -489,8 +571,7 @@ describe('Who is serving? (ruling 51): the answer is held, and the next point ca
   it('a field that is not a whole number is refused on the line, and keeps the answer', async () => {
     const { fakes, view } = await unanchored();
     await answer(view, 'second');
-    await press(view, 'more');
-    await choose(view, 'setScore');
+    await press(view, 'setScore');
     act_(view, (actions) => actions.saveScore('x', '2'));
     await flush();
     await wait();
@@ -635,8 +716,8 @@ describe('13 returns (ruling 50)', () => {
     act_(view, (actions) => actions.tapHalf('first'));
     await flush();
     await wait();
-    await press(view, 'more');
-    await choose(view, 'expedite');
+    await press(view, 'expedite');
+    await choose(view, 'start');
     return { fakes, view };
   }
 

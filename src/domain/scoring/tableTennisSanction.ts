@@ -46,7 +46,7 @@ export type CardMove =
   | { readonly kind: 'step'; readonly step: CardStep }
   | { readonly kind: 'record'; readonly card: TableTennisCard };
 
-/** The sheet's words: the pad's own (the Card tool, the card levels) and the generic "Who?". */
+/** The sheet's words: the pad's own (the Card sheet's title, the card levels) and the generic "Who?". */
 export type CardKey = TableTennisPadKey | 'scoring.sanction.who';
 
 export type CardSheet = SanctionSheet<CardKey>;
