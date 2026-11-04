@@ -297,8 +297,8 @@ const takesPoints = (display: TableTennisDisplay) =>
  * each with its finished games' scores and, on the server's, the serving plate with the engine's serve number and in
  * doubles the player; the game of how many and one note (Expedite, else Deuce) in the strip; and in the tool row Set
  * score and Expedite while they are offered, 13 returns or Who is serving?, and More (the cards and the timeouts). A
- * decided match is the recorded result's card over the final score. Before the match starts, the Start screen's question in the halves' place, and no tools. `sync`
- * is the transport's word, not the match's.
+ * decided match is the recorded result's card over the final score. Before the match starts, the Start screen's
+ * question in the halves' place, and no tools. `sync` is the transport's word, not the match's.
  */
 export function tableTennisPad(
   display: TableTennisDisplay,
@@ -453,8 +453,8 @@ export const tableTennisServingTitle: Text = { key: 'scoring.tabletennis.sheet.s
 export const EXPEDITE_START = 'start';
 
 /**
- * The question a tap on the Expedite cell asks first (ruling 55; the owner, 2026-11-04): "Start Expedite? It stays on for
- * the rest of the match", Start or Cancel. Nothing is recorded until Start. The sheet itself is the hook's.
+ * The question a tap on the Expedite cell asks first (ruling 55; the owner, 2026-11-04): "Start Expedite? It stays on
+ * for the rest of the match", Start or Cancel. Nothing is recorded until Start. The sheet itself is the hook's.
  */
 export const tableTennisExpediteConfirm = {
   title: { key: 'scoring.tabletennis.expedite.title' },
@@ -477,9 +477,9 @@ export function tableTennisExpediteOffered(display: TableTennisDisplay): boolean
 }
 
 /**
- * A row of this many cells leaves each cell's text 48 dp at 320 (padFit.test.ts); three or fewer leave 72.67 or more. It is
- * the one row (Set score, Expedite, Who is serving? and More, before a game's first point in a match another scorer
- * started) in which the cells' full words do not fit.
+ * A row of this many cells leaves each cell's text 48 dp at 320 (padFit.test.ts); three or fewer leave 72.67 or more.
+ * It is the one row (Set score, Expedite, Who is serving? and More, before a game's first point in a match another
+ * scorer started) in which the cells' full words do not fit.
  */
 const CROWDED_ROW = 4;
 
@@ -524,9 +524,9 @@ function setScoreTool(display: TableTennisDisplay): readonly Tool[] {
 }
 
 /**
- * Expedite: a cell until it is in force, and then 13 returns takes its place. Its drawn word is the web's term where it
- * fits the row (en, fr), else a shortening of it (es, nl; a row of four, every language); a screen reader hears the full
- * term whatever is drawn (`said`).
+ * Expedite: a cell until it is in force, and then 13 returns takes its place. Its drawn word is the web's term where
+ * it fits the row (en, fr), else a shortening of it (es, nl; a row of four, every language); a screen reader hears the
+ * full term whatever is drawn (`said`).
  */
 function expediteTool(display: TableTennisDisplay): readonly Tool[] {
   if (!tableTennisExpediteOffered(display)) return [];
@@ -599,8 +599,9 @@ export function parseTableTennisTool(
 export type TableTennisMoreItem = 'card.first' | 'card.second' | 'timeout.first' | 'timeout.second';
 
 /**
- * The More sheet's items, each listed only when design §4 offers it: a Card for each side while the match records cards,
- * then a timeout for each while it records them (the engine accepts any number; ITTF's one is the umpire's to keep).
+ * The More sheet's items, each listed only when design §4 offers it: a Card for each side while the match records
+ * cards, then a timeout for each while it records them (the engine accepts any number; ITTF's one is the umpire's to
+ * keep).
  * Nothing on the Start screen or once the match is decided.
  */
 export function tableTennisMoreItems(display: TableTennisDisplay): readonly TableTennisMoreItem[] {
@@ -615,8 +616,8 @@ export function tableTennisMoreItems(display: TableTennisDisplay): readonly Tabl
 export type TableTennisMoreOption = { readonly id: TableTennisMoreItem; readonly label: Text };
 
 /**
- * The More sheet's choices in words, in the items' order. The sheet is full width, so a Card says its full word: the cell
- * it replaced was shortened to fit four to a row.
+ * The More sheet's choices in words, in the items' order. The sheet is full width, so a Card says its full word: the
+ * cell it replaced was shortened to fit four to a row.
  */
 export function tableTennisMoreOptions(
   display: TableTennisDisplay,

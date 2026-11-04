@@ -535,6 +535,38 @@ describe('the row after the first point, and Expedite (rulings 54 and 55)', () =
     });
     await flush(400);
     expect(await startsIn(app)).toHaveLength(1);
+    // The bounce memory counted the second once and said so (a refusal by the fold would read otherwise).
+    expect(screen.getByTestId('last-tap-note').textContent).toBe(en['scoring.pad.countedOnce']);
+  });
+
+  it('a 13 returns press on the heels of Start counts once: no point; the same press a second on is one point', async () => {
+    const app = await underWay();
+    await press(app, en['scoring.tabletennis.tool.expediteSaid']);
+    aSecondOn(app);
+    act(() =>
+      fireEvent.click(
+        screen.getByRole('button', { name: en['scoring.tabletennis.expedite.start'] }),
+      ),
+    );
+    await flush(400);
+    const cell = () =>
+      within(screen.getByTestId('tool-row')).getAllByRole('button')[0] as HTMLElement;
+    expect(cell().getAttribute('aria-label')).toContain(
+      fill(en['scoring.tabletennis.tool.returns'], { returns: 13 }),
+    );
+    const points = async () =>
+      (await events(app, TABLE_TENNIS_SINGLES_SEED)).filter(
+        (event) => (event.payload as { returns?: number }).returns === 13,
+      );
+    // Same instant: the finger that tapped Start taps again, on the cell now under it.
+    act(() => fireEvent.click(cell()));
+    await flush(400);
+    expect(await points()).toHaveLength(0);
+    expect(screen.getByTestId('last-tap-note').textContent).toBe(en['scoring.pad.countedOnce']);
+    aSecondOn(app);
+    act(() => fireEvent.click(cell()));
+    await flush(400);
+    expect(await points()).toHaveLength(1);
   });
 
   it('a double tap on the cell does not start it: the second touch lands on Start inside the sheet’s bounce window', async () => {

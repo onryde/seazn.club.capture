@@ -366,6 +366,39 @@ describe('Expedite (ruling 55): its cell asks first, and Start records it', () =
     });
     await flush();
     expect(await startsIn(fakes)).toHaveLength(1);
+    // Counted once by the bounce memory, which says so; were it the fold that refused the second start, the line would be a
+    // refusal's (fix round 1, review Minor 1).
+    expect(pad(view).line).toEqual({ kind: 'note', key: 'scoring.pad.countedOnce' });
+  });
+
+  // The bounce memory's real job (fix round 1, review Minor 1): Start leaves the screen with the tap and the 13 returns cell
+  // takes the Expedite cell's place under the finger, so the second touch of a double tap on Start lands on it.
+  it('a 13 returns press on the heels of Start counts once: no point, and the line says so; after the window it records one', async () => {
+    const { fakes, view } = await underWay();
+    await press(view, 'expedite');
+    act_(view, (actions) => actions.choose('start'));
+    await flush();
+    const cell = returnsCell(pad(view).view);
+    expect(cell).toBeDefined();
+    const id = cell?.id ?? '';
+    const before = await ledger(fakes);
+    expect(before.at(-1)?.type).toBe('tabletennis.expedite.start');
+    act_(view, (actions) => actions.tool(id));
+    await flush();
+    expect(pad(view).line).toEqual({ kind: 'note', key: 'scoring.pad.countedOnce' });
+    expect((await ledger(fakes)).map((event) => event.type)).toEqual(
+      before.map((event) => event.type),
+    );
+    // The same press once the window is over is the scorer's point.
+    await wait();
+    act_(view, (actions) => actions.tool(id));
+    await flush();
+    const after = await ledger(fakes);
+    expect(after).toHaveLength(before.length + 1);
+    expect(after.at(-1)).toMatchObject({
+      type: 'tabletennis.rally',
+      payload: { returns: 13 },
+    });
   });
 
   it('a Start inside the bounce window of the question appearing records nothing: the second touch of a double tap on the cell', async () => {

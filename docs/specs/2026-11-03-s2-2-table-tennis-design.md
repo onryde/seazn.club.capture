@@ -231,7 +231,8 @@ Set score and Expedite are no longer in More.
 
 The **Expedite confirm** (ruling 55; a `StepSheet`, one cover at a time): "Start Expedite?", "It stays on for the rest of
 the match.", Start and Cancel. Cancel, the dim and Back close it and record nothing. It takes no Start in the bounce
-window of its appearing (the second touch of a double tap on the cell lands on Start), and a second Start counts once.
+window of its appearing (the second touch of a double tap on the cell lands on Start or Cancel: a Start does nothing, and
+a Cancel closes the question with nothing recorded), and a second Start counts once.
 It goes stale and closes, as the More re-check does, if Expedite is no longer on offer while it shows.
 
 **Copy.** A cell's word is the fullest that fits its row (the controller's follow-up to Task 8b, 2026-11-04). The row has
@@ -312,6 +313,10 @@ As S2 §10, on a table tennis match, plus:
 
 7. A lost anchor: a browser co-scorer taps the match's first point before the phone's lands; the
    phone shows Who is serving?, the answer rides the next point, and the plate is right from then on.
+8. A double tap on the Expedite cell, on the phone: where the second touch lands. The confirm opens on the first touch;
+   the second falls inside its 250 ms bounce window on Start (nothing recorded) or on Cancel (the question closes, nothing
+   recorded). Then a double tap on Start: the 13 returns cell takes the Expedite cell's place under the finger, and the
+   second touch counts once ("Counted once") without a point.
 
 ## 9. Open for the owner
 

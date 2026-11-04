@@ -42,10 +42,10 @@ import {
 } from '@/hooks/usePadSheetParts';
 
 /**
- * The sheets over the table tennis pad (plan S2-2 Task 7; design §4.7, §5.3; owner rulings 54 and 55): More (the cards and
- * the timeouts) with the Card steps that take its place, the Start Expedite? question, Who is serving?, Set score, Match
- * details and History, and the reconnect question over them all. Badminton's twin is `usePadSheets`; what
- * the two share (the bounce window of a sheet appearing, Set score's fields, the question) is `usePadSheetParts`.
+ * The sheets over the table tennis pad (plan S2-2 Task 7; design §4.7, §5.3; owner rulings 54 and 55): More (the cards
+ * and the timeouts) with the Card steps that take its place, the Start Expedite? question, Who is serving?, Set score,
+ * Match details and History, and the reconnect question over them all. Badminton's twin is `usePadSheets`; what the two
+ * share (the bounce window of a sheet appearing, Set score's fields, the question) is `usePadSheetParts`.
  */
 
 /** What each button of a sheet asks the match to do, and what it came to at once. */
@@ -72,8 +72,9 @@ export type StepFacts = {
 };
 
 /**
- * What is over the pad: a Card step, the More sheet, the Start Expedite? question, Who is serving?, the Set score fields,
- * Match details or History (a cover the full height of the pad), or the reconnect question and its confirm over all of them.
+ * What is over the pad: a Card step, the More sheet, the Start Expedite? question, Who is serving?, the Set score
+ * fields, Match details or History (a cover the full height of the pad), or the reconnect question and its confirm over
+ * all of them.
  */
 export type TableTennisSheetView =
   | { readonly kind: 'card'; readonly sheet: StepFacts }
@@ -181,7 +182,10 @@ function useServe(setSheet: SetSheet, record: Recording, pad: TableTennisSheetDr
   );
 }
 
-/** A choice on the sheet open: the Card's next step or the card recorded, a More item, Start Expedite?, or a side for the serve. */
+/**
+ * A choice on the sheet open: the Card's next step or the card recorded, a More item, Start Expedite?, or a side for
+ * the serve.
+ */
 function useChoose(
   sheet: Sheet,
   setSheet: SetSheet,
@@ -220,9 +224,9 @@ function chooseOnCard(
 }
 
 /**
- * The More sheet's item: a timeout recorded at once, a Card opening its steps in More's place. An item is taken only while
- * More still lists it for the display as it is now (fix round 1): the sheet was drawn before, and the match may have
- * stopped recording it since. Then the sheet closes and nothing is made.
+ * The More sheet's item: a timeout recorded at once, a Card opening its steps in More's place. An item is taken only
+ * while More still lists it for the display as it is now (fix round 1): the sheet was drawn before, and the match may
+ * have stopped recording it since. Then the sheet closes and nothing is made.
  */
 function chooseOnMore(
   id: string,
@@ -242,9 +246,9 @@ function chooseOnMore(
 }
 
 /**
- * Start in the Start Expedite? question (ruling 55): Expedite recorded, once, and the question leaves with it. Only Start
- * records; Cancel, the dim and Back close the sheet and leave the match as it was. That Expedite is still on offer is the
- * sheet's own rule (`staleSheet`): the question closes the moment it is not.
+ * Start in the Start Expedite? question (ruling 55): Expedite recorded, once, and the question leaves with it. Only
+ * Start records; Cancel, the dim and Back close the sheet and leave the match as it was. That Expedite is still on
+ * offer is the sheet's own rule (`staleSheet`): the question closes the moment it is not.
  */
 function chooseOnExpedite(
   id: string,
@@ -271,8 +275,9 @@ function sideOf(id: string): PadSide | null {
 }
 
 /**
- * The step on screen a double tap can reach, by name: a Card's level or person; More; Start Expedite? (whose Start lies
- * under the cell it was opened from); Who is serving?; Set score; Match details, whose dim takes the second touch on its
+ * The step on screen a double tap can reach, by name: a Card's level or person; More; Start Expedite? (whose Start and
+ * Cancel lie under the cell it was opened from: Start takes nothing in the window, Cancel and the dim are `cancel`, and
+ * close it with nothing recorded); Who is serving?; Set score; Match details, whose dim takes the second touch on its
  * icon; the question and its confirm. Not History: its one button is not under its icon.
  */
 function guardedStep(sheet: Sheet, view: TableTennisSheetView | null): string | null {

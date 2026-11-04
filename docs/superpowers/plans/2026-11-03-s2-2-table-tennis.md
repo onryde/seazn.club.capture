@@ -292,7 +292,7 @@ three cells or fewer) and a short one (the row of four), chosen by the row's cel
 
 - [ ] **Step 1:** Release build from the clean worktree (`…-worktrees/app-settings`, detached at the
       pushed commit), `assembleRelease`, `adb install -r`.
-- [ ] **Step 2:** Design §8 items 1–7 on staging fixtures from Task 1, each with what the screen and the
+- [ ] **Step 2:** Design §8 items 1–8 on staging fixtures from Task 1, each with what the screen and the
       console showed. Screenshots cropped, nothing personal, no scanned code's value.
 - [ ] **Step 3:** 320 dp (`wm density 540`, then `reset`) for the pad with four tools, More, the Start
       screen, History, in the longest locale.
