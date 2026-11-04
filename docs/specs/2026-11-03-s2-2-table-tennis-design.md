@@ -69,6 +69,20 @@ organiser's final, with the console agreeing point for point (§8).
 | 53  | S2-2 takes @seazn/engine 2.0.0 ("use engine 2.0.0", 2026-11-03). The phone's subpaths are unchanged from 1.1.0; badminton and table tennis keep epoch 2.                                                                                                                                                             |
 | 54  | "can we move card to More and keep set score and Expedite in main then after first score hide the set score as usual and if click expedite then show the button with name as currently?" (2026-11-04). It supersedes ruling 52's cells: Card leaves the row for More; Set score and Expedite leave More for the row. |
 | 55  | A tap on the row's Expedite opens a confirm sheet, "Start Expedite? It stays on for the rest of the match", with Start and Cancel; nothing records until Start ("Confirm sheet (Recommended)", 2026-11-04).                                                                                                          |
+| 56  | "bottom right, just tap Tap?" and "just clock symbol on expetise and card symbol on right cornor, both expetie clock on both card?" (2026-11-04). A stopwatch and a card icon at the half's top right, the hint one word, "Tap"; badminton too. In full below.                                                       |
+
+Ruling 56, in full (the owner, 2026-11-04, at the device check, in several messages): "can we remove the name before tap:
+point to .... ? do we need this name here again as we have in top in the box? if we have warning/yellow/card then we can
+display there? including for badminton?"; "just small squere icon?"; a TV scoreboard's picture, a stopwatch and a small
+upright card beside the team name; "may in the top right corner"; "bottom right, just tap Tap?"; "just clock symbol on
+expetise and card symbol on right cornor, both expetie clock on both card?". It supersedes ruling 14's hint "Tap: rally to
+{side}" and the sanction words in the bottom row, for badminton and table tennis alike, and the strip's Expedite note.
+Read as: the hint is the one word "Tap" in every sport; a side's card is a small upright card icon at the top right of its
+half; table tennis shows a stopwatch on **both** halves while Expedite is in force, beside the card's place (§5.1). Two of
+the controller's rulings travel with it: the card colours are the web's `--sport-caution` (`#d97706`) and
+`--sport-dismissal` (`#dc2626`) as tokens `cardCaution` and `cardDismissal`, used by the card icon alone (AGENTS §5 keeps red
+for ON AIR; Remote Scoring has no broadcast); and the stopwatch replaces the strip's "Expedite" word, so the strip shows Deuce
+when it applies, else nothing (§5.2).
 
 ## 4. How a scorer meets it
 
@@ -97,7 +111,7 @@ As the S2 design §4, with these differences.
 4. **Expedite** (a cell of the row, ruling 54, asking first, ruling 55). Records `tabletennis.expedite.start {}`. Offered while the match is live,
    the match's own `cfg.records.expedite` is on, Expedite is not already in force, and not both sides
    have `expediteScoreFloor` (9) or more in the open game: the web's rule (`tabletennis.tsx:298-303,
-801-806`). From then on the strip says "Expedite" for the rest of the match, the serve changes
+801-806`). From then on both halves show a stopwatch (§5.1) for the rest of the match, the serve changes
    every point, and the 13 returns tool shows (ruling 50). A tap on the cell opens the question "Start Expedite? It stays
    on for the rest of the match." with Start and Cancel; only Start records, Back and Cancel record nothing, and the
    question closes by itself if Expedite is no longer on offer while it shows (another scorer started it). Once it is
@@ -148,11 +162,45 @@ top bar, strip, two halves, last-tap line, tools. What differs:
 - A doubles rally carries `server` (the person) when the engine names one, as the web's does
   (`tabletennis.tsx:510, 536`); badminton keeps sending it for singles only.
 - The lime bar is on the serving side (`PadHalf.bar`), none before the match or once it is decided.
+- **Marks** (ruling 56, `PadHalf.marks`): at the far right of the name row, after the plate, a stopwatch while Expedite is in
+  force (**both** halves, and it stays after the match is decided) and then the side's cards. A card is an upright
+  rectangle, 8 × 11 dp with a 1 dp radius and a hairline in `ink3` so its edge reads on the night ground; the stopwatch is
+  the `Glyph` set's, 20 dp. The names give way (two lines, then an ellipsis); the plate and the marks never do, and a half
+  with no marks draws none and keeps its whole row. The domain says _which_ cards (`caution`, `dismissal`); the UI
+  chooses the colours (`cardCaution`, `cardDismissal`). The side's **heaviest** sanction is drawn, one level, so a second
+  warning or a warning and a penalty never stack; a void (Undo) takes it away at once. Every level the engine lists has a
+  row, typed over the level list, so a level added upstream does not compile until it is given cards:
+
+  | Sport        | Level              | Drawn as                                  |
+  | ------------ | ------------------ | ----------------------------------------- |
+  | Table tennis | `warning`          | a yellow card                             |
+  | Table tennis | `penalty`          | a yellow card and a red card (yellow-red) |
+  | Badminton    | `warning`          | a yellow card                             |
+  | Badminton    | `penalty` (fault)  | a red card                                |
+  | Badminton    | `expulsion`        | a red card (the controller's mapping)     |
+  | Badminton    | `disqualification` | a red card (the game box also marks DQ)   |
+
+- **Bottom row**: the finished games' boxes, then (table tennis doubles only, on the serving half) the dot and the server's
+  line, never cut, then the hint at the right: the one word "Tap" (en Tap, es Toca, fr Touchez, nl Tik), the same for both
+  sides, cut with an ellipsis and then hidden before the boxes or the line are. A half that takes no tap shows no hint.
+- **Said once.** A screen reader hears a half's own name: side, score, finished games, the line after them, the card's
+  name (Yellow card, Red card, Warning, Penalty, …), "Expedite" and Serving with the court. The marks themselves are
+  hidden from it, so nothing is read twice. Expedite is said by each half's name, not by the strip (which no longer
+  carries it), so a scorer on either side hears it once per half they focus. `hint` ("Tap to award the point") stays
+  the half's accessibility hint.
+- **Fit** (`padFit.test.ts`, in four languages at 320 and 360 dp): the names have 85, 86, 69 and 70 dp at 320 beside the
+  plate, the stopwatch and two cards (the widest head; 125, 126, 109 and 110 at 360), against 137, 138, 121 and 122
+  without the marks. No word is broken; a doubles side, "A. Sharma / R. Iyer", is cut after its second line in French and
+  Dutch at 320 there, and a singles name takes two lines in those. "Tap" is whole beside seven finished games except
+  Touchez at 320 (38 dp left, 48.3 needed; no hint is drawn after game 7, which is a decided match), and beside a pair's
+  server line up to two boxes at 320 and four at 360. The server line itself, with five or more boxes at 320, is wider
+  than the row, as before (best of 7, a final's).
 
 ### 5.2 Strip
 
-"Game N of M" at the left (M = `tabletennisPadRules.bestOf(cfg)`), and at the right one note, in this
-order of precedence: "Expedite" (in force, match-wide), else "Deuce" (`deuceNote`), else nothing.
+"Game N of M" at the left (M = `tabletennisPadRules.bestOf(cfg)`), and at the right one note: "Deuce"
+(`deuceNote`) or nothing. Expedite is no longer a word here (ruling 56): it is the stopwatch on both halves (§5.1), so a
+deuce under Expedite shows "Deuce" in the strip and the stopwatches on the halves.
 This takes badminton's interval slot; table tennis's breaks are not shown (_the controller's_: the web
 does not show them either).
 
@@ -256,7 +304,7 @@ As S2 §10, on a table tennis match, plus:
    the next game opens with the other side serving.
 2. Doubles with a team sheet pair order: the plate names the right server through a game; without
    one, the plate names the side.
-3. Expedite started mid-game: the strip says so, the serve changes each point, a 13 returns point is
+3. Expedite started mid-game: both halves show the stopwatch, the serve changes each point, a 13 returns point is
    recorded, the console shows it.
 4. A timeout each side; a yellow and a red card; Set score before a first point.
 5. Undo across each of the above, including a 13 returns point and the expedite start.

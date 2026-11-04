@@ -164,7 +164,8 @@ serving"; the sport decides it, `PadHalf.bar`, so none is lit while no server is
 starts or once it is over; decorative, the plate says who serves); the score centred, `scoreLarge` 128, else `score` 96, else
 `scoreCompact` 64, by the half's measured height (`scoreRole`); the bottom row with the finished games'
 boxes (the winner's lime digits and hairline, a DQ box in caution) and the hint "Tap: rally to
-{side}"; the lime flash (`TapFlash`, ~300 ms, none under reduce motion).
+{side}" (since S2-2's ruling 56, 2026-11-04, the hint is the one word "Tap", and a sanction is a card icon at
+the head's top right, not a word in this row: S2-2 design §5.1); the lime flash (`TapFlash`, ~300 ms, none under reduce motion).
 
 **Under the halves:** the last-tap line with Undo (`LastTapLine`), then the tools (`ToolRow`):
 Sanction for each side, and Set score only before a game's first rally.
