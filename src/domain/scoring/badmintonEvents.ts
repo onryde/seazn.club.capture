@@ -4,8 +4,14 @@ import type {
   BadmintonTap,
 } from '@/domain/scoring/badmintonPad';
 import type { PadSide } from '@/domain/scoring/padView';
-import { isRecord } from '@/domain/credentials/wire';
 import type { QueuedEvent } from '@/domain/scoring/queue';
+import {
+  payloadForFirstSend,
+  rallyPayload,
+  sanctionPayload,
+  standing,
+} from '@/domain/scoring/setBasedEvents';
+import { seatsOf, soleOf, type Seats } from '@/domain/scoring/setBasedSides';
 import type { Bootstrap, BootstrapSide, LedgerEvent } from '@/domain/scoring/wire';
 
 /**
@@ -22,14 +28,6 @@ export type BadmintonEventContext = {
   readonly bootstrap: Bootstrap;
   readonly display: BadmintonDisplay;
 };
-
-type Seats = Readonly<Record<PadSide, BootstrapSide>>;
-
-/** The two seats, top first, or null while either has no entrant (a bye, a match waiting on a result). */
-export function seatsOf(bootstrap: Bootstrap): Seats | null {
-  const { home, away } = bootstrap.sides;
-  return home === null || away === null ? null : { first: home, second: away };
-}
 
 export function badmintonEventFor(
   tap: BadmintonTap,
@@ -64,39 +62,17 @@ function rallyEvent(seats: Seats, side: PadSide, display: BadmintonDisplay): Bad
   const serving = display.serverPicked ? display.server : null;
   const served = display.serverPicked ? null : display.server;
   const server = served === null ? null : soleOf(seats[served]);
-  const scorer = soleOf(seats[side]);
-  const payload = {
-    wonBy: seats[side].entrantId,
-    ...(serving === null ? {} : { serving: seats[serving].entrantId }),
-    ...(server === null ? {} : { server }),
-    ...(scorer === null ? {} : { scorer }),
-  };
-  return { type: 'badminton.rally', payload };
-}
-
-/** A singles side's one player, or null for a pair (the web's `soleMemberOf`: the lineup, by its length). */
-function soleOf(seat: BootstrapSide): string | null {
-  const [only, ...more] = seat.lineup;
-  return only !== undefined && more.length === 0 ? only.personId : null;
+  return { type: RALLY, payload: rallyPayload(seats, side, { serving, server }) };
 }
 
 /**
  * The person by the id the bootstrap gave for the name the pad offered; a name the side does not have is refused. A
- * side that lists no people is offered as its own name (`namesOf`), and that name is a team sanction, with no person:
- * the engine reads an absent `person` so (`SetBasedSanction`; device, 2026-11-03).
+ * side that lists no people is offered as its own name (`namesOf`), and that name is a team sanction, with no person
+ * (`sanctionPayload`; the engine reads an absent `person` so, `SetBasedSanction`; device, 2026-11-03).
  */
 function sanctionEvent(seat: BootstrapSide, sanction: BadmintonSanction): BadmintonEvent | null {
-  if (seat.members.length === 0) {
-    return sanction.person === seat.name
-      ? { type: 'badminton.sanction', payload: { by: seat.entrantId, level: sanction.level } }
-      : null;
-  }
-  const member = seat.members.find((one) => one.fullName === sanction.person);
-  if (member === undefined) return null;
-  return {
-    type: 'badminton.sanction',
-    payload: { by: seat.entrantId, level: sanction.level, person: member.personId },
-  };
+  const payload = sanctionPayload(seat, sanction.level, sanction.person);
+  return payload === null ? null : { type: 'badminton.sanction', payload };
 }
 
 /**
@@ -121,20 +97,16 @@ const RALLY = 'badminton.rally';
  * The payload to send for a queued tap (the controller's ruling, 2026-11-02): the match's first rally (the one tap
  * that carries `serving`, `badmintonEventFor`) drops it at its first send if a rally already stands in the server's
  * ledger (a co-scorer's landed first): the engine would ignore it there, and its drift check would then name no server
- * for the rest of game 1. An undone rally does not count as played (the controller's ruling, 2026-11-02). A tap with an attempt keeps what it was first sent with, since the server
- * may hold it under its key already (a tap in flight has one: `markSending` counts it as the send starts). Every other
- * tap goes as queued. The key never changes.
+ * for the rest of game 1. An undone rally does not count as played (the controller's ruling, 2026-11-02). A tap with an
+ * attempt keeps what it was first sent with only while the ledger holds its copy (`copied`): the server matches a resend
+ * by its key, never its payload, so a first attempt it never stored is appended as new and is judged as a first send is
+ * (`payloadForFirstSend`; a tap in flight has an attempt: `markSending` counts it as the send starts). Every other tap
+ * goes as queued. The key never changes.
  */
-export function payloadForSend(queued: QueuedEvent, ledger: readonly LedgerEvent[]): unknown {
-  const { payload } = queued;
-  if (queued.attempts > 0 || !isRecord(payload)) return payload;
-  if (!('serving' in payload) || !rallyStands(ledger)) return payload;
-  const { serving: _dropped, ...rest } = payload;
-  return rest;
-}
-
-/** A rally stands in the ledger: one no other ledger event voids. */
-function rallyStands(ledger: readonly LedgerEvent[]): boolean {
-  const voided = new Set(ledger.flatMap((event) => (event.voids === null ? [] : [event.voids])));
-  return ledger.some((event) => event.type === RALLY && !voided.has(event.id));
+export function payloadForSend(
+  queued: QueuedEvent,
+  ledger: readonly LedgerEvent[],
+  copied: boolean,
+): unknown {
+  return payloadForFirstSend(queued, () => standing(ledger, RALLY).length > 0, copied);
 }

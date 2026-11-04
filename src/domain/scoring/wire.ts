@@ -43,6 +43,40 @@ export type Bootstrap = {
   readonly status: string;
 };
 
+/**
+ * Why the web's scan screen is View-only, as the phone's card tells it (`scan-screen.ts` `ViewOnlyReason`, its four
+ * words in the order of the web's table: finalized > cancelled > carried forward > no opponent). Task 8d.
+ */
+export type ViewOnlyWhy = 'finalized' | 'cancelled' | 'carriedForward' | 'noOpponent';
+
+/**
+ * The reason the bootstrap names for its View-only screen, or null: no reason (a pad, an older server) or one this build
+ * does not know. The card for a screen with no known reason is the old View-only card (`scoringMatchView.ts`).
+ */
+export function viewOnlyWhy(bootstrap: Pick<Bootstrap, 'viewOnlyReason'>): ViewOnlyWhy | null {
+  switch (bootstrap.viewOnlyReason) {
+    case 'finalized':
+      return 'finalized';
+    case 'cancelled':
+      return 'cancelled';
+    case 'carried_forward':
+      return 'carriedForward';
+    case 'no_opponent':
+      return 'noOpponent';
+    default:
+      return null;
+  }
+}
+
+/**
+ * Whether the bootstrap's View-only screen is there because the result was carried forward: the same live fact the
+ * web's 403 RESULT_CARRIED_FORWARD refuses writes on (`carried-forward.ts`, one predicate for the scan page and the
+ * door). Its status stays `decided` (or forfeited, abandoned): nobody finalized it, and the other reasons (finalized,
+ * cancelled, no opponent) are not this one.
+ */
+export const carriedForwardBy = (bootstrap: Pick<Bootstrap, 'viewOnlyReason'>): boolean =>
+  viewOnlyWhy(bootstrap) === 'carriedForward';
+
 export type LedgerEvent = {
   readonly id: string;
   readonly seq: number;

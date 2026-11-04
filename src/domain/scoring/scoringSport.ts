@@ -51,8 +51,15 @@ export type SportFold<S extends SportTypes> =
     }
   | { readonly kind: 'unfoldable'; readonly reason: Unfoldable };
 
-/** A tap as the event the server records. */
-export type SportEvent = { readonly type: string; readonly payload: unknown };
+/**
+ * A tap as the event the server records. `base` is optional and a sport's to set: the score count its payload was made
+ * at, which the runtime keeps on the queued tap (`QueuedEvent.base`) for the sport's `payloadForSend` to read.
+ */
+export type SportEvent = {
+  readonly type: string;
+  readonly payload: unknown;
+  readonly base?: number;
+};
 
 /**
  * One sport behind the runtime. Members are methods, not function-valued properties, on purpose: a method's parameters
@@ -74,8 +81,12 @@ export interface ScoringSport<S extends SportTypes> {
   fold(input: SportFoldInput): SportFold<S>;
   /** The event a tap is, on the display it was made on; null for a tap that names what the match does not have. */
   eventFor(tap: S['tap'], context: SportEventContext<S>): SportEvent | null;
-  /** The payload a queued tap is sent with now, given the ledger (a tap's first send may drop what is stale). */
-  payloadForSend(queued: QueuedEvent, ledger: readonly LedgerEvent[]): unknown;
+  /**
+   * The payload a queued tap is sent with now, given the ledger (a send may drop what is stale). `copied` is whether the
+   * ledger holds the server's copy of the tap (the match's `copiesOf`): a tap sent before keeps what it was first sent
+   * with only while it does, since the server matches a resend by its key and never its payload.
+   */
+  payloadForSend(queued: QueuedEvent, ledger: readonly LedgerEvent[], copied: boolean): unknown;
 
   // A tap.
   /** The side a tap picks to serve first (the Start tap's), which the match keeps; null for every other tap. */

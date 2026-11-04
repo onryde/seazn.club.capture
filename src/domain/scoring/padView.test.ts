@@ -11,7 +11,6 @@ import {
 
 type Key =
   | 'k.hint'
-  | 'k.hintLine'
   | 'k.sub'
   | 'k.periods'
   | 'k.serving'
@@ -33,10 +32,10 @@ const live: PadView<Key> = {
       value: '3',
       periods: { scores: [{ value: '7', won: true }], said: [{ key: 'k.periods' }] },
       sub: { key: 'k.sub' },
+      marks: { clock: true, cards: ['caution'], said: [{ key: 'k.sub' }] },
       serving: { shown: { key: 'k.serving' }, said: { key: 'k.servingSaid' } },
       bar: 'lit',
       hint: { key: 'k.hint' },
-      hintLine: { key: 'k.hintLine' },
       tappable: true,
     },
     {
@@ -45,10 +44,10 @@ const live: PadView<Key> = {
       value: '1',
       periods: null,
       sub: null,
+      marks: { clock: false, cards: [], said: [] },
       serving: null,
       bar: 'dim',
       hint: { key: 'k.hint' },
-      hintLine: { key: 'k.hintLine' },
       tappable: true,
     },
   ],
@@ -75,6 +74,9 @@ const CARDS: readonly PadStateCard[] = [
   { kind: 'notStarted' },
   { kind: 'resultRecorded', undoLeft: 45 },
   { kind: 'viewOnly' },
+  { kind: 'carriedForward' },
+  { kind: 'cancelled' },
+  { kind: 'noOpponent' },
   { kind: 'linkInvalid' },
   { kind: 'updateNeeded', unsent: 3 },
 ];
@@ -87,6 +89,9 @@ describe('cardPlacement', () => {
       ['notStarted', 'instead'],
       ['resultRecorded', 'withScore'],
       ['viewOnly', 'withScore'],
+      ['carriedForward', 'withScore'],
+      ['cancelled', 'withScore'],
+      ['noOpponent', 'withScore'],
       ['linkInvalid', 'instead'],
       ['updateNeeded', 'forControls'],
     ]);
@@ -102,6 +107,9 @@ describe('matchKnown', () => {
       ['notStarted', true],
       ['resultRecorded', true],
       ['viewOnly', true],
+      ['carriedForward', true],
+      ['cancelled', true],
+      ['noOpponent', true],
       ['linkInvalid', false],
       ['updateNeeded', true],
     ]);
@@ -119,6 +127,9 @@ describe('holdsScreen', () => {
       ['notStarted', true],
       ['resultRecorded', true],
       ['viewOnly', false],
+      ['carriedForward', false],
+      ['cancelled', false],
+      ['noOpponent', false],
       ['linkInvalid', false],
       ['updateNeeded', false],
     ]);
@@ -139,6 +150,9 @@ describe('hasUndoCell', () => {
       ['notStarted', true],
       ['resultRecorded', true],
       ['viewOnly', true],
+      ['carriedForward', true],
+      ['cancelled', true],
+      ['noOpponent', true],
       ['linkInvalid', true],
       ['updateNeeded', true],
     ]);
@@ -174,6 +188,22 @@ describe('withCard', () => {
       undo: false,
     });
   });
+
+  // Task 8d: the result has moved the competition on and the server refuses an Undo, so the pad offers none.
+  it('keeps the last tap but offers no Undo under a carried-forward result', () => {
+    expect(withCard(live, { kind: 'carriedForward' }).lastTap).toEqual({
+      text: { key: 'k.last' },
+      undo: false,
+    });
+  });
+
+  // Task 8d follow-up: a cancelled match and one with no opponent are as view only as a finalized one.
+  it.each([{ kind: 'cancelled' }, { kind: 'noOpponent' }] as const)(
+    'keeps the last tap but offers no Undo under $kind',
+    (card) => {
+      expect(withCard(live, card).lastTap).toEqual({ text: { key: 'k.last' }, undo: false });
+    },
+  );
 
   it.each([
     { kind: 'notStarted' },

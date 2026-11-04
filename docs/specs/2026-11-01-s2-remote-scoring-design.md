@@ -164,7 +164,8 @@ serving"; the sport decides it, `PadHalf.bar`, so none is lit while no server is
 starts or once it is over; decorative, the plate says who serves); the score centred, `scoreLarge` 128, else `score` 96, else
 `scoreCompact` 64, by the half's measured height (`scoreRole`); the bottom row with the finished games'
 boxes (the winner's lime digits and hairline, a DQ box in caution) and the hint "Tap: rally to
-{side}"; the lime flash (`TapFlash`, ~300 ms, none under reduce motion).
+{side}" (since S2-2's ruling 56, 2026-11-04, the hint is the one word "Tap", and a sanction is a card icon at
+the head's top right, not a word in this row: S2-2 design §5.1); the lime flash (`TapFlash`, ~300 ms, none under reduce motion).
 
 **Under the halves:** the last-tap line with Undo (`LastTapLine`), then the tools (`ToolRow`):
 Sanction for each side, and Set score only before a game's first rally.
@@ -311,8 +312,19 @@ design surface.
       `scoring.dropped` line in the record, never silent;
   - any other refusal (4xx) is read by what it says (`closes` and `refused` in `sync.ts`). A 401 (a link
     the door does not take), a 402 (an account that must pay), a 404 (the match is gone) and a 403 (the
-    result is carried forward, the match is finalized, or this link may not make the write) close the
-    whole queue (`QueueDead`): every tap is kept, nothing more is sent, and the pad says so. The one 403
+    result is carried forward, or this link may not make the write) close the whole queue
+    (`QueueDead`): every tap is kept, nothing more is sent, and the pad says so. A carried-forward result
+    is its own word, `carriedForward`, and its own card ("Result carried forward"), not the finalized
+    match's: nobody finalized it (Task 8d, 2026-11-04; the bootstrap names it too, as the View-only
+    reason `carried_forward`, which changes the card and leaves the queue to the 403). The card's words
+    follow the reason the web names (finalized, cancelled, carried forward, no opponent; its table puts
+    them in that order), and only a finalize says "finalised". Under a result that stands (`finalized`
+    or `carriedForward`) the taps the queue still holds were refused or will never be taken, and the
+    server's ledger is the one authority for the result: the pad's score and Home's Finished card are
+    the ledger folded alone (`foldRead`, `resultStands`), not a fold with those taps (a refused Undo must
+    not take a point off a recorded result). The badge still counts them, History still lists them as it
+    listed them (an unsent rally as a Sending row, an unsent Undo as its rally struck out), and Close on
+    Home still asks before it discards them (Task 8d follow-up, the controller, 2026-11-04). The one 403
     that is about a single tap is a bare one answering a void or a forfeit (the link may not make that
     one write): that tap alone is refused, as below. A 422 `ALREADY_DECIDED` holds its tap while the
     bootstrap's status is read: a finalized or cancelled match closes the queue, any other status refuses
@@ -321,6 +333,9 @@ design surface.
     ledger is fetched again, and the record gets `scoring.dropped {reason, count}`;
   - no network, timeout, 5xx → stay queued, retry with backoff, with the same `idempotency_key`, so a
     tap the server accepted before the answer was lost is not counted twice; the send badge says offline and counts.
+    A tap sent before whose copy the ledger does not hold (matched by key) may never have been stored, and the sport's
+    `payloadForSend` judges it as a first send, for every sport (S2-2 design §4.1): the web matches a resend by its key
+    and never compares payloads, so a first attempt it never stored is appended as new.
 - **The reconnect question** (ruling 43, owner, 2026-11-02). Taps queued only by this phone, offline,
   go by themselves when the signal is back. But a ledger fetch that brings events _another scorer_
   made, while this phone has taps queued, stops the sender: nothing is sent until the scorer answers.
@@ -503,7 +518,8 @@ rounds 2–7 and the hardening get one full review before the branch's PR.
 In order: (1) R4, the engine folded on the OnePlus under Hermes in a release build, timed; (2) the web
 bootstrap endpoint in a seazn.club worktree, on staging; (3) the app's port, queue, sync and Realtime;
 (4) the real badminton pad on the kit, the scan and the Continue card; (5) the exit bar on staging.
-Table tennis is plan S2-2. The endpoint's production deploy goes with the 1.0.x release notes.
+Table tennis is plan S2-2, designed in `docs/specs/2026-11-03-s2-2-table-tennis-design.md` (rulings
+48–56). The endpoint's production deploy goes with the 1.0.x release notes.
 
 ## 14. Left to the builder
 

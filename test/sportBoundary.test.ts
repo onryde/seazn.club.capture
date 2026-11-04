@@ -102,3 +102,85 @@ describe('a generic scoring file names no sport', { timeout: 180_000 }, () => {
     expect(await refusals(VALUE, 'src/hooks/scoringRunner.test.ts')).toEqual([]);
   });
 });
+
+/**
+ * Table tennis is held the same way (plan S2-2 Task 3): its modules are `tableTennis*` (domain, services) and
+ * `*TableTennis*` (hooks, screens), both case spellings since the globs are case sensitive.
+ */
+const TT_VALUE =
+  "import { foldTableTennis } from '@/domain/scoring/tableTennisFold';\nexport const f = foldTableTennis;\n";
+const TT_TYPE =
+  "import type { TableTennisDisplay } from '@/domain/scoring/tableTennisPad';\nexport type D = TableTennisDisplay;\n";
+
+const TT_CAPITAL =
+  "import { useTableTennisMatch } from '@/hooks/useTableTennisMatch';\nexport const h = useTableTennisMatch;\n";
+
+const TT_OWN = [
+  'src/domain/scoring/tableTennisFold.ts',
+  'src/domain/scoring/tableTennisLedgerHistory.ts',
+  'src/domain/scoring/tableTennisSanction.ts',
+  'src/domain/scoring/tableTennisSport.ts',
+  'src/hooks/useTableTennisMatch.ts',
+  'src/hooks/useTableTennisSheets.ts',
+  'src/ui/screens/TableTennisPadScreen.tsx',
+  'src/services/fakeTableTennisPad.ts',
+  // held by `usePad*` and exempt only by `*TableTennis*`
+  'src/hooks/usePadTableTennisProbe.ts',
+] as const;
+
+describe('a generic scoring file names no table tennis module either', { timeout: 180_000 }, () => {
+  it('refuses a table tennis import, by value and by type, from a path of every glob', async () => {
+    const byValue = await Promise.all(
+      GENERIC.map(async (file) => (await refusals(TT_VALUE, file)).length),
+    );
+    const byType = await Promise.all(
+      GENERIC.map(async (file) => (await refusals(TT_TYPE, file)).length),
+    );
+    expect(byValue).toEqual(GENERIC.map(() => 1));
+    expect(byType).toEqual(GENERIC.map(() => 1));
+  });
+
+  it('refuses the capitalised spelling too (a hook or a screen)', async () => {
+    const counts = await Promise.all(
+      GENERIC.map(async (file) => (await refusals(TT_CAPITAL, file)).length),
+    );
+    expect(counts).toEqual(GENERIC.map(() => 1));
+  });
+
+  // The sport module and the card steps (plan S2-2 Task 6): the lifted set-based file stands where a copy would have been.
+  it.each([
+    [
+      'the sport',
+      "import { tableTennisSport } from '@/domain/scoring/tableTennisSport';\nexport const s = tableTennisSport;\n",
+    ],
+    [
+      'the card steps',
+      "import { chooseCard } from '@/domain/scoring/tableTennisSanction';\nexport const c = chooseCard;\n",
+    ],
+    // The sheets hook (plan S2-2 Task 7): sport-owned, as `usePadSheets` is badminton's; the lifted parts are generic.
+    [
+      'the sheets hook',
+      "import { useTableTennisSheets } from '@/hooks/useTableTennisSheets';\nexport const s = useTableTennisSheets;\n",
+    ],
+  ])(
+    'refuses %s from a path of every glob, and from the shared card file itself',
+    async (_name, source) => {
+      const counts = await Promise.all(
+        [...GENERIC, 'src/domain/scoring/setBasedSanction.ts'].map(
+          async (file) => (await refusals(source, file)).length,
+        ),
+      );
+      expect(counts).toEqual([...GENERIC, 'src/domain/scoring/setBasedSanction.ts'].map(() => 1));
+    },
+  );
+
+  it('stays silent in table tennis’s own files, and in a test', async () => {
+    const own = await Promise.all(
+      TT_OWN.flatMap((file) =>
+        [TT_VALUE, TT_CAPITAL].map(async (src) => (await refusals(src, file)).length),
+      ),
+    );
+    expect(own).toEqual(TT_OWN.flatMap(() => [0, 0]));
+    expect(await refusals(TT_VALUE, 'src/domain/scoring/tableTennisFold.test.ts')).toEqual([]);
+  });
+});

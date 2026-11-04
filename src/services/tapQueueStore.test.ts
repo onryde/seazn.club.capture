@@ -94,6 +94,48 @@ describe('save and load', () => {
     expect(back?.pending[0]).not.toHaveProperty('voidsKey');
   });
 
+  // Plan S2-2 Task 4 fix round 1: a table tennis tap that names `serving` keeps the score count it was made at, across a
+  // kill, so its first send can still judge whether the score has moved. 0 is a count, not an absence.
+  it('round-trips the score count a tap was made at, 0 included, and no field when none', async () => {
+    const { store } = storeOver();
+    const made = tap({ key: 'd5c7f6a4-0d93-4081-8e3f-4b5c6d7e8f90', base: 2 });
+    const atStart = tap({ key: 'e6d8a7b5-1ea4-4192-9f40-5c6d7e8f9aa1', base: 0 });
+    await store.save(queue({ pending: [tap(), made, atStart] }));
+    const back = await store.load(FIXTURE);
+    expect(back?.pending[1]).toEqual(made);
+    expect(back?.pending[2]).toEqual(atStart);
+    expect(back?.pending[2]).toHaveProperty('base', 0);
+    expect(back?.pending[0]).not.toHaveProperty('base');
+  });
+
+  it('loads a queue written before taps carried a score count, every tap as it was', async () => {
+    const files = createMemoryQueueFiles();
+    files.files.set(nameOf(FIXTURE), asFile(queue()));
+    const { store, unreadable } = storeOver(files);
+    const back = await store.load(FIXTURE);
+    expect(back).toEqual(queue());
+    expect(back?.pending.some((one) => 'base' in one)).toBe(false);
+    expect(unreadable()).toHaveLength(0);
+  });
+
+  // A count that is not a whole number cannot be trusted, and the tap is still the scorer's: it is kept, and reads as a
+  // tap with no count (the send then keeps only the rule that needs none).
+  it.each([-1, 1.5, '2', null, {}])(
+    'reads a score count of %j as absent and keeps the tap',
+    async (garbled) => {
+      const files = createMemoryQueueFiles();
+      files.files.set(
+        nameOf(FIXTURE),
+        text({ v: 1, ...queue(), pending: [{ ...tap(), base: garbled }] }),
+      );
+      const { store, unreadable } = storeOver(files);
+      const back = await store.load(FIXTURE);
+      expect(back?.pending).toEqual([tap()]);
+      expect(back?.pending[0]).not.toHaveProperty('base');
+      expect(unreadable()).toHaveLength(0);
+    },
+  );
+
   // Owner ruling 43 (2026-11-02): the reconnect question stands across a kill, in the queue's own file.
   it('round-trips the reconnect question: the ids it is about, and no field when none stands', async () => {
     const { store } = storeOver();
@@ -126,12 +168,29 @@ describe('save and load', () => {
       'gone',
       'payment',
       'cancelled',
+      'carriedForward',
     ] as const;
     for (const dead of words) {
       const { store } = storeOver();
       await store.save(queue({ dead }));
       expect((await store.load(FIXTURE))?.dead).toBe(dead);
     }
+  });
+
+  // Task 8d. The word a cold start reads is the file's own spelling, so it is written out here, not taken from the
+  // store: a file saved with `carriedForward` reads it back, and a file an earlier build wrote for the same refusal
+  // (it said `finalized`) still reads as it said, never as the new word.
+  it.each([
+    ['carriedForward', 'carriedForward'],
+    ['finalized', 'finalized'],
+  ] as const)('reads a file that says dead %s as %s', async (written, read) => {
+    const files = createMemoryQueueFiles();
+    files.files.set(nameOf(FIXTURE), text({ v: 1, ...queue(), dead: written }));
+    const { store, unreadable } = storeOver(files);
+    const back = await store.load(FIXTURE);
+    expect(back).toEqual(queue({ dead: read }));
+    expect(back?.pending).toHaveLength(2);
+    expect(unreadable()).toHaveLength(0);
   });
 
   it('round-trips an empty queue: nothing pending is still a match held', async () => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { BadmintonPadKey, BadmintonSanction } from '@/domain/scoring/badmintonPad';
 import { badmintonSport, type BadmintonTypes } from '@/domain/scoring/badmintonSport';
 import { refusalLine } from '@/domain/scoring/padLine';
@@ -14,7 +14,8 @@ import {
   type PadSheetSnapshot,
   type PadSheetView,
 } from '@/hooks/usePadSheets';
-import { START_TAP, useGuardedTool, useSettle, useTaps } from '@/hooks/usePadTaps';
+import { useAskActions, useClosedByDeadLink, useStartActions } from '@/hooks/usePadMatchParts';
+import { useGuardedTool, useSettle, useTaps } from '@/hooks/usePadTaps';
 import type { Ports } from '@/hooks/usePorts';
 import { useLinks, useScoringMatch, useSender, type MatchSender } from '@/hooks/useScoringMatch';
 import { useBackToHome } from '@/hooks/useStreamLinks';
@@ -122,11 +123,7 @@ function useSheets(
     [pad],
   );
   const sheets = usePadSheets(driver, snapshot, opening, refuseScore);
-  const dead = pad?.view.card?.kind === 'linkInvalid';
-  const { open, cancel } = sheets;
-  useEffect(() => {
-    if (dead && open) cancel();
-  }, [dead, open, cancel]);
+  useClosedByDeadLink(pad?.view, sheets.open, sheets.cancel);
   return sheets;
 }
 
@@ -166,17 +163,9 @@ function useActions(parts: Parts): BadmintonPadActions {
 
 /** The Start screen: the pick goes to the match, and Start match is a tap carrying it, through the bounce memory. */
 function useStart({ sender, runner, pad, taps }: Parts) {
-  const toss = pad?.toss ?? null;
   const { tap } = sender;
-  const { opening } = taps;
-  const pickServer = useCallback(
-    (side: PadSide) => void runner?.dispatch({ kind: 'pickServer', side }),
-    [runner],
-  );
-  const start = useCallback(() => {
-    if (toss !== null) opening(START_TAP, () => tap({ kind: 'start', server: toss }));
-  }, [opening, tap, toss]);
-  return useMemo(() => ({ pickServer, start }), [pickServer, start]);
+  const startWith = useCallback((server: PadSide) => tap({ kind: 'start', server }), [tap]);
+  return useStartActions(runner, pad?.toss ?? null, startWith, taps.opening);
 }
 
 /** The ending prompt's buttons: quiet in the bounce window of the prompt appearing, each an opening tap. */
@@ -195,24 +184,7 @@ function useEnding({ sender, pad, taps, sheets }: Parts) {
   return useMemo(() => ({ recordEnding, voidSanction }), [recordEnding, voidSanction]);
 }
 
-/**
- * The reconnect question's answers (owner ruling 43): each an opening tap (`useTaps`), quiet in the bounce window of the
- * sheet appearing. The sheet leaves with the answer, and a second touch on what was under it, a half or Undo, counts
- * once with it. Discard's first button only opens its confirm (`sheets.actions.askDiscard`).
- */
+/** The reconnect question's answers (owner ruling 43), the same for every sport (`useAskActions`). */
 function useAsk({ sender, taps, sheets }: Parts) {
-  const { answer } = sender;
-  const { opening } = taps;
-  const { justShown } = sheets;
-  const sendTaps = useCallback(() => {
-    if (!justShown()) opening('ask', () => answer('send'));
-  }, [opening, answer, justShown]);
-  const confirmDiscard = useCallback(() => {
-    if (!justShown()) opening('discardAsk', () => answer('discard'));
-  }, [opening, answer, justShown]);
-  const { askDiscard } = sheets.actions;
-  return useMemo(
-    () => ({ sendTaps, confirmDiscard, askDiscard }),
-    [sendTaps, confirmDiscard, askDiscard],
-  );
+  return useAskActions(sender.answer, taps.opening, sheets.justShown, sheets.actions.askDiscard);
 }

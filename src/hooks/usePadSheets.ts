@@ -1,9 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
-import { isBounce } from '@/domain/scoring/bounce';
 import {
   badmintonDetails,
   parseBadmintonTool,
-  sideNames,
   type BadmintonDisplay,
   type BadmintonPadKey,
   type BadmintonSanction,
@@ -22,8 +20,15 @@ import type {
   PadMatchDetails,
   PadStateCard,
 } from '@/domain/scoring/padView';
-import { parseWholeNumber } from '@/domain/scoring/wholeNumber';
-import { usePorts } from '@/hooks/usePorts';
+import { sideNames } from '@/domain/scoring/setBasedSides';
+import {
+  askedView,
+  staleByAsk,
+  useJustShown,
+  useSaveScore,
+  type AskView,
+  type Recording,
+} from '@/hooks/usePadSheetParts';
 
 /** What a sanction and a set score do, and what each came to at once: the fake's counters, or a tap for the match's reducer. */
 export type PadSheetDriver = {
@@ -57,10 +62,8 @@ export type PadSheetView =
   | { readonly kind: 'ending'; readonly person: string }
   | { readonly kind: 'details'; readonly details: PadMatchDetails<BadmintonPadKey> }
   | { readonly kind: 'history'; readonly groups: readonly PadHistoryGroup<BadmintonPadKey>[] }
-  /** The reconnect question (owner ruling 43): shown for as long as it stands, like the ending prompt, and over it. */
-  | { readonly kind: 'ask'; readonly ask: PadAsk }
-  /** Discard's confirm, over the question: Keep is the way back. */
-  | { readonly kind: 'discard'; readonly ask: PadAsk };
+  /** The reconnect question (owner ruling 43) and Discard's confirm: over everything, the ending prompt included. */
+  | AskView;
 
 type Sheet =
   | { readonly kind: 'sanction'; readonly step: SanctionStep }
@@ -74,11 +77,6 @@ const DETAILS: Sheet = { kind: 'details' };
 const HISTORY: Sheet = { kind: 'history' };
 const DISCARD: Sheet = { kind: 'discard' };
 
-/**
- * A sheet's button that records, through the taps' bounce memory (`useTaps`' `opening`, in `usePadTaps.ts`): the sheet
- * leaves with it, and a second touch on what was under it counts once (review I1, 2026-11-01). Whether it counted.
- */
-type Recording = (tap: string, make: () => PadOutcome) => boolean;
 type SetSheet = (sheet: Sheet) => void;
 
 /**
@@ -152,59 +150,9 @@ function guardedStep(sheet: Sheet, view: PadSheetView | null): string | null {
   return view === null || view.kind === 'history' ? null : view.kind;
 }
 
-/**
- * Whether a tap now falls in the bounce window (`bounce.ts`) of the guarded step on screen appearing (the
- * coordinator's ruling, 2026-11-01). The second tap of a double tap on one step's button lands on the next step's, on
- * the same bottom edge, and ending a match is the costliest mistake on the pad: such a tap does nothing and says
- * nothing (the step still waits; the line is behind the dim). A step's time is the render it first shows in.
- */
-function useJustShown(step: string | null): () => boolean {
-  const { clock } = usePorts();
-  const [shown, setShown] = useState(() => ({ step, at: clock().getTime() }));
-  if (shown.step !== step) setShown({ step, at: clock().getTime() });
-  return useCallback(
-    () => shown.step !== null && isBounce(clock().getTime() - shown.at),
-    [shown, clock],
-  );
-}
-
-/**
- * Set score's two fields as typed: a field that is not a whole number is refused, as the pad refuses a bad score.
- * Quiet in the bounce window of the sheet appearing: the second touch of a double tap on the tool lands on Confirm.
- */
-function useSaveScore(
-  pad: PadSheetDriver,
-  record: Recording,
-  refuse: () => void,
-  close: () => void,
-  justShown: () => boolean,
-) {
-  return useCallback(
-    (first: string, second: string) => {
-      if (justShown()) return;
-      close();
-      const [top, bottom] = [parseWholeNumber(first), parseWholeNumber(second)];
-      if (top === null || bottom === null) return refuse();
-      record('setScore', () => pad.setScore(top, bottom));
-    },
-    [pad, record, refuse, close, justShown],
-  );
-}
-
-/**
- * Whether the question is put now: it stands, and the scorer can answer it. Over every card but a dead link's (round 4,
- * item 4; the controller's ruling, 2026-11-03): under a view-only match, a match not yet started or a recorded result the
- * taps are still queued and the scorer must still choose, while a dead link takes both answers away and the question is
- * moot there (the runner says so).
- */
-const asking = (snapshot: PadSheetSnapshot): boolean =>
-  (snapshot.ask ?? null) !== null && snapshot.card?.kind !== 'linkInvalid';
-
 /** Whether an open sheet has no place now: no pad under it; the question over it; or its confirm with no question left. */
-function staleSheet(sheet: NonNullable<Sheet>, snapshot: PadSheetSnapshot | null): boolean {
-  if (snapshot === null) return true;
-  return asking(snapshot) ? sheet.kind !== 'discard' : sheet.kind === 'discard';
-}
+const staleSheet = (sheet: NonNullable<Sheet>, snapshot: PadSheetSnapshot | null): boolean =>
+  staleByAsk(sheet.kind, snapshot);
 
 function sheetFor(id: string): Sheet {
   const parsed = parseBadmintonTool(id);
@@ -216,12 +164,11 @@ function sheetFor(id: string): Sheet {
 
 function sheetView(sheet: Sheet, snapshot: PadSheetSnapshot | null): PadSheetView | null {
   if (snapshot === null) return null;
-  const { display, history, card, ask = null } = snapshot;
+  const { display, history, card } = snapshot;
   // The reconnect question stands over everything while it stands (nothing is sent until it is answered), and its
   // confirm over it, a card or none.
-  if (ask !== null && asking(snapshot)) {
-    return { kind: sheet?.kind === 'discard' ? 'discard' : 'ask', ask };
-  }
+  const asked = askedView(sheet?.kind, snapshot);
+  if (asked !== null) return asked;
   // Under a card the pad takes no tap (`withCard`): the ending prompt goes with the tools while the ending waits, and is
   // back on the pad (hardening, 2026-11-01). Match details and History still open under the card.
   if (display.awaitingEnding && card === null) {

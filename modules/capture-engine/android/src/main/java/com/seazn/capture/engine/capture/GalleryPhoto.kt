@@ -12,7 +12,7 @@ import kotlinx.coroutines.withContext
 
 /**
  * Spec §8, R1: one still of the camera picture, no scorebug (the phone draws no score, AGENTS §7, and the camera's
- * frames never carry one), written to `Pictures/Seazn Capture` with MediaStore. minSdk is 31, so the app writes its
+ * frames never carry one), written to `Pictures/Seazn Club` with MediaStore. minSdk is 31, so the app writes its
  * own image with no storage permission. A throw goes up to PhotoRun, the one place that answers it.
  */
 class GalleryPhoto(
@@ -36,7 +36,7 @@ class GalleryPhoto(
       ContentValues().apply {
         put(MediaStore.Images.Media.DISPLAY_NAME, name)
         put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
-        put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Seazn Capture")
+        put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Seazn Club")
         put(MediaStore.Images.Media.IS_PENDING, 1)
       }
     val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, pending) ?: error("no-uri")

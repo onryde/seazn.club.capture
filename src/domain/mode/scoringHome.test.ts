@@ -200,6 +200,32 @@ describe('scoringHome, a finished match', () => {
     expect(current?.state).toBe('dead');
   });
 
+  // Task 8d follow-up (controller, 2026-11-04). A result that stands is the server's: taps the phone still holds for it
+  // were refused or will never be taken, and are not part of what Home says. Close asks before it discards them.
+  it.each(['finalized', 'carriedForward'] as const)(
+    'is finished though its %s queue still holds unsent taps: the server’s result, not “1 tap not sent”',
+    (dead) => {
+      const rows = [queue('fx-4', 1, { dead })];
+      expect(scoringHome(saved('fx-4', 'Match 4'), rows, over).current).toEqual({
+        fixtureId: 'fx-4',
+        label: 'Match 4',
+        unsent: 1,
+        state: 'dead',
+        finished: { score: '21–15, 21–18' },
+      });
+    },
+  );
+
+  it('is not finished when the dead queue is on a cancelled match, whatever it was told', () => {
+    const rows = [queue('fx-4', 1, { dead: 'cancelled' })];
+    expect(scoringHome(saved('fx-4', 'Match 4'), rows, over).current?.finished).toBeNull();
+  });
+
+  it('is not finished when the held taps are waiting for the scorer’s answer', () => {
+    const rows = [queue('fx-4', 1, { askedAbout: ['ev-9'] })];
+    expect(scoringHome(saved('fx-4', 'Match 4'), rows, over).current?.finished).toBeNull();
+  });
+
   it('is not finished when its queue cannot be read: what is unsent is unknown', () => {
     const current = scoringHome(saved('fx-4', 'Match 4'), [unreadable('fx-4')], over).current;
     expect(current?.finished).toBeNull();

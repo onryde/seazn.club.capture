@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   badmintonPad,
   parseBadmintonTool,
+  SANCTION_LEVELS,
   type BadmintonDisplay,
 } from '@/domain/scoring/badmintonPad';
 
@@ -172,31 +173,76 @@ describe('badmintonPad: the halves', () => {
     });
   });
 
-  it('has no line after the scores without a sanction', () => {
-    expect(badmintonPad(twoGames).halves.map((half) => half.sub)).toEqual([null, null]);
-  });
+  // Owner ruling 56 (2026-11-04): "if we have warning/yellow/card then we can display there? including for badminton?",
+  // "may in the top right corner". A sanction is a card in the half's top-right corner, no longer words in the bottom
+  // row: the boxes, then "Tap".
+  describe('a sanction is a card in the corner (owner ruling 56), the words gone from the bottom row', () => {
+    const NONE = { clock: false, cards: [], said: [] };
+    const sanctioned = (...sanctions: BadmintonDisplay['sanctions']) =>
+      badmintonPad({ ...twoGames, sanctions });
+    const on = (side: 'first' | 'second', level: BadmintonDisplay['sanctions'][number]['level']) =>
+      ({ side, level, person: 'L. Chen' }) as const;
 
-  it('puts a side’s heaviest sanction after its scores', () => {
-    const view = badmintonPad({
-      ...twoGames,
-      sanctions: [
-        { side: 'second', level: 'penalty', person: 'L. Chen' },
-        { side: 'second', level: 'warning', person: 'L. Chen' },
-      ],
-    });
-    expect(view.halves[0].sub).toBeNull();
-    expect(view.halves[1].sub).toEqual({ key: 'scoring.sanction.penalty' });
-  });
+    // The table, written out from the owner's words: warning is the yellow card, a fault (the web's `penalty`) and a
+    // disqualification are the red one (the web's `--sport-dismissal`); the web's expulsion is a dismissal too.
+    const CARDS = [
+      ['warning', ['caution']],
+      ['penalty', ['dismissal']],
+      ['expulsion', ['dismissal']],
+      ['disqualification', ['dismissal']],
+    ] as const;
 
-  it('names a sanction in game 1, with no score before it', () => {
-    const view = badmintonPad({
-      ...live,
-      sanctions: [{ side: 'first', level: 'disqualification', person: 'A. Sharma' }],
+    it('maps every level the pad can record (anti-vacuity: the table names exactly the four)', () => {
+      expect(CARDS.map(([level]) => level)).toEqual([...SANCTION_LEVELS]);
     });
-    expect([view.halves[0].periods, view.halves[0].sub]).toEqual([
-      null,
-      { key: 'scoring.sanction.disqualification' },
-    ]);
+
+    it.each(CARDS)(
+      'draws a %s as %j, on the side that holds it only, and says its name',
+      (level, cards) => {
+        const view = sanctioned(on('second', level));
+        expect(view.halves[1].marks).toEqual({
+          clock: false,
+          cards,
+          said: [{ key: `scoring.sanction.${level}` }],
+        });
+        expect(view.halves[0].marks).toEqual(NONE);
+      },
+    );
+
+    it('draws no card for a side that holds no sanction', () => {
+      expect(badmintonPad(twoGames).halves.map((half) => half.marks)).toEqual([NONE, NONE]);
+    });
+
+    it('draws a side’s heaviest sanction only, however many it holds and in whatever order', () => {
+      const view = sanctioned(on('second', 'penalty'), on('second', 'warning'));
+      expect(view.halves[1].marks.cards).toEqual(['dismissal']);
+      expect(view.halves[1].marks.said).toEqual([{ key: 'scoring.sanction.penalty' }]);
+      const other = sanctioned(on('first', 'warning'), on('first', 'disqualification'));
+      expect(other.halves[0].marks.cards).toEqual(['dismissal']);
+      const light = sanctioned(on('first', 'warning'), on('first', 'warning'));
+      expect(light.halves[0].marks.cards).toEqual(['caution']);
+    });
+
+    it('holds each side’s own: a warning on one and a disqualification on the other', () => {
+      const view = sanctioned(on('first', 'warning'), on('second', 'disqualification'));
+      expect(view.halves.map((half) => half.marks.cards)).toEqual([['caution'], ['dismissal']]);
+    });
+
+    it('draws a card in game 1 with no score before it, and never a clock', () => {
+      const view = badmintonPad({ ...live, sanctions: [on('first', 'warning')] });
+      expect(view.halves[0].periods).toBeNull();
+      expect(view.halves[0].marks).toEqual({
+        clock: false,
+        cards: ['caution'],
+        said: [{ key: 'scoring.sanction.warning' }],
+      });
+    });
+
+    it('puts no words after the boxes: the sanction is a mark and the half has no other line', () => {
+      const view = sanctioned(on('second', 'penalty'), on('first', 'warning'));
+      expect(view.halves.map((half) => half.sub)).toEqual([null, null]);
+      expect(badmintonPad(twoGames).halves.map((half) => half.sub)).toEqual([null, null]);
+    });
   });
 
   it('tells a screen reader that a tap awards the rally', () => {
@@ -206,20 +252,10 @@ describe('badmintonPad: the halves', () => {
     ]);
   });
 
-  // Owner ruling 14: a one-line hint at the bottom of each half, the side's name in it (the mock-up's "Tap: rally to …").
-  it('shows each half’s hint with its own side’s names, partners joined', () => {
-    expect(badmintonPad(live).halves.map((half) => half.hintLine)).toEqual([
-      { key: 'scoring.badminton.hintLine', vars: { side: 'A. Sharma' } },
-      { key: 'scoring.badminton.hintLine', vars: { side: 'L. Chen' } },
-    ]);
-    const doubles: BadmintonDisplay = {
-      ...live,
-      sides: { first: { players: ['A', 'B'] }, second: { players: ['C', 'D'] } },
-    };
-    expect(badmintonPad(doubles).halves[1].hintLine).toEqual({
-      key: 'scoring.badminton.hintLine',
-      vars: { side: 'C / D' },
-    });
+  // Owner ruling 56: the visible hint is the one word "Tap", with no side name, so the kit says it and a half carries
+  // no hint line of its own (ruling 14's "Tap: rally to …" is superseded).
+  it('carries no visible hint line: the kit says the one word', () => {
+    for (const half of badmintonPad(live).halves) expect('hintLine' in half).toBe(false);
   });
 
   it.each(['pre', 'live', 'betweenGames'] as const)('takes taps %s', (phase) => {

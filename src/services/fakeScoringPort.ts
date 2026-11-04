@@ -1,14 +1,11 @@
-import { foldMatch, type LineupPair } from '@seazn/engine/core';
-import { badminton } from '@seazn/engine/sports/setbased';
-import {
-  badmintonCfg,
-  envelopeOf,
-  lineupOf,
-  refusalOf,
-  type BadmintonEngineMatch,
-} from '@/domain/scoring/badmintonEngine';
+import { foldMatch, type EventEnvelope, type LineupPair } from '@seazn/engine/core';
+import { badminton, tabletennis } from '@seazn/engine/sports/setbased';
+import type { SetBasedCfg, SetBasedModule } from '@seazn/engine/sports/setbased';
+import { badmintonCfg, refusalOf } from '@/domain/scoring/badmintonEngine';
 import type { BadmintonTap } from '@/domain/scoring/badmintonPad';
 import type { PadSide } from '@/domain/scoring/padView';
+import { envelopeOf, lineupOf, type SetBasedEngineMatch } from '@/domain/scoring/setBasedEngine';
+import { tableTennisCfg, tableTennisRefusalOf } from '@/domain/scoring/tableTennisEngine';
 import {
   voidTargetOf,
   type AppendAnswer,
@@ -25,8 +22,10 @@ import type { ScoringPort } from '@/services/scoringPort';
 
 /**
  * A FAKE scoring server for a laptop (AGENTS §10: build the fake first): the five calls of `ScoringPort`, answered as
- * the web answers them for one badminton match, folded with the REAL engine, so a tap the engine refuses is refused
- * here with the engine's own word. It keeps the server's order of questions (design §6.3, §7.3): the network, the
+ * the web answers them for one match, folded with the REAL engine, so a tap the engine refuses is refused here with
+ * the engine's own word. The match is a set-based sport's: badminton unless the seed names another (`FakeMatchSeed.sport`;
+ * table tennis's seeds are `fakeTableTennisPad`'s). It judges an append as the web does, with the engine and nothing
+ * else: never the phone's own checks (`legalQueued`), or it would refuse what staging accepts. It keeps the server's order of questions (design §6.3, §7.3): the network, the
  * link, the fixture, a replayed key (answered from the ledger, even after the seq or the epoch has moved), the engine
  * epoch (the key is not consumed), the rules version (before the seq), the seq, and last the engine's fold.
  *
@@ -34,10 +33,30 @@ import type { ScoringPort } from '@/services/scoringPort';
  */
 export type FakeSeedEvent = { readonly type: string; readonly payload: unknown };
 
+/** The sports the fake can serve: the set-based ones the phone scores. */
+export type FakeSportKey = 'badminton' | 'tabletennis';
+
+/** What the fake needs of a sport: its engine module, its config and the engine's word on one new event. */
+type FakeSport = {
+  readonly module: SetBasedModule;
+  readonly cfg: (raw: unknown) => SetBasedCfg;
+  readonly refusalOf: (
+    match: SetBasedEngineMatch,
+    events: readonly EventEnvelope[],
+  ) => string | null;
+};
+
+const SPORTS: Readonly<Record<FakeSportKey, FakeSport>> = {
+  badminton: { module: badminton, cfg: badmintonCfg, refusalOf },
+  tabletennis: { module: tabletennis, cfg: tableTennisCfg, refusalOf: tableTennisRefusalOf },
+};
+
 export type FakeMatchSeed = {
   readonly fixtureId: string;
   readonly linkId: string;
-  /** The match's badminton config, as the endpoint sends it; the engine's schema fills what it leaves out. */
+  /** The match's sport, folded with its own engine module and answered as its `sportKey`; unset is badminton. */
+  readonly sport?: FakeSportKey;
+  /** The match's config, as the endpoint sends it; the sport's schema fills what it leaves out. */
   readonly cfg: unknown;
   readonly rulesVersion: number;
   readonly epochRequired: number;
@@ -71,9 +90,17 @@ export type FakeServerControls = {
   finalize(): void;
   /**
    * Every new tap is refused 403 with this word, as the web does for `FORBIDDEN` (an organiser-only event, a finalized
-   * fixture's undo) and `RESULT_CARRIED_FORWARD`; null lifts it. A replayed key is still answered.
+   * fixture's undo); null lifts it. A replayed key is still answered. A carried-forward result is `carryForward`'s.
    */
   forbid(code: string | null): void;
+  /**
+   * The settled result has moved the competition on (a feed filled, the stage complete: `carried-forward.ts`); false
+   * puts it back, as the web judges it live. While on, a decided, forfeited or abandoned match refuses every new tap 403
+   * `RESULT_CARRIED_FORWARD` (a replayed key is still answered) and its bootstrap is the View-only screen with the
+   * reason `carried_forward`, the status unchanged. A match still in play, and a finalized one (the lock, 422), are
+   * not touched.
+   */
+  carryForward(on: boolean): void;
   /** The next call, of any kind, is the door's 429 and waits this long; the call after it is answered as before. */
   rateLimit(retryAfterMs: number): void;
 };
@@ -86,17 +113,22 @@ export const OTHER_SCORER_LINK_ID = 'fake-other-scorer';
 const OFFLINE: Failure = { kind: 'offline' };
 const REVOKED: Failure = { kind: 'linkDead', code: 'LINK_REVOKED' };
 const NOT_FOUND: Failure = { kind: 'refused', status: 404, code: 'NOT_FOUND' };
+const CARRIED_FORWARD: Failure = { kind: 'refused', status: 403, code: 'RESULT_CARRIED_FORWARD' };
+/** `SETTLED_FIXTURE_STATUSES` (web fixture-status.ts): ended, not locked. */
+const SETTLED_OPEN: ReadonlySet<string> = new Set(['decided', 'forfeited', 'abandoned']);
 /** Events are stamped from here, a second apart, so a ledger is the same on every run. */
 const FIRST_EVENT_MS = Date.parse('2026-11-01T10:00:00.000Z');
 
 type Server = {
   readonly seed: FakeMatchSeed;
+  readonly sportKey: FakeSportKey;
+  readonly sport: FakeSport;
   readonly lineups: LineupPair;
   readonly ledger: LedgerEvent[];
   /** Idempotency key → the event it wrote. */
   readonly keys: Map<string, { readonly seq: number; readonly eventId: string }>;
   rawCfg: unknown;
-  cfg: ReturnType<typeof badmintonCfg>;
+  cfg: SetBasedCfg;
   rulesVersion: number;
   epochRequired: number;
   revoked: boolean;
@@ -104,6 +136,7 @@ type Server = {
   dropNext: boolean;
   finalized: boolean;
   forbidden: string | null;
+  carried: boolean;
   limitMs: number | null;
   /** Where an event's `recordedAt` comes from, in epoch ms; null: a second apart from `FIRST_EVENT_MS`. */
   readonly stamp: (() => number) | null;
@@ -123,13 +156,17 @@ export function createFakeScoringPort(
   seed: FakeMatchSeed,
   options: FakeScoringOptions = {},
 ): FakeScoringPort {
+  const sportKey = seed.sport ?? 'badminton';
+  const sport = SPORTS[sportKey];
   const server: Server = {
     seed,
+    sportKey,
+    sport,
     lineups: { home: lineupOf(seed.sides.home), away: lineupOf(seed.sides.away) },
     ledger: [],
     keys: new Map(),
     rawCfg: seed.cfg,
-    cfg: badmintonCfg(seed.cfg),
+    cfg: sport.cfg(seed.cfg),
     rulesVersion: seed.rulesVersion,
     epochRequired: seed.epochRequired,
     revoked: false,
@@ -137,6 +174,7 @@ export function createFakeScoringPort(
     dropNext: false,
     finalized: false,
     forbidden: null,
+    carried: false,
     limitMs: null,
     stamp: options.stamp ?? null,
   };
@@ -182,7 +220,7 @@ function controls(server: Server): FakeServerControls {
       server.rulesVersion = rulesVersion;
       if (cfg !== undefined) {
         server.rawCfg = cfg;
-        server.cfg = badmintonCfg(cfg);
+        server.cfg = server.sport.cfg(cfg);
       }
     },
     setEpochRequired: (epoch) => {
@@ -200,6 +238,9 @@ function controls(server: Server): FakeServerControls {
     },
     forbid: (code) => {
       server.forbidden = code;
+    },
+    carryForward: (on) => {
+      server.carried = on;
     },
     rateLimit: (retryAfterMs) => {
       server.limitMs = retryAfterMs;
@@ -245,8 +286,13 @@ function judged(server: Server, fixtureId: string, body: AppendBody): AppendAnsw
  */
 function locked(server: Server): Failure | null {
   if (server.forbidden !== null) return { kind: 'refused', status: 403, code: server.forbidden };
+  if (carriedForward(server)) return CARRIED_FORWARD;
   return server.finalized ? { kind: 'refused', status: 422, code: 'ALREADY_DECIDED' } : null;
 }
+
+/** `resultCarriedForward`: only a settled, open fixture can have been (a live tap never pays for the query). */
+const carriedForward = (server: Server): boolean =>
+  server.carried && SETTLED_OPEN.has(statusOf(server));
 
 /** The epoch (the key is not consumed), the rules version (before the seq), then the seq. */
 function preflight(server: Server, body: AppendBody): Failure | null {
@@ -304,10 +350,10 @@ function writeOther(server: Server, type: string, payload: unknown): LedgerEvent
 /** Folds the ledger with its last event under validation, as the server does; null when the engine takes it. */
 function engineRefusal(server: Server, ledger: readonly LedgerEvent[]): string | null {
   const envelopes = ledger.map((event) => envelopeOf(server.seed.fixtureId, event));
-  return refusalOf(engineMatch(server), envelopes);
+  return server.sport.refusalOf(engineMatch(server), envelopes);
 }
 
-const engineMatch = (server: Server): BadmintonEngineMatch => ({
+const engineMatch = (server: Server): SetBasedEngineMatch => ({
   fixtureId: server.seed.fixtureId,
   cfg: server.cfg,
   lineups: server.lineups,
@@ -319,18 +365,23 @@ function bootstrapOf(server: Server): Bootstrap {
   return {
     fixtureId: seed.fixtureId,
     linkId: seed.linkId,
-    sportKey: 'badminton',
+    sportKey: server.sportKey,
     moduleVersion: '1.0.0',
     cfg: server.rawCfg,
     rulesVersion: server.rulesVersion,
     epochRequired: server.epochRequired,
-    screen: seed.screen,
-    viewOnlyReason: seed.viewOnlyReason ?? null,
+    ...screenOf(server),
     context: seed.context,
     sides: seed.sides,
     lastSeq: tip,
     status: statusOf(server),
   };
+}
+
+/** The View-only screen a carried-forward result gets (`scanScreen`), else the seed's own screen and reason. */
+function screenOf(server: Server): Pick<Bootstrap, 'screen' | 'viewOnlyReason'> {
+  if (carriedForward(server)) return { screen: 'viewOnly', viewOnlyReason: 'carried_forward' };
+  return { screen: server.seed.screen, viewOnlyReason: server.seed.viewOnlyReason ?? null };
 }
 
 /** `fixtures.status` as the web derives it from the ledger (`fixtureStatusFromFold`): the first rule that matches. */
@@ -348,7 +399,7 @@ function statusOf(server: Server): string {
 
 const decided = (server: Server): boolean =>
   foldMatch(
-    badminton,
+    server.sport.module,
     server.cfg,
     server.lineups,
     server.ledger.map((event) => envelopeOf(server.seed.fixtureId, event)),

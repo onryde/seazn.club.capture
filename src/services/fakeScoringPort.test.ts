@@ -610,6 +610,95 @@ describe('forbid: a 403 that is not the link’s (FORBIDDEN, RESULT_CARRIED_FORW
   });
 });
 
+// Task 8d. The web's device-link door (usecases/scoring.ts) refuses a write to a SETTLED fixture (decided, forfeited,
+// abandoned) whose result has moved the competition on (carried-forward.ts: a feed filled, the next Swiss round seated,
+// the stage complete), 403 RESULT_CARRIED_FORWARD, and the scan page's bootstrap names it: the View-only screen with
+// the reason `carried_forward`, the status still `decided`. It is judged live, and a keyed retry of a write the ledger
+// holds is answered first.
+describe('carryForward: the result has moved the competition on (403 RESULT_CARRIED_FORWARD)', () => {
+  const carried = { kind: 'refused', status: 403, code: 'RESULT_CARRIED_FORWARD' };
+  const undoOf = (port: ReturnType<typeof createFakeScoringPort>, expectedSeq: number) =>
+    port.append(
+      LINK,
+      'fixture-1',
+      tap({
+        expected_seq: expectedSeq,
+        type: 'core.void',
+        payload: { event_id: 'ev-of-the-deciding-rally' },
+      }),
+    );
+
+  it('refuses an Undo of the decided match, and writes nothing', async () => {
+    const port = createFakeScoringPort(decided());
+    port.carryForward(true);
+    expect(await undoOf(port, 43)).toEqual(carried);
+    expect(await ledgerOf(port, 43)).toEqual([]);
+  });
+
+  it('refuses any other tap of a decided match the same way, a stale seq or not', async () => {
+    const port = createFakeScoringPort(decided());
+    port.carryForward(true);
+    expect(await port.append(LINK, 'fixture-1', rally(43, HOME))).toEqual(carried);
+    expect(await port.append(LINK, 'fixture-1', rally(3, HOME))).toEqual(carried);
+  });
+
+  it('says so in the bootstrap: the View-only screen, the reason, the status still decided', async () => {
+    const port = createFakeScoringPort(decided());
+    port.carryForward(true);
+    expect(await port.bootstrap(LINK)).toMatchObject({
+      kind: 'ok',
+      bootstrap: { screen: 'viewOnly', viewOnlyReason: 'carried_forward', status: 'decided' },
+    });
+  });
+
+  it('answers a replayed key from the ledger: the lost-ack retry of the deciding tap that carried it', async () => {
+    const port = createFakeScoringPort({ ...FRESH, events: decided().events.slice(0, 42) });
+    const deciding = rally(42, HOME);
+    const first = await port.append(LINK, 'fixture-1', deciding);
+    port.carryForward(true);
+    expect(await port.append(LINK, 'fixture-1', deciding)).toEqual(first);
+  });
+
+  it('leaves a match still in play alone: the umpire’s own, whatever a feed says', async () => {
+    const port = createFakeScoringPort(FRESH);
+    port.carryForward(true);
+    expect(await port.append(LINK, 'fixture-1', start())).toMatchObject({ kind: 'accepted' });
+    expect(await port.bootstrap(LINK)).toMatchObject({
+      kind: 'ok',
+      bootstrap: { screen: 'pad', viewOnlyReason: null, status: 'in_play' },
+    });
+  });
+
+  it('is judged live: lifted, the Undo is taken again and the bootstrap is the pad', async () => {
+    const port = createFakeScoringPort(decided());
+    port.carryForward(true);
+    port.carryForward(false);
+    expect(await port.bootstrap(LINK)).toMatchObject({
+      kind: 'ok',
+      bootstrap: { screen: 'pad', viewOnlyReason: null },
+    });
+    expect(await port.append(LINK, 'fixture-1', rally(43, HOME))).toMatchObject({
+      kind: 'refused',
+      code: 'ALREADY_DECIDED',
+    });
+  });
+
+  it('is not what a finalized match says: that is the lock (422 ALREADY_DECIDED), and the reason is not carried forward', async () => {
+    const port = createFakeScoringPort(decided());
+    port.finalize();
+    port.carryForward(true);
+    expect(await port.append(LINK, 'fixture-1', rally(44, HOME))).toEqual({
+      kind: 'refused',
+      status: 422,
+      code: 'ALREADY_DECIDED',
+    });
+    expect(await port.bootstrap(LINK)).toMatchObject({
+      kind: 'ok',
+      bootstrap: { status: 'finalized', viewOnlyReason: null },
+    });
+  });
+});
+
 describe('rateLimit: one 429 for the next call, whatever it is', () => {
   it('answers the next append with the wait, then answers as before', async () => {
     const port = createFakeScoringPort(FRESH);
@@ -761,6 +850,41 @@ describe('the preview samples as seeds', () => {
       others: [{ kind: 'setScore', first: 5, second: 5 }],
     } as const;
     expect(() => seedFromPadSample(odd)).toThrow(/setScore/);
+  });
+});
+
+describe('the seed’s sport (plan S2-2 Task 7): none is badminton, as it was', () => {
+  it('a seed with no sport answers badminton, and says so again when it is named', async () => {
+    for (const seed of [FRESH, { ...FRESH, sport: 'badminton' as const }]) {
+      const answer = await createFakeScoringPort(seed).bootstrap(LINK);
+      expect(answer).toMatchObject({ kind: 'ok', bootstrap: { sportKey: 'badminton' } });
+    }
+  });
+
+  it('a seed with no sport is judged by the badminton engine: its rally is taken, table tennis’s is not', async () => {
+    const port = createFakeScoringPort(FRESH);
+    await port.append(LINK, 'fixture-1', start());
+    const foreign = await port.append(
+      LINK,
+      'fixture-1',
+      tap({ expected_seq: 1, type: 'tabletennis.rally', payload: { wonBy: HOME, serving: HOME } }),
+    );
+    expect(foreign).toMatchObject({ kind: 'refused', status: 422 });
+    expect(await port.append(LINK, 'fixture-1', rally(1, HOME, { serving: HOME }))).toMatchObject({
+      kind: 'accepted',
+      seq: 2,
+    });
+  });
+
+  it('the preview’s two seeds are badminton matches', () => {
+    expect(SINGLES_SEED.sport).toBeUndefined();
+    expect(DOUBLES_SEED.sport).toBeUndefined();
+  });
+
+  it('a decided badminton match reads decided with its own engine', async () => {
+    expect(await createFakeScoringPort(decided()).bootstrap(LINK)).toMatchObject({
+      bootstrap: { sportKey: 'badminton', status: 'decided' },
+    });
   });
 });
 

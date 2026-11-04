@@ -5,7 +5,13 @@ import {
   refusing,
 } from '@/domain/scoring/padLine';
 import type { PadSide } from '@/domain/scoring/padView';
-import type { BootCache, MatchQueue, QueueDead, QueuedEvent } from '@/domain/scoring/queue';
+import {
+  resultStands,
+  type BootCache,
+  type MatchQueue,
+  type QueueDead,
+  type QueuedEvent,
+} from '@/domain/scoring/queue';
 import type { ScoringSport, SportFold, SportTypes } from '@/domain/scoring/scoringSport';
 import { type SyncState, canDiscardQueued } from '@/domain/scoring/sync';
 import { type UndoTarget, undoEventFor, undoTarget } from '@/domain/scoring/undoTarget';
@@ -312,6 +318,17 @@ export function foldOfState<S extends SportTypes>(
     ownEventIds: ownIds(state),
     toss: state.toss,
   });
+}
+
+/**
+ * The match as the screen and Home read it (controller, 2026-11-04; AGENTS §2): `foldOfState`, except under a result
+ * that stands (`resultStands`: finalized, or carried forward), where it is the server's ledger alone. The taps the
+ * queue still holds there were refused or will never be taken, and a fold that counted them would show a score the
+ * server does not have: a refused Undo would take a point off a recorded result. Judging a tap (send, drop, Undo's
+ * target) keeps the fold of the queue: that is not what the operator reads.
+ */
+export function foldRead<S extends SportTypes>(state: MatchState<S>): SportFold<S> | null {
+  return foldOfState(state, resultStands(deadOf(state)) ? [] : foldQueue(state));
 }
 
 /** What Undo would take back now: the fold's legal queued taps and the ledger, the one rule (`undoTarget`). */

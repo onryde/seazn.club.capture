@@ -17,14 +17,23 @@ const COPY: Readonly<
 > = {
   notStarted: { title: 'scoring.card.notStarted.title', body: 'scoring.card.notStarted.body' },
   viewOnly: { title: 'scoring.card.viewOnly.title', body: 'scoring.card.viewOnly.body' },
+  carriedForward: {
+    title: 'scoring.card.carriedForward.title',
+    body: 'scoring.card.carriedForward.body',
+  },
+  // The web gives these two a sentence and no heading; the card's heading is the screen's state, which is the same.
+  cancelled: { title: 'scoring.card.viewOnly.title', body: 'scoring.card.cancelled.body' },
+  noOpponent: { title: 'scoring.card.viewOnly.title', body: 'scoring.card.noOpponent.body' },
   linkInvalid: { title: 'scoring.card.linkInvalid.title', body: 'scoring.card.linkInvalid.body' },
 };
 
 /**
- * Why the pad takes no tap, on a card: not started, a recorded result, view only, a dead link. The edge says which
- * kind: caution orange when something is wrong (a dead link), lime for a recorded result, lilac when there is only
- * nothing to do yet. Said politely when it appears. What the caller gives it stands between the title and the sentence:
- * Not started's Match details (owner, 2026-11-01). A recorded result is `RecordedResult`.
+ * Why the pad takes no tap, on a card: not started, a recorded result, view only (finalized), a result carried forward,
+ * a cancelled match, no opponent, a dead link. The words follow the reason (controller, 2026-11-04): only the organiser's
+ * lock says "finalised". The edge says which kind: caution orange when something is wrong (a dead link), lime for a
+ * recorded result, lilac when there is only nothing to do yet (the other view-only cards: the organiser's to correct, or
+ * nothing to score). Said politely when it appears. What the caller gives it stands between the title and the sentence: Not started's Match
+ * details (owner, 2026-11-01). A recorded result is `RecordedResult`.
  */
 export const PadStateCard = memo(function PadStateCard({
   card,
@@ -82,5 +91,8 @@ const EDGE: Readonly<Record<TitledCard['kind'], Edge>> = {
   notStarted: 'quiet',
   resultRecorded: 'lime',
   viewOnly: 'quiet',
+  carriedForward: 'quiet',
+  cancelled: 'quiet',
+  noOpponent: 'quiet',
   linkInvalid: 'caution',
 };

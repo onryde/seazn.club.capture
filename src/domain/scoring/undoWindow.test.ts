@@ -93,10 +93,10 @@ describe('withUndoWindow', () => {
     value: '21',
     periods: null,
     sub: null,
+    marks: { clock: false, cards: [], said: [] },
     serving: null,
     bar: 'dim',
     hint: text,
-    hintLine: text,
     tappable: false,
   });
   const view = (

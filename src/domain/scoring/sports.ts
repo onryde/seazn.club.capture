@@ -1,13 +1,15 @@
 import { badmintonSport } from '@/domain/scoring/badmintonSport';
 import type { AnySport } from '@/domain/scoring/scoringSport';
+import { tableTennisSport } from '@/domain/scoring/tableTennisSport';
 
 /**
- * The sports this build scores, by the bootstrap's `sport_key`: a table, never a chain of conditions. A second sport
- * is one more row here, its own module beside `badmintonSport.ts`, and its own screen. A match is opened as the sport
- * its link was kept with (`scoringLinkStore`), looked up here by every runner, the headless sender included.
+ * The sports this build scores, by the bootstrap's `sport_key`: a table, never a chain of conditions. A sport is one
+ * more row here, its own module beside `badmintonSport.ts`, and its own screen. A match is opened as the sport its
+ * link was kept with (`scoringLinkStore`), looked up here by every runner, the headless sender included.
  */
 const SPORTS: ReadonlyMap<string, AnySport> = new Map<string, AnySport>([
   [badmintonSport.key, badmintonSport],
+  [tableTennisSport.key, tableTennisSport],
 ]);
 
 /** The sport a bootstrap's `sport_key` names, or null for one this build does not score. Own rows only. */

@@ -9,8 +9,15 @@ import { createTapQueueStore } from '@/services/tapQueueStore';
 import { STORE_KEYS } from '@/services/modeStore';
 import { colour, layout } from '@/ui/theme/tokens';
 import { HomeScreen } from '@/ui/screens/HomeScreen';
-import { DECIDED_MATCH, GAME_ONE_21_15 } from '../../../test/badmintonLedger';
+import { DECIDED_MATCH, GAME_ONE_21_15, queuedOf, voiding } from '../../../test/badmintonLedger';
 import { createFakePorts, readRecord, type FakePorts } from '../../../test/fakePorts';
+import {
+  DECIDED_3_0,
+  GAME_ONE_11_7,
+  SINGLES as TABLE_TENNIS_SINGLES,
+  ledgerOf as tableTennisLedgerOf,
+  type Spec as TableTennisSpec,
+} from '../../../test/tableTennisLedger';
 import { pressIn, pressOut } from '../../../test/press';
 import { edgeOf, fillOf } from '../../../test/pressState';
 import { wrapperFor } from '../../../test/renderWithPorts';
@@ -99,6 +106,24 @@ describe('a finished match on Home', () => {
       { kvSeed: inMatch() },
     );
     expect(within(card()).getByText('Finished · 21–15')).toBeTruthy();
+  });
+
+  // Task 8d (device check, 2026-11-04): a decided match whose result the web carried forward is Finished on Home too,
+  // with the games it had; it is not finalized, and the card does not say so.
+  it('says Finished with the games for a result the web carried forward, and offers Close', async () => {
+    await homeWith(
+      async (fakes) => {
+        await leave(fakes, queueHolding(FAKE_MATCH, 0));
+        await leaveHistory(fakes, FAKE_MATCH, GAME_ONE_21_15, {
+          status: 'decided',
+          viewOnlyReason: 'carried_forward',
+        });
+      },
+      { kvSeed: inMatch() },
+    );
+    expect(within(card()).getByText('Finished · 21–15')).toBeTruthy();
+    expect(closeButton()).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
   });
 
   it('needs no queue file: another scorer may have taken the match to its end', async () => {
@@ -215,6 +240,34 @@ describe('a decided match whose taps are not all sent', () => {
     expect(screen.queryByText(/Finished/)).toBeNull();
   });
 
+  // The files are asked only when the answer can change the card: a tap that can still go keeps the card as Continue
+  // whatever they say, so they are not read (a read per refresh and per return to the app).
+  it('does not read the match’s history while a tap that can still go is unsent', async () => {
+    let asked = vi.fn();
+    await homeWith(
+      async (fakes) => {
+        await overOnDisk(fakes, 2);
+        asked = vi.spyOn(fakes.tapQueue, 'loadBoot');
+      },
+      { kvSeed: inMatch() },
+    );
+    expect(within(card()).getByText('2 taps not sent yet')).toBeTruthy();
+    expect(asked).not.toHaveBeenCalled();
+  });
+
+  it('does read it when the queue says the result stands, taps unsent or not', async () => {
+    let asked = vi.fn();
+    await homeWith(
+      async (fakes) => {
+        await leave(fakes, queueHolding(FAKE_MATCH, 2, { dead: 'carriedForward' }));
+        await leaveHistory(fakes, FAKE_MATCH, DECIDED_MATCH);
+        asked = vi.spyOn(fakes.tapQueue, 'loadBoot');
+      },
+      { kvSeed: inMatch() },
+    );
+    expect(asked).toHaveBeenCalled();
+  });
+
   it('becomes Finished with Close once the server has them all', async () => {
     const home = await homeWith((fakes) => overOnDisk(fakes, 2), { kvSeed: inMatch() });
     expect(screen.queryByRole('button', { name: /^Close/ })).toBeNull();
@@ -242,6 +295,68 @@ describe('a decided match whose taps are not all sent', () => {
     await screen.findByText(FINISHED);
     expect(screen.queryByRole('button', { name: 'Forget' })).toBeNull();
     expect(closeButton()).toBeTruthy();
+  });
+
+  // Controller, 2026-11-04 (AGENTS §2, the server's ledger is the one authority): under a result that stands, the taps
+  // left in the queue were refused or will never be taken. Home shows the server's result, not "1 tap not sent", and
+  // Close still asks before it lets the held tap go.
+  describe('whose result stands on the server, with a refused Undo still in the queue', () => {
+    const refusedUndo = (fakes: FakePorts, dead: 'finalized' | 'carriedForward') =>
+      leave(fakes, {
+        ...queueHolding(FAKE_MATCH, 0, { dead, label: FAKE_LABEL }),
+        pending: [queuedOf('k-undo', voiding(DECIDED_MATCH.length))],
+      });
+
+    it.each(['finalized', 'carriedForward'] as const)(
+      'a %s queue is Finished with the ledger’s score, Close and no count of unsent taps',
+      async (dead) => {
+        await homeWith(
+          async (fakes) => {
+            await refusedUndo(fakes, dead);
+            await leaveHistory(fakes, FAKE_MATCH, DECIDED_MATCH);
+          },
+          { kvSeed: inMatch() },
+        );
+        expect(within(card()).getByText(FINISHED)).toBeTruthy();
+        expect(closeButton()).toBeTruthy();
+        expect(screen.queryByText(/not sent/)).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+        expect(screen.queryByRole('button', { name: /^Dismiss/ })).toBeNull();
+      },
+    );
+
+    it('Close asks first, naming the held tap, and Keep leaves the match and its queue as they were', async () => {
+      const home = await homeWith(
+        async (fakes) => {
+          await refusedUndo(fakes, 'carriedForward');
+          await leaveHistory(fakes, FAKE_MATCH, DECIDED_MATCH);
+        },
+        { kvSeed: inMatch() },
+      );
+      fireEvent.click(closeButton());
+      await screen.findByText('Dismiss Match 4?');
+      expect(
+        screen.getByText('1 tap that was not sent will be deleted. It will not reach Seazn.'),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Keep' }));
+      expect(home.kv.entries.has(STORE_KEYS.code('scoring'))).toBe(true);
+      expect((await home.tapQueue.load(FAKE_MATCH))?.pending).toHaveLength(1);
+    });
+
+    it('a cancelled queue holding the same tap is still the dead card: no result stands there', async () => {
+      await homeWith(
+        async (fakes) => {
+          await leave(fakes, {
+            ...queueHolding(FAKE_MATCH, 0, { dead: 'cancelled' }),
+            pending: [queuedOf('k-undo', voiding(DECIDED_MATCH.length))],
+          });
+          await leaveHistory(fakes, FAKE_MATCH, DECIDED_MATCH);
+        },
+        { kvSeed: inMatch() },
+      );
+      expect(within(card()).getByText('1 tap not sent — tell the organiser')).toBeTruthy();
+      expect(screen.queryByText(/Finished/)).toBeNull();
+    });
   });
 
   it('is still a dead card with Dismiss when its taps can never go, finished or not', async () => {
@@ -428,6 +543,37 @@ describe('the words, in every language', () => {
       { kvSeed: inMatch(), deviceLanguages: ['nl'] },
     );
     expect(screen.getByText(`${nl['home.scoring.finished']} · ${SCORE}`)).toBeTruthy();
+  });
+});
+
+// Plan S2-2 Task 8 (review finding 3): Home reads a match it does not open, through the sport the saved link names
+// (`readFinish` -> `sport.resultLine`). A table tennis match is read with table tennis's fold and words, not badminton's.
+describe('a table tennis match on Home', () => {
+  /** A table tennis match left on the phone: its link naming the sport, its ledger and bootstrap as the pad left them. */
+  async function tableTennisOnDisk(fakes: FakePorts, specs: readonly TableTennisSpec[]) {
+    await leave(fakes, queueHolding(FAKE_MATCH, 0));
+    await fakes.kv.set(
+      linkKey(FAKE_MATCH),
+      JSON.stringify({ ...LINK_RECORD, sportKey: 'tabletennis' }),
+    );
+    await fakes.tapQueue.saveLedger(FAKE_MATCH, tableTennisLedgerOf(specs));
+    await fakes.tapQueue.saveBoot(FAKE_MATCH, {
+      bootstrap: { ...TABLE_TENNIS_SINGLES, fixtureId: FAKE_MATCH },
+      toss: null,
+    });
+  }
+
+  it('says Finished with every game over, in table tennis’s scores, and offers Close alone', async () => {
+    await homeWith((fakes) => tableTennisOnDisk(fakes, DECIDED_3_0), { kvSeed: inMatch() });
+    expect(within(card()).getByText('Finished · 11–0, 11–0, 11–0')).toBeTruthy();
+    expect(within(card()).queryByText('Continue Remote Scoring')).toBeNull();
+    expect(closeButton()).toBeTruthy();
+  });
+
+  it('says Continue for a match still in play, whatever games are over', async () => {
+    await homeWith((fakes) => tableTennisOnDisk(fakes, GAME_ONE_11_7), { kvSeed: inMatch() });
+    expect(within(card()).getByText('Continue Remote Scoring')).toBeTruthy();
+    expect(within(card()).queryByText(/^Finished/)).toBeNull();
   });
 });
 

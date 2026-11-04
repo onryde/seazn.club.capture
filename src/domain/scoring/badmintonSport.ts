@@ -10,6 +10,7 @@ import {
 } from '@/domain/scoring/badmintonPad';
 import { memoFold } from '@/domain/scoring/scoringMatchFold';
 import type { ScoringSport } from '@/domain/scoring/scoringSport';
+import { resultLineOf } from '@/domain/scoring/setBasedBoard';
 
 /** Badminton's pad types: what the match runtime is generic over (`SportTypes`). */
 export type BadmintonTypes = {
@@ -37,8 +38,7 @@ export const badmintonSport: ScoringSport<BadmintonTypes> = {
   notStarted: (display) => display.phase === 'notStarted',
   decided: (display) => display.phase === 'decided',
   /** Each game over as `first–second`, joined by a comma: a game a disqualification ended is there at its points. */
-  resultLine: (display) =>
-    display.finished.map((game) => `${game.points.first}–${game.points.second}`).join(', '),
+  resultLine: (display) => resultLineOf(display.finished),
   awaitingEnding: (display) => display.awaitingEnding,
   /** The last tap, unless it is an Undo already; the start is never named (`undoneTap`). */
   undoneOf: (display) => {

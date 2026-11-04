@@ -86,6 +86,12 @@ const stateOf = (overrides: Partial<SyncState> = {}): SyncState => ({
 const restingOf = (overrides: Partial<SyncState> = {}): SyncState =>
   stateOf({ status: 'idle', inFlight: null, ...overrides });
 
+/** A ledger of seven events, to tell a read from the tip from a read from a number the tests happen to use. */
+const AT_SEVEN: Partial<SyncState> = {
+  tip: 7,
+  ledger: [1, 2, 3, 4, 5, 6, 7].map((seq) => ev(seq)),
+};
+
 const accepted = (seq: number, eventId: string, rulesVersion = 2): AppendAnswer => ({
   kind: 'accepted',
   seq,
@@ -1405,7 +1411,7 @@ describe('onAnswer: refused (the whole queue)', () => {
     [401, 'UNAUTHENTICATED', 'LINK_INVALID'],
     [402, 'PAYMENT_REQUIRED', 'payment'],
     [403, 'FORBIDDEN', 'forbidden'],
-    [403, 'RESULT_CARRIED_FORWARD', 'finalized'],
+    [403, 'RESULT_CARRIED_FORWARD', 'carriedForward'],
     [404, 'NOT_FOUND', 'gone'],
   ] as const)(
     '%i %s: the queue is dead (%s), the taps kept, nothing more is sent',
@@ -1414,10 +1420,50 @@ describe('onAnswer: refused (the whole queue)', () => {
       expect(step.state).toEqual(
         stateOf({ status: 'dead', inFlight: null, queue: queueOf([A, B], { dead: word }) }),
       );
-      expect(step.effects).toEqual([{ kind: 'persist' }]);
+      // A result that stands reads the ledger once more (below); every other word saves and does nothing else.
+      expect(step.effects).toEqual(
+        word === 'carriedForward'
+          ? [{ kind: 'persist' }, { kind: 'fetchSince', seq: 4 }]
+          : [{ kind: 'persist' }],
+      );
       expect(nextSend({ ...step.state, status: 'idle' }, NOW)).toBeNull();
     },
   );
+
+  // Controller, 2026-11-04 (fix round 1). Nothing reads the ledger once the queue is dead (`wanting` is shut), and a
+  // result that stands is scored from it (`resultStands`), so the close reads it once more: one `fetchSince` at the tip,
+  // after the save. Only the two words that mean a result stands.
+  it('closing on a carried-forward result reads the ledger once, from the tip, after the save', () => {
+    const step = answer(stateOf(AT_SEVEN), A, refusal('RESULT_CARRIED_FORWARD', 403));
+    expect(step.effects).toEqual([{ kind: 'persist' }, { kind: 'fetchSince', seq: 7 }]);
+  });
+
+  it('a carried-forward answer to a queue already closed on a result that stands reads nothing: it is the same close', () => {
+    const closed = answer(stateOf(AT_SEVEN), A, refusal('RESULT_CARRIED_FORWARD', 403));
+    expect(closed.state.queue.dead).toBe('carriedForward');
+    const again = answer(closed.state, A, refusal('RESULT_CARRIED_FORWARD', 403));
+    expect(again.effects).toEqual([{ kind: 'persist' }]);
+  });
+
+  it('a result that stands after a close that said none (a link revoked) is a new close: the ledger is read', () => {
+    const revoked = restingOf({
+      ...AT_SEVEN,
+      status: 'dead',
+      queue: queueOf([A, B], { dead: 'LINK_REVOKED' }),
+    });
+    const step = onBootstrapStatus(revoked, 'finalized');
+    expect(step.state.queue.dead).toBe('finalized');
+    expect(step.effects).toEqual([{ kind: 'persist' }, { kind: 'fetchSince', seq: 7 }]);
+  });
+
+  it.each([
+    [401, 'UNAUTHENTICATED'],
+    [402, 'PAYMENT_REQUIRED'],
+    [403, 'FORBIDDEN'],
+    [404, 'NOT_FOUND'],
+  ] as const)('closing on %i %s reads nothing: no result stands', (status, code) => {
+    expect(answer(stateOf(), A, refusal(code, status)).effects).toEqual([{ kind: 'persist' }]);
+  });
 
   it('says no tap was refused: they are leftovers, not lost', () => {
     const step = answer(stateOf(), A, refusal('FORBIDDEN', 403));
@@ -1453,14 +1499,20 @@ describe('onAnswer: refused (the whole queue)', () => {
     expect(answer(stateOf(), A, refusal('FORBIDDEN', 403)).state.queue.dead).toBe('forbidden');
   });
 
-  it('a void’s 403 that is the carried-forward result still closes the queue: the match is finalized', () => {
+  // Task 8d (device check, 2026-11-04): the Undo of a decided match whose result the web has carried forward is refused
+  // 403 RESULT_CARRIED_FORWARD (usecases/scoring.ts, before it looks at the void). The match is not finalized: nobody
+  // locked it. The queue dies with its own word, every tap kept, and the Undo is not sent again.
+  it('a void’s 403 that is the carried-forward result still closes the queue, with its own word, never finalized', () => {
     const sent = tap('key-v', { type: 'core.void', payload: { event_id: 'ev-2' } });
     const step = answer(
       stateOf({ queue: queueOf([sent, B]), inFlight: 'key-v' }),
       sent,
       refusal('RESULT_CARRIED_FORWARD', 403),
     );
-    expect(step.state.queue.dead).toBe('finalized');
+    expect(step.state.queue.dead).toBe('carriedForward');
+    expect(step.state.queue.pending).toEqual([sent, B]);
+    expect(step.effects).toEqual([{ kind: 'persist' }, { kind: 'fetchSince', seq: 4 }]);
+    expect(nextSend({ ...step.state, status: 'idle' }, NOW)).toBeNull();
   });
 
   it('a 422 with a 403’s word is still one tap: the status decides first', () => {
@@ -1504,7 +1556,12 @@ describe('onAnswer: ALREADY_DECIDED (the match is decided or closed)', () => {
     expect(step.state.queue.pending).toEqual([A, B]);
     expect(step.state.decidedProbe).toBeNull();
     expect(step.state.hold).toBeNull();
-    expect(step.effects).toEqual([{ kind: 'persist' }]);
+    // A finalize is a result that stands: the ledger is read once more. A cancelled match has no result.
+    expect(step.effects).toEqual(
+      status === 'finalized'
+        ? [{ kind: 'persist' }, { kind: 'fetchSince', seq: 4 }]
+        : [{ kind: 'persist' }],
+    );
     expect(nextSend({ ...step.state, status: 'idle' }, NOW)).toBeNull();
   });
 
@@ -1610,7 +1667,11 @@ describe('onAnswer: ALREADY_DECIDED (the match is decided or closed)', () => {
       const step = onBootstrapStatus(restingOf(), status);
       expect(step.state.queue.dead).toBe(status);
       expect(step.state.status).toBe('dead');
-      expect(step.effects).toEqual([{ kind: 'persist' }]);
+      expect(step.effects).toEqual(
+        status === 'finalized'
+          ? [{ kind: 'persist' }, { kind: 'fetchSince', seq: 4 }]
+          : [{ kind: 'persist' }],
+      );
     },
   );
 
@@ -1840,7 +1901,7 @@ describe('onReadFailed', () => {
     [401, 'UNAUTHENTICATED', 'LINK_INVALID'],
     [402, 'PAYMENT_REQUIRED', 'payment'],
     [403, 'FORBIDDEN', 'forbidden'],
-    [403, 'RESULT_CARRIED_FORWARD', 'finalized'],
+    [403, 'RESULT_CARRIED_FORWARD', 'carriedForward'],
     [404, 'NOT_FOUND', 'gone'],
   ] as const)('a read refused %i %s closes the queue (%s)', (status, code, word) => {
     const step = onReadFailed(restingOf(), { kind: 'refused', status, code }, NOW);
@@ -1980,6 +2041,31 @@ describe('onLedger', () => {
       hold: 'revalidate',
     });
     expect(step.effects).toEqual([]);
+  });
+
+  // The post-close read (fix round 1) lands on a queue nobody judges: its taps are leftovers, kept whole, so the new
+  // events do not hold it for a revalidation that would drop the ones they make illegal.
+  it.each(['carriedForward', 'finalized', 'cancelled', 'LINK_REVOKED'] as const)(
+    'on a queue dead as %s adds the events and the tip, and holds nothing for a revalidation',
+    (dead) => {
+      const state = restingOf({ status: 'dead', queue: queueOf([A, B], { dead }) });
+      const step = onLedger(state, [ev(5)]);
+      expect(step.state.tip).toBe(5);
+      expect(step.state.ledger).toEqual([ev(1), ev(2), ev(3), ev(4), ev(5)]);
+      expect(step.state.hold).toBeNull();
+      expect(step.state.queue).toBe(state.queue);
+      expect(step.effects).toEqual([]);
+    },
+  );
+
+  it('a dead queue’s hold on its own read is let go, never turned into a revalidation', () => {
+    const state = restingOf({
+      status: 'dead',
+      hold: 'ledger',
+      queue: queueOf([A], { dead: 'carriedForward' }),
+    });
+    expect(onLedger(state, [ev(5)]).state.hold).toBeNull();
+    expect(onLedger(state, []).state.hold).toBeNull();
   });
 
   it('with nothing fetched and nothing owed is the same state, not a copy', () => {

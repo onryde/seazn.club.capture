@@ -23,6 +23,7 @@ import { createFakeRealtimePort, type FakeRealtimePort } from '@/services/fakeRe
 import {
   SINGLES_SEED,
   createFakeScoringPort,
+  type FakeMatchSeed,
   type FakeScoringPort,
 } from '@/services/fakeScoringPort';
 import { createMemoryKeyValueStore, type MemoryKeyValueStore } from '@/services/KeyValueStore';
@@ -115,10 +116,18 @@ export type FakePorts = {
 
 const created: FakeCaptureEngine[] = [];
 
-export function createFakePorts(
-  overrides: Partial<Ports> & { kvSeed?: Record<string, string> } = {},
-): FakePorts {
-  const { kvSeed, ...portOverrides } = overrides;
+/**
+ * What a test may give besides the ports it overrides: the key-value store's contents, and the match the fake scoring
+ * server serves (default: the preview's badminton singles; a table tennis match is `fakeTableTennisPad`'s seeds). The
+ * seed's events are stamped by the phone's clock like the default's; a `scoring` override is used as it is.
+ */
+export type FakePortsOverrides = Partial<Ports> & {
+  kvSeed?: Record<string, string>;
+  scoringSeed?: FakeMatchSeed;
+};
+
+export function createFakePorts(overrides: FakePortsOverrides = {}): FakePorts {
+  const { kvSeed, scoringSeed, ...portOverrides } = overrides;
   let now = TEST_NOW;
   const engine = recordingIntents(createFakeCaptureEngine(() => now.getTime()));
   created.push(engine);
@@ -147,7 +156,7 @@ export function createFakePorts(
     scoringLink: createFakeScoringLinkPort(),
     // The server's events are stamped by the phone's clock (the `clock` override when a test gives one): the reconnect
     // question counts only what was recorded since the phone's taps, and both must be on one clock.
-    scoring: createFakeScoringPort(SINGLES_SEED, {
+    scoring: createFakeScoringPort(scoringSeed ?? SINGLES_SEED, {
       stamp: () => (portOverrides.clock ?? (() => now))().getTime(),
     }),
     tapQueue: createTapQueueStore({ files: queueFiles, logger }),

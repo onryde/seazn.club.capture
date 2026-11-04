@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  carriedForwardBy,
+  viewOnlyWhy,
   matchContextOf,
   parseAppendAnswer,
   parseBootstrap,
@@ -189,6 +191,64 @@ describe('parseBootstrap', () => {
       envelope(bootstrapData({ screen: 'view_only', view_only_reason: 'match_finalized' })),
     );
     expect(parsed?.viewOnlyReason).toBe('match_finalized');
+  });
+
+  // Task 8d. The web's bootstrap for a decided match whose result has moved the competition on is the View-only screen
+  // with the reason `carried_forward` and the status still `decided` (device-link-bootstrap.ts, scan-screen.ts
+  // `scanScreen`: finalized > cancelled > carried forward > no opponent). Its four reasons are `ViewOnlyReason`.
+  it.each([
+    ['carried_forward', 'decided', true],
+    ['finalized', 'finalized', false],
+    ['cancelled', 'cancelled', false],
+    ['no_opponent', 'scheduled', false],
+  ] as const)(
+    'reads the View-only reason %s (status %s) as carried forward: %s',
+    (reason, status, carried) => {
+      const parsed = parseBootstrap(
+        envelope(
+          bootstrapData({
+            screen: 'view_only',
+            view_only_reason: reason,
+            state: { status, last_seq: 41 },
+          }),
+        ),
+      );
+      expect(parsed).not.toBeNull();
+      expect(parsed && carriedForwardBy(parsed)).toBe(carried);
+    },
+  );
+
+  // Task 8d follow-up. The same four reasons, named as the phone's card tells them apart.
+  it.each([
+    ['carried_forward', 'carriedForward'],
+    ['finalized', 'finalized'],
+    ['cancelled', 'cancelled'],
+    ['no_opponent', 'noOpponent'],
+  ] as const)('names the View-only reason %s as %s', (reason, why) => {
+    const parsed = parseBootstrap(
+      envelope(bootstrapData({ screen: 'view_only', view_only_reason: reason })),
+    );
+    expect(parsed && viewOnlyWhy(parsed)).toBe(why);
+  });
+
+  it('names no reason for a pad, a missing reason or one the server made up, even a word of Object’s own', () => {
+    for (const reason of [undefined, null, 'carried', '', 'toString', '__proto__']) {
+      const parsed = parseBootstrap(
+        envelope(bootstrapData({ screen: 'view_only', view_only_reason: reason })),
+      );
+      expect(parsed && viewOnlyWhy(parsed)).toBeNull();
+    }
+    const pad = parseBootstrap(envelope(bootstrapData()));
+    expect(pad && viewOnlyWhy(pad)).toBeNull();
+  });
+
+  it('does not read a pad with no reason, or a reason the server made up, as carried forward', () => {
+    const pad = parseBootstrap(envelope(bootstrapData()));
+    const odd = parseBootstrap(
+      envelope(bootstrapData({ screen: 'view_only', view_only_reason: 'carried' })),
+    );
+    expect(pad && carriedForwardBy(pad)).toBe(false);
+    expect(odd && carriedForwardBy(odd)).toBe(false);
   });
 
   it('reads a round, division or reference the organiser left out as null', () => {

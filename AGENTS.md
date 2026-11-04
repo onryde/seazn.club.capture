@@ -254,6 +254,7 @@ take its palette rather than inventing a second dark theme for one company.
 | `live` | `#ef4444` | `--mk-live` | **ON AIR** |
 | `caution` | `#fb923c` | `--mk-orange` | Degraded, fell back, thermal, and failures |
 | `violet` | `#7c3aed` | `--mk-purple` | Brand. Decorative only — see below |
+| `cardCaution` / `cardDismissal` | `#d97706` / `#dc2626` | `--sport-caution`, `--sport-dismissal` | The scoring pad's card icons, and nothing else: Remote Scoring has no broadcast, so red here is never ON AIR (owner ruling 56, 2026-11-04) |
 
 Three rules travel with these tokens:
 
@@ -264,6 +265,9 @@ Three rules travel with these tokens:
 - **Red means ON AIR**, following the broadcast tally convention the product's
   own `--mk-live` already encodes. Nothing red is left for failures: a crash
   reads orange, so it can never be mistaken for a live indicator.
+  The one exception is a drawing, not a status: the red card icon on a scoring
+  pad's half (`cardDismissal`, used by `ScoreHalf` alone), in a mode with no
+  broadcast to be on air.
 - `--sport-led` aliases Tailwind's `lime-400` in sRGB (`#9ae600`), **not** the
   older `--mk-lime` hex (`#a3e635`). The web has a standing comment about this;
   do not "correct" it.
@@ -682,7 +686,7 @@ thermal member. Only transport trouble degrades a session.
   anything native (it gated P5), but it is a local one: `pnpm expo prebuild -p
   android --no-install`, then `pnpm expo run:android --no-bundler` or
   `./gradlew assembleDebug|assembleRelease`, installed with `adb`. A local build is the dev twin,
-  `com.seazn.capture.dev`, named "Seazn Capture (dev)" with the scheme
+  `com.seazn.capture.dev`, named "Seazn Club (dev)" with the scheme
   `seazn-capture-dev`, so it installs beside the Play app; only `eas.json`'s
   `production` profile sets `APP_VARIANT=production` and builds
   `com.seazn.capture` (owner, 2026-10-30, option 2; `appVariant` in

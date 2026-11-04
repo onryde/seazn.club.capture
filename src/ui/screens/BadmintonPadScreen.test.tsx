@@ -10,7 +10,7 @@ import { TEST_NOW, type FakePorts } from '../../../test/fakePorts';
 import { screenIsHeld, type HoldLog } from '../../../test/heldScreen';
 import { layOut } from '../../../test/layOut';
 import { linesAllowed } from '../../../test/linesAllowed';
-import { edgeOf } from '../../../test/pressState';
+import { edgeOf, fillOf, paintOf } from '../../../test/pressState';
 import { CHIP, PadWithPreviewChips } from '../../../test/padPreviewHarness';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 import { restoreWindowSize, setWindowSize } from '../../../test/windowSize';
@@ -479,17 +479,25 @@ describe('BadmintonPadScreen: Set score', () => {
 describe('BadmintonPadScreen: a sanction, end to end', () => {
   const sheetTitle = () => within(screen.getByTestId('step-sheet'));
 
-  it('Warning: level, person, recorded in the side’s bottom row and in the last-tap line', () => {
+  // Owner ruling 56 (2026-11-04): the sanction is a yellow card in the side's top-right corner, no longer words in its
+  // bottom row, and the card's name stays in the half's name for a screen reader.
+  it('Warning: level, person, recorded as a yellow card on the side’s half and in the last-tap line', () => {
     renderPad();
     press(sanctionOn('L. Chen'));
     expect(sheetTitle().getByText(en['scoring.sanction.title'])).toBeTruthy();
     expect(sheetTitle().getByText('L. Chen')).toBeTruthy();
     choose(en['scoring.sanction.warning']);
     expect(sheetTitle().getByText(en['scoring.sanction.who'])).toBeTruthy();
+    expect(screen.queryByTestId('mark-card')).toBeNull();
     choose('L. Chen');
     expect(screen.queryByTestId('step-sheet')).toBeNull();
-    // Game 1: the sanction alone, with no box and no dot before it (owner ruling 16).
-    expect(within(half('second')).getByText(en['scoring.sanction.warning'])).toBeTruthy();
+    // Game 1: the card alone, on L. Chen's half only; no word, no box and no dot in the bottom row (owner ruling 56).
+    const card = within(half('second')).getByTestId('mark-card');
+    expect(paintOf(card).fill).toBe(fillOf(colour.cardCaution));
+    expect(within(half('first')).queryByTestId('mark-card')).toBeNull();
+    expect(within(half('second')).queryByText(en['scoring.sanction.warning'])).toBeNull();
+    expect(half('second').getAttribute('aria-label')).toContain(en['scoring.sanction.warning']);
+    expect(half('first').getAttribute('aria-label')).not.toContain(en['scoring.sanction.warning']);
     expect(boxes('second')).toEqual([]);
     expect(within(half('second')).queryByText('·')).toBeNull();
     expect(lastTap()).toContain(
@@ -498,6 +506,31 @@ describe('BadmintonPadScreen: a sanction, end to end', () => {
         person: 'L. Chen',
       }),
     );
+  });
+
+  it('shows a second sanction as the heavier card only, and an Undo takes the card away', () => {
+    const pad = renderPad();
+    press(sanctionOn('L. Chen'));
+    choose(en['scoring.sanction.warning']);
+    choose('L. Chen');
+    expect(within(half('second')).getAllByTestId('mark-card')).toHaveLength(1);
+    expect(within(half('first')).queryByTestId('mark-card')).toBeNull();
+    // A tool a second on: a sheet button that records opens the bounce window for every tap of the pad.
+    aSecondOn(pad);
+    press(sanctionOn('L. Chen'));
+    choose(en['scoring.sanction.penalty']);
+    choose('L. Chen');
+    const cards = within(half('second')).getAllByTestId('mark-card');
+    expect(cards.map((card) => paintOf(card).fill)).toEqual([fillOf(colour.cardDismissal)]);
+    undoTap(pad);
+    expect(
+      within(half('second'))
+        .getAllByTestId('mark-card')
+        .map((card) => paintOf(card).fill),
+    ).toEqual([fillOf(colour.cardCaution)]);
+    undoTap(pad);
+    expect(screen.queryByTestId('mark-card')).toBeNull();
+    expect(screen.queryByTestId('marks')).toBeNull();
   });
 
   it('Disqualification asks to confirm, then the ending prompt over a pad that takes no tap; Back still leaves', () => {
@@ -906,18 +939,35 @@ describe('BadmintonPadScreen: the flash of a half whose tap counted', () => {
   });
 });
 
-/** Owner ruling 14: "a one-line hint at the bottom of each half". */
+/**
+ * Owner ruling 14: "a one-line hint at the bottom of each half"; owner ruling 56 (2026-11-04: "bottom right, just tap
+ * Tap?"): the one word, no side name.
+ */
 describe('BadmintonPadScreen: the halves’ hints', () => {
-  const hint = (side: string) => fill(en['scoring.badminton.hintLine'], { side });
+  const tapWord = (words: Readonly<Record<string, string>>) => words['scoring.pad.tap'] ?? '';
 
-  it('names each half’s side in its hint while the half takes a tap, and drops it under a card', () => {
+  it('says the one word Tap in each half while it takes a tap, and drops it under a card', () => {
     const pad = renderPad();
-    expect(within(half('first')).getByText(hint('A. Sharma'))).toBeTruthy();
-    expect(within(half('second')).getByText(hint('L. Chen'))).toBeTruthy();
+    expect(within(half('first')).getByText('Tap')).toBeTruthy();
+    expect(within(half('second')).getByText('Tap')).toBeTruthy();
+    // No side name in the hint: the old sentence is gone.
+    expect(screen.queryByText(/rally to/i)).toBeNull();
+    expect(screen.queryByText(/Tap:/)).toBeNull();
     rally(pad, 'first');
     press(CHIP.result);
-    expect(screen.queryByText(hint('A. Sharma'))).toBeNull();
-    expect(screen.queryByText(hint('L. Chen'))).toBeNull();
+    expect(screen.queryByText('Tap')).toBeNull();
+  });
+
+  it.each([
+    ['es', es, 'Toca'],
+    ['fr', fr, 'Touchez'],
+    ['nl', nl, 'Tik'],
+  ] as const)('says it in %s', (lang, words, tap) => {
+    renderPad({ deviceLanguages: [lang] });
+    expect(tapWord(words)).toBe(tap);
+    expect(within(half('first')).getByText(tap)).toBeTruthy();
+    expect(within(half('second')).getByText(tap)).toBeTruthy();
+    expect(screen.queryByText('Tap')).toBeNull();
   });
 });
 
@@ -1847,10 +1897,12 @@ describe('BadmintonPadScreen: a sheet step that has just appeared', () => {
     choose(en['scoring.sanction.penalty']);
     press('L. Chen');
     expect(screen.getByTestId('step-sheet')).toBeTruthy();
-    expect(within(half('second')).queryByText(en['scoring.sanction.penalty'])).toBeNull();
+    expect(within(half('second')).queryByTestId('mark-card')).toBeNull();
     choose('L. Chen');
     expect(screen.queryByTestId('step-sheet')).toBeNull();
-    expect(within(half('second')).getByText(en['scoring.sanction.penalty'])).toBeTruthy();
+    // A penalty (the web's fault) is the red card (owner ruling 56).
+    const card = within(half('second')).getByTestId('mark-card');
+    expect(paintOf(card).fill).toBe(fillOf(colour.cardDismissal));
   });
 });
 

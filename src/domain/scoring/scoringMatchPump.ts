@@ -8,6 +8,7 @@ import {
   revalidate,
 } from '@/domain/scoring/sync';
 import { withSync } from '@/domain/scoring/scoringMatchAnswers';
+import { copiesOf } from '@/domain/scoring/scoringMatchAsk';
 import { asking, bootstrapDueAt } from '@/domain/scoring/scoringMatchReads';
 import { resave } from '@/domain/scoring/scoringMatchSaves';
 import {
@@ -57,8 +58,12 @@ function rereading<S extends SportTypes>(state: MatchState<S>, now: number): Par
   return due === null || now < due ? part(state) : asking(state, now);
 }
 
-/** A rules read that failed is asked for again once due (`retryRules`), even with nothing queued. */
+/**
+ * A rules read that failed is asked for again once due (`retryRules`), even with nothing queued. Not for a dead queue:
+ * nothing is sent on those rules, so there is nothing to read them for.
+ */
 function rulesRetry<S extends SportTypes>(state: MatchState<S>, now: number): Part<S> {
+  if (deadOf(state) !== null) return part(state);
   return withSync(state, retryRules(state.sync, now));
 }
 
@@ -86,9 +91,11 @@ const undoPairs = (pending: readonly QueuedEvent[]): readonly string[] =>
 /**
  * The queue judged on the ledger and rules as they stand, when sync asks (hold `revalidate`). A match that cannot be
  * folded is never judged: an empty `legalQueued` would drop the whole queue. The hold then stands, and the pad says why.
+ * A dead queue is never judged either: its taps are leftovers, kept whole, and a rules answer after the close would
+ * drop the ones the ledger has made illegal.
  */
 function revalidating<S extends SportTypes>(state: MatchState<S>): Part<S> {
-  if (state.sync.hold !== 'revalidate') return part(state);
+  if (state.sync.hold !== 'revalidate' || deadOf(state) !== null) return part(state);
   const judge = judgeOf(state);
   if (judge === null) return part(state);
   return withSync(state, revalidate(state.sync, judge));
@@ -97,8 +104,9 @@ function revalidating<S extends SportTypes>(state: MatchState<S>): Part<S> {
 /**
  * The next send, if one is due. The payload is decided BEFORE the attempt is marked (the sport's `payloadForSend`:
  * badminton's first rally drops its `serving` if a rally already stands), and written into the queued head in the same
- * step that marks the attempt, so the fold and sync see what the server is sent. The save before the send is the
- * step's own.
+ * step that marks the attempt, so the fold and sync see what the server is sent. The sport is told whether the ledger
+ * holds the tap's copy (`copiesOf`, the reconnect question's own test; only a tap sent before has one), since only then
+ * does the server hold the payload as first sent. The save before the send is the step's own.
  */
 function sending<S extends SportTypes>(state: MatchState<S>, now: number): Part<S> {
   const { sync } = state;
@@ -106,7 +114,8 @@ function sending<S extends SportTypes>(state: MatchState<S>, now: number): Part<
   const body = nextSend(sync, now);
   const head = sync.queue.pending[0];
   if (body === null || head === undefined) return part(state);
-  const payload = state.sport.payloadForSend(head, sync.ledger);
+  const copied = copiesOf(state, sync.ledger).has(head.key);
+  const payload = state.sport.payloadForSend(head, sync.ledger, copied);
   const decided: SyncState =
     payload === head.payload
       ? sync

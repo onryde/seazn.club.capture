@@ -59,6 +59,8 @@ const DRAWN = [
   // the pad's send badge (owner, 2026-11-02): an arrow up, and the same arrow stopped under a bar
   ['up', ['M12 19V5M6 11l6-6 6 6'], [], 0],
   ['upBlocked', ['M12 20V10M7 14l5-5 5 5M5 4h14'], [], 0],
+  // the pad half's Expedite mark (owner ruling 56, 2026-11-04): a stopwatch, its crown and stem above a ring, one hand
+  ['stopwatch', ['M9.5 2.5h5M12 2.5v4M12 14v-4'], ['12,14,7.5'], 0],
 ] as const;
 /** The camera's not-ready slash (spec §3). */
 const SLASH = 'M3 3l18 18';
@@ -79,15 +81,15 @@ describe('Glyph draws the canvas’s line icons (spec §3)', () => {
     drawn += 1;
   });
 
-  it('drew all thirteen glyphs (anti-vacuity)', () => {
-    expect(DRAWN).toHaveLength(13);
-    expect(drawn).toBe(13);
+  it('drew all fourteen glyphs (anti-vacuity)', () => {
+    expect(DRAWN).toHaveLength(14);
+    expect(drawn).toBe(14);
   });
 
   // Every glyph the module declares is drawn above, and the table above holds no glyph the module does not declare:
-  // a fourteenth glyph added to the module without a row here fails this, instead of being drawn by nothing that checks it.
+  // a fifteenth glyph added to the module without a row here fails this, instead of being drawn by nothing that checks it.
   it('declares exactly the glyphs this suite draws', () => {
-    expect(GLYPH_NAMES).toHaveLength(13);
+    expect(GLYPH_NAMES).toHaveLength(14);
     expect([...GLYPH_NAMES].sort()).toEqual(DRAWN.map(([name]) => name as string).sort());
   });
 

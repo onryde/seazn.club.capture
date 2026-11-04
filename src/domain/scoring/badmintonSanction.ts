@@ -1,12 +1,18 @@
 import {
   SANCTION_LEVELS,
   sanctionWord,
-  sideNames,
   type BadmintonSanction,
   type BadmintonSide,
   type SanctionLevelKey,
 } from '@/domain/scoring/badmintonPad';
-import type { PadSide, PadText, PadVar } from '@/domain/scoring/padView';
+import type { PadSide } from '@/domain/scoring/padView';
+import {
+  levelSheet,
+  personSheet,
+  playerChosen,
+  type SanctionOption as SetBasedSanctionOption,
+  type SanctionSheet as SetBasedSanctionSheet,
+} from '@/domain/scoring/setBasedSanction';
 
 /**
  * A sanction, step by step (owner rulings, 2026-10-31): the level (the web's four), then the person (that side's
@@ -34,19 +40,11 @@ export type SanctionKey =
   | 'scoring.sanction.confirm.action'
   | SanctionLevelKey;
 
-export type SanctionOption = {
-  readonly id: string;
-  /** A level's word, or a player's name as typed. */
-  readonly label: PadVar<SanctionKey>;
-  readonly tone: 'standard' | 'destructive';
-};
+/** One choice on a step's sheet (the set-based sports' shared, in badminton's keys). */
+export type SanctionOption = SetBasedSanctionOption<SanctionKey>;
 
 /** One step as a sheet asks it: a title, a line naming what is already chosen, and the choices. */
-export type SanctionSheet = {
-  readonly title: PadText<SanctionKey>;
-  readonly body: PadVar<SanctionKey>;
-  readonly options: readonly SanctionOption[];
-};
+export type SanctionSheet = SetBasedSanctionSheet<SanctionKey>;
 
 const CONFIRM = 'confirm';
 
@@ -69,7 +67,7 @@ export function chooseSanction(
         : { kind: 'step', step: { step: 'person', side: step.side, level } };
     }
     case 'person': {
-      const person = sides[step.side].players.find((_, at) => String(at) === choice);
+      const person = playerChosen(sides[step.side], choice);
       if (person === undefined) return stay;
       if (step.level === 'disqualification') {
         return { kind: 'step', step: { step: 'confirm', side: step.side, person } };
@@ -92,25 +90,21 @@ export function sanctionSheet(
 ): SanctionSheet {
   switch (step.step) {
     case 'level':
-      return {
-        title: { key: 'scoring.sanction.title' },
-        body: sideNames(sides[step.side]),
-        options: SANCTION_LEVELS.map((level) => ({
+      return levelSheet(
+        { key: 'scoring.sanction.title' },
+        sides[step.side],
+        SANCTION_LEVELS.map((level) => ({
           id: level,
           label: sanctionWord(level),
           tone: level === 'disqualification' ? 'destructive' : 'standard',
         })),
-      };
+      );
     case 'person':
-      return {
-        title: { key: 'scoring.sanction.who' },
-        body: sanctionWord(step.level),
-        options: sides[step.side].players.map((player, at) => ({
-          id: String(at),
-          label: player,
-          tone: 'standard',
-        })),
-      };
+      return personSheet(
+        { key: 'scoring.sanction.who' },
+        sides[step.side],
+        sanctionWord(step.level),
+      );
     case 'confirm':
       return {
         title: { key: 'scoring.sanction.confirm.title', vars: { person: step.person } },

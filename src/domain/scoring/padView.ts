@@ -35,6 +35,25 @@ export type PadFills<K extends string> = Readonly<Record<string, PadVar<K>>>;
 /** A half's edge bar: the kit draws `lit` in the LED lime and `dim` in lilac (the tokens are the kit's, the choice the sport's). */
 export type PadBar = 'lit' | 'dim';
 
+/**
+ * A card the kit draws at a half's top-right corner (owner ruling 56, 2026-11-04): the family of its colour, never a
+ * colour. `caution` is the umpire's yellow and `dismissal` the red (the web's `--sport-caution` and
+ * `--sport-dismissal`); the kit maps each to its token.
+ */
+export type PadCard = 'caution' | 'dismissal';
+
+/**
+ * The marks at a half's top-right corner, after the serving plate (owner ruling 56): a stopwatch while the sport's
+ * clock rule is in force (table tennis's Expedite), on both halves, then the side's cards. `said` is what a screen
+ * reader hears for them in the half's name (the drawings are hidden from it), the card's name before the clock's
+ * words: one entry for each mark that is drawn, none when nothing is.
+ */
+export type PadMarks<K extends string> = {
+  readonly clock: boolean;
+  readonly cards: readonly PadCard[];
+  readonly said: readonly PadText<K>[];
+};
+
 /** One side's half: tapping it gives that side the rally (or the sport's unit of scoring). */
 export type PadHalf<K extends string> = {
   readonly side: PadSide;
@@ -44,8 +63,13 @@ export type PadHalf<K extends string> = {
   readonly value: string;
   /** The side's score in every finished game (a set, in another sport), in the bottom row; null before one is over. */
   readonly periods: PadPeriods<K> | null;
-  /** The words after them in the bottom row (badminton: the side's heaviest sanction), or none. */
+  /**
+   * The words after the boxes in the bottom row, or none: table tennis's doubles server ("M. Wong serves"). A sanction
+   * is a mark now (`marks`), no longer words here (owner ruling 56).
+   */
   readonly sub: PadText<K> | null;
+  /** The side's clock and cards, drawn in the top-right corner (owner ruling 56). */
+  readonly marks: PadMarks<K>;
   /** The serving plate, on the serving side's half only; null on the other, and on both once the match is over. */
   readonly serving: PadServing<K> | null;
   /**
@@ -53,13 +77,12 @@ export type PadHalf<K extends string> = {
    * is the LED lime and `dim` the lilac. Decorative: a screen reader hears the serving plate's words, never the bar.
    */
   readonly bar: PadBar;
-  /** What a tap does, said to a screen reader ("Tap to award the rally"). */
-  readonly hint: PadText<K>;
   /**
-   * What a tap does as the half shows it, naming the side ("Tap: rally to A. Sharma"; owner ruling 14, 2026-10-31). On
-   * screen only while the half takes a tap; a screen reader hears `hint` instead, so it is never read twice.
+   * What a tap does, said to a screen reader ("Tap to award the rally"). The half shows the one word "Tap" in the
+   * bottom row while it takes a tap, in every sport and for every side (owner ruling 56: no side name; it supersedes
+   * ruling 14's "Tap: rally to …"), so the kit says that word itself and nothing here carries it.
    */
-  readonly hintLine: PadText<K>;
+  readonly hint: PadText<K>;
   readonly tappable: boolean;
 };
 
@@ -146,6 +169,11 @@ export type PadToolKind = 'primary' | 'standard' | 'destructive';
 export type PadTool<K extends string> = {
   readonly id: string;
   readonly label: PadText<K>;
+  /**
+   * What a screen reader hears in place of `label`, when the drawn label is shortened to fit the row (a sport whose tool
+   * row is narrower than its words at the smallest phone): the full word. None when the label is read as drawn.
+   */
+  readonly said?: PadText<K>;
   /** A second line as typed, never translated: the side a per-side tool acts on. */
   readonly detail: string | null;
   readonly kind: PadToolKind;
@@ -180,7 +208,20 @@ export type PadStateCard =
    * was. A sport's pad says null; `withUndoWindow` (`undoWindow.ts`) fills it from the phone's clock.
    */
   | { readonly kind: 'resultRecorded'; readonly undoLeft: number | null }
+  /**
+   * The organiser's lock: the match is finalized and the card says so. Also the card of a View-only screen whose reason
+   * this build does not know, which keeps what the card said before it had reasons.
+   */
   | { readonly kind: 'viewOnly' }
+  /**
+   * A decided match whose result the web has carried forward (it moved the competition on, so it refuses this link a
+   * write; Task 8d). Not `viewOnly`: nobody finalized it, and the card must not say they did.
+   */
+  | { readonly kind: 'carriedForward' }
+  /** A cancelled match: nothing was decided, and nobody finalized anything (the web's `device.scan.viewOnly.cancelled`). */
+  | { readonly kind: 'cancelled' }
+  /** A seat with no entrant in a match that is not to be played, a bye (the web's `device.scan.viewOnly.noOpponent`). */
+  | { readonly kind: 'noOpponent' }
   | { readonly kind: 'linkInvalid' }
   | { readonly kind: 'updateNeeded'; readonly unsent: number };
 
@@ -265,19 +306,30 @@ export function hasUndoCell(card: PadStateCard | null): boolean {
   return !(card?.kind === 'resultRecorded' && card.undoLeft === null);
 }
 
+/** The cards under which the pad lets the screen go (`holdsScreen`, below, says why). */
+const SCREEN_RELEASED: ReadonlySet<PadStateCard['kind']> = new Set([
+  'viewOnly',
+  'carriedForward',
+  'cancelled',
+  'noOpponent',
+  'linkInvalid',
+  'updateNeeded',
+]);
+
 /**
  * Whether the pad keeps the phone's screen on under this card (owner ruling 9, the screen stays on while the pad shows;
  * applied by the controller on 2026-11-02): on the pad and under the two cards the scorer is still waiting on (the match
- * not open yet, a recorded result). Off under the three that need a person to act or end the scorer's part, which have
- * nothing left to wait for: the organiser's lock (view only), a dead link, and an app to update (as the full-screen
- * `outdated` state).
+ * not open yet, a recorded result). Off under the six that need a person to act or end the scorer's part, which have
+ * nothing left to wait for: the organiser's lock (view only), a result carried forward (the organiser's to correct), a
+ * cancelled match and one with no opponent (nothing to score, ever), a dead link, and an app to update (as the
+ * full-screen `outdated` state).
  *
  * A recorded result holds the screen after its Undo window has closed too (the controller's ruling, 2026-11-03): the
  * organiser may finalise the result while the scorer watches the card, so the 45 s of Undo are not what the screen is
  * held for.
  */
 export function holdsScreen(card: PadStateCard | null): boolean {
-  return card?.kind !== 'viewOnly' && card?.kind !== 'linkInvalid' && card?.kind !== 'updateNeeded';
+  return card === null || !SCREEN_RELEASED.has(card.kind);
 }
 
 /**

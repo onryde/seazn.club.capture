@@ -8,10 +8,12 @@ import {
   type PadSync,
   type PadView,
 } from '@/domain/scoring/padView';
-import type { QueueDead } from '@/domain/scoring/queue';
+import { resultStands, type QueueDead } from '@/domain/scoring/queue';
 import {
   deadOf,
   foldOfState,
+  foldQueue,
+  foldRead,
   isOutdated,
   scoredAs,
   signatureOf,
@@ -26,6 +28,7 @@ import type {
   SportTypes,
   Unfoldable,
 } from '@/domain/scoring/scoringSport';
+import { viewOnlyWhy, type ViewOnlyWhy } from '@/domain/scoring/wire';
 
 /**
  * What the screen shows of a match (plan S2-1 Task 9), read off its state: the pad, or one of the states that take its
@@ -65,7 +68,11 @@ export type MatchPad<S extends SportTypes = SportTypes> = {
 type Folded<S extends SportTypes> = Extract<SportFold<S>, { kind: 'folded' }>;
 
 /** The words that mean the match is closed to this phone because of the match, not because of the link. */
-const MATCH_CLOSED: ReadonlySet<QueueDead> = new Set<QueueDead>(['finalized', 'cancelled']);
+const MATCH_CLOSED: ReadonlySet<QueueDead> = new Set<QueueDead>([
+  'finalized',
+  'cancelled',
+  'carriedForward',
+]);
 
 /** The screens the server gives that are a card in place of the pad. */
 const NOT_STARTED_SCREENS: ReadonlySet<string> = new Set(['divisionNotStarted', 'waiting']);
@@ -77,7 +84,7 @@ export function viewOf<S extends SportTypes>(state: MatchState<S>): MatchView<S>
     return { kind: 'unsupportedSport', sportKey: bootstrap.sportKey };
   }
   if (state.sync.status === 'tooLarge') return { kind: 'tooLarge' };
-  const fold = foldOfState(state);
+  const fold = foldRead(state);
   if (fold === null || fold.kind === 'unfoldable') {
     const unsent = state.sync.queue.pending.length;
     if (isOutdated(state)) return { kind: 'outdated', unsent };
@@ -114,12 +121,27 @@ function padOf<S extends SportTypes>(state: MatchState<S>, fold: Folded<S>): Mat
     kind: 'pad',
     view: withCard(view, card),
     display,
-    history: fold.history,
+    history: historyOf(state, fold),
     line: lineOf(state, fold),
     toss: sport.notStarted(display) ? state.toss : null,
     ask: askViewOf(state),
     decidedAt: state.decidedAt,
   };
+}
+
+/**
+ * History's rows. Under a result that stands the score is the ledger's (`foldRead`), but History is the trace of what
+ * this phone did, and it keeps listing the taps it still holds as it listed them before: an unsent rally as a Sending
+ * row, an unsent Undo as the rally it was for, struck out. Those rows come from the fold of the queue, which is judged,
+ * never read as the score. Neither row says the server refused it: the sync badge and the card do.
+ */
+function historyOf<S extends SportTypes>(
+  state: MatchState<S>,
+  fold: Folded<S>,
+): readonly PadHistoryGroup<S['padKey']>[] {
+  if (!resultStands(deadOf(state)) || state.sync.queue.pending.length === 0) return fold.history;
+  const traced = foldOfState(state, foldQueue(state));
+  return traced !== null && traced.kind === 'folded' ? traced.history : fold.history;
 }
 
 /**
@@ -161,16 +183,53 @@ function syncOf(state: MatchState): PadSync {
   return stallOf(state) === null ? { kind: 'sending', count } : { kind: 'stalled', count };
 }
 
+/** The card each reason has. Only the organiser's lock (`viewOnly`) says "finalised". */
+const CARD_OF_WHY: Readonly<Record<ViewOnlyWhy, PadStateCard>> = {
+  finalized: { kind: 'viewOnly' },
+  cancelled: { kind: 'cancelled' },
+  carriedForward: { kind: 'carriedForward' },
+  noOpponent: { kind: 'noOpponent' },
+};
+
+/** The web's table, top to bottom (`scanScreen`): the first reason the phone holds is the card. */
+const WHY_ORDER: readonly ViewOnlyWhy[] = [
+  'finalized',
+  'cancelled',
+  'carriedForward',
+  'noOpponent',
+];
+
 /**
- * The card over the pad, in the order of what matters most: a link the door does not take; a match closed to this phone
- * (finalized or cancelled, or the server's own view-only screen); an app too old; a match not yet on the schedule.
- * A decided match is the sport's own card (badminton's: result recorded), which none of these replaces unless one applies.
+ * Why the match is closed to this phone, from the two things it holds: the word its queue (or a read) closed on, and the
+ * reason the bootstrap's View-only screen names. Both are facts about the match and neither is "the latest": the web's
+ * own table decides between them, finalized first (a queue closed on carried forward, and a bootstrap that now says
+ * finalized, is finalized). Null when neither says.
+ */
+function whyClosed(state: MatchState): ViewOnlyWhy | null {
+  const dead = deadOf(state);
+  const held = new Set<ViewOnlyWhy>();
+  if (dead === 'finalized' || dead === 'cancelled' || dead === 'carriedForward') held.add(dead);
+  if (state.bootstrap !== null) {
+    const named = viewOnlyWhy(state.bootstrap);
+    if (named !== null) held.add(named);
+  }
+  return WHY_ORDER.find((why) => held.has(why)) ?? null;
+}
+
+/**
+ * The card over the pad, in the order of what matters most: a link the door does not take; a match closed to this phone,
+ * in the words of why (the organiser's lock, a cancelled match, a result carried forward, a seat with no opponent: the
+ * web's own four, `whyClosed`), or the server's View-only screen with a reason we do not know, which keeps the old
+ * View-only card; an app too old; a match not yet on the schedule. A decided match is the sport's own card (badminton's:
+ * result recorded), which none of these replaces unless one applies.
  */
 function cardOf(state: MatchState): PadStateCard | null {
   const dead = deadOf(state);
   const screen = state.bootstrap?.screen ?? '';
   if (dead !== null && !MATCH_CLOSED.has(dead)) return { kind: 'linkInvalid' };
-  if (dead !== null || screen === 'viewOnly') return { kind: 'viewOnly' };
+  const why = whyClosed(state);
+  if (why !== null) return CARD_OF_WHY[why];
+  if (screen === 'viewOnly') return { kind: 'viewOnly' };
   if (isOutdated(state)) return { kind: 'updateNeeded', unsent: state.sync.queue.pending.length };
   return NOT_STARTED_SCREENS.has(screen) ? { kind: 'notStarted' } : null;
 }
