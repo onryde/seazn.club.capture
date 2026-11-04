@@ -467,7 +467,7 @@ describe('the row after the first point, and Expedite (rulings 54 and 55)', () =
     expect([clocks('first'), clocks('second')]).toEqual([1, 1]);
     for (const side of ['first', 'second'] as const) {
       expect(half(side).getAttribute('aria-label')).toContain(
-        en['scoring.tabletennis.tool.expediteSaid'],
+        en['scoring.tabletennis.half.expedite'],
       );
     }
     expect(lastTap()).toBe(en['scoring.tabletennis.last.expedite']);

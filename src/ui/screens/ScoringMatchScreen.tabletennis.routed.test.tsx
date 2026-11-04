@@ -431,7 +431,7 @@ describe('in four languages', () => {
       expect(bothClocks()).toEqual([1, 1]);
       for (const side of ['first', 'second'] as const) {
         expect(half(side).getAttribute('aria-label')).toContain(
-          words['scoring.tabletennis.tool.expediteSaid'],
+          words['scoring.tabletennis.half.expedite'],
         );
       }
       expect(tools()).toEqual([
