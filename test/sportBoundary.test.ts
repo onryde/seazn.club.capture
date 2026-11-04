@@ -121,6 +121,7 @@ const TT_OWN = [
   'src/domain/scoring/tableTennisSanction.ts',
   'src/domain/scoring/tableTennisSport.ts',
   'src/hooks/useTableTennisMatch.ts',
+  'src/hooks/useTableTennisSheets.ts',
   'src/ui/screens/TableTennisPadScreen.tsx',
   'src/services/fakeTableTennisPad.ts',
   // held by `usePad*` and exempt only by `*TableTennis*`
@@ -155,6 +156,11 @@ describe('a generic scoring file names no table tennis module either', { timeout
     [
       'the card steps',
       "import { chooseCard } from '@/domain/scoring/tableTennisSanction';\nexport const c = chooseCard;\n",
+    ],
+    // The sheets hook (plan S2-2 Task 7): sport-owned, as `usePadSheets` is badminton's; the lifted parts are generic.
+    [
+      'the sheets hook',
+      "import { useTableTennisSheets } from '@/hooks/useTableTennisSheets';\nexport const s = useTableTennisSheets;\n",
     ],
   ])(
     'refuses %s from a path of every glob, and from the shared card file itself',

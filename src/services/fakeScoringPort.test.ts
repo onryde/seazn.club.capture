@@ -764,6 +764,41 @@ describe('the preview samples as seeds', () => {
   });
 });
 
+describe('the seed’s sport (plan S2-2 Task 7): none is badminton, as it was', () => {
+  it('a seed with no sport answers badminton, and says so again when it is named', async () => {
+    for (const seed of [FRESH, { ...FRESH, sport: 'badminton' as const }]) {
+      const answer = await createFakeScoringPort(seed).bootstrap(LINK);
+      expect(answer).toMatchObject({ kind: 'ok', bootstrap: { sportKey: 'badminton' } });
+    }
+  });
+
+  it('a seed with no sport is judged by the badminton engine: its rally is taken, table tennis’s is not', async () => {
+    const port = createFakeScoringPort(FRESH);
+    await port.append(LINK, 'fixture-1', start());
+    const foreign = await port.append(
+      LINK,
+      'fixture-1',
+      tap({ expected_seq: 1, type: 'tabletennis.rally', payload: { wonBy: HOME, serving: HOME } }),
+    );
+    expect(foreign).toMatchObject({ kind: 'refused', status: 422 });
+    expect(await port.append(LINK, 'fixture-1', rally(1, HOME, { serving: HOME }))).toMatchObject({
+      kind: 'accepted',
+      seq: 2,
+    });
+  });
+
+  it('the preview’s two seeds are badminton matches', () => {
+    expect(SINGLES_SEED.sport).toBeUndefined();
+    expect(DOUBLES_SEED.sport).toBeUndefined();
+  });
+
+  it('a decided badminton match reads decided with its own engine', async () => {
+    expect(await createFakeScoringPort(decided()).bootstrap(LINK)).toMatchObject({
+      bootstrap: { sportKey: 'badminton', status: 'decided' },
+    });
+  });
+});
+
 /** A side's lineup as the engine folds it: the bootstrap's own slots, all starting. */
 function lineupOf(side: BootstrapSide | null) {
   if (side === null) throw new Error('the seed has both sides');

@@ -79,6 +79,9 @@ const doubles: TableTennisDisplay = {
 };
 
 const ids = (view: PadView<string>) => view.tools.map((tool) => tool.id);
+/** The 13 returns cell, if any: its id names the receiver it was drawn for (`returns.first`, `returns.second`). */
+const returnsCell = (view: PadView<string>) =>
+  view.tools.find((tool) => tool.id.startsWith('returns.'));
 
 describe('tableTennisPad: the halves', () => {
   it('puts the first side on top and the second below, with the points as the big value', () => {
@@ -427,7 +430,7 @@ describe('tableTennisPad: the tools', () => {
     it('gives the receiving side the point, and says the receiver beneath: the server’s opponent', () => {
       const [, , returns] = tableTennisPad(expedited).tools;
       expect(returns).toEqual({
-        id: 'returns',
+        id: 'returns.first',
         label: { key: 'scoring.tabletennis.tool.returns', vars: { returns: 13 } },
         detail: 'A. Sharma',
         kind: 'standard',
@@ -438,29 +441,29 @@ describe('tableTennisPad: the tools', () => {
 
     it('follows the serve: the other side serving, the other side receiving', () => {
       const view = tableTennisPad({ ...expedited, server: 'first', serveNumber: 1 });
-      expect(view.tools.find((tool) => tool.id === 'returns')?.detail).toBe('L. Chen');
+      expect(returnsCell(view)).toMatchObject({ id: 'returns.second', detail: 'L. Chen' });
     });
 
     it('names a doubles receiver as its partners joined', () => {
       const view = tableTennisPad({ ...doubles, expedite: 'inForce' });
-      expect(view.tools.find((tool) => tool.id === 'returns')?.detail).toBe('A. Sharma / R. Iyer');
+      expect(returnsCell(view)?.detail).toBe('A. Sharma / R. Iyer');
     });
 
     it('is hidden while Expedite is only offered, or off', () => {
-      expect(ids(tableTennisPad({ ...live, expedite: 'offered' }))).not.toContain('returns');
-      expect(ids(tableTennisPad({ ...live, expedite: 'off' }))).not.toContain('returns');
+      expect(returnsCell(tableTennisPad({ ...live, expedite: 'offered' }))).toBeUndefined();
+      expect(returnsCell(tableTennisPad({ ...live, expedite: 'off' }))).toBeUndefined();
     });
 
     it('is hidden while the engine names no server', () => {
       const noServer = { ...expedited, server: null, serveNumber: null };
-      expect(ids(tableTennisPad(noServer))).not.toContain('returns');
+      expect(returnsCell(tableTennisPad(noServer))).toBeUndefined();
     });
 
     // The Start pick is not the engine's belief (the fold's mayCreditReceiver reads the engine): a point at once under
     // Expedite, started at 0–0, cannot be judged a receiver's yet.
     it('is hidden while the server shown is only this phone’s Start pick', () => {
       const picked = { ...expedited, phase: 'pre', serverPicked: true } as const;
-      expect(ids(tableTennisPad(picked))).not.toContain('returns');
+      expect(returnsCell(tableTennisPad(picked))).toBeUndefined();
     });
   });
 
@@ -488,7 +491,7 @@ describe('tableTennisPad: the tools', () => {
 
   it('never offers 13 returns and Who is serving? together, whichever the display says', () => {
     const both = tableTennisPad({ ...expedited, anchorNeeded: true });
-    expect(ids(both).filter((id) => id === 'returns' || id === 'serving')).toHaveLength(1);
+    expect(ids(both).filter((id) => id.startsWith('returns.') || id === 'serving')).toHaveLength(1);
     expect(ids(both)).toContain('serving');
   });
 
@@ -529,7 +532,7 @@ describe('tableTennisPad: the tools', () => {
     expect(ids(tableTennisPad(expedited))).toEqual([
       'card.first',
       'card.second',
-      'returns',
+      'returns.first',
       'more',
     ]);
     expect(ids(tableTennisPad(unanchored))).toEqual([
@@ -547,10 +550,22 @@ describe('tableTennisPad: the tools', () => {
   it('reads its own tool ids back, and nothing else', () => {
     expect(parseTableTennisTool('card.first')).toEqual({ card: 'first' });
     expect(parseTableTennisTool('card.second')).toEqual({ card: 'second' });
-    expect(parseTableTennisTool('returns')).toEqual({ returns: true });
+    expect(parseTableTennisTool('returns.first')).toEqual({ returns: 'first' });
+    expect(parseTableTennisTool('returns.second')).toEqual({ returns: 'second' });
     expect(parseTableTennisTool('serving')).toEqual({ serving: true });
     expect(parseTableTennisTool('more')).toEqual({ more: true });
-    for (const id of ['', 'card', 'card.third', 'undo', 'MORE', 'sanction.first', 'setScore']) {
+    for (const id of [
+      '',
+      'card',
+      'card.third',
+      'undo',
+      'MORE',
+      'sanction.first',
+      'setScore',
+      'returns',
+      'returns.third',
+      'returns.',
+    ]) {
       expect(parseTableTennisTool(id), id).toBeNull();
     }
   });

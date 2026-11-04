@@ -1,13 +1,11 @@
-import { foldMatch, type LineupPair } from '@seazn/engine/core';
-import { badminton } from '@seazn/engine/sports/setbased';
-import {
-  badmintonCfg,
-  refusalOf,
-  type BadmintonEngineMatch,
-} from '@/domain/scoring/badmintonEngine';
+import { foldMatch, type EventEnvelope, type LineupPair } from '@seazn/engine/core';
+import { badminton, tabletennis } from '@seazn/engine/sports/setbased';
+import type { SetBasedCfg, SetBasedModule } from '@seazn/engine/sports/setbased';
+import { badmintonCfg, refusalOf } from '@/domain/scoring/badmintonEngine';
 import type { BadmintonTap } from '@/domain/scoring/badmintonPad';
 import type { PadSide } from '@/domain/scoring/padView';
-import { envelopeOf, lineupOf } from '@/domain/scoring/setBasedEngine';
+import { envelopeOf, lineupOf, type SetBasedEngineMatch } from '@/domain/scoring/setBasedEngine';
+import { tableTennisCfg, tableTennisRefusalOf } from '@/domain/scoring/tableTennisEngine';
 import {
   voidTargetOf,
   type AppendAnswer,
@@ -24,8 +22,10 @@ import type { ScoringPort } from '@/services/scoringPort';
 
 /**
  * A FAKE scoring server for a laptop (AGENTS §10: build the fake first): the five calls of `ScoringPort`, answered as
- * the web answers them for one badminton match, folded with the REAL engine, so a tap the engine refuses is refused
- * here with the engine's own word. It keeps the server's order of questions (design §6.3, §7.3): the network, the
+ * the web answers them for one match, folded with the REAL engine, so a tap the engine refuses is refused here with
+ * the engine's own word. The match is a set-based sport's: badminton unless the seed names another (`FakeMatchSeed.sport`;
+ * table tennis's seeds are `fakeTableTennisPad`'s). It judges an append as the web does, with the engine and nothing
+ * else: never the phone's own checks (`legalQueued`), or it would refuse what staging accepts. It keeps the server's order of questions (design §6.3, §7.3): the network, the
  * link, the fixture, a replayed key (answered from the ledger, even after the seq or the epoch has moved), the engine
  * epoch (the key is not consumed), the rules version (before the seq), the seq, and last the engine's fold.
  *
@@ -33,10 +33,30 @@ import type { ScoringPort } from '@/services/scoringPort';
  */
 export type FakeSeedEvent = { readonly type: string; readonly payload: unknown };
 
+/** The sports the fake can serve: the set-based ones the phone scores. */
+export type FakeSportKey = 'badminton' | 'tabletennis';
+
+/** What the fake needs of a sport: its engine module, its config and the engine's word on one new event. */
+type FakeSport = {
+  readonly module: SetBasedModule;
+  readonly cfg: (raw: unknown) => SetBasedCfg;
+  readonly refusalOf: (
+    match: SetBasedEngineMatch,
+    events: readonly EventEnvelope[],
+  ) => string | null;
+};
+
+const SPORTS: Readonly<Record<FakeSportKey, FakeSport>> = {
+  badminton: { module: badminton, cfg: badmintonCfg, refusalOf },
+  tabletennis: { module: tabletennis, cfg: tableTennisCfg, refusalOf: tableTennisRefusalOf },
+};
+
 export type FakeMatchSeed = {
   readonly fixtureId: string;
   readonly linkId: string;
-  /** The match's badminton config, as the endpoint sends it; the engine's schema fills what it leaves out. */
+  /** The match's sport, folded with its own engine module and answered as its `sportKey`; unset is badminton. */
+  readonly sport?: FakeSportKey;
+  /** The match's config, as the endpoint sends it; the sport's schema fills what it leaves out. */
   readonly cfg: unknown;
   readonly rulesVersion: number;
   readonly epochRequired: number;
@@ -90,12 +110,14 @@ const FIRST_EVENT_MS = Date.parse('2026-11-01T10:00:00.000Z');
 
 type Server = {
   readonly seed: FakeMatchSeed;
+  readonly sportKey: FakeSportKey;
+  readonly sport: FakeSport;
   readonly lineups: LineupPair;
   readonly ledger: LedgerEvent[];
   /** Idempotency key → the event it wrote. */
   readonly keys: Map<string, { readonly seq: number; readonly eventId: string }>;
   rawCfg: unknown;
-  cfg: ReturnType<typeof badmintonCfg>;
+  cfg: SetBasedCfg;
   rulesVersion: number;
   epochRequired: number;
   revoked: boolean;
@@ -122,13 +144,17 @@ export function createFakeScoringPort(
   seed: FakeMatchSeed,
   options: FakeScoringOptions = {},
 ): FakeScoringPort {
+  const sportKey = seed.sport ?? 'badminton';
+  const sport = SPORTS[sportKey];
   const server: Server = {
     seed,
+    sportKey,
+    sport,
     lineups: { home: lineupOf(seed.sides.home), away: lineupOf(seed.sides.away) },
     ledger: [],
     keys: new Map(),
     rawCfg: seed.cfg,
-    cfg: badmintonCfg(seed.cfg),
+    cfg: sport.cfg(seed.cfg),
     rulesVersion: seed.rulesVersion,
     epochRequired: seed.epochRequired,
     revoked: false,
@@ -181,7 +207,7 @@ function controls(server: Server): FakeServerControls {
       server.rulesVersion = rulesVersion;
       if (cfg !== undefined) {
         server.rawCfg = cfg;
-        server.cfg = badmintonCfg(cfg);
+        server.cfg = server.sport.cfg(cfg);
       }
     },
     setEpochRequired: (epoch) => {
@@ -303,10 +329,10 @@ function writeOther(server: Server, type: string, payload: unknown): LedgerEvent
 /** Folds the ledger with its last event under validation, as the server does; null when the engine takes it. */
 function engineRefusal(server: Server, ledger: readonly LedgerEvent[]): string | null {
   const envelopes = ledger.map((event) => envelopeOf(server.seed.fixtureId, event));
-  return refusalOf(engineMatch(server), envelopes);
+  return server.sport.refusalOf(engineMatch(server), envelopes);
 }
 
-const engineMatch = (server: Server): BadmintonEngineMatch => ({
+const engineMatch = (server: Server): SetBasedEngineMatch => ({
   fixtureId: server.seed.fixtureId,
   cfg: server.cfg,
   lineups: server.lineups,
@@ -318,7 +344,7 @@ function bootstrapOf(server: Server): Bootstrap {
   return {
     fixtureId: seed.fixtureId,
     linkId: seed.linkId,
-    sportKey: 'badminton',
+    sportKey: server.sportKey,
     moduleVersion: '1.0.0',
     cfg: server.rawCfg,
     rulesVersion: server.rulesVersion,
@@ -347,7 +373,7 @@ function statusOf(server: Server): string {
 
 const decided = (server: Server): boolean =>
   foldMatch(
-    badminton,
+    server.sport.module,
     server.cfg,
     server.lineups,
     server.ledger.map((event) => envelopeOf(server.seed.fixtureId, event)),

@@ -373,7 +373,8 @@ function noteOf(display: TableTennisDisplay): Text | null {
 /** The cells with no second line: a plain outline, usable. */
 const PLAIN = { detail: null, kind: 'standard', enabled: true } as const;
 
-const RETURNS = 'returns';
+/** The 13 returns cell's id: `returns.` and the side it credits, the receiver it was drawn for. */
+const RETURNS = 'returns.';
 const SERVING = 'serving';
 const MORE = 'more';
 
@@ -406,18 +407,22 @@ function serveTool(display: TableTennisDisplay): readonly Tool[] {
 
 /**
  * 13 returns · {receiver} (ruling 50): only while Expedite is in force and the engine names the server (the Start pick
- * is not the engine's belief: the fold's check reads the engine), and it gives the point to the side receiving.
+ * is not the engine's belief: the fold's check reads the engine), and it gives the point to the side receiving. Its id
+ * names that side (`returns.first`), so a press is the receiver the scorer saw however late it lands: a press on a cell
+ * drawn before the serve changed is refused by the fold (the side now serving cannot be credited, `eventFor`), never
+ * turned into the other side's point.
  */
 function returnsTool(display: TableTennisDisplay): Tool | null {
   const { server } = display;
   if (display.expedite !== 'inForce' || server === null || display.serverPicked) return null;
+  const receiver = OTHER_SIDE[server];
   return {
-    id: RETURNS,
+    id: `${RETURNS}${receiver}`,
     label: {
       key: 'scoring.tabletennis.tool.returns',
       vars: { returns: tabletennisPadRules.expediteReturns },
     },
-    detail: sideNames(display.sides[OTHER_SIDE[server]]),
+    detail: sideNames(display.sides[receiver]),
     kind: 'standard',
     enabled: true,
   };
@@ -433,13 +438,14 @@ export function parseTableTennisTool(
   id: string,
 ):
   | { readonly card: PadSide }
-  | { readonly returns: true }
+  | { readonly returns: PadSide }
   | { readonly serving: true }
   | { readonly more: true }
   | null {
   if (id === 'card.first') return { card: 'first' };
   if (id === 'card.second') return { card: 'second' };
-  if (id === RETURNS) return { returns: true };
+  if (id === `${RETURNS}first`) return { returns: 'first' };
+  if (id === `${RETURNS}second`) return { returns: 'second' };
   if (id === SERVING) return { serving: true };
   return id === MORE ? { more: true } : null;
 }

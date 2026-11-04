@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { TABLE_TENNIS_SINGLES_SEED } from '@/services/fakeTableTennisPad';
 import { createFakePorts, disposeFakePorts } from './fakePorts';
 import { FAKE_SCORING_SECRET, FAKE_SCORING_URL } from './fakeScoringLinkPort';
 
@@ -173,5 +174,47 @@ describe('fake foreground', () => {
     fakes.foreground.fire();
     expect(fakes.foreground.isForeground()).toBe(true);
     expect(fakes.ports.foreground).toBe(fakes.foreground);
+  });
+});
+
+describe('fake scoring server', () => {
+  const LINK = { origin: 'https://stg.seazn.club', token: FAKE_SCORING_SECRET };
+
+  it('is the preview’s badminton singles match unless a seed is given', async () => {
+    const { scoring } = createFakePorts();
+    await expect(scoring.bootstrap(LINK)).resolves.toMatchObject({
+      kind: 'ok',
+      bootstrap: { fixtureId: 'fake-singles', sportKey: 'badminton' },
+    });
+  });
+
+  it('serves the seed it is given, a table tennis match, its events stamped by the phone’s clock', async () => {
+    const at = new Date('2026-11-04T09:30:00.000Z');
+    const { scoring } = createFakePorts({
+      scoringSeed: TABLE_TENNIS_SINGLES_SEED,
+      clock: () => at,
+    });
+    await expect(scoring.bootstrap(LINK)).resolves.toMatchObject({
+      kind: 'ok',
+      bootstrap: { fixtureId: 'fake-tt-singles', sportKey: 'tabletennis' },
+    });
+    await scoring.append(LINK, 'fake-tt-singles', {
+      expected_seq: 0,
+      type: 'core.start',
+      payload: {},
+      idempotency_key: 'k-1',
+      engine_epoch: 2,
+      rules_version: 0,
+    });
+    const events = await scoring.events(LINK, 'fake-tt-singles', 0);
+    expect(Array.isArray(events) && events.map((event) => event.recordedAt)).toEqual([
+      '2026-11-04T09:30:00.000Z',
+    ]);
+  });
+
+  it('an explicit scoring port still wins over the seed', () => {
+    const own = createFakePorts().scoring;
+    const { ports } = createFakePorts({ scoring: own, scoringSeed: TABLE_TENNIS_SINGLES_SEED });
+    expect(ports.scoring).toBe(own);
   });
 });

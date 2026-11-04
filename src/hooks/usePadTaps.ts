@@ -51,7 +51,9 @@ export type Opening = (tap: string, make: () => PadOutcome) => boolean;
  * is a different tap and always counts. A tap whose control leaves the screen with it (`opening`: Start match, and a
  * sheet's button that records: a sanction, Set score, Record the ending, Void) opens the window for every tap: the
  * second touch of a double tap on it lands on what was under it, a half, Undo or a tool (hardening and review I1,
- * 2026-11-01), and counts once with it; a tool then opens nothing (`secondTouch`).
+ * 2026-11-01), and counts once with it; a tool then opens nothing (`secondTouch`). A tool that scores a point and stays
+ * on screen (table tennis's 13 returns) is a `point`: it counts once as a half does, under its own name, and flashes the
+ * half it credited.
  */
 export function useTaps(
   pad: PadTapDriver,
@@ -62,7 +64,11 @@ export function useTaps(
   const { clock } = usePorts();
   const last = useRef<Counted | null>(null);
   const once = useOnce(last, settle, say);
-  const tapHalf = useTapHalf(once, pad, setFlash);
+  const point = usePoint(once, setFlash);
+  const tapHalf = useCallback(
+    (side: PadSide) => point(side, side, () => pad.rally(side)),
+    [point, pad],
+  );
   const undo = useCallback(() => void once('undo', () => pad.undo()), [once, pad]);
   const opening = useCallback<Opening>((tap, make) => once(tap, make, true), [once]);
   const secondTouch = useCallback((): boolean => {
@@ -72,8 +78,8 @@ export function useTaps(
     return true;
   }, [clock, say]);
   return useMemo(
-    () => ({ tapHalf, undo, opening, secondTouch }),
-    [tapHalf, undo, opening, secondTouch],
+    () => ({ tapHalf, point, undo, opening, secondTouch }),
+    [tapHalf, point, undo, opening, secondTouch],
   );
 }
 
@@ -105,19 +111,22 @@ function useOnce(
   );
 }
 
+/** A point for a side: a point on `side`, made by tap `tap` ("first", "returns"), once (`useOnce`), then the half's flash. */
+export type Point = (tap: string, side: PadSide, make: () => PadOutcome) => void;
+
 /**
- * A tap on a half: the rally, once (`useOnce`), and the half's flash, numbered on from the last one (owner ruling 14).
- * A bounce or a refusal flashes nothing.
+ * A point for `side` under the name `tap`, once (`useOnce`), and the half's flash, numbered on from the last one (owner
+ * ruling 14). A bounce or a refusal flashes nothing.
  */
-function useTapHalf(once: Once, pad: PadTapDriver, setFlash: SetFlash) {
+function usePoint(once: Once, setFlash: SetFlash): Point {
   const flashes = useRef(0);
   return useCallback(
-    (side: PadSide) => {
-      if (!once(side, () => pad.rally(side))) return;
+    (tap, side, make) => {
+      if (!once(tap, make)) return;
       flashes.current += 1;
       setFlash({ side, seq: flashes.current });
     },
-    [once, pad, setFlash],
+    [once, setFlash],
   );
 }
 
