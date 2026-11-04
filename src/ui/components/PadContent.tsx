@@ -202,7 +202,8 @@ const PadBody = memo(function PadBody({
 /**
  * The Start screen (owner, 2026-11-01, option A), in the halves' place until the match starts: the match card, who
  * serves first, then Start match, a tap and no hold (it is not destructive: Undo takes it back). It scrolls when it is
- * taller than the room. Start match is disabled, and says so, until a side is picked.
+ * taller than the room. Start match is disabled, and says so, until a side is picked; a sport with no serve to pick
+ * (`needsToss` false) has no question and no picker, and Start match is ready (plan S2-3 Task 2).
  */
 const StartPanel = memo(function StartPanel({
   start,
@@ -220,13 +221,19 @@ const StartPanel = memo(function StartPanel({
   return (
     <ScrollView testID="start-screen" style={styles.body} contentContainerStyle={styles.start}>
       <DetailsCard details={details} />
-      <TossPicker
-        ask={words(start.ask)}
-        sides={start.sides}
-        picked={toss}
-        onPick={actions.pickServer}
+      {start.needsToss ? (
+        <TossPicker
+          ask={words(start.ask)}
+          sides={start.sides}
+          picked={toss}
+          onPick={actions.pickServer}
+        />
+      ) : null}
+      <Button
+        label={t('scoring.start.confirm')}
+        onPress={actions.start}
+        disabled={start.needsToss && toss === null}
       />
-      <Button label={t('scoring.start.confirm')} onPress={actions.start} disabled={toss === null} />
     </ScrollView>
   );
 });

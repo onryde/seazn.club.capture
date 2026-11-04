@@ -51,6 +51,8 @@ describe('setBasedStart', () => {
   it('asks the question with the two sides as typed, top first, while the match has not started', () => {
     expect(setBasedStart('t.ask', SIDES, 'notStarted')).toEqual({
       ask: { key: 't.ask' },
+      // A set-based sport has a serve: Start match waits for a side (plan S2-3 Task 2).
+      needsToss: true,
       sides: [
         { side: 'first', label: 'A. Sharma / R. Iyer' },
         { side: 'second', label: 'L. Chen' },

@@ -169,9 +169,10 @@ describe('chessPad: the tools are Draw and Swap colours', () => {
 describe('chessPad: before the start', () => {
   const view = chessPad(chessDisplay({ phase: 'notStarted' }));
 
-  it('asks to start, with the two names as typed', () => {
+  it('asks to start, with the two names as typed and no side to pick (chess has no serve)', () => {
     expect(view.start).toEqual({
       ask: { key: 'scoring.chess.start.ask' },
+      needsToss: false,
       sides: [
         { side: 'first', label: SHARMA },
         { side: 'second', label: CHEN },

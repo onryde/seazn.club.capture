@@ -219,6 +219,7 @@ describe('withCard', () => {
       ...live,
       start: {
         ask: { key: 'k.ask' },
+        needsToss: true,
         sides: [
           { side: 'first', label: 'A' },
           { side: 'second', label: 'B' },

@@ -1302,6 +1302,7 @@ describe('tableTennisPad: sync, the tally, the match details and the Start scree
     it('asks who serves first, offering the two sides as typed, top first', () => {
       expect(tableTennisPad(notStarted).start).toEqual({
         ask: { key: 'scoring.tabletennis.start.ask' },
+        needsToss: true,
         sides: [
           { side: 'first', label: 'A. Sharma' },
           { side: 'second', label: 'L. Chen' },

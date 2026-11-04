@@ -153,13 +153,14 @@ function tally(
 // ---------------------------------------------------------------------------------------------------------------
 
 /**
- * Before the game starts: the question and the two names, top first. The kit draws the match details above it and Start
- * match under it. Chess has no side to pick (no serve), so the sides are only the names.
+ * Before the game starts: the two names, top first. The kit draws the match details above Start match. Chess has no side
+ * to pick (no serve), so `needsToss` is false: the kit draws no question and no picker, and Start match is ready.
  */
 function start(display: ChessDisplay): PadStart<ChessPadKey> | null {
   if (display.phase !== 'notStarted') return null;
   return {
     ask: { key: 'scoring.chess.start.ask' },
+    needsToss: false,
     sides: [
       { side: 'first', label: display.names.first },
       { side: 'second', label: display.names.second },

@@ -55,6 +55,7 @@ export function setBasedStart<K extends string>(
   if (phase !== 'notStarted') return null;
   return {
     ask: { key: ask },
+    needsToss: true,
     sides: [
       { side: 'first', label: sideNames(sides.first) },
       { side: 'second', label: sideNames(sides.second) },

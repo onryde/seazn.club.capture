@@ -252,10 +252,14 @@ export type PadMatchDetails<K extends string> = {
 /**
  * Before the match starts (owner, 2026-11-01: "it show the player, match info and ask to start", option A): the
  * question, and the two sides to pick from, as typed, top first. The kit draws the match details above it and Start
- * match under it, which records the pick.
+ * match under it, which records the pick. A sport with no serve to pick sets `needsToss` false (plan S2-3 Task 2): the kit
+ * then draws no question and no picker, Start match is ready at once and starts with no side. `sides` stays the two
+ * names either way.
  */
 export type PadStart<K extends string> = {
   readonly ask: PadText<K>;
+  /** Whether Start match waits for a side to be picked (who serves first); false when the sport has no such pick. */
+  readonly needsToss: boolean;
   readonly sides: readonly [PadStartSide, PadStartSide];
 };
 

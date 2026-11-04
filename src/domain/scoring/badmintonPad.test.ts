@@ -768,6 +768,7 @@ describe('badmintonPad: before the match starts', () => {
   it('asks who serves first, offering the two sides as typed, top first', () => {
     expect(badmintonPad(notStarted).start).toEqual({
       ask: { key: 'scoring.badminton.start.ask' },
+      needsToss: true,
       sides: [
         { side: 'first', label: 'A. Sharma' },
         { side: 'second', label: 'L. Chen' },
