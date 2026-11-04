@@ -10,6 +10,7 @@ import { useReopenGate } from '@/hooks/useReopenGate';
 import { useScoringBackground } from '@/hooks/useScoringBackground';
 import { useScoringFixture } from '@/hooks/useScoringFixture';
 import type { Route } from '@/services/devicePorts';
+import type { FakeMatchSeed } from '@/services/fakeScoringPort';
 import {
   createExpoRouterNavigation,
   type Path,
@@ -155,6 +156,8 @@ export type LaunchedApp = FakePorts & RenderResult & { readonly nav: RouterDoubl
 
 type Launch = {
   readonly kvSeed?: Record<string, string>;
+  /** The match the fake scoring server serves (default: the preview's badminton singles; a table tennis match is `fakeTableTennisPad`'s). */
+  readonly scoringSeed?: FakeMatchSeed;
   /** The phone's languages, most preferred first (`Ports.deviceLanguages`); English by default. */
   readonly deviceLanguages?: readonly (string | null)[];
   /** Runs before the first render: an engine native already holds, say. */
@@ -178,6 +181,7 @@ type Launch = {
 export async function launchApp(launch: Launch = {}): Promise<LaunchedApp> {
   const {
     kvSeed,
+    scoringSeed,
     prepare,
     seed,
     extra,
@@ -190,6 +194,7 @@ export async function launchApp(launch: Launch = {}): Promise<LaunchedApp> {
   const fakes = createFakePorts({
     navigation: createExpoRouterNavigation(nav),
     kvSeed,
+    ...(scoringSeed === undefined ? {} : { scoringSeed }),
     ...(deviceLanguages === undefined ? {} : { deviceLanguages }),
   });
   if (quiet) quietDevice(fakes.engine);

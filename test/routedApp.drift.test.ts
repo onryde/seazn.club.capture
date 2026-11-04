@@ -292,6 +292,8 @@ describe('every path the navigation moves to has its route file, and each Settin
     expect(sportScreenFiles()).toEqual([
       'src/ui/screens/BadmintonMatchScreen.tsx',
       'src/ui/screens/BadmintonPadScreen.tsx',
+      'src/ui/screens/TableTennisMatchScreen.tsx',
+      'src/ui/screens/TableTennisPadScreen.tsx',
     ]);
   });
 

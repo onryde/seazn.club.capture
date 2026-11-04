@@ -436,7 +436,8 @@ describe('tableTennisPad: the tools', () => {
         kind: 'standard',
         enabled: true,
       });
-      expect(en['scoring.tabletennis.tool.returns']).toBe('{returns} returns');
+      // Shortened from "{returns} returns" to fit four cells in a row at 320 dp (padFit.test.ts, plan S2-2 Task 8).
+      expect(en['scoring.tabletennis.tool.returns']).toBe('{returns} shots');
     });
 
     it('follows the serve: the other side serving, the other side receiving', () => {
@@ -477,7 +478,8 @@ describe('tableTennisPad: the tools', () => {
         kind: 'standard',
         enabled: true,
       });
-      expect(en['scoring.tabletennis.tool.serving']).toBe('Who is serving?');
+      // The owner's "Who is serving?" (ruling 51), shortened to fit four cells in a row at 320 dp (padFit.test.ts, Task 8).
+      expect(en['scoring.tabletennis.tool.serving']).toBe('Whose serve?');
     });
 
     it('is hidden once the engine names a server', () => {

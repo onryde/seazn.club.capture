@@ -143,6 +143,9 @@ function useSheets(
         if (outcome.ok) clear();
         return outcome;
       },
+      // `put` takes no answer once the pad needs none; but then the sheet is already stale and closes before a choice can
+      // reach here (`useTableTennisSheets`: a serving step is stale when `anchorNeeded` is false), so no test reaches the
+      // refusal. It stays on purpose, defence in depth: a refusal the scorer reads, never an answer silently dropped.
       serving: (side) => (put(side) ? TAKEN : refusing('notNow')),
     }),
     [tap, put, clear],

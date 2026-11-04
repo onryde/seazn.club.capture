@@ -51,9 +51,14 @@ const fill = (text: string, vars: Readonly<Record<string, string>>) =>
 
 /** The pad's column: the screen less its padding (space.md a side). */
 const column = (width: number) => width - 2 * space.md;
-/** A tool cell's text: a third of the row less its two gaps (space.sm), less the cell's padding (space.sm) and border. */
-const toolText = (width: number) =>
-  (column(width) - 2 * space.sm) / 3 - 2 * space.sm - 2 * layout.iconBorder;
+/**
+ * A tool cell's text in a row of `cells`: the row less its gaps (space.sm), shared equally, less the cell's padding
+ * (space.sm a side) and border. Badminton's row is three cells, table tennis's four (Card, Card, 13 returns or Who is
+ * serving?, More: plan S2-2 Task 8, ruling 52).
+ */
+const toolTextOf = (cells: number) => (width: number) =>
+  (column(width) - (cells - 1) * space.sm) / cells - 2 * space.sm - 2 * layout.iconBorder;
+const toolText = toolTextOf(3);
 /** A strip slot: half the row less its gap (the game of how many, and the interval; owner rulings 16 and 17). */
 const stripSlot = (width: number) => (column(width) - space.sm) / 2;
 
@@ -64,6 +69,8 @@ describe('the rooms at 320 and 360', () => {
   it('the column is 288 and 328; a tool’s text 72.67 and 86; a strip slot 140 and 160', () => {
     expect(WIDTHS.map(column)).toEqual([288, 328]);
     expect(WIDTHS.map((width) => toolText(width).toFixed(2))).toEqual(['72.67', '86.00']);
+    // Table tennis's four cells leave each 48 and 58: 24 and 28 less than badminton's three.
+    expect(WIDTHS.map(toolTextOf(4))).toEqual([48, 58]);
     expect(WIDTHS.map(stripSlot)).toEqual([140, 160]);
   });
 });
@@ -1133,4 +1140,375 @@ describe('the recorded result card at 320 and 360 in four languages (owner, 2026
     expect(linesOf(first, room(320), bodyWidth)).toBe(4);
     expect(linesOf(said(fr, 'bodyOpen'), room(320), bodyWidth)).toBe(3);
   });
+});
+
+/**
+ * Table tennis (plan S2-2 Task 8; the controller's ruling 3): every string the table tennis pad draws, at 320 and 360 in
+ * four languages, singles and doubles. The rooms are written out from the tokens and the screens' styles as above; the
+ * copy is read from the dictionaries. A string that does not fit is shortened in the dictionary, never set smaller.
+ */
+const TT = 'scoring.tabletennis';
+const said = (dictionary: Dictionary, key: string) => {
+  const text = dictionary[key] ?? '';
+  expect(text, key).not.toBe('');
+  return text;
+};
+/** Every word of the text fits the room: what wraps is never broken, and nothing overflows. */
+const wordsFit = (text: string, room: number, measure: (text: string) => number) =>
+  words(text).every((word) => measure(word) <= room);
+
+describe('table tennis: the tool row of four cells at 320 and 360 in four languages', () => {
+  const room = toolTextOf(4);
+  /** The four labels at their widest: the engine's figure for 13 returns is 13. */
+  const labels = (dictionary: Dictionary) =>
+    [
+      said(dictionary, `${TT}.tool.card`),
+      fill(said(dictionary, `${TT}.tool.returns`), { returns: '13' }),
+      said(dictionary, `${TT}.tool.serving`),
+      said(dictionary, `${TT}.tool.more`),
+    ] as const;
+
+  it.each(LANGUAGES)(
+    '%s: every label in its two lines, no word broken',
+    (_lang, dictionary: Dictionary) => {
+      for (const label of labels(dictionary))
+        for (const width of WIDTHS) {
+          expect(linesOf(label, room(width), toolWidth), `${label} @${width}`).toBeLessThanOrEqual(
+            layout.padToolLines,
+          );
+          expect(wordsFit(label, room(width), toolWidth), `${label} @${width}`).toBe(true);
+        }
+    },
+  );
+
+  // Anti-vacuity: the first wordings (the glossary's, before the four-cell row) each had a word wider than the 48 dp a
+  // cell has at 320, and were shortened for it. A word that wide breaks at the letter on Android.
+  it('would not have fitted with the first wordings, which is why they were shortened', () => {
+    const first = [
+      'Tarjeta',
+      '13 devoluciones',
+      'Carton',
+      '13 renvois',
+      '13 retours',
+      'Who is serving?',
+      'Wie serveert?',
+      '13 returns',
+    ];
+    expect(first.filter((label) => !wordsFit(label, room(320), toolWidth))).toEqual(first);
+  });
+
+  // The second line of a per-side cell is the side's names, one line cut with an ellipsis (`ToolRow`); a screen reader hears
+  // them whole. Four cells leave a singles name 48 dp at 320 (it is cut there) and 58 at 360 (it fits).
+  it('cuts a side’s names on the second line: a singles name at 320 only, a doubles name at both', () => {
+    const fits = (name: string, width: number) => unitWidth(name) <= room(width);
+    expect(WIDTHS.map((width) => NAMES.map((name) => fits(name, width)))).toEqual([
+      [false, true, false, false],
+      [true, true, false, false],
+    ]);
+  });
+});
+
+describe('table tennis: a half at 320 and 360 in four languages', () => {
+  /** The serving plate's widest form ("Serving · 2nd": the three are about the same), its padding included. */
+  const plate = (dictionary: Dictionary) =>
+    Math.max(
+      ...['first', 'second', 'plain'].map((form) =>
+        plateWordWidth(said(dictionary, `${TT}.serving.${form}`)),
+      ),
+    ) +
+    2 * space.sm;
+  const namesRoom = (width: number, dictionary: Dictionary) =>
+    column(width) - layout.padSideBar - 2 * space.md - plate(dictionary) - space.sm;
+
+  it.each(LANGUAGES)(
+    '%s: the sample names beside the plate in their two lines, no word broken',
+    (_lang, dictionary: Dictionary) => {
+      for (const width of WIDTHS)
+        for (const name of NAMES) {
+          expect(linesOf(name, namesRoom(width, dictionary), nameWidth)).toBeLessThanOrEqual(
+            layout.padNameLines,
+          );
+          expect(wordsFit(name, namesRoom(width, dictionary), nameWidth)).toBe(true);
+        }
+    },
+  );
+
+  // French's plate ("Au service · 1er") is the widest and leaves the names least; every sample name still fits in two lines.
+  it('leaves the names 137, 138, 121 and 122 dp at 320 in en, es, fr and nl', () => {
+    expect(LANGUAGES.map(([, dictionary]) => namesRoom(320, dictionary).toFixed(0))).toEqual([
+      '137',
+      '138',
+      '121',
+      '122',
+    ]);
+  });
+
+  // The bottom row, one line: the finished games' boxes, a dot and the doubles server's line, never cut (`HalfFoot`), then
+  // the hint with what is left. Best of 5 has four finished games at most while it is played.
+  const inner = (width: number) => column(width) - layout.padSideBar - 2 * space.md;
+  const boxes = (n: number) => n * layout.padPeriodBox + (n - 1) * space.xs;
+  const serverLine = (dictionary: Dictionary, person: string) =>
+    controlWidth(fill(said(dictionary, `${TT}.serverPerson`), { person }));
+  const dot = space.sm + controlWidth('·') + space.sm;
+  /** The row with `n` boxes and the server's line, the longest name a partner can have in the samples. */
+  const rowWith = (dictionary: Dictionary, n: number) =>
+    boxes(n) +
+    dot +
+    Math.max(
+      ...['A. Sharma', 'R. Iyer', 'L. Chen', 'M. Wong'].map((p) => serverLine(dictionary, p)),
+    );
+
+  it.each(LANGUAGES)(
+    '%s: four boxes, the dot and the doubles server’s line are whole at 320 and 360',
+    (_lang, dictionary: Dictionary) => {
+      for (const width of WIDTHS) expect(rowWith(dictionary, 4)).toBeLessThanOrEqual(inner(width));
+    },
+  );
+
+  // A best-of-7 match (the engine's `bo7`, finals) shows up to six boxes. With the doubles server's line they outgrow 320 from
+  // the fifth and 360 from the sixth, in every language: `HalfFoot` keeps the boxes and the line whole and the half cuts
+  // what is past its edge. Pinned so the fit is a fact and not a surprise; reported to the controller, not fixed here
+  // (`HalfFoot` is the set-based sports' shared row, and best of 7 is a final's).
+  it('overflows at 320 from five boxes and at 360 from six in best of 7, with the server’s line', () => {
+    const over = (width: number) =>
+      LANGUAGES.map(([, dictionary]) =>
+        [5, 6].filter((n) => rowWith(dictionary, n) > inner(width)).join(','),
+      );
+    expect(over(320)).toEqual(['5,6', '5,6', '5,6', '5,6']);
+    expect(over(360)).toEqual(['6', '6', '6', '6']);
+  });
+});
+
+describe('table tennis: the strip at 320 and 360 in four languages', () => {
+  /** Its facts at their widest: "Game 7 of 7" (best of 7, the deciding game), and the note. */
+  const facts = (dictionary: Dictionary) => [
+    fill(said(dictionary, `${TT}.gameOf`), { game: '7', bestOf: '7' }),
+    said(dictionary, `${TT}.note.expedite`),
+    said(dictionary, `${TT}.note.deuce`),
+  ];
+
+  it.each(LANGUAGES)(
+    '%s: each fact on one line in its half of the strip, at both widths',
+    (_lang, dictionary: Dictionary) => {
+      for (const fact of facts(dictionary))
+        for (const width of WIDTHS)
+          expect(linesOf(fact, stripSlot(width), unitWidth), `${fact} @${width}`).toBe(
+            layout.padStripLines,
+          );
+    },
+  );
+});
+
+describe('table tennis: the last-tap line at 320 and 360 in four languages', () => {
+  /** Beside Undo (GhostButton: its word, padding md a side, border) and the gap before it. */
+  const lineRoom = (width: number, dictionary: Dictionary) =>
+    column(width) -
+    (controlWidth(said(dictionary, 'scoring.pad.undo')) + 2 * space.md + 2 * layout.iconBorder) -
+    space.sm;
+  const SIDE = 'A. Sharma / R. Iyer';
+  /** Every sentence the line can say with doubles names, a card, a game in double figures and 13 returns. */
+  const sentences = (dictionary: Dictionary) => {
+    const level = said(dictionary, `${TT}.card.penalty`);
+    const point = fill(said(dictionary, `${TT}.last.rally`), { side: SIDE });
+    const vars = {
+      side: SIDE,
+      person: 'A. Sharma',
+      level,
+      game: '3',
+      score: '31–29',
+      point,
+      returns: '13',
+    };
+    return Object.keys(dictionary)
+      .filter(
+        (key) =>
+          new RegExp(`^${TT.replace(/\./g, '\\.')}\\.(last|undone)\\.`).test(key) ||
+          key === `${TT}.held`,
+      )
+      .map((key) => ({ key, text: fill(said(dictionary, key), vars) }));
+  };
+  const cut = (width: number, limit: number, only: RegExp = /./) =>
+    LANGUAGES.flatMap(([lang, dictionary]) =>
+      sentences(dictionary)
+        .filter(({ key }) => only.test(key))
+        .filter(({ text }) => linesOf(text, lineRoom(width, dictionary), controlWidth) > limit)
+        .map(({ key }) => `${lang} ${key.slice(TT.length + 1)}`),
+    );
+
+  it('reads seventeen sentences in each language (anti-vacuity): ten last, six undone and the held answer', () => {
+    for (const [, dictionary] of LANGUAGES) expect(sentences(dictionary)).toHaveLength(17);
+  });
+
+  it('holds every sentence whole in three lines at 360, in four languages', () => {
+    expect(cut(360, layout.padLineLines)).toEqual([]);
+  });
+
+  // At 320, Dutch's Undo ("Ongedaan maken") leaves its sentence 129.5 dp, as it does badminton's (above): with doubles names
+  // and 13 shots, "Point undone" takes four lines and is cut at three with an ellipsis. The words before the colon, what
+  // was undone, are in the kept lines. (Dutch's undone card was reworded to lead with "Ongedaan gemaakt" for this.)
+  it('cuts only this Dutch sentence at 320, after its third line, the head kept', () => {
+    expect(cut(320, layout.padLineLines)).toEqual(['nl undone.returns']);
+    const text = fill(said(nl, `${TT}.undone.returns`), { side: SIDE, returns: '13' });
+    const kept = linesIn(text, lineRoom(320, nl), controlWidth).slice(0, layout.padLineLines);
+    expect(kept.join(' ').startsWith(text.split(':')[0] ?? '?')).toBe(true);
+  });
+
+  // The held answer is the new line: "Next point: A. Sharma / R. Iyer serving" beside Undo, with doubles names.
+  it('reads the held answer, doubles names, in two lines but for Dutch at 320, which takes three', () => {
+    const lines = (width: number) =>
+      LANGUAGES.map(([, dictionary]) =>
+        linesOf(
+          fill(said(dictionary, `${TT}.held`), { side: SIDE }),
+          lineRoom(width, dictionary),
+          controlWidth,
+        ),
+      );
+    expect(lines(320)).toEqual([2, 2, 2, 3]);
+    expect(lines(360)).toEqual([2, 2, 2, 2]);
+  });
+
+  // A note ("Counted once") sits under a sentence the line gives up a line for: a point, a game, the match, 13 shots and
+  // any Undo keep two lines. As badminton's (above), only Dutch outgrows them, its Undo being the widest.
+  const NOTED = /\.(last\.(rally|game|match|returns)|undone\.)/;
+  it('reads ten sentences a note can sit under, in each language (anti-vacuity)', () => {
+    for (const [, dictionary] of LANGUAGES)
+      expect(sentences(dictionary).filter(({ key }) => NOTED.test(key))).toHaveLength(10);
+  });
+
+  it('cuts only these Dutch sentences under a note: four at 360, seven at 320', () => {
+    expect(cut(360, layout.padLineLines - 1, NOTED)).toEqual([
+      'nl last.match',
+      'nl last.returns',
+      'nl undone.returns',
+      'nl undone.timeout',
+    ]);
+    expect(cut(320, layout.padLineLines - 1, NOTED)).toEqual([
+      'nl last.game',
+      'nl last.match',
+      'nl last.returns',
+      'nl undone.rally',
+      'nl undone.returns',
+      'nl undone.timeout',
+      'nl undone.sanction',
+    ]);
+  });
+
+  it('keeps what was recorded or undone within the two lines of every Dutch sentence at 320', () => {
+    const all = sentences(nl)
+      .filter(({ key }) => NOTED.test(key))
+      .map(({ key, text }) => ({
+        key,
+        head: text.split(':')[0] ?? '',
+        kept: linesIn(text, lineRoom(320, nl), controlWidth)
+          .slice(0, layout.padLineLines - 1)
+          .join(' '),
+      }));
+    expect(all).toHaveLength(10);
+    expect(all.filter(({ head, kept }) => head === '' || !kept.startsWith(head))).toEqual([]);
+  });
+});
+
+describe('table tennis: the sheets at 320 and 360 in four languages', () => {
+  /** A step sheet's content: the screen less its padding (space.md a side). A choice's text: less its own padding and border. */
+  const sheet = (width: number) => width - 2 * space.md;
+  const choice = (width: number) => sheet(width) - 2 * space.md - 2 * layout.iconBorder;
+  const titleWidth = (text: string) =>
+    barlow700.width(text.toUpperCase(), typeScale.title.fontSize) +
+    typeScale.title.letterSpacing * [...text].length;
+  const SIDES = ['A. Sharma', 'L. Chen', 'A. Sharma / R. Iyer', 'L. Chen / M. Wong'] as const;
+
+  it.each(LANGUAGES)(
+    '%s: each sheet’s title, no word wider than the sheet',
+    (_lang, dictionary: Dictionary) => {
+      for (const key of [
+        `${TT}.tool.card`,
+        `${TT}.tool.more`,
+        `${TT}.tool.serving`,
+        'scoring.sanction.who',
+      ])
+        for (const width of WIDTHS)
+          expect(
+            wordsFit(said(dictionary, key), sheet(width), titleWidth),
+            `${key} @${width}`,
+          ).toBe(true);
+    },
+  );
+
+  it.each(LANGUAGES)(
+    '%s: every choice of Card, More and Who is serving?, no word wider than a choice’s text',
+    (_lang, dictionary: Dictionary) => {
+      const choices = [
+        said(dictionary, `${TT}.card.warning`),
+        said(dictionary, `${TT}.card.penalty`),
+        said(dictionary, `${TT}.more.expedite`),
+        said(dictionary, `${TT}.more.setScore`),
+        ...SIDES.map((side) => fill(said(dictionary, `${TT}.more.timeout`), { side })),
+        ...SIDES,
+      ];
+      for (const text of choices)
+        for (const width of WIDTHS)
+          expect(wordsFit(text, choice(width), controlWidth), `${text} @${width}`).toBe(true);
+    },
+  );
+});
+
+describe('table tennis: the Start screen and the match card at 320 and 360 in four languages', () => {
+  const geist400 = loadFont('geist-400');
+  const bodyWidth = (text: string) => geist400.width(text, typeScale.body.fontSize);
+  const caps = (text: string) =>
+    barlow700.width(text.toUpperCase(), typeScale.state.fontSize) +
+    typeScale.state.letterSpacing * [...text].length;
+  const ROOMS = {
+    card: (width: number) => column(width) - 2 * space.md - layout.padSideBar,
+    sheet: (width: number) => width - 2 * space.md,
+    start: (width: number) => column(width),
+  } as const;
+  /** The rule rows at their widest: best of 7, the deciding game to a different target, and the figures in double digits. */
+  const rows = (dictionary: Dictionary) => [
+    {
+      label: said(dictionary, `${TT}.rules.format.label`),
+      value: fill(said(dictionary, `${TT}.rules.bestOf`), { bestOf: '7' }),
+    },
+    {
+      label: said(dictionary, `${TT}.rules.points.label`),
+      value: fill(said(dictionary, `${TT}.rules.points.deciding`), {
+        points: '21',
+        winBy: '2',
+        game: '7',
+        deciding: '11',
+      }),
+    },
+    {
+      label: said(dictionary, `${TT}.rules.expedite.label`),
+      value: said(dictionary, `${TT}.rules.expedite.value`),
+    },
+    {
+      label: said(dictionary, `${TT}.rules.timeouts.label`),
+      value: said(dictionary, `${TT}.rules.timeouts.value`),
+    },
+  ];
+  const labelColumn = (labels: readonly string[]) =>
+    Math.min(Math.ceil(Math.max(...labels.map(bodyWidth))), layout.padRuleLabelMax);
+
+  it.each(LANGUAGES)(
+    '%s: no rule label or value has a word wider than its room, in the card, the sheet and the Start screen',
+    (_lang, dictionary: Dictionary) => {
+      const table = rows(dictionary);
+      const column = labelColumn(table.map((row) => row.label));
+      for (const width of WIDTHS)
+        for (const room of Object.values(ROOMS).map((of) => of(width)))
+          for (const { label, value } of table) {
+            expect(wordsFit(label, column, bodyWidth), label).toBe(true);
+            expect(wordsFit(value, room - column - space.md, bodyWidth), value).toBe(true);
+          }
+    },
+  );
+
+  it.each(LANGUAGES)(
+    '%s: "Who serves first?" in the Start screen’s column, no word wider than it',
+    (_lang, dictionary: Dictionary) => {
+      const ask = said(dictionary, `${TT}.start.ask`);
+      for (const width of WIDTHS) expect(wordsFit(ask, column(width), caps)).toBe(true);
+    },
+  );
 });
