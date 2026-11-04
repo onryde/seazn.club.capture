@@ -139,6 +139,28 @@ describe('the fake judges a chess game with the boardgame engine, as the web doe
     ).toMatchObject({ kind: 'refused', status: 422 });
   });
 
+  // The web reads a settled level game as decided (`outcomeOf` puts the settlement over the module's own outcome), as the
+  // phone does.
+  it('reads a settled drawn bracket game as decided, and a still level one as in play', async () => {
+    const seed = chessSeed({
+      cfg: { tiebreak: true },
+      events: [
+        { type: 'core.start', payload: {} },
+        { type: 'boardgame.result', payload: { winner: null } },
+      ],
+    });
+    const port = createFakeScoringPort(seed);
+    expect(await port.bootstrap(LINK)).toMatchObject({
+      kind: 'ok',
+      bootstrap: { status: 'in_play' },
+    });
+    port.addOtherScorerEvent('core.settle', { winner: HOME_ENTRANT, method: 'lot' });
+    expect(await port.bootstrap(LINK)).toMatchObject({
+      kind: 'ok',
+      bootstrap: { status: 'decided' },
+    });
+  });
+
   it('lets a test play the organiser: finalize locks a decided game', async () => {
     const port = createFakeScoringPort(chessSeed());
     await port.append(LINK, FIXTURE, body(0, 'core.start'));

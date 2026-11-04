@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { chessEventFor, chessPayloadForSend } from '@/domain/scoring/chessEvents';
-import type { ChessMethod, ChessOutcome, ChessTap } from '@/domain/scoring/chessTypes';
+import type { ChessMethod, ChessTap } from '@/domain/scoring/chessTypes';
+import type { PadSide } from '@/domain/scoring/padView';
 import {
   AWAY,
   GAME,
@@ -15,19 +16,20 @@ import {
 // A pad tap as the event the server records (spec §5; plan S2-3 Task 1). Every payload is written out from the spec's
 // table, never computed by the code under test. The top half is home; White is home unless a pairing flipped it.
 
-const WHITE = (method: ChessMethod | null = null): ChessTap => ({
+/** The first (top) player's win, the second's, and a draw: a tap names the seat, never the colour (the Batch A review's ruling). */
+const FIRST = (method: ChessMethod | null = null): ChessTap => ({
   kind: 'result',
-  outcome: 'white',
+  winner: 'first',
   method,
 });
-const BLACK = (method: ChessMethod | null = null): ChessTap => ({
+const SECOND = (method: ChessMethod | null = null): ChessTap => ({
   kind: 'result',
-  outcome: 'black',
+  winner: 'second',
   method,
 });
 const DRAW = (method: ChessMethod | null = null): ChessTap => ({
   kind: 'result',
-  outcome: 'draw',
+  winner: null,
   method,
 });
 
@@ -49,38 +51,28 @@ describe('chessEventFor: the start', () => {
   });
 });
 
-describe('chessEventFor: a result names the player, not the seat', () => {
-  it('a White win is the entrant holding White: home when home has White, away after a pairing flipped it', () => {
-    expect(eventFor(WHITE(), HOME_WHITE)).toEqual({
-      type: 'boardgame.result',
-      payload: { winner: HOME },
-    });
-    expect(eventFor(WHITE(), HOME_BLACK)).toEqual({
-      type: 'boardgame.result',
-      payload: { winner: AWAY },
-    });
+describe('chessEventFor: a result names the seat’s entrant, never a colour', () => {
+  it('the first player’s win is home’s entrant, and the second’s is away’s, whoever holds White', () => {
+    for (const display of [HOME_WHITE, HOME_BLACK, NO_COLOURS]) {
+      expect(eventFor(FIRST(), display)).toEqual({
+        type: 'boardgame.result',
+        payload: { winner: HOME },
+      });
+      expect(eventFor(SECOND(), display)).toEqual({
+        type: 'boardgame.result',
+        payload: { winner: AWAY },
+      });
+    }
   });
 
-  it('a Black win is the entrant holding Black', () => {
-    expect(eventFor(BLACK(), HOME_WHITE)).toEqual({
-      type: 'boardgame.result',
-      payload: { winner: AWAY },
-    });
-    expect(eventFor(BLACK(), HOME_BLACK)).toEqual({
-      type: 'boardgame.result',
-      payload: { winner: HOME },
-    });
-  });
-
-  it('a division without colours has no White: the first side is the White win, the second the Black', () => {
-    expect(eventFor(WHITE(), NO_COLOURS)).toEqual({
-      type: 'boardgame.result',
-      payload: { winner: HOME },
-    });
-    expect(eventFor(BLACK(), NO_COLOURS)).toEqual({
-      type: 'boardgame.result',
-      payload: { winner: AWAY },
-    });
+  // The How sheet is open while a pairing from another scorer lands: the colours flip between the choice and Record, and the
+  // event must still name the player the scorer chose.
+  it('names the player chosen even when the colours flipped between the choice and Record', () => {
+    const chosen = FIRST();
+    const asChosen = eventFor(chosen, HOME_WHITE);
+    const afterPairing = eventFor(chosen, HOME_BLACK);
+    expect(afterPairing).toEqual(asChosen);
+    expect(afterPairing).toEqual({ type: 'boardgame.result', payload: { winner: HOME } });
   });
 
   it('a draw has no winner, with the winner key present and null, whoever holds White', () => {
@@ -93,11 +85,11 @@ describe('chessEventFor: a result names the player, not the seat', () => {
   });
 
   it('carries a method as method, and no method key when none was chosen', () => {
-    expect(eventFor(WHITE('checkmate'))).toEqual({
+    expect(eventFor(FIRST('checkmate'))).toEqual({
       type: 'boardgame.result',
       payload: { winner: HOME, method: 'checkmate' },
     });
-    expect(eventFor(BLACK('resign'))).toEqual({
+    expect(eventFor(SECOND('resign'))).toEqual({
       type: 'boardgame.result',
       payload: { winner: AWAY, method: 'resign' },
     });
@@ -105,11 +97,11 @@ describe('chessEventFor: a result names the player, not the seat', () => {
       type: 'boardgame.result',
       payload: { winner: null, method: 'agreement' },
     });
-    expect(Object.keys((eventFor(WHITE()) as { payload: object }).payload)).toEqual(['winner']);
+    expect(Object.keys((eventFor(FIRST()) as { payload: object }).payload)).toEqual(['winner']);
   });
 
   it('accepts adjudication on both sides of the line: the engine lists it for a win and for a draw', () => {
-    expect(eventFor(WHITE('adjudication'))?.payload).toEqual({
+    expect(eventFor(FIRST('adjudication'))?.payload).toEqual({
       winner: HOME,
       method: 'adjudication',
     });
@@ -135,13 +127,13 @@ describe('chessEventFor: a result names the player, not the seat', () => {
     'repetition',
     'fifty_move',
     'dead_position',
-  ] as const)('builds no win by %s, for either colour: a method only a draw ends by', (method) => {
-    expect(eventFor(WHITE(method))).toBeNull();
-    expect(eventFor(BLACK(method))).toBeNull();
+  ] as const)('builds no win by %s, for either player: a method only a draw ends by', (method) => {
+    expect(eventFor(FIRST(method))).toBeNull();
+    expect(eventFor(SECOND(method))).toBeNull();
   });
 
   it('builds no forfeit: the forfeit words are not a method the pad can name', () => {
-    const forfeit = { kind: 'result', outcome: 'white', method: 'forfeit' } as unknown as ChessTap;
+    const forfeit = { kind: 'result', winner: 'first', method: 'forfeit' } as unknown as ChessTap;
     expect(eventFor(forfeit)).toBeNull();
   });
 });
@@ -166,7 +158,7 @@ describe('chessEventFor: swapping colours', () => {
 describe('chessEventFor: an empty seat', () => {
   it('builds nothing for any tap while a seat has no entrant', () => {
     const bye = { ...GAME, sides: { home: GAME.sides.home, away: null } };
-    const taps: ChessTap[] = [{ kind: 'start' }, WHITE(), DRAW(), { kind: 'swap' }];
+    const taps: ChessTap[] = [{ kind: 'start' }, FIRST(), DRAW(), { kind: 'swap' }];
     for (const tap of taps) {
       expect(chessEventFor(tap, { bootstrap: bye, display: HOME_WHITE })).toBeNull();
     }
@@ -198,12 +190,12 @@ describe('chessPayloadForSend', () => {
   });
 });
 
-// The outcome type is the three-way word the pad speaks; a fourth would be a decision for the owner.
-const OUTCOMES: readonly ChessOutcome[] = ['white', 'draw', 'black'];
-describe('chessEventFor: every outcome has an event', () => {
-  it('builds one for each outcome on a live game', () => {
-    for (const outcome of OUTCOMES) {
-      expect(eventFor({ kind: 'result', outcome, method: null })?.type).toBe('boardgame.result');
+// A result is one of three: the first player's win, the second's, or a draw; a fourth would be a decision for the owner.
+const WINNERS: readonly PadSide[] = ['first', 'second'];
+describe('chessEventFor: every result has an event', () => {
+  it('builds one for each winner and for a draw on a live game', () => {
+    for (const winner of [...WINNERS, null] as const) {
+      expect(eventFor({ kind: 'result', winner, method: null })?.type).toBe('boardgame.result');
     }
   });
 });

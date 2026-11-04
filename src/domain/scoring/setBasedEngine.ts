@@ -10,8 +10,8 @@ import type { QueuedEvent } from '@/domain/scoring/queue';
 import { voidTargetOf, type BootstrapSide, type LedgerEvent } from '@/domain/scoring/wire';
 
 /**
- * What every set-based sport (badminton, table tennis) shares of the engine's input (plan S2-2 Task 2): the lineups the
- * web builds from a side, and the ledger's events as the engine's envelopes. A generic file: it names no sport, so a
+ * What the one-against-one sports (badminton, table tennis and chess) share of the engine's input (plan S2-2 Task 2): the
+ * lineups the web builds from a side, and the ledger's events as the engine's envelopes. A generic file: it names no sport, so a
  * sport's own engine file (`badmintonEngine`) adds only what is the sport's, and the phone and its fake server fold
  * through the same copy.
  */

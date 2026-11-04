@@ -2,7 +2,7 @@ import { foldEpochOf } from '@seazn/engine/sport';
 import { chessEventFor, chessPayloadForSend } from '@/domain/scoring/chessEvents';
 import { foldChess } from '@/domain/scoring/chessFold';
 import { tapOfDone } from '@/domain/scoring/chessLedgerHistory';
-import { chessDecided, chessPad, chessResultLine } from '@/domain/scoring/chessPad';
+import { chessCardLine, chessDecided, chessPad } from '@/domain/scoring/chessPad';
 import type { ChessTypes } from '@/domain/scoring/chessTypes';
 import { memoFold } from '@/domain/scoring/scoringMatchFold';
 import type { ScoringSport } from '@/domain/scoring/scoringSport';
@@ -25,13 +25,13 @@ export const chessSport: ScoringSport<ChessTypes> = {
   refusalFor: () => 'notNow',
   notStarted: (display) => display.phase === 'notStarted',
   decided: chessDecided,
-  /** The result as a scoresheet writes it, White's score first ("1–0"), and nothing until one stands. */
-  resultLine: chessResultLine,
+  /** The result as Home's card writes it, the first side's score first ("0–1" when the second won), and nothing until one stands. */
+  resultLine: chessCardLine,
   awaitingEnding: () => false,
   /** The last tap, unless it is an Undo already; the start is never named (`tapOfDone`). */
   undoneOf: (display) => {
     const did = display.lastTap;
-    return did === null || did.kind === 'undone' ? null : tapOfDone(did, display.colorOfHome);
+    return did === null || did.kind === 'undone' ? null : tapOfDone(did);
   },
   showUndone: (display, tap) => ({ ...display, lastTap: { kind: 'undone', tap } }),
   pad: chessPad,

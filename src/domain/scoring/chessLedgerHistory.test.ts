@@ -69,44 +69,39 @@ describe('doneOf', () => {
   });
 });
 
-describe('tapOfDone and doneOfTap: a result by seat and a result by colour', () => {
+describe('tapOfDone and doneOfTap: a tap and what it did name the same seat', () => {
   it('turns what was done into the tap an Undo names, the start never', () => {
-    expect(tapOfDone({ kind: 'start' }, 'W')).toBeNull();
-    expect(tapOfDone({ kind: 'swap' }, 'W')).toEqual({ kind: 'swap' });
-    expect(tapOfDone({ kind: 'result', winner: null, method: 'agreement' }, 'W')).toEqual({
+    expect(tapOfDone({ kind: 'start' })).toBeNull();
+    expect(tapOfDone({ kind: 'swap' })).toEqual({ kind: 'swap' });
+    expect(tapOfDone({ kind: 'result', winner: null, method: 'agreement' })).toEqual({
       kind: 'result',
-      outcome: 'draw',
+      winner: null,
       method: 'agreement',
     });
-    expect(tapOfDone({ kind: 'result', winner: 'first', method: null }, 'W')).toEqual({
+    expect(tapOfDone({ kind: 'result', winner: 'first', method: null })).toEqual({
       kind: 'result',
-      outcome: 'white',
+      winner: 'first',
       method: null,
     });
-    expect(tapOfDone({ kind: 'result', winner: 'first', method: null }, 'B')).toEqual({
+    expect(tapOfDone({ kind: 'result', winner: 'second', method: 'resign' })).toEqual({
       kind: 'result',
-      outcome: 'black',
-      method: null,
+      winner: 'second',
+      method: 'resign',
     });
   });
 
-  it('turns a tap back into what it did, whoever holds White', () => {
-    expect(doneOfTap({ kind: 'start' }, 'W')).toEqual({ kind: 'start' });
-    expect(doneOfTap({ kind: 'swap' }, 'W')).toEqual({ kind: 'swap' });
-    expect(doneOfTap({ kind: 'result', outcome: 'draw', method: null }, 'B')).toEqual({
+  it('turns a tap back into what it did', () => {
+    expect(doneOfTap({ kind: 'start' })).toEqual({ kind: 'start' });
+    expect(doneOfTap({ kind: 'swap' })).toEqual({ kind: 'swap' });
+    expect(doneOfTap({ kind: 'result', winner: null, method: null })).toEqual({
       kind: 'result',
       winner: null,
       method: null,
     });
-    expect(doneOfTap({ kind: 'result', outcome: 'white', method: 'time' }, 'B')).toEqual({
+    expect(doneOfTap({ kind: 'result', winner: 'second', method: 'time' })).toEqual({
       kind: 'result',
       winner: 'second',
       method: 'time',
-    });
-    expect(doneOfTap({ kind: 'result', outcome: 'black', method: null }, null)).toEqual({
-      kind: 'result',
-      winner: 'second',
-      method: null,
     });
   });
 });

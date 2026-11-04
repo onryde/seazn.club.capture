@@ -258,6 +258,20 @@ describe('badmintonPad: the halves', () => {
     for (const half of badmintonPad(live).halves) expect('hintLine' in half).toBe(false);
   });
 
+  // Batch A review (I3, I4): a sport's own plate word and tap label are chess's; badminton's halves draw neither, in
+  // any phase, so the kit says "Tap" and the serving plate is the only plate.
+  it.each(['notStarted', 'pre', 'live', 'betweenGames', 'decided'] as const)(
+    'has no plate word and no tap label of its own %s',
+    (phase) => {
+      expect(
+        badmintonPad({ ...live, phase }).halves.map((half) => [half.plate, half.action]),
+      ).toEqual([
+        [null, null],
+        [null, null],
+      ]);
+    },
+  );
+
   it.each(['pre', 'live', 'betweenGames'] as const)('takes taps %s', (phase) => {
     expect(badmintonPad({ ...live, phase }).halves.map((half) => half.tappable)).toEqual([
       true,

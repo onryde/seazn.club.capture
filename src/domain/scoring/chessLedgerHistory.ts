@@ -1,12 +1,5 @@
 import type { EventEnvelope } from '@seazn/engine/core';
-import {
-  methodOf,
-  outcomeOfSeat,
-  seatOfOutcome,
-  type ChessColour,
-  type ChessDone,
-  type ChessTap,
-} from '@/domain/scoring/chessTypes';
+import { methodOf, type ChessDone, type ChessTap } from '@/domain/scoring/chessTypes';
 import { field, type EventFacts } from '@/domain/scoring/setBasedLedgerHistory';
 import { sideOfEntrant, type SetBasedNames } from '@/domain/scoring/setBasedSides';
 
@@ -54,24 +47,12 @@ export const CHESS_FACTS: EventFacts = {
   sanctionedPerson: null,
 };
 
-/** The tap an event was, as an Undo names it, or null for the start, whose Undo shows no line. */
-export function tapOfDone(did: ChessDone, colour: ChessColour | null): ChessTap | null {
-  switch (did.kind) {
-    case 'start':
-      return null;
-    case 'swap':
-      return { kind: 'swap' };
-    case 'result':
-      return {
-        kind: 'result',
-        outcome: did.winner === null ? 'draw' : outcomeOfSeat(did.winner, colour),
-        method: did.method,
-      };
-  }
+/** The tap an event was, as an Undo names it, or null for the start, whose Undo shows no line. A result names its seat both ways. */
+export function tapOfDone(did: ChessDone): ChessTap | null {
+  return did.kind === 'start' ? null : did;
 }
 
-/** What a tap does, as the event it makes would be read back: the winner of a result by seat. */
-export function doneOfTap(tap: ChessTap, colour: ChessColour | null): ChessDone {
-  if (tap.kind !== 'result') return { kind: tap.kind };
-  return { kind: 'result', winner: seatOfOutcome(tap.outcome, colour), method: tap.method };
+/** What a tap does, as the event it makes would be read back: a result names the same seat. */
+export function doneOfTap(tap: ChessTap): ChessDone {
+  return tap;
 }

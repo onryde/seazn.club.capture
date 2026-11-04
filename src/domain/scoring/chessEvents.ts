@@ -1,8 +1,7 @@
 import type { SportEvent, SportEventContext } from '@/domain/scoring/scoringSport';
 import {
-  METHODS_FOR,
+  methodsOf,
   otherSeat,
-  seatOfOutcome,
   whiteSeatOf,
   type ChessColour,
   type ChessTap,
@@ -29,25 +28,23 @@ export function chessEventFor(
     case 'start':
       return { type: 'core.start', payload: {} };
     case 'result':
-      return resultEvent(seats, tap, display.colorOfHome);
+      return resultEvent(seats, tap);
     case 'swap':
       return swapEvent(seats, display.colorOfHome);
   }
 }
 
 /**
- * A result names the winner by entrant, the player holding the colour the tap named (a draw names nobody: `winner` is
- * present and null). A method is carried only when the outcome offers it.
+ * A result names the winner by the entrant in the seat the tap named, whoever holds White when it is recorded (a draw names
+ * nobody: `winner` is present and null). A method is carried only when the result offers it.
  */
 function resultEvent(
   seats: Seats,
   tap: Extract<ChessTap, { readonly kind: 'result' }>,
-  colour: ChessColour | null,
 ): SportEvent | null {
-  const { outcome, method } = tap;
-  if (method !== null && !METHODS_FOR[outcome].includes(method)) return null;
-  const seat = seatOfOutcome(outcome, colour);
-  const winner = seat === null ? null : seats[seat].entrantId;
+  const { method } = tap;
+  if (method !== null && !methodsOf(tap.winner).includes(method)) return null;
+  const winner = tap.winner === null ? null : seats[tap.winner].entrantId;
   return {
     type: 'boardgame.result',
     payload: { winner, ...(method === null ? {} : { method }) },

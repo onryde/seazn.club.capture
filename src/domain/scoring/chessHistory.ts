@@ -1,11 +1,5 @@
 import { doneOfTap } from '@/domain/scoring/chessLedgerHistory';
-import type {
-  ChessColour,
-  ChessDone,
-  ChessMethod,
-  ChessPadKey,
-  ChessTap,
-} from '@/domain/scoring/chessTypes';
+import type { ChessDone, ChessMethod, ChessPadKey, ChessTap } from '@/domain/scoring/chessTypes';
 import type { PadHistoryGroup, PadSide, PadText } from '@/domain/scoring/padView';
 import { setBasedHistory, type SetBasedHistoryEntry } from '@/domain/scoring/setBasedHistory';
 
@@ -68,12 +62,12 @@ function drawnSaid(method: ChessMethod | null): Text {
 }
 
 /**
- * The line after an Undo took a tap back: "Undone" and the tap in its own words. A result names its winner by the player
- * who held the colour the tap named (`colour` is the home side's now).
+ * The line after an Undo took a tap back: "Undone" and the tap in its own words. A result names the player in the seat the
+ * tap named.
  */
-export function undoneSaid(names: Names, colour: ChessColour | null, tap: ChessTap): Text {
+export function undoneSaid(names: Names, tap: ChessTap): Text {
   return {
     key: 'scoring.chess.last.undone',
-    vars: { what: doneSaid(names, doneOfTap(tap, colour)) },
+    vars: { what: doneSaid(names, doneOfTap(tap)) },
   };
 }

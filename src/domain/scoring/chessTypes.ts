@@ -9,33 +9,38 @@ import type { PadSide } from '@/domain/scoring/padView';
  * are only what the pad needs of it.
  */
 
-/** Who won, as chess says it: the player holding White, a draw, or the player holding Black. */
+/**
+ * A result as the game is written, by colour: the player holding White, a draw, or the player holding Black. It is what the
+ * display reads off the engine's outcome (`ChessResult`) and the scoresheet's line says; a tap never names it (it names a seat).
+ */
 export type ChessOutcome = 'white' | 'draw' | 'black';
 
 /** How a game ended: a member of the engine's decisive list or of its drawn list (`adjudication` is in both). */
 export type ChessMethod = (typeof DECISIVE_METHODS)[number] | (typeof DRAWN_METHODS)[number];
 
 /**
- * The methods each outcome offers, in the engine's own order. The engine refuses a method that contradicts the winner
- * (`RESULT_METHOD_CONTRADICTS_WINNER`), so the pad builds only these. A forfeit is in neither: the web refuses it from a
- * device link and the organiser records it.
+ * The methods a result offers, in the engine's own order: the decisive list for a win by either player, the drawn list for
+ * a draw (`winner` null). The engine refuses a method that contradicts the winner (`RESULT_METHOD_CONTRADICTS_WINNER`), so
+ * the pad builds only these. A forfeit is in neither: the web refuses it from a device link and the organiser records it.
  */
-export const METHODS_FOR: Readonly<Record<ChessOutcome, readonly ChessMethod[]>> = {
-  white: DECISIVE_METHODS,
-  black: DECISIVE_METHODS,
-  draw: DRAWN_METHODS,
-};
+export const methodsOf = (winner: PadSide | null): readonly ChessMethod[] =>
+  winner === null ? DRAWN_METHODS : DECISIVE_METHODS;
 
 /** The engine's colour of the home side: White or Black. */
 export type ChessColour = 'W' | 'B';
 
 /**
- * One tap the scorer can make. A result carries the outcome by colour and the method, or none. A division without
- * colours has no White: the first side stands for it, so a `white` result is the first side's win.
+ * One tap the scorer can make. A result names the SEAT that won (the player in the top half or the bottom one), or none for
+ * a draw, and the method, or none. It never names a colour: a pairing from another scorer can land while the sheet that
+ * asks How is open, and the player the scorer chose must stay the player recorded (the Batch A review's ruling).
  */
 export type ChessTap =
   | { readonly kind: 'start' }
-  | { readonly kind: 'result'; readonly outcome: ChessOutcome; readonly method: ChessMethod | null }
+  | {
+      readonly kind: 'result';
+      readonly winner: PadSide | null;
+      readonly method: ChessMethod | null;
+    }
   | { readonly kind: 'swap' };
 
 /**
@@ -92,8 +97,8 @@ export type ChessDisplay = {
  */
 export type ChessPadKey =
   | `scoring.chess.chip.${'white' | 'black'}`
-  | `scoring.chess.chipSaid.${'white' | 'black'}`
   | `scoring.chess.result.${'white' | 'black' | 'plain'}`
+  | 'scoring.chess.hint'
   | 'scoring.chess.tool.draw'
   | 'scoring.chess.tool.swap'
   | 'scoring.chess.start.ask'

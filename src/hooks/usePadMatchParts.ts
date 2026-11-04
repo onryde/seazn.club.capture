@@ -5,8 +5,8 @@ import type { ScoringRunner } from '@/hooks/scoringRunner';
 import { START_TAP, type Opening } from '@/hooks/usePadTaps';
 
 /**
- * What every set-based sport's match hook does alike (plan S2-2 Task 7, lifted from `useBadmintonMatch` so
- * `useTableTennisMatch` does not copy it): the Start screen's two buttons, the reconnect question's answers, and the
+ * What every sport's match hook does alike (badminton, table tennis and chess's; plan S2-2 Task 7, lifted from
+ * `useBadmintonMatch` so `useTableTennisMatch` does not copy it): the Start screen's two buttons, the reconnect question's answers, and the
  * sheets going away with a dead link. A generic file: it names no sport; the sport hands in the one thing that is its
  * own (the tap that starts its match).
  */

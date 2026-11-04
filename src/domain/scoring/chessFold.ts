@@ -171,7 +171,7 @@ function displayOf(
     },
     result: resultOf(folded.facts, colour, own),
     context: match.context,
-    lastTap: lastTapOf(stream.envelopes, recorded, (did) => tapOfDone(did, colour)),
+    lastTap: lastTapOf(stream.envelopes, recorded, tapOfDone),
     undoable: undoesResult(undoTargetOf(input, stream), resultId),
   };
 }

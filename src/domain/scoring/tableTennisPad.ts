@@ -341,6 +341,9 @@ function half(display: TableTennisDisplay, side: PadSide): PadHalf<TableTennisPa
     sub: plate === null ? null : serverPerson(display),
     marks: padMarks(sanctionCard(display, side), clockWords(display)),
     serving: plate,
+    // A set-based half has no plate of its own and says its tap in the kit's word.
+    plate: null,
+    action: null,
     // The bar follows the plate (owner, 2026-11-02): the serving side's is lit, and neither is while the engine names no
     // server, before the match starts and once it is over.
     bar: plate === null ? 'dim' : 'lit',

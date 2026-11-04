@@ -73,6 +73,19 @@ export type PadHalf<K extends string> = {
   /** The serving plate, on the serving side's half only; null on the other, and on both once the match is over. */
   readonly serving: PadServing<K> | null;
   /**
+   * A word drawn on a plate in the half's head, after the names (chess's WHITE and BLACK): the sport's own label for the
+   * side, never a serving claim, so it is not the lime serving plate but a neutral one, and it is kept after the match ends
+   * (a scoresheet keeps the colours). A screen reader hears the word in the half's name. Null for a sport with none, and
+   * for every set-based half.
+   */
+  readonly plate: PadText<K> | null;
+  /**
+   * The visible label of the tap, drawn in the bottom row in place of the kit's word "Tap" while the half takes a tap
+   * (chess: "White won · A. Sharma", so the scorer sees what the tap records). A screen reader still hears `hint`. Null:
+   * the kit draws "Tap" (every set-based half).
+   */
+  readonly action: PadText<K> | null;
+  /**
    * The bar at the half's left edge, which the sport decides (owner, 2026-11-02: the lime follows the server): `lit`
    * is the LED lime and `dim` the lilac. Decorative: a screen reader hears the serving plate's words, never the bar.
    */
@@ -260,10 +273,19 @@ export type PadStart<K extends string> = {
   readonly ask: PadText<K>;
   /** Whether Start match waits for a side to be picked (who serves first); false when the sport has no such pick. */
   readonly needsToss: boolean;
-  readonly sides: readonly [PadStartSide, PadStartSide];
+  readonly sides: readonly [PadStartSide<K>, PadStartSide<K>];
 };
 
-export type PadStartSide = { readonly side: PadSide; readonly label: string };
+/**
+ * One side on the Start screen, the name as typed. `plate` is the word the side's half will carry (`PadHalf.plate`): with no
+ * serve to pick (`needsToss` false) the kit draws each name with its plate as a read-only row, so the scorer sees who holds
+ * what before Start match. None for a sport without plates.
+ */
+export type PadStartSide<K extends string = string> = {
+  readonly side: PadSide;
+  readonly label: string;
+  readonly plate?: PadText<K> | null;
+};
 
 export type PadView<K extends string> = {
   /** Top, then bottom (layout A). */

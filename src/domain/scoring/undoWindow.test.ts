@@ -95,6 +95,8 @@ describe('withUndoWindow', () => {
     sub: null,
     marks: { clock: false, cards: [], said: [] },
     serving: null,
+    plate: null,
+    action: null,
     bar: 'dim',
     hint: text,
     tappable: false,

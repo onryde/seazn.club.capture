@@ -79,6 +79,8 @@ function half(display: FirstTo3Display, side: PadSide): PadHalf<FirstTo3Key> {
     sub: null,
     marks: { clock: false, cards: [], said: [] },
     serving: null,
+    plate: null,
+    action: null,
     bar: 'dim',
     hint: { key: 'first3.hint' },
     tappable: true,

@@ -1,6 +1,11 @@
 import { DECISIVE_METHODS, DRAWN_METHODS } from '@seazn/engine/sports/boardgame';
 import { describe, expect, it } from 'vitest';
-import { chessMethodsFor, chessPad, chessResultLine } from '@/domain/scoring/chessPad';
+import {
+  chessCardLine,
+  chessMethodsFor,
+  chessPad,
+  chessResultLine,
+} from '@/domain/scoring/chessPad';
 import type { ChessDisplay } from '@/domain/scoring/chessTypes';
 import { chessDisplay } from '../../../test/chessLedger';
 
@@ -18,23 +23,23 @@ const OWN_WHITE_WIN = chessDisplay({
   undoable: true,
 });
 
-describe('chessPad: the undone line names the player who held the colour', () => {
+describe('chessPad: the undone line names the player in the seat the tap named', () => {
   it.each([
-    ['W', 'white', SHARMA],
-    ['B', 'white', CHEN],
-    ['W', 'black', CHEN],
-    ['B', 'black', SHARMA],
-  ] as const)('home %s, an undone %s win is %s’s', (colorOfHome, outcome, name) => {
-    const view = chessPad(
-      chessDisplay({
-        colorOfHome,
-        lastTap: { kind: 'undone', tap: { kind: 'result', outcome, method: null } },
-      }),
-    );
-    expect(view.lastTap?.text).toEqual({
-      key: 'scoring.chess.last.undone',
-      vars: { what: { key: 'scoring.chess.last.won', vars: { name } } },
-    });
+    ['first', SHARMA],
+    ['second', CHEN],
+  ] as const)('an undone win by the %s player is %s’s, whoever holds White', (winner, name) => {
+    for (const colorOfHome of ['W', 'B', null] as const) {
+      const view = chessPad(
+        chessDisplay({
+          colorOfHome,
+          lastTap: { kind: 'undone', tap: { kind: 'result', winner, method: null } },
+        }),
+      );
+      expect(view.lastTap?.text, `${colorOfHome}`).toEqual({
+        key: 'scoring.chess.last.undone',
+        vars: { what: { key: 'scoring.chess.last.won', vars: { name } } },
+      });
+    }
   });
 });
 
@@ -51,30 +56,45 @@ describe('chessPad: the halves are the players', () => {
     }
   });
 
-  it('puts the words WHITE and BLACK on the chips, home holding White', () => {
+  it('puts the words WHITE and BLACK on the plates, home holding White', () => {
     const [top, bottom] = chessPad(chessDisplay({ colorOfHome: 'W' })).halves;
-    expect(top.serving).toEqual({
-      shown: { key: 'scoring.chess.chip.white' },
-      said: { key: 'scoring.chess.chipSaid.white' },
-    });
-    expect(bottom.serving).toEqual({
-      shown: { key: 'scoring.chess.chip.black' },
-      said: { key: 'scoring.chess.chipSaid.black' },
-    });
+    expect(top.plate).toEqual({ key: 'scoring.chess.chip.white' });
+    expect(bottom.plate).toEqual({ key: 'scoring.chess.chip.black' });
   });
 
-  it('moves the chips and not the names after a swap', () => {
+  it('moves the plates and not the names after a swap', () => {
     const [top, bottom] = chessPad(chessDisplay({ colorOfHome: 'B' })).halves;
     expect(top.label).toBe(SHARMA);
-    expect(top.serving?.shown).toEqual({ key: 'scoring.chess.chip.black' });
+    expect(top.plate).toEqual({ key: 'scoring.chess.chip.black' });
     expect(bottom.label).toBe(CHEN);
-    expect(bottom.serving?.shown).toEqual({ key: 'scoring.chess.chip.white' });
+    expect(bottom.plate).toEqual({ key: 'scoring.chess.chip.white' });
   });
 
-  it('draws no chip words in a division without colours', () => {
+  it('draws no plate words in a division without colours', () => {
     const [top, bottom] = chessPad(chessDisplay({ colorOfHome: null })).halves;
-    expect(top.serving).toBeNull();
-    expect(bottom.serving).toBeNull();
+    expect(top.plate).toBeNull();
+    expect(bottom.plate).toBeNull();
+  });
+
+  // The plate is a colour, not a serve: chess claims no server, and the kit's serving plate is lime and says who serves.
+  it('claims no server: the serving plate is never used', () => {
+    for (const colorOfHome of ['W', 'B', null] as const) {
+      for (const half of chessPad(chessDisplay({ colorOfHome })).halves) {
+        expect(half.serving).toBeNull();
+      }
+    }
+  });
+
+  it('keeps the plates once the game is over, as a scoresheet keeps the colours', () => {
+    for (const phase of ['live', 'tiebreak', 'done', 'final'] as const) {
+      const plates = chessPad(chessDisplay({ phase, colorOfHome: 'B' })).halves.map(
+        (half) => half.plate,
+      );
+      expect(plates, phase).toEqual([
+        { key: 'scoring.chess.chip.black' },
+        { key: 'scoring.chess.chip.white' },
+      ]);
+    }
   });
 
   it('lights the bar of the side holding White, and neither without colours', () => {
@@ -92,21 +112,33 @@ describe('chessPad: the halves are the players', () => {
     ]);
   });
 
-  it('says what a tap records: White won, Black won, or just the name without colours', () => {
-    const hints = (colorOfHome: ChessDisplay['colorOfHome']) =>
-      chessPad(chessDisplay({ colorOfHome })).halves.map((half) => half.hint);
-    expect(hints('W')).toEqual([
+  it('labels the tap with what it records: White won, Black won, or just the name without colours', () => {
+    const actions = (colorOfHome: ChessDisplay['colorOfHome']) =>
+      chessPad(chessDisplay({ colorOfHome })).halves.map((half) => half.action);
+    expect(actions('W')).toEqual([
       { key: 'scoring.chess.result.white', vars: { name: SHARMA } },
       { key: 'scoring.chess.result.black', vars: { name: CHEN } },
     ]);
-    expect(hints('B')).toEqual([
+    expect(actions('B')).toEqual([
       { key: 'scoring.chess.result.black', vars: { name: SHARMA } },
       { key: 'scoring.chess.result.white', vars: { name: CHEN } },
     ]);
-    expect(hints(null)).toEqual([
+    expect(actions(null)).toEqual([
       { key: 'scoring.chess.result.plain', vars: { name: SHARMA } },
       { key: 'scoring.chess.result.plain', vars: { name: CHEN } },
     ]);
+  });
+
+  it('keeps the hint a screen reader’s sentence of what a tap does, naming the player and no colour', () => {
+    for (const colorOfHome of ['W', 'B', null] as const) {
+      expect(
+        chessPad(chessDisplay({ colorOfHome })).halves.map((half) => half.hint),
+        `${colorOfHome}`,
+      ).toEqual([
+        { key: 'scoring.chess.hint', vars: { name: SHARMA } },
+        { key: 'scoring.chess.hint', vars: { name: CHEN } },
+      ]);
+    }
   });
 
   it('takes a tap while the game is live and at no other time', () => {
@@ -174,10 +206,23 @@ describe('chessPad: before the start', () => {
       ask: { key: 'scoring.chess.start.ask' },
       needsToss: false,
       sides: [
-        { side: 'first', label: SHARMA },
-        { side: 'second', label: CHEN },
+        { side: 'first', label: SHARMA, plate: { key: 'scoring.chess.chip.white' } },
+        { side: 'second', label: CHEN, plate: { key: 'scoring.chess.chip.black' } },
       ],
     });
+  });
+
+  it('puts each name’s colour plate on the Start screen, following a pairing', () => {
+    const swapped = chessPad(chessDisplay({ phase: 'notStarted', colorOfHome: 'B' })).start;
+    expect(swapped?.sides.map((side) => side.plate)).toEqual([
+      { key: 'scoring.chess.chip.black' },
+      { key: 'scoring.chess.chip.white' },
+    ]);
+  });
+
+  it('puts no plate on the Start screen in a division without colours', () => {
+    const plain = chessPad(chessDisplay({ phase: 'notStarted', colorOfHome: null })).start;
+    expect(plain?.sides.map((side) => side.plate ?? null)).toEqual([null, null]);
   });
 
   it('is no Start screen once the game is under way', () => {
@@ -255,7 +300,7 @@ describe('chessPad: a result stands', () => {
     expect(drawn.lastTap?.text).toEqual({ key: 'scoring.chess.last.drawn' });
     const undone = chessPad(
       chessDisplay({
-        lastTap: { kind: 'undone', tap: { kind: 'result', outcome: 'black', method: 'resign' } },
+        lastTap: { kind: 'undone', tap: { kind: 'result', winner: 'second', method: 'resign' } },
       }),
     );
     expect(undone.lastTap).toEqual({
@@ -304,7 +349,7 @@ describe('chessPad: the header and the rest of the view', () => {
   });
 });
 
-describe('chessResultLine', () => {
+describe('chessResultLine: the pad’s own line, in chess notation', () => {
   const lineOf = (result: ChessDisplay['result']) => chessResultLine(chessDisplay({ result }));
 
   it('is 1–0, ½–½ or 0–1, White’s score first, with an en dash', () => {
@@ -320,14 +365,59 @@ describe('chessResultLine', () => {
   it('does not change with the method', () => {
     expect(lineOf({ outcome: 'white', method: 'resign', own: true })).toBe('1–0');
   });
+
+  it('stays White’s score first when home holds Black: the pad’s tally reads like a scoresheet', () => {
+    const tally = (colorOfHome: 'W' | 'B', outcome: 'white' | 'black') =>
+      chessPad(
+        chessDisplay({
+          phase: 'done',
+          colorOfHome,
+          result: { outcome, method: null, own: false },
+        }),
+      ).tally.shown;
+    expect(tally('B', 'white')).toBe('1–0');
+    expect(tally('B', 'black')).toBe('0–1');
+  });
+});
+
+describe('chessCardLine: Home’s card, the first side’s score first', () => {
+  const cardLine = (
+    colorOfHome: ChessDisplay['colorOfHome'],
+    outcome: 'white' | 'draw' | 'black',
+  ) =>
+    chessCardLine(
+      chessDisplay({ phase: 'done', colorOfHome, result: { outcome, method: null, own: false } }),
+    );
+
+  it('is the first side’s point and then the second’s, with home holding White', () => {
+    expect(cardLine('W', 'white')).toBe('1–0');
+    expect(cardLine('W', 'black')).toBe('0–1');
+    expect(cardLine('W', 'draw')).toBe('½–½');
+  });
+
+  it('turns over with the colours: with home holding Black, Black’s win is the first side’s', () => {
+    expect(cardLine('B', 'white')).toBe('0–1');
+    expect(cardLine('B', 'black')).toBe('1–0');
+    expect(cardLine('B', 'draw')).toBe('½–½');
+  });
+
+  it('is White-first with no colours: the first name stands for White', () => {
+    expect(cardLine(null, 'white')).toBe('1–0');
+    expect(cardLine(null, 'black')).toBe('0–1');
+  });
+
+  it('is empty while no result stands', () => {
+    expect(chessCardLine(chessDisplay())).toBe('');
+    expect(chessCardLine(chessDisplay({ phase: 'tiebreak' }))).toBe('');
+  });
 });
 
 describe('chessMethodsFor', () => {
-  it('is the engine’s decisive list for either win, in its order', () => {
+  it('is the engine’s decisive list for either player’s win, in its order', () => {
     const decisive = ['checkmate', 'resign', 'time', 'adjudication', 'illegal_move'];
-    expect(chessMethodsFor('white')).toEqual(decisive);
-    expect(chessMethodsFor('black')).toEqual(decisive);
-    expect(chessMethodsFor('white')).toEqual([...DECISIVE_METHODS]);
+    expect(chessMethodsFor('first')).toEqual(decisive);
+    expect(chessMethodsFor('second')).toEqual(decisive);
+    expect(chessMethodsFor('first')).toEqual([...DECISIVE_METHODS]);
   });
 
   it('is the engine’s drawn list for a draw, in its order', () => {
@@ -340,14 +430,14 @@ describe('chessMethodsFor', () => {
       'fifty_move',
       'dead_position',
     ];
-    expect(chessMethodsFor('draw')).toEqual(drawn);
-    expect(chessMethodsFor('draw')).toEqual([...DRAWN_METHODS]);
+    expect(chessMethodsFor(null)).toEqual(drawn);
+    expect(chessMethodsFor(null)).toEqual([...DRAWN_METHODS]);
   });
 
   it('never lists a forfeit: the web refuses it from a device link', () => {
-    for (const outcome of ['white', 'draw', 'black'] as const) {
-      expect(chessMethodsFor(outcome)).not.toContain('forfeit');
-      expect(chessMethodsFor(outcome)).not.toContain('double_forfeit');
+    for (const winner of ['first', 'second', null] as const) {
+      expect(chessMethodsFor(winner)).not.toContain('forfeit');
+      expect(chessMethodsFor(winner)).not.toContain('double_forfeit');
     }
   });
 });

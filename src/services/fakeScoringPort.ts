@@ -1,5 +1,6 @@
 import {
-  foldMatch,
+  foldMatchWithStoppage,
+  outcomeOf,
   type EventEnvelope,
   type FoldableModule,
   type LineupPair,
@@ -413,16 +414,19 @@ function statusOf(server: Server): string {
   return has('core.start') ? 'in_play' : 'scheduled';
 }
 
-/** The sport's own reading of the folded state (`module.outcome`): the set-based kernel's and chess's both are `state.outcome`. */
+/**
+ * The match is decided: the engine's effective outcome (`outcomeOf`, the one reader of a fold's outcome) is not null, so an
+ * organiser's settle over a level game, which the module's own state never sees, counts as the web counts it.
+ */
 const decided = (server: Server): boolean => {
   const { module } = server.sport;
-  const state = foldMatch(
+  const folded = foldMatchWithStoppage(
     module,
     server.cfg,
     server.lineups,
     server.ledger.map((event) => envelopeOf(server.seed.fixtureId, event)),
   );
-  return module.outcome(state) !== null;
+  return outcomeOf(module, folded) !== null;
 };
 
 // ---------------------------------------------------------------------------------------------------------------

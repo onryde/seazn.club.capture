@@ -218,6 +218,18 @@ describe('foldChess: a game the organiser settles', () => {
   });
 });
 
+describe('foldChess: a forfeit while the tie-break waits', () => {
+  // The engine overwrites the game's method with the forfeit when the organiser forfeits a player over a drawn bracket game
+  // (a draw is the classical result and stays), and the pad has no word for a forfeit, so the method it showed is gone.
+  it('keeps the drawn game as the result and loses its method', () => {
+    const display = displayOf([start(), result(null, 'agreement'), forfeit('A')], {
+      bootstrap: BRACKET,
+    });
+    expect(display.phase).toBe('done');
+    expect(display.result).toEqual({ outcome: 'draw', method: null, own: false });
+  });
+});
+
 describe('foldChess: what the organiser decides', () => {
   it('a walkover is done, and the player who turned up is the result’s winner, with no method', () => {
     const display = displayOf([forfeit('A')]);
@@ -503,7 +515,7 @@ describe('foldChess: the last tap', () => {
     });
     expect(displayOf([start(), result(null), voiding(2)]).lastTap).toEqual({
       kind: 'undone',
-      tap: { kind: 'result', outcome: 'draw', method: null },
+      tap: { kind: 'result', winner: null, method: null },
     });
   });
 
@@ -518,14 +530,18 @@ describe('foldChess: the last tap', () => {
     ]);
   });
 
-  it('names an undone win by the colour its player held: after a pairing, home’s win was Black’s', () => {
+  it('names an undone win by the seat that won, whoever held White: the same tap either side of a pairing', () => {
     expect(displayOf([start(), pairing('A'), result('H'), voiding(3)]).lastTap).toEqual({
       kind: 'undone',
-      tap: { kind: 'result', outcome: 'black', method: null },
+      tap: { kind: 'result', winner: 'first', method: null },
     });
     expect(displayOf([start(), result('H'), voiding(2)]).lastTap).toEqual({
       kind: 'undone',
-      tap: { kind: 'result', outcome: 'white', method: null },
+      tap: { kind: 'result', winner: 'first', method: null },
+    });
+    expect(displayOf([start(), pairing('A'), result('A', 'resign'), voiding(3)]).lastTap).toEqual({
+      kind: 'undone',
+      tap: { kind: 'result', winner: 'second', method: 'resign' },
     });
   });
 

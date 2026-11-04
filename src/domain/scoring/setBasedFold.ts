@@ -30,10 +30,11 @@ import { undoTarget } from '@/domain/scoring/undoTarget';
 import { matchContextOf, type Bootstrap } from '@/domain/scoring/wire';
 
 /**
- * The fold the set-based sports (badminton, table tennis) share (design §6; plan S2-1 Task 7, lifted for S2-2 Task 3): the
- * server's ledger with this phone's queued taps on top, folded through @seazn/engine. A generic file: it names no sport.
- * A sport gives a `SetBasedKit` (its engine module, its two event types, how it judges an append and what an event did)
- * and reads its display off the `SetBasedFolding` this returns; the engine decides every fact, this only reads them off.
+ * The fold the one-against-one sports share (badminton, table tennis and chess; design §6; plan S2-1 Task 7, lifted for
+ * S2-2 Task 3): the server's ledger with this phone's queued taps on top, folded through @seazn/engine. A generic file: it
+ * names no sport. A set-based sport gives a `SetBasedKit` (its engine module, its two event types, how it judges an
+ * append and what an event did) and reads its display off the `SetBasedFolding` this returns; the engine decides every
+ * fact, this only reads them off. Chess is not set-based: it has its own fold and takes only `streamOf` from here.
  *
  * Each queued tap is judged as the server would judge its append on the ledger and the legal taps before it (the kit's
  * `mayAppend`). An illegal tap is skipped, never shown, and the ones behind it are judged without it (`stream.legal`,

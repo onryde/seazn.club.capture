@@ -35,6 +35,8 @@ const top: PadHalf<MessageKey> = {
     shown: { key: 'scoring.badminton.serving.right' },
     said: { key: 'scoring.badminton.servingSaid.right' },
   },
+  plate: null,
+  action: null,
   bar: 'lit',
   hint: { key: 'scoring.badminton.hint' },
   tappable: true,
@@ -440,6 +442,113 @@ describe('ScoreHalf', () => {
 // on right cornor, both expetie clock on both card?". A side's card is a small upright card in its colour at the half's
 // top-right corner; while Expedite is in force a stopwatch sits before it. Colour, the hairline and the icon's size in sun
 // are the device check's: jsdom paints the tokens, not the glass.
+/**
+ * A plate word and a tap label (plan S2-3, Batch A review): a sport that names its sides by a colour (chess: WHITE, BLACK)
+ * puts the word on a plate in the half's head and says what the tap records in place of "Tap". The kit draws whatever
+ * words it is given, so these use any dictionary words; the sport's own are its pad's tests'.
+ */
+describe('ScoreHalf, a plate word and a tap label', () => {
+  const PLATE: PadHalf<MessageKey>['plate'] = { key: 'scoring.sanction.penalty' };
+  const ACTION: PadHalf<MessageKey>['action'] = { key: 'scoring.tabletennis.half.expedite' };
+  const PLATE_WORD = en['scoring.sanction.penalty'];
+  const ACTION_WORDS = en['scoring.tabletennis.half.expedite'];
+  const plain: PadHalf<MessageKey> = { ...gameOne, plate: PLATE, action: ACTION };
+
+  it('draws the plate word after the names, in a plate of its own', () => {
+    renderWithPorts(<ScoreHalf half={plain} flash={0} onTap={vi.fn()} />);
+    expect(screen.getByTestId('plate').textContent).toBe(PLATE_WORD);
+    const head = screen.getByTestId('plate').parentElement;
+    if (head === null) throw new Error('no name row');
+    expect([...head.children].map((child) => child.getAttribute('data-testid'))).toEqual([
+      null,
+      'plate',
+    ]);
+    expect(head.children[0]?.textContent).toBe('A. Sharma');
+  });
+
+  it('draws nothing for a half with no plate', () => {
+    renderWithPorts(<ScoreHalf half={gameOne} flash={0} onTap={vi.fn()} />);
+    expect(screen.queryByTestId('plate')).toBeNull();
+  });
+
+  it('is a neutral plate, not the lime serving plate: a hairline on the raised surface, ink words', () => {
+    renderWithPorts(<ScoreHalf half={plain} flash={0} onTap={vi.fn()} />);
+    const plate = screen.getByTestId('plate');
+    expect(paintOf(plate).fill).toBe(fillOf(colour.surface2));
+    expect(paintOf(plate).fill).not.toBe(fillOf(colour.lime));
+    expect(paintOf(plate).edges).toEqual(Array(4).fill(edgeOf(colour.ink3)));
+    expect(getComputedStyle(within(plate).getByText(PLATE_WORD)).color).toBe(edgeOf(colour.ink));
+  });
+
+  it('is never a serving claim: it stands beside the serving plate, after it, and neither replaces the other', () => {
+    renderWithPorts(<ScoreHalf half={{ ...top, plate: PLATE }} flash={0} onTap={vi.fn()} />);
+    expect(screen.getByTestId('serving').textContent).toBe(en['scoring.badminton.serving.right']);
+    expect(screen.getByTestId('plate').textContent).toBe(PLATE_WORD);
+    const head = screen.getByTestId('plate').parentElement;
+    expect([...(head?.children ?? [])].map((child) => child.getAttribute('data-testid'))).toEqual([
+      null,
+      'serving',
+      'plate',
+    ]);
+  });
+
+  it('never shrinks, as the serving plate does not: only the names give way', () => {
+    renderWithPorts(
+      <ScoreHalf half={{ ...plain, label: 'A. Sharma / R. Iyer' }} flash={0} onTap={vi.fn()} />,
+    );
+    expect(declaredStyle(screen.getByTestId('plate'), 'flex-shrink')).toBe('0');
+    expect(declaredStyle(screen.getByText('A. Sharma / R. Iyer'), 'flex-grow')).toBe('1');
+  });
+
+  it('is in the half’s name to a screen reader, after the serving court, and is not read twice', () => {
+    renderWithPorts(<ScoreHalf half={{ ...top, plate: PLATE }} flash={0} onTap={vi.fn()} />);
+    expect(screen.getByRole('button', { name: `${NAME}, ${PLATE_WORD}` })).toBeTruthy();
+  });
+
+  it('names a half with a plate and no serving as side, value and the plate word', () => {
+    renderWithPorts(<ScoreHalf half={plain} flash={0} onTap={vi.fn()} />);
+    expect(screen.getByRole('button', { name: `A. Sharma, 11, ${PLATE_WORD}` })).toBeTruthy();
+  });
+
+  it('keeps the plate on a half that takes no tap, and once the match is over', () => {
+    renderWithPorts(<ScoreHalf half={{ ...plain, tappable: false }} flash={0} onTap={vi.fn()} />);
+    expect(screen.getByTestId('plate').textContent).toBe(PLATE_WORD);
+  });
+
+  it('draws the tap label in place of the word Tap, in the same place and role, hidden from a screen reader', () => {
+    renderWithPorts(<ScoreHalf half={plain} flash={0} onTap={vi.fn()} />);
+    expect(screen.queryByText(TAP)).toBeNull();
+    const action = screen.getByText(ACTION_WORDS);
+    expect(getComputedStyle(action).textAlign).toBe('right');
+    expect(getComputedStyle(action).fontSize).toBe(`${typeScale.metricUnit.fontSize}px`);
+    expect(action.getAttribute('aria-hidden')).toBe('true');
+    expect(action.parentElement?.children.length).toBe(1);
+  });
+
+  it('keeps the label out of the half’s name: the hint says what a tap does', () => {
+    renderWithPorts(<ScoreHalf half={plain} flash={0} onTap={vi.fn()} />);
+    expect(screen.getByRole('button', { name: `A. Sharma, 11, ${PLATE_WORD}` })).toBeTruthy();
+  });
+
+  it('draws no label on a half that takes no tap, as it draws no Tap', () => {
+    renderWithPorts(<ScoreHalf half={{ ...plain, tappable: false }} flash={0} onTap={vi.fn()} />);
+    expect(screen.queryByText(ACTION_WORDS)).toBeNull();
+    expect(screen.queryByText(TAP)).toBeNull();
+  });
+
+  it('draws the word Tap for a half with no label', () => {
+    renderWithPorts(<ScoreHalf half={{ ...plain, action: null }} flash={0} onTap={vi.fn()} />);
+    expect(screen.getByText(TAP)).toBeTruthy();
+  });
+
+  it('gives its side the tap, whatever its label says', () => {
+    const onTap = vi.fn();
+    renderWithPorts(<ScoreHalf half={{ ...plain, side: 'second' }} flash={0} onTap={onTap} />);
+    act(() => fireEvent.click(screen.getByTestId('half-second')));
+    expect(onTap).toHaveBeenCalledExactlyOnceWith('second');
+  });
+});
+
 describe('ScoreHalf, the marks in the top-right corner (owner ruling 56)', () => {
   const withMarks = (marks: PadHalf<MessageKey>['marks']): PadHalf<MessageKey> => ({
     ...top,

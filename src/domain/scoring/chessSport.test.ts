@@ -11,6 +11,7 @@ import { FAKE_SCORING_SECRET } from '../../../test/fakeScoringLinkPort';
 import {
   BRACKET,
   GAME,
+  NO_COLOURS,
   chessDisplay,
   eventId,
   finalize,
@@ -88,20 +89,35 @@ describe('chessSport: the game’s state', () => {
     }
   });
 
-  it('says the result as 1–0, ½–½ or 0–1, and nothing before one stands', () => {
+  it('says nothing before a result stands', () => {
     expect(chessSport.resultLine(displayOf([start()]))).toBe('');
-    expect(chessSport.resultLine(displayOf([start(), result('H')]))).toBe('1–0');
-    expect(chessSport.resultLine(displayOf([start(), result(null)]))).toBe('½–½');
-    expect(chessSport.resultLine(displayOf([start(), result('A')]))).toBe('0–1');
-    expect(chessSport.resultLine(displayOf([start(), pairing('A'), result('A')]))).toBe('1–0');
+    expect(chessSport.resultLine(displayOf([]))).toBe('');
   });
+
+  // Home's card writes the first side's score first (the kit's contract for `resultLine`), not White's: the line is the first
+  // name's point and then the second's, whoever held White.
+  it.each([
+    ['home holds White and wins', [start(), result('H')], GAME, '1–0'],
+    ['home holds White and loses', [start(), result('A')], GAME, '0–1'],
+    ['home holds Black (a pairing) and wins', [start(), pairing('A'), result('H')], GAME, '1–0'],
+    ['home holds Black (a pairing) and loses', [start(), pairing('A'), result('A')], GAME, '0–1'],
+    ['a draw', [start(), result(null)], GAME, '½–½'],
+    ['a draw with Black at home', [start(), pairing('A'), result(null)], GAME, '½–½'],
+    ['no colours, the first side wins', [start(), result('H')], NO_COLOURS, '1–0'],
+    ['no colours, the second side wins', [start(), result('A')], NO_COLOURS, '0–1'],
+  ] as const)(
+    'says the first side’s score first on Home’s card: %s',
+    (_name, specs, game, line) => {
+      expect(chessSport.resultLine(displayOf(specs, game))).toBe(line);
+    },
+  );
 });
 
 describe('chessSport: a tap', () => {
   const TAPS: readonly ChessTap[] = [
     { kind: 'start' },
-    { kind: 'result', outcome: 'white', method: null },
-    { kind: 'result', outcome: 'draw', method: 'agreement' },
+    { kind: 'result', winner: 'first', method: null },
+    { kind: 'result', winner: null, method: 'agreement' },
     { kind: 'swap' },
   ];
 
@@ -150,7 +166,7 @@ describe('chessSport: Undo’s line', () => {
     const display = displayOf([start(), result('A', 'resign')], GAME, [1, 2]);
     expect(chessSport.undoneOf(display)).toEqual({
       kind: 'result',
-      outcome: 'black',
+      winner: 'second',
       method: 'resign',
     });
   });
@@ -158,7 +174,7 @@ describe('chessSport: Undo’s line', () => {
   it('names a draw and a swap too, and the start never: its Undo returns to the Start screen', () => {
     expect(chessSport.undoneOf(displayOf([start(), result(null)]))).toEqual({
       kind: 'result',
-      outcome: 'draw',
+      winner: null,
       method: null,
     });
     expect(chessSport.undoneOf(displayOf([start(), pairing('A')]))).toEqual({ kind: 'swap' });
@@ -166,13 +182,11 @@ describe('chessSport: Undo’s line', () => {
     expect(chessSport.undoneOf(displayOf([]))).toBeNull();
   });
 
-  it('names a win by the colour its player held: after a pairing, home’s win is Black’s', () => {
+  it('names a win by the seat that won, whoever holds White: home’s win is the first player’s either side of a pairing', () => {
     const display = displayOf([start(), pairing('A'), result('H')], GAME, [1, 2, 3]);
-    expect(chessSport.undoneOf(display)).toEqual({
-      kind: 'result',
-      outcome: 'black',
-      method: null,
-    });
+    expect(chessSport.undoneOf(display)).toEqual({ kind: 'result', winner: 'first', method: null });
+    const plain = displayOf([start(), result('H')], GAME, [1, 2]);
+    expect(chessSport.undoneOf(plain)).toEqual({ kind: 'result', winner: 'first', method: null });
   });
 
   it('is nothing once an Undo is already the last tap', () => {
@@ -181,7 +195,7 @@ describe('chessSport: Undo’s line', () => {
 
   it('shows the tap as undone on the display, changing nothing else', () => {
     const display: ChessDisplay = chessDisplay();
-    const tap: ChessTap = { kind: 'result', outcome: 'draw', method: null };
+    const tap: ChessTap = { kind: 'result', winner: null, method: null };
     expect(chessSport.showUndone(display, tap)).toEqual({
       ...display,
       lastTap: { kind: 'undone', tap },
@@ -197,7 +211,7 @@ describe('chessSport: the fake server’s game', () => {
       token: FAKE_SCORING_SECRET,
     });
     if (answer.kind !== 'ok') throw new Error('the fake did not answer');
-    expect(answer.bootstrap.sportKey).toBe(chessSport.key);
+    expect(answer.bootstrap.sportKey).toBe('boardgame');
     const fold = chessSport.fold({
       bootstrap: answer.bootstrap,
       ledger: [],

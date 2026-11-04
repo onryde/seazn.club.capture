@@ -105,6 +105,19 @@ describe('tableTennisPad: the halves', () => {
     ]);
   });
 
+  // Batch A review (I3, I4): a sport's own plate word and tap label are chess's; table tennis's halves draw neither,
+  // singles or doubles, so the kit says "Tap" and the serving plate is the only plate.
+  it.each([
+    ['singles', pre],
+    ['singles, live', live],
+    ['doubles', doubles],
+  ] as const)('has no plate word and no tap label of its own: %s', (_name, display) => {
+    expect(tableTennisPad(display).halves.map((half) => [half.plate, half.action])).toEqual([
+      [null, null],
+      [null, null],
+    ]);
+  });
+
   describe('the serving plate (design §5.1: the engine’s serve number, never ours)', () => {
     const plates = (display: TableTennisDisplay) =>
       tableTennisPad(display).halves.map((half) => half.serving);

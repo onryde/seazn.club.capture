@@ -1,7 +1,7 @@
-import { fireEvent, screen } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { badmintonPad, type BadmintonDisplay } from '@/domain/scoring/badmintonPad';
-import type { PadSide, PadStart, PadView } from '@/domain/scoring/padView';
+import type { PadSide, PadStart, PadStartSide, PadView } from '@/domain/scoring/padView';
 import type { MessageKey } from '@/i18n/messages';
 import dutch from '@/i18n/nl.json';
 import en from '@/i18n/en.json';
@@ -44,10 +44,22 @@ const SINGLES: BadmintonDisplay = {
   serverPicked: false,
 };
 
-function viewNeeding(needsToss: boolean): PadView<MessageKey> {
+/** Words a sport may put on a side's plate: the kit draws whatever it is given, so any dictionary word will do. */
+const WHITE_PLATE = { key: 'scoring.sanction.penalty' } as const;
+const BLACK_PLATE = { key: 'scoring.tabletennis.half.expedite' } as const;
+
+type Plates = readonly [PadStartSide<MessageKey>['plate'], PadStartSide<MessageKey>['plate']];
+
+function viewNeeding(needsToss: boolean, plates?: Plates): PadView<MessageKey> {
   const view = badmintonPad(SINGLES);
   const start = view.start as PadStart<MessageKey>;
-  return { ...view, start: { ...start, needsToss } };
+  if (plates === undefined) return { ...view, start: { ...start, needsToss } };
+  const [first, second] = start.sides;
+  const sides = [
+    { ...first, plate: plates[0] },
+    { ...second, plate: plates[1] },
+  ] as const;
+  return { ...view, start: { ...start, needsToss, sides } };
 }
 
 function actionsOf() {
@@ -74,12 +86,13 @@ function renderStart(
   needsToss: boolean,
   toss: PadSide | null,
   language: 'en' | 'es' | 'fr' | 'nl' = 'en',
+  plates?: Plates,
 ) {
   const { actions, start, pickServer } = actionsOf();
   renderWithPorts(
     <PadContent
       model={{
-        view: viewNeeding(needsToss),
+        view: viewNeeding(needsToss, plates),
         line: null,
         cardNote: null,
         flash: null,
@@ -149,5 +162,73 @@ describe('PadContent: the Start screen of a sport with no serve pick', () => {
       'true',
     );
     expect(dutch['scoring.start.confirm']).not.toBe(en['scoring.start.confirm']);
+  });
+});
+
+// A sport whose sides carry a plate word (chess: WHITE, BLACK) and has no serve to pick shows each name with its plate before
+// Start match, as read-only rows (Batch A review). Nothing here names a sport: the plates are any words.
+describe('PadContent: the Start screen shows the sides’ plates when there is no serve to pick', () => {
+  const rows = () => screen.queryByTestId('start-sides');
+
+  it('draws each name with its plate, first on top, as rows that take no tap', () => {
+    const { pickServer, start } = renderStart(false, null, 'en', [WHITE_PLATE, BLACK_PLATE]);
+    const first = screen.getByTestId('start-side-first');
+    const second = screen.getByTestId('start-side-second');
+    expect(within(first).getByText('A. Sharma')).toBeTruthy();
+    expect(within(first).getByTestId('plate').textContent).toBe(en['scoring.sanction.penalty']);
+    expect(within(second).getByText('L. Chen')).toBeTruthy();
+    expect(within(second).getByTestId('plate').textContent).toBe(
+      en['scoring.tabletennis.half.expedite'],
+    );
+    expect(rows()?.children[0]).toBe(first);
+    fireEvent.click(first);
+    fireEvent.click(second);
+    expect(pickServer).not.toHaveBeenCalled();
+    expect(start).not.toHaveBeenCalled();
+    expect(screen.queryAllByRole('radio')).toEqual([]);
+    expect(within(first).queryByRole('button')).toBeNull();
+  });
+
+  it('reads each row to a screen reader as the name and its plate', () => {
+    renderStart(false, null, 'en', [WHITE_PLATE, BLACK_PLATE]);
+    expect(
+      screen.getByTestId('start-side-first').getAttribute('aria-label') ??
+        screen.getByTestId('start-side-first').textContent,
+    ).toBe(`A. Sharma, ${en['scoring.sanction.penalty']}`);
+  });
+
+  it('keeps Start match ready and pressing it starts once', () => {
+    const { start } = renderStart(false, null, 'en', [WHITE_PLATE, BLACK_PLATE]);
+    expect(startButton().getAttribute('aria-disabled')).not.toBe('true');
+    fireEvent.click(startButton());
+    expect(start).toHaveBeenCalledTimes(1);
+  });
+
+  it('draws the rows when only one side has a plate, and no plate on the other', () => {
+    renderStart(false, null, 'en', [WHITE_PLATE, null]);
+    expect(within(screen.getByTestId('start-side-first')).getByTestId('plate')).toBeTruthy();
+    expect(within(screen.getByTestId('start-side-second')).queryByTestId('plate')).toBeNull();
+    expect(within(screen.getByTestId('start-side-second')).getByText('L. Chen')).toBeTruthy();
+  });
+
+  it('draws no rows when no side has a plate: badminton’s Start screen is as it was', () => {
+    renderStart(false, null);
+    expect(rows()).toBeNull();
+    renderStart(false, null, 'en', [null, null]);
+    expect(rows()).toBeNull();
+  });
+
+  it('draws the picker and not the rows when a serve is to be picked, plates or not', () => {
+    renderStart(true, null, 'en', [WHITE_PLATE, BLACK_PLATE]);
+    expect(rows()).toBeNull();
+    expect(screen.getAllByRole('radio')).toHaveLength(2);
+  });
+
+  it('says the plate in the operator’s language, from the dictionary', () => {
+    renderStart(false, null, 'nl', [WHITE_PLATE, BLACK_PLATE]);
+    expect(within(screen.getByTestId('start-side-first')).getByTestId('plate').textContent).toBe(
+      dutch['scoring.sanction.penalty'],
+    );
+    expect(dutch['scoring.sanction.penalty']).not.toBe(en['scoring.sanction.penalty']);
   });
 });

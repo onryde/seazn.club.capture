@@ -71,8 +71,8 @@ describe('doneSaid: what an event did, in the pad’s words', () => {
 
 describe('undoneSaid: an Undo as the tap it took back', () => {
   it('says the tap in its own words under the Undone line', () => {
-    const tap = { kind: 'result', outcome: 'draw', method: 'agreement' } as const;
-    expect(undoneSaid(NAMES, 'W', tap)).toEqual({
+    const tap = { kind: 'result', winner: null, method: 'agreement' } as const;
+    expect(undoneSaid(NAMES, tap)).toEqual({
       key: 'scoring.chess.last.undone',
       vars: {
         what: {
@@ -84,16 +84,12 @@ describe('undoneSaid: an Undo as the tap it took back', () => {
   });
 
   it.each([
-    ['W', 'white', 'A. Sharma'],
-    ['B', 'white', 'L. Chen'],
-    [null, 'white', 'A. Sharma'],
-    ['W', 'black', 'L. Chen'],
-    ['B', 'black', 'A. Sharma'],
-    [null, 'black', 'L. Chen'],
+    ['first', 'A. Sharma'],
+    ['second', 'L. Chen'],
   ] as const)(
-    'names the winner of an undone win by the player who held the colour: home %s, %s won, so %s',
-    (colour, outcome, name) => {
-      expect(undoneSaid(NAMES, colour, { kind: 'result', outcome, method: null })).toEqual({
+    'names the winner of an undone win by the seat the tap named: %s is %s',
+    (winner, name) => {
+      expect(undoneSaid(NAMES, { kind: 'result', winner, method: null })).toEqual({
         key: 'scoring.chess.last.undone',
         vars: { what: { key: 'scoring.chess.last.won', vars: { name } } },
       });
@@ -101,10 +97,10 @@ describe('undoneSaid: an Undo as the tap it took back', () => {
   );
 
   it('says an undone swap and start in their own words', () => {
-    expect(undoneSaid(NAMES, 'W', { kind: 'swap' }).vars).toEqual({
+    expect(undoneSaid(NAMES, { kind: 'swap' }).vars).toEqual({
       what: { key: 'scoring.chess.last.swap' },
     });
-    expect(undoneSaid(NAMES, 'W', { kind: 'start' }).vars).toEqual({
+    expect(undoneSaid(NAMES, { kind: 'start' }).vars).toEqual({
       what: { key: 'scoring.chess.last.start' },
     });
   });
