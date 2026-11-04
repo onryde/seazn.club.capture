@@ -13,15 +13,23 @@ import {
   type PadPeriodScore,
   type PadServing,
   type PadSide,
-  type PadStart,
   type PadStripItem,
   type PadSync,
-  type PadTally,
   type PadText,
   type PadTool,
   type PadView,
 } from '@/domain/scoring/padView';
 import type { SetBasedPhase } from '@/domain/scoring/setBasedBoard';
+import {
+  gamesWon,
+  playedSaid,
+  playedScore,
+  resultCardOf,
+  setBasedGameItem,
+  setBasedHalfWords,
+  setBasedStart,
+  setBasedTally,
+} from '@/domain/scoring/setBasedPad';
 import { scoreText, sideNames, type SetBasedSide } from '@/domain/scoring/setBasedSides';
 
 /** The web's four sanction levels (`sanction.*`), lightest first. */
@@ -175,6 +183,20 @@ type Text = PadText<BadmintonPadKey>;
 
 const SYNCED: PadSync = { kind: 'synced' };
 
+/** The words a set-based pad names alike, in badminton's own namespace (`setBasedPad`). */
+const WORDS = {
+  gamesSaid: 'scoring.badminton.gamesSaid.other',
+  gamesTally: 'scoring.badminton.gamesTally',
+  gameOf: 'scoring.badminton.gameOf',
+  hint: 'scoring.badminton.hint',
+  hintLine: 'scoring.badminton.hintLine',
+  startAsk: 'scoring.badminton.start.ask',
+} as const;
+
+/** A game won on points: no side won the game a disqualification ended. */
+type PlayedGame = Extract<BadmintonGame, { readonly winner: PadSide }>;
+const isPlayed = (game: BadmintonGame): game is PlayedGame => 'winner' in game;
+
 /** A sanction level's word (the web's `sanction.*`). */
 export function sanctionWord(level: BadmintonSanctionLevel): PadText<SanctionLevelKey> {
   return { key: `scoring.sanction.${level}` };
@@ -194,19 +216,16 @@ export function badmintonPad(
 ): PadView<BadmintonPadKey> {
   const view: PadView<BadmintonPadKey> = {
     halves: [half(state, 'first'), half(state, 'second')],
-    tally: tally(state),
+    tally: setBasedTally(WORDS.gamesTally, state.sides, gamesWon(state.finished.filter(isPlayed))),
     details: badmintonDetails(state),
-    start: startOf(state),
+    start: setBasedStart(WORDS.startAsk, state.sides, state.phase),
     strip: strip(state),
     lastTap: lastTap(state),
     sync,
     tools: tools(state),
     card: null,
   };
-  return withCard(
-    view,
-    state.phase === 'decided' ? { kind: 'resultRecorded', undoLeft: null } : null,
-  );
+  return withCard(view, resultCardOf(state.phase));
 }
 
 /** The tool ids `badmintonPad` gives, read back; anything else is null. */
@@ -237,8 +256,7 @@ function half(state: BadmintonDisplay, side: PadSide): PadHalf<BadmintonPadKey> 
     // The bar follows the plate (owner, 2026-11-02): the serving side's is lit, so when the serve changes the light moves
     // with it, and neither is lit while the ledger names no server, before the match starts and once it is over.
     bar: plate === null ? 'dim' : 'lit',
-    hint: { key: 'scoring.badminton.hint' },
-    hintLine: { key: 'scoring.badminton.hintLine', vars: { side: sideNames(state.sides[side]) } },
+    ...setBasedHalfWords<BadmintonPadKey>(WORDS, sideNames(state.sides[side])),
     tappable: open(state),
   };
 }
@@ -252,17 +270,9 @@ function periods(
   side: PadSide,
 ): PadPeriods<BadmintonPadKey> | null {
   if (finished.length === 0) return null;
-  const played = finished.filter((game) => 'winner' in game);
+  const played = finished.filter(isPlayed);
   const said: Text[] =
-    played.length === 0
-      ? []
-      : [
-          {
-            key: 'scoring.badminton.gamesSaid.other',
-            count: played.length,
-            vars: { scores: played.map((game) => game.points[side]).join(', ') },
-          },
-        ];
+    played.length === 0 ? [] : [playedSaid<BadmintonPadKey>(WORDS.gamesSaid, played, side)];
   finished.forEach((game, at) => {
     if ('disqualified' in game) said.push(stoppedSaid(game, at + 1, side));
   });
@@ -273,8 +283,8 @@ const DQ: Text = { key: 'scoring.badminton.mark.disqualified' };
 
 /** A game's box for the side: lime when it won the game on points, DQ when it was disqualified in it. */
 function periodScore(game: BadmintonGame, side: PadSide): PadPeriodScore<BadmintonPadKey> {
+  if (isPlayed(game)) return playedScore(game, side);
   const value = String(game.points[side]);
-  if ('winner' in game) return { value, won: game.winner === side };
   return game.disqualified === side ? { value, won: false, mark: DQ } : { value, won: false };
 }
 
@@ -292,47 +302,11 @@ function stoppedSaid(
 }
 
 /**
- * Before the match starts (owner, 2026-11-01, option A): who serves first, from the two sides as typed, top first. Once
- * it has started, none.
- */
-function startOf(state: BadmintonDisplay): PadStart<BadmintonPadKey> | null {
-  if (started(state)) return null;
-  return {
-    ask: { key: 'scoring.badminton.start.ask' },
-    sides: [
-      { side: 'first', label: sideNames(state.sides.first) },
-      { side: 'second', label: sideNames(state.sides.second) },
-    ],
-  };
-}
-
-/**
  * The match's context and its rules, for MatchCard: the Start screen, the Not started card and the Match details sheet
  * (owner, 2026-11-01).
  */
 export function badmintonDetails(state: BadmintonDisplay): PadMatchDetails<BadmintonPadKey> {
   return { context: state.context, rules: badmintonRuleRows(state.rules) };
-}
-
-/**
- * The games each side has won, top first ("1:0"; owner, 2026-11-01), from the start ("0:0"). A game a disqualification
- * ended (owner ruling 18) counts for nobody: no side won it on points.
- */
-function tally(state: BadmintonDisplay): PadTally<BadmintonPadKey> {
-  const won = (side: PadSide) =>
-    state.finished.filter((game) => 'winner' in game && game.winner === side).length;
-  return {
-    shown: `${won('first')}:${won('second')}`,
-    said: {
-      key: 'scoring.badminton.gamesTally',
-      vars: {
-        first: sideNames(state.sides.first),
-        firstGames: won('first'),
-        second: sideNames(state.sides.second),
-        secondGames: won('second'),
-      },
-    },
-  };
 }
 
 /** The side's heaviest sanction's word, or none. */
@@ -357,13 +331,7 @@ function serving(court: BadmintonCourt): PadServing<BadmintonPadKey> {
 function strip(state: BadmintonDisplay): readonly PadStripItem<BadmintonPadKey>[] {
   const decided = state.phase === 'decided';
   return [
-    {
-      slot: 'game',
-      text: {
-        key: 'scoring.badminton.gameOf',
-        vars: { game: state.game, bestOf: state.rules.bestOf },
-      },
-    },
+    setBasedGameItem(WORDS.gameOf, state.game, state.rules.bestOf),
     { slot: 'interval', text: decided ? null : interval(state) },
   ];
 }

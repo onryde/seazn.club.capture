@@ -1,12 +1,39 @@
+import { tabletennisPadRules } from '@seazn/engine/pad';
 import type { MatchContext } from '@/domain/scoring/matchContext';
-import type { PadSide } from '@/domain/scoring/padView';
+import {
+  withCard,
+  type PadHalf,
+  type PadLastTap,
+  type PadMatchDetails,
+  type PadPeriods,
+  type PadServing,
+  type PadSide,
+  type PadStripItem,
+  type PadSync,
+  type PadText,
+  type PadTool,
+  type PadView,
+} from '@/domain/scoring/padView';
 import type { SetBasedGame, SetBasedPhase } from '@/domain/scoring/setBasedBoard';
-import type { SetBasedSide } from '@/domain/scoring/setBasedSides';
+import {
+  gamesWon,
+  playedSaid,
+  playedScore,
+  resultCardOf,
+  setBasedGameItem,
+  setBasedHalfWords,
+  setBasedStart,
+  setBasedTally,
+} from '@/domain/scoring/setBasedPad';
+import { sideNames, type SetBasedSide } from '@/domain/scoring/setBasedSides';
+import { cardWord, doneSaid } from '@/domain/scoring/tableTennisHistory';
+import { tableTennisRuleRows, type TableTennisRuleKey } from '@/domain/scoring/tableTennisRules';
 
 /**
- * Table tennis on the pad, as types (plan S2-2 Task 3; the pad view is Task 5). Whoever keeps the score (the engine,
- * through `foldTableTennis`) decides every field of the display: the pad only draws them. Table tennis has its own
- * types beside badminton's (owner, 2026-11-02: pad per sport), though several are alike.
+ * Table tennis on the pad: the types (plan S2-2 Task 3) and the view that draws them (Task 5). Whoever keeps the score
+ * (the engine, through `foldTableTennis`) decides every field of the display: the pad only draws them. Table tennis has
+ * its own types beside badminton's (owner, 2026-11-02: pad per sport), though several are alike; what is word for word
+ * the same is the set-based sports' to share (`setBasedPad`).
  */
 
 /** The ITTF umpire's two cards (`tabletennisPadRules.sanctionLevels`): yellow is `warning`, red is `penalty`. */
@@ -157,9 +184,12 @@ export type TableTennisDisplay = {
   readonly undoable: boolean;
 };
 
+/** How the plate says the serve: the engine's number of the pair's serves, or none. */
+export type ServingForm = 'first' | 'second' | 'plain';
+
 /**
- * Every dictionary key the History words (and, in Task 5, the pad) name. The kit translates them as `MessageKey`, so
- * each must exist in en.json.
+ * Every dictionary key the pad and its History words name. The kit translates them as `MessageKey`, so each must exist
+ * in en.json.
  */
 export type TableTennisPadKey =
   | 'scoring.tabletennis.gameHeading'
@@ -173,7 +203,28 @@ export type TableTennisPadKey =
   | 'scoring.tabletennis.last.expedite'
   | 'scoring.tabletennis.last.sanction'
   | 'scoring.tabletennis.last.setScore'
-  | `scoring.tabletennis.card.${TableTennisSanctionLevel}`;
+  | `scoring.tabletennis.undone.${TableTennisUndoneTap['kind']}`
+  | `scoring.tabletennis.card.${TableTennisSanctionLevel}`
+  | 'scoring.tabletennis.gamesSaid.other'
+  | 'scoring.tabletennis.gamesTally'
+  | 'scoring.tabletennis.gameOf'
+  | 'scoring.tabletennis.hint'
+  | 'scoring.tabletennis.hintLine'
+  | 'scoring.tabletennis.start.ask'
+  | `scoring.tabletennis.serving.${ServingForm}`
+  | `scoring.tabletennis.servingSaid.${ServingForm}`
+  | 'scoring.tabletennis.serverPerson'
+  | 'scoring.tabletennis.note.expedite'
+  | 'scoring.tabletennis.note.deuce'
+  | 'scoring.tabletennis.tool.card'
+  | 'scoring.tabletennis.tool.returns'
+  | 'scoring.tabletennis.tool.serving'
+  | 'scoring.tabletennis.tool.more'
+  | 'scoring.tabletennis.more.timeout'
+  | 'scoring.tabletennis.more.expedite'
+  | 'scoring.tabletennis.more.setScore'
+  | 'scoring.tabletennis.held'
+  | TableTennisRuleKey;
 
 /** Table tennis's pad types: what the match runtime is generic over (`SportTypes`). */
 export type TableTennisTypes = {
@@ -182,3 +233,307 @@ export type TableTennisTypes = {
   readonly padKey: TableTennisPadKey;
   readonly undone: TableTennisUndoneTap;
 };
+
+// ---------------------------------------------------------------------------------------------------------------
+// The view
+// ---------------------------------------------------------------------------------------------------------------
+
+type Text = PadText<TableTennisPadKey>;
+type Tool = PadTool<TableTennisPadKey>;
+
+const SYNCED: PadSync = { kind: 'synced' };
+
+/** The words a set-based pad names alike, in table tennis's own namespace (`setBasedPad`). */
+const WORDS = {
+  gamesSaid: 'scoring.tabletennis.gamesSaid.other',
+  gamesTally: 'scoring.tabletennis.gamesTally',
+  gameOf: 'scoring.tabletennis.gameOf',
+  hint: 'scoring.tabletennis.hint',
+  hintLine: 'scoring.tabletennis.hintLine',
+  startAsk: 'scoring.tabletennis.start.ask',
+} as const;
+
+const OTHER_SIDE = { first: 'second', second: 'first' } as const;
+
+const started = (display: TableTennisDisplay) => display.phase !== 'notStarted';
+/** The pad takes a point: the match has started and is not decided. */
+const takesPoints = (display: TableTennisDisplay) =>
+  started(display) && display.phase !== 'decided';
+
+/**
+ * The pad for a table tennis match (design §5; the owner's rulings 48 to 52, 2026-11-03): the first side on top, the
+ * second below, each with its finished games' scores and, on the server's, the serving plate with the engine's serve
+ * number and in doubles the player; the game of how many and one note (Expedite, else Deuce) in the strip; and a Card
+ * for each side, 13 returns or Who is serving?, and More in the tool row. A decided match is the recorded result's card
+ * over the final score. Before the match starts, the Start screen's question in the halves' place, and no tools. `sync`
+ * is the transport's word, not the match's.
+ */
+export function tableTennisPad(
+  display: TableTennisDisplay,
+  sync: PadSync = SYNCED,
+): PadView<TableTennisPadKey> {
+  const view: PadView<TableTennisPadKey> = {
+    halves: [half(display, 'first'), half(display, 'second')],
+    tally: setBasedTally(WORDS.gamesTally, display.sides, gamesWon(display.finished)),
+    details: tableTennisDetails(display),
+    start: setBasedStart(WORDS.startAsk, display.sides, display.phase),
+    strip: strip(display),
+    lastTap: lastTap(display),
+    sync,
+    tools: tools(display),
+    card: null,
+  };
+  return withCard(view, resultCardOf(display.phase));
+}
+
+/** The match's context and its rules, for MatchCard: the Start screen, the Not started card and the Match details sheet. */
+export function tableTennisDetails(
+  display: TableTennisDisplay,
+): PadMatchDetails<TableTennisPadKey> {
+  return {
+    context: display.context,
+    rules: tableTennisRuleRows(display.rules, display.records),
+  };
+}
+
+function half(display: TableTennisDisplay, side: PadSide): PadHalf<TableTennisPadKey> {
+  const plate =
+    takesPoints(display) && display.server === side ? serving(display.serveNumber) : null;
+  const names = sideNames(display.sides[side]);
+  return {
+    side,
+    label: names,
+    value: String(display.points[side]),
+    periods: periods(display.finished, side),
+    sub: plate === null ? null : serverPerson(display),
+    serving: plate,
+    // The bar follows the plate (owner, 2026-11-02): the serving side's is lit, and neither is while the engine names no
+    // server, before the match starts and once it is over.
+    bar: plate === null ? 'dim' : 'lit',
+    ...setBasedHalfWords<TableTennisPadKey>(WORDS, names),
+    tappable: takesPoints(display),
+  };
+}
+
+/** The side's score in each game over, its wins marked, said "Games: 11, 9". None in game 1. */
+function periods(
+  finished: readonly TableTennisGame[],
+  side: PadSide,
+): PadPeriods<TableTennisPadKey> | null {
+  if (finished.length === 0) return null;
+  return {
+    scores: finished.map((game) => playedScore(game, side)),
+    said: [playedSaid<TableTennisPadKey>(WORDS.gamesSaid, finished, side)],
+  };
+}
+
+const SERVE_FORM = { 1: 'first', 2: 'second' } as const;
+
+/** The plate's "Serving · 2nd", said "Serving, second serve"; "Serving" alone when the engine names no number. */
+function serving(number: 1 | 2 | null): PadServing<TableTennisPadKey> {
+  const form: ServingForm = number === null ? 'plain' : SERVE_FORM[number];
+  return {
+    shown: { key: `scoring.tabletennis.serving.${form}` },
+    said: { key: `scoring.tabletennis.servingSaid.${form}` },
+  };
+}
+
+/** The doubles server the engine names (ruling 5), by name and id both; else nobody: the plate names the side. */
+function serverPerson(display: TableTennisDisplay): Text | null {
+  if (display.serverPersonId === null || display.serverPerson === null) return null;
+  return { key: 'scoring.tabletennis.serverPerson', vars: { person: display.serverPerson } };
+}
+
+/** "Game 2 of 5" and one note at the right (design §5.2): Expedite, in force match-wide, else Deuce, else nothing. */
+function strip(display: TableTennisDisplay): readonly PadStripItem<TableTennisPadKey>[] {
+  return [
+    setBasedGameItem(WORDS.gameOf, display.game, display.rules.bestOf),
+    { slot: 'note', text: noteOf(display) },
+  ];
+}
+
+/** Nothing once the match is decided: a decided board has no next point to describe, as the web's. */
+function noteOf(display: TableTennisDisplay): Text | null {
+  if (display.phase === 'decided') return null;
+  if (display.expedite === 'inForce') return { key: 'scoring.tabletennis.note.expedite' };
+  return display.deuce ? { key: 'scoring.tabletennis.note.deuce' } : null;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The tools (ruling 52, design §5.3)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The cells with no second line: a plain outline, usable. */
+const PLAIN = { detail: null, kind: 'standard', enabled: true } as const;
+
+const RETURNS = 'returns';
+const SERVING = 'serving';
+const MORE = 'more';
+
+function tools(display: TableTennisDisplay): readonly Tool[] {
+  if (!started(display)) return [];
+  return [...cards(display), ...serveTool(display), ...moreTool(display)];
+}
+
+/** A Card for each side, while the match records cards: the umpire's yellow and red, chosen in the sheet. */
+function cards(display: TableTennisDisplay): readonly Tool[] {
+  if (!display.records.sanctions) return [];
+  const card = (side: PadSide): Tool => ({
+    id: `card.${side}`,
+    label: { key: 'scoring.tabletennis.tool.card' },
+    detail: sideNames(display.sides[side]),
+    kind: 'destructive',
+    enabled: true,
+  });
+  return [card('first'), card('second')];
+}
+
+/** Who is serving? when the pad needs the answer, else 13 returns when it is offered, never both (rulings 50 and 51). */
+function serveTool(display: TableTennisDisplay): readonly Tool[] {
+  if (display.anchorNeeded) {
+    return [{ id: SERVING, label: { key: 'scoring.tabletennis.tool.serving' }, ...PLAIN }];
+  }
+  const returns = returnsTool(display);
+  return returns === null ? [] : [returns];
+}
+
+/**
+ * 13 returns · {receiver} (ruling 50): only while Expedite is in force and the engine names the server (the Start pick
+ * is not the engine's belief: the fold's check reads the engine), and it gives the point to the side receiving.
+ */
+function returnsTool(display: TableTennisDisplay): Tool | null {
+  const { server } = display;
+  if (display.expedite !== 'inForce' || server === null || display.serverPicked) return null;
+  return {
+    id: RETURNS,
+    label: {
+      key: 'scoring.tabletennis.tool.returns',
+      vars: { returns: tabletennisPadRules.expediteReturns },
+    },
+    detail: sideNames(display.sides[OTHER_SIDE[server]]),
+    kind: 'standard',
+    enabled: true,
+  };
+}
+
+function moreTool(display: TableTennisDisplay): readonly Tool[] {
+  if (tableTennisMoreItems(display).length === 0) return [];
+  return [{ id: MORE, label: { key: 'scoring.tabletennis.tool.more' }, ...PLAIN }];
+}
+
+/** The tool ids `tableTennisPad` gives, read back; anything else is null. */
+export function parseTableTennisTool(
+  id: string,
+):
+  | { readonly card: PadSide }
+  | { readonly returns: true }
+  | { readonly serving: true }
+  | { readonly more: true }
+  | null {
+  if (id === 'card.first') return { card: 'first' };
+  if (id === 'card.second') return { card: 'second' };
+  if (id === RETURNS) return { returns: true };
+  if (id === SERVING) return { serving: true };
+  return id === MORE ? { more: true } : null;
+}
+
+/** What the More sheet can list: a timeout for each side, Expedite, and Set score. */
+export type TableTennisMoreItem = 'timeout.first' | 'timeout.second' | 'expedite' | 'setScore';
+
+/**
+ * The More sheet's items, each listed only when design §4 offers it: a timeout for each side while the match records
+ * them (the engine accepts any number; ITTF's one is the umpire's to keep), Expedite while it is offered, and Set score
+ * before a game's first point. Nothing on the Start screen or once the match is decided.
+ */
+export function tableTennisMoreItems(display: TableTennisDisplay): readonly TableTennisMoreItem[] {
+  if (!takesPoints(display)) return [];
+  const items: TableTennisMoreItem[] = [];
+  if (display.records.timeouts) items.push('timeout.first', 'timeout.second');
+  if (display.expedite === 'offered') items.push('expedite');
+  if (display.phase === 'pre' || display.phase === 'betweenGames') items.push('setScore');
+  return items;
+}
+
+/** One choice in the More sheet: the item and its words. */
+export type TableTennisMoreOption = { readonly id: TableTennisMoreItem; readonly label: Text };
+
+/** The More sheet's choices in words, in the items' order. */
+export function tableTennisMoreOptions(
+  display: TableTennisDisplay,
+): readonly TableTennisMoreOption[] {
+  const timeout = (side: PadSide): Text => ({
+    key: 'scoring.tabletennis.more.timeout',
+    vars: { side: sideNames(display.sides[side]) },
+  });
+  const label = (item: TableTennisMoreItem): Text => {
+    switch (item) {
+      case 'timeout.first':
+        return timeout('first');
+      case 'timeout.second':
+        return timeout('second');
+      case 'expedite':
+        return { key: 'scoring.tabletennis.more.expedite' };
+      case 'setScore':
+        return { key: 'scoring.tabletennis.more.setScore' };
+    }
+  };
+  return tableTennisMoreItems(display).map((id) => ({ id, label: label(id) }));
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The last tap
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The last tap's line; none before the start, when there is no match on the pad to speak of. */
+function lastTap(display: TableTennisDisplay): PadLastTap<TableTennisPadKey> | null {
+  if (!started(display) || display.lastTap === null) return null;
+  const { lastTap: tap, sides } = display;
+  return {
+    text: tap.kind === 'undone' ? undoneSaid(sides, tap.tap) : doneSaid(sides, tap),
+    undo: display.undoable,
+  };
+}
+
+/** What Undo took back, in the last-tap line's words ("Point undone — A. Sharma"). */
+function undoneSaid(sides: TableTennisDisplay['sides'], tap: TableTennisUndoneTap): Text {
+  const side = (of: PadSide) => sideNames(sides[of]);
+  switch (tap.kind) {
+    case 'rally':
+      return { key: 'scoring.tabletennis.undone.rally', vars: { side: side(tap.side) } };
+    case 'returns':
+      return {
+        key: 'scoring.tabletennis.undone.returns',
+        vars: { side: side(tap.side), returns: tap.returns },
+      };
+    case 'timeout':
+      return { key: 'scoring.tabletennis.undone.timeout', vars: { side: side(tap.side) } };
+    case 'expedite':
+      return { key: 'scoring.tabletennis.undone.expedite' };
+    case 'sanction':
+      return {
+        key: 'scoring.tabletennis.undone.sanction',
+        vars: { level: cardWord(tap.level), person: tap.person },
+      };
+    case 'setScore':
+      return { key: 'scoring.tabletennis.undone.setScore' };
+  }
+}
+
+/**
+ * The last-tap line while a Who is serving? answer is held (design §4.2): "Next point: {side} serving", until the next
+ * point carries it. The rest of the view is as it was, and Undo stays for this phone's last real tap. Only while the pad
+ * still needs the answer (`anchorNeeded`: once the engine names a server a stale answer is not shown as true) and under
+ * no card (nothing takes a point there).
+ */
+export function withHeldServing(
+  view: PadView<TableTennisPadKey>,
+  held: PadSide | null,
+  display: TableTennisDisplay,
+): PadView<TableTennisPadKey> {
+  if (held === null || !display.anchorNeeded || view.card !== null) return view;
+  const text: Text = {
+    key: 'scoring.tabletennis.held',
+    vars: { side: sideNames(display.sides[held]) },
+  };
+  return { ...view, lastTap: { text, undo: view.lastTap?.undo ?? false } };
+}
