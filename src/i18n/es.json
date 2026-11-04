@@ -492,6 +492,7 @@
   "scoring.tabletennis.servingSaid.plain": "Al saque",
   "scoring.tabletennis.serverPerson": "Saca {person}",
   "scoring.tabletennis.note.deuce": "Iguales",
+  "scoring.tabletennis.half.expedite": "Sistema de aceleración",
   "scoring.tabletennis.tool.returns": "{returns} golpes",
   "scoring.tabletennis.tool.setScore": "Fijar puntos",
   "scoring.tabletennis.tool.setScoreShort": "Fijar tanteo",

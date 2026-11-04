@@ -688,8 +688,8 @@ describe('useBadmintonPadPreview, a sheet step that has just appeared', () => {
 describe('useBadmintonPadPreview, a sheet button that records opens the bounce window', () => {
   const T = 10_000;
   type View = ReturnType<typeof mount>;
-  /** The second half's sanction as a screen reader hears it (owner ruling 56: a card in the corner), or none. */
-  const sub = (view: View) => view.result.current.view.halves[1]?.marks.said[0] ?? null;
+  /** The name of the second half's card, as a screen reader hears it (owner ruling 56: a card in the corner), or none. */
+  const cardWordOf = (view: View) => view.result.current.view.halves[1]?.marks.said[0] ?? null;
   /** L. Chen disqualified from `t`, a step a second: the ending prompt up at t+3 s. */
   const disqualifyAt = (view: View, fakes: FakePorts, t: number) => {
     at(fakes, t);
@@ -764,14 +764,14 @@ describe('useBadmintonPadPreview, a sheet button that records opens the bounce w
     act(() => view.result.current.actions.choose('warning'));
     at(fakes, T + 2000);
     act(() => view.result.current.actions.choose('0'));
-    expect(sub(view)).toEqual({ key: 'scoring.sanction.warning' });
+    expect(cardWordOf(view)).toEqual({ key: 'scoring.sanction.warning' });
     at(fakes, T + 2249);
     act(() => view.result.current.actions.undo());
     expect(view.result.current.line).toEqual(COUNTED_ONCE);
-    expect(sub(view)).toEqual({ key: 'scoring.sanction.warning' });
+    expect(cardWordOf(view)).toEqual({ key: 'scoring.sanction.warning' });
     at(fakes, T + 2250);
     act(() => view.result.current.actions.undo());
-    expect(sub(view)).toBeNull();
+    expect(cardWordOf(view)).toBeNull();
   });
 
   it('counts Undo within the window of Record the ending once: the match stays ended; a moment later it reopens', () => {

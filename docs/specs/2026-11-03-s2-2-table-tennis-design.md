@@ -163,7 +163,8 @@ top bar, strip, two halves, last-tap line, tools. What differs:
   (`tabletennis.tsx:510, 536`); badminton keeps sending it for singles only.
 - The lime bar is on the serving side (`PadHalf.bar`), none before the match or once it is decided.
 - **Marks** (ruling 56, `PadHalf.marks`): at the far right of the name row, after the plate, a stopwatch while Expedite is in
-  force (**both** halves, and it stays after the match is decided) and then the side's cards. A card is an upright
+  force (**both** halves; it goes once the match is decided, as the serving plate does: a finished match has no serve rule
+  in force, the controller's ruling) and then the side's cards. A card is an upright
   rectangle, 8 × 11 dp with a 1 dp radius and a hairline in `ink3` so its edge reads on the night ground; the stopwatch is
   the `Glyph` set's, 20 dp. The names give way (two lines, then an ellipsis); the plate and the marks never do, and a half
   with no marks draws none and keeps its whole row. The domain says _which_ cards (`caution`, `dismissal`); the UI
@@ -184,7 +185,8 @@ top bar, strip, two halves, last-tap line, tools. What differs:
   line, never cut, then the hint at the right: the one word "Tap" (en Tap, es Toca, fr Touchez, nl Tik), the same for both
   sides, cut with an ellipsis and then hidden before the boxes or the line are. A half that takes no tap shows no hint.
 - **Said once.** A screen reader hears a half's own name: side, score, finished games, the line after them, the card's
-  name (Yellow card, Red card, Warning, Penalty, …), "Expedite" and Serving with the court. The marks themselves are
+  name (Yellow card, Red card, Warning, Penalty, …), "Expedite" (the half's own key, `half.expedite`) and Serving
+  with the court. The marks themselves are
   hidden from it, so nothing is read twice. Expedite is said by each half's name, not by the strip (which no longer
   carries it), so a scorer on either side hears it once per half they focus. `hint` ("Tap to award the point") stays
   the half's accessibility hint.

@@ -516,7 +516,7 @@ describe('ScoreHalf, the marks in the top-right corner (owner ruling 56)', () =>
         half={withMarks({
           clock: true,
           cards: ['dismissal'],
-          said: [...SAID_PENALTY, { key: 'scoring.tabletennis.tool.expediteSaid' }],
+          said: [...SAID_PENALTY, { key: 'scoring.tabletennis.half.expedite' }],
         })}
         flash={0}
         onTap={vi.fn()}
@@ -538,7 +538,7 @@ describe('ScoreHalf, the marks in the top-right corner (owner ruling 56)', () =>
         half={withMarks({
           clock: true,
           cards: [],
-          said: [{ key: 'scoring.tabletennis.tool.expediteSaid' }],
+          said: [{ key: 'scoring.tabletennis.half.expedite' }],
         })}
         flash={0}
         onTap={vi.fn()}
@@ -594,7 +594,7 @@ describe('ScoreHalf, the marks in the top-right corner (owner ruling 56)', () =>
         half={withMarks({
           clock: true,
           cards: ['caution', 'dismissal'],
-          said: [...SAID_PENALTY, { key: 'scoring.tabletennis.tool.expediteSaid' }],
+          said: [...SAID_PENALTY, { key: 'scoring.tabletennis.half.expedite' }],
         })}
         flash={0}
         onTap={vi.fn()}
@@ -606,7 +606,7 @@ describe('ScoreHalf, the marks in the top-right corner (owner ruling 56)', () =>
       '11',
       gamesSaid(en, '21, 18'),
       en['scoring.sanction.penalty'],
-      en['scoring.tabletennis.tool.expediteSaid'],
+      en['scoring.tabletennis.half.expedite'],
       en['scoring.badminton.servingSaid.right'],
     ].join(', ');
     expect(screen.getByRole('button', { name })).toBeTruthy();

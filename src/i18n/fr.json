@@ -492,6 +492,7 @@
   "scoring.tabletennis.servingSaid.plain": "Au service",
   "scoring.tabletennis.serverPerson": "{person} sert",
   "scoring.tabletennis.note.deuce": "Égalité",
+  "scoring.tabletennis.half.expedite": "Système accéléré",
   "scoring.tabletennis.tool.returns": "{returns} renvois",
   "scoring.tabletennis.tool.setScore": "Saisir le score",
   "scoring.tabletennis.tool.setScoreShort": "Saisir score",

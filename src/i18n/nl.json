@@ -492,6 +492,7 @@
   "scoring.tabletennis.servingSaid.plain": "Aan opslag",
   "scoring.tabletennis.serverPerson": "Serve: {person}",
   "scoring.tabletennis.note.deuce": "Gelijk",
+  "scoring.tabletennis.half.expedite": "Versnelling",
   "scoring.tabletennis.tool.returns": "{returns} retours",
   "scoring.tabletennis.tool.setScore": "Stand invoeren",
   "scoring.tabletennis.tool.setScoreShort": "Stand zetten",

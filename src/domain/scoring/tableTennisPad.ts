@@ -240,6 +240,7 @@ export type TableTennisPadKey =
   | `scoring.tabletennis.servingSaid.${ServingForm}`
   | 'scoring.tabletennis.serverPerson'
   | 'scoring.tabletennis.note.deuce'
+  | 'scoring.tabletennis.half.expedite'
   | 'scoring.tabletennis.tool.setScore'
   | 'scoring.tabletennis.tool.setScoreShort'
   | 'scoring.tabletennis.tool.expedite'
@@ -424,9 +425,16 @@ function sanctionCard(
   return level === null ? null : { cards: CARDS[level], said: cardWord(level) };
 }
 
-/** The stopwatch's words while Expedite is in force, on both halves: the full term, as the Expedite cell is spoken. */
+/**
+ * The stopwatch, and the words a half's name says for it, while Expedite is in force and the match is on: on both halves,
+ * the full term. It goes once the match is decided, as the serving plate does: a finished match has no serve rule in force
+ * (the controller's ruling, Task 8c fix round 1). The half has its own key, equal to the Expedite cell's spoken name today
+ * but not tied to it.
+ */
 function clockWords(display: TableTennisDisplay): Text | null {
-  return display.expedite === 'inForce' ? { key: 'scoring.tabletennis.tool.expediteSaid' } : null;
+  return display.expedite === 'inForce' && display.phase !== 'decided'
+    ? { key: 'scoring.tabletennis.half.expedite' }
+    : null;
 }
 
 // ---------------------------------------------------------------------------------------------------------------

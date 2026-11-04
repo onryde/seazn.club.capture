@@ -492,6 +492,7 @@
   "scoring.tabletennis.servingSaid.plain": "Serving",
   "scoring.tabletennis.serverPerson": "{person} serves",
   "scoring.tabletennis.note.deuce": "Deuce",
+  "scoring.tabletennis.half.expedite": "Expedite",
   "scoring.tabletennis.tool.returns": "{returns} returns",
   "scoring.tabletennis.tool.setScore": "Set score",
   "scoring.tabletennis.tool.setScoreShort": "Set score",

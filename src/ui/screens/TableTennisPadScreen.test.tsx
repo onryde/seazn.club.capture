@@ -504,7 +504,7 @@ describe('the row after the first point, and Expedite (rulings 54 and 55)', () =
     ]);
     expect(within(half('first')).getByTestId('marks').children).toHaveLength(1);
     expect(half('second').getAttribute('aria-label')).toContain(
-      `${en['scoring.tabletennis.card.penalty']}, ${en['scoring.tabletennis.tool.expediteSaid']}`,
+      `${en['scoring.tabletennis.card.penalty']}, ${en['scoring.tabletennis.half.expedite']}`,
     );
   });
 

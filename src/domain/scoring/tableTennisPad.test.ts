@@ -338,7 +338,7 @@ describe('tableTennisPad: the halves', () => {
           expect(half.marks).toEqual({
             clock: true,
             cards: [],
-            said: [{ key: 'scoring.tabletennis.tool.expediteSaid' }],
+            said: [{ key: 'scoring.tabletennis.half.expedite' }],
           });
         }
       });
@@ -347,14 +347,33 @@ describe('tableTennisPad: the halves', () => {
         expect(marks(tableTennisPad({ ...live, expedite }))).toEqual([NONE, NONE]);
       });
 
-      it('keeps it for the rest of the match: between games, and once decided', () => {
-        for (const phase of ['betweenGames', 'decided'] as const) {
-          const view = tableTennisPad({ ...expedited, phase });
-          expect(
-            view.halves.map((half) => half.marks.clock),
-            phase,
-          ).toEqual([true, true]);
-        }
+      it('keeps it between games', () => {
+        const view = tableTennisPad({ ...expedited, phase: 'betweenGames' });
+        expect(view.halves.map((half) => half.marks.clock)).toEqual([true, true]);
+        expect(view.halves.map((half) => half.marks.said)).toEqual([
+          [{ key: 'scoring.tabletennis.half.expedite' }],
+          [{ key: 'scoring.tabletennis.half.expedite' }],
+        ]);
+      });
+
+      // The controller's ruling (Task 8c fix round 1): a finished match has no serve rule in force, so the stopwatch goes
+      // as the serving plate does, and the half's name stops saying Expedite. A card stays: it is the umpire's record.
+      it('goes once the match is decided, on both halves, and the halves’ names stop saying Expedite', () => {
+        const view = tableTennisPad({ ...expedited, phase: 'decided' });
+        expect(marks(view)).toEqual([NONE, NONE]);
+      });
+
+      it('goes once the match is decided, and a card still stands', () => {
+        const view = sanctioned(
+          { ...expedited, phase: 'decided' },
+          { side: 'first', level: 'penalty' },
+        );
+        expect(view.halves[0].marks).toEqual({
+          clock: false,
+          cards: ['caution', 'dismissal'],
+          said: [{ key: 'scoring.tabletennis.card.penalty' }],
+        });
+        expect(view.halves[1].marks).toEqual(NONE);
       });
 
       it('is drawn before the card, and a screen reader hears the card’s name before Expedite', () => {
@@ -364,17 +383,19 @@ describe('tableTennisPad: the halves', () => {
           cards: ['caution', 'dismissal'],
           said: [
             { key: 'scoring.tabletennis.card.penalty' },
-            { key: 'scoring.tabletennis.tool.expediteSaid' },
+            { key: 'scoring.tabletennis.half.expedite' },
           ],
         });
         expect(view.halves[0].marks.cards).toEqual([]);
       });
 
-      it('says Expedite in the language’s full term, the one the Expedite cell is spoken in', () => {
-        expect(en['scoring.tabletennis.tool.expediteSaid']).toBe('Expedite');
-        expect(es['scoring.tabletennis.tool.expediteSaid']).toBe('Sistema de aceleración');
-        expect(fr['scoring.tabletennis.tool.expediteSaid']).toBe('Système accéléré');
-        expect(nl['scoring.tabletennis.tool.expediteSaid']).toBe('Versnelling');
+      // The half has its own key, not the Expedite cell's `tool.expediteSaid`, so either can change alone. Both say the
+      // full term (nothing is drawn, so no width limits it): not the strip's old shortened es word, Aceleración.
+      it('says Expedite in the language’s full term, under its own key', () => {
+        expect(en['scoring.tabletennis.half.expedite']).toBe('Expedite');
+        expect(es['scoring.tabletennis.half.expedite']).toBe('Sistema de aceleración');
+        expect(fr['scoring.tabletennis.half.expedite']).toBe('Système accéléré');
+        expect(nl['scoring.tabletennis.half.expedite']).toBe('Versnelling');
       });
     });
   });
