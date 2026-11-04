@@ -4,8 +4,13 @@ import type {
   BadmintonTap,
 } from '@/domain/scoring/badmintonPad';
 import type { PadSide } from '@/domain/scoring/padView';
-import { isRecord } from '@/domain/credentials/wire';
 import type { QueuedEvent } from '@/domain/scoring/queue';
+import {
+  payloadForFirstSend,
+  rallyPayload,
+  sanctionPayload,
+  standing,
+} from '@/domain/scoring/setBasedEvents';
 import { seatsOf, soleOf, type Seats } from '@/domain/scoring/setBasedSides';
 import type { Bootstrap, BootstrapSide, LedgerEvent } from '@/domain/scoring/wire';
 
@@ -57,33 +62,17 @@ function rallyEvent(seats: Seats, side: PadSide, display: BadmintonDisplay): Bad
   const serving = display.serverPicked ? display.server : null;
   const served = display.serverPicked ? null : display.server;
   const server = served === null ? null : soleOf(seats[served]);
-  const scorer = soleOf(seats[side]);
-  const payload = {
-    wonBy: seats[side].entrantId,
-    ...(serving === null ? {} : { serving: seats[serving].entrantId }),
-    ...(server === null ? {} : { server }),
-    ...(scorer === null ? {} : { scorer }),
-  };
-  return { type: 'badminton.rally', payload };
+  return { type: RALLY, payload: rallyPayload(seats, side, { serving, server }) };
 }
 
 /**
  * The person by the id the bootstrap gave for the name the pad offered; a name the side does not have is refused. A
- * side that lists no people is offered as its own name (`namesOf`), and that name is a team sanction, with no person:
- * the engine reads an absent `person` so (`SetBasedSanction`; device, 2026-11-03).
+ * side that lists no people is offered as its own name (`namesOf`), and that name is a team sanction, with no person
+ * (`sanctionPayload`; the engine reads an absent `person` so, `SetBasedSanction`; device, 2026-11-03).
  */
 function sanctionEvent(seat: BootstrapSide, sanction: BadmintonSanction): BadmintonEvent | null {
-  if (seat.members.length === 0) {
-    return sanction.person === seat.name
-      ? { type: 'badminton.sanction', payload: { by: seat.entrantId, level: sanction.level } }
-      : null;
-  }
-  const member = seat.members.find((one) => one.fullName === sanction.person);
-  if (member === undefined) return null;
-  return {
-    type: 'badminton.sanction',
-    payload: { by: seat.entrantId, level: sanction.level, person: member.personId },
-  };
+  const payload = sanctionPayload(seat, sanction.level, sanction.person);
+  return payload === null ? null : { type: 'badminton.sanction', payload };
 }
 
 /**
@@ -113,15 +102,5 @@ const RALLY = 'badminton.rally';
  * tap goes as queued. The key never changes.
  */
 export function payloadForSend(queued: QueuedEvent, ledger: readonly LedgerEvent[]): unknown {
-  const { payload } = queued;
-  if (queued.attempts > 0 || !isRecord(payload)) return payload;
-  if (!('serving' in payload) || !rallyStands(ledger)) return payload;
-  const { serving: _dropped, ...rest } = payload;
-  return rest;
-}
-
-/** A rally stands in the ledger: one no other ledger event voids. */
-function rallyStands(ledger: readonly LedgerEvent[]): boolean {
-  const voided = new Set(ledger.flatMap((event) => (event.voids === null ? [] : [event.voids])));
-  return ledger.some((event) => event.type === RALLY && !voided.has(event.id));
+  return payloadForFirstSend(queued, () => standing(ledger, RALLY).length > 0);
 }

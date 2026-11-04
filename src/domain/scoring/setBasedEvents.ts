@@ -1,0 +1,76 @@
+import { isRecord } from '@/domain/credentials/wire';
+import type { PadSide } from '@/domain/scoring/padView';
+import type { QueuedEvent } from '@/domain/scoring/queue';
+import { soleOf, type Seats } from '@/domain/scoring/setBasedSides';
+import type { BootstrapSide, LedgerEvent } from '@/domain/scoring/wire';
+
+/**
+ * What the set-based sports (badminton, table tennis) do the same way when a pad tap becomes the event the server
+ * records (plan S2-2 Task 4; design §6, the lift rule): the rally's payload, a card's payload, the ledger's standing
+ * events and the first send's `serving`. A generic file: it names no sport, and each sport's own event file (`badmintonEvents`)
+ * keeps what is its own, which side it names as serving and what ends a pick's life.
+ */
+
+/** What a rally can say besides who won it: the side that served it, the serving person and the receiver's returns. */
+export type RallyFacts = {
+  readonly serving?: PadSide | null;
+  readonly server?: string | null;
+  readonly returns?: number;
+};
+
+/**
+ * A rally won by `winner`, the engine's `SetBasedRally`: `wonBy` always; `serving` (the side, as its entrant) and
+ * `server` (a person) when given; `scorer` only for a singles winner, the one player, as the web's pad stamps it
+ * (skins/badminton.tsx and tabletennis.tsx `buildHalf`; a pair is not asked, S2 ruling 5); `returns` when counted.
+ */
+export function rallyPayload(seats: Seats, winner: PadSide, facts: RallyFacts = {}) {
+  const { serving = null, server = null, returns } = facts;
+  const scorer = soleOf(seats[winner]);
+  return {
+    wonBy: seats[winner].entrantId,
+    ...(serving === null ? {} : { serving: seats[serving].entrantId }),
+    ...(server === null ? {} : { server }),
+    ...(scorer === null ? {} : { scorer }),
+    ...(returns === undefined ? {} : { returns }),
+  };
+}
+
+/**
+ * A card against `seat`'s side: the person by the id the bootstrap gave for the name the pad offered, a name the side
+ * does not list refused (null). A side that lists no people is offered as its own name (`namesOf`), and that name is a
+ * team sanction with no person, which the engine reads for an absent `person` (device, 2026-11-03); so is a card
+ * given no person at all.
+ */
+export function sanctionPayload(
+  seat: BootstrapSide,
+  level: string,
+  person: string | null,
+): { readonly by: string; readonly level: string; readonly person?: string } | null {
+  const by = seat.entrantId;
+  if (person === null) return { by, level };
+  if (seat.members.length === 0) return person === seat.name ? { by, level } : null;
+  const member = seat.members.find((one) => one.fullName === person);
+  return member === undefined ? null : { by, level, person: member.personId };
+}
+
+/** The ledger's events of `type` that no other ledger event voids (an undone point does not count as played). */
+export function standing(ledger: readonly LedgerEvent[], type: string): readonly LedgerEvent[] {
+  const voided = new Set(ledger.flatMap((event) => (event.voids === null ? [] : [event.voids])));
+  return ledger.filter((event) => event.type === type && !voided.has(event.id));
+}
+
+/**
+ * The payload to send for a queued tap whose `serving` anchors the server (the controller's ruling, 2026-11-02): at its
+ * first send it goes without `serving` when `taken()` says the ledger already holds what the engine would take the
+ * anchor from (a co-scorer's landed first: the engine would ignore it there, and its drift check could then name no
+ * server). A tap with an attempt keeps what it was first sent with, since the server may hold it under its key already
+ * (a tap in flight has one: `markSending` counts it as the send starts). Every other tap goes as queued. The key never
+ * changes. `taken` is asked only for a tap that could lose something.
+ */
+export function payloadForFirstSend(queued: QueuedEvent, taken: () => boolean): unknown {
+  const { payload } = queued;
+  if (queued.attempts > 0 || !isRecord(payload)) return payload;
+  if (!('serving' in payload) || !taken()) return payload;
+  const { serving: _dropped, ...rest } = payload;
+  return rest;
+}
