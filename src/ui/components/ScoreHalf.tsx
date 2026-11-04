@@ -8,9 +8,10 @@ import {
   View,
   type ViewStyle,
 } from 'react-native';
-import type { PadHalf, PadPeriodScore, PadSide } from '@/domain/scoring/padView';
+import type { PadCard, PadHalf, PadPeriodScore, PadSide, PadText } from '@/domain/scoring/padView';
 import { usePadText } from '@/hooks/usePadText';
 import type { MessageKey } from '@/i18n/messages';
+import { Glyph } from '@/ui/components/Glyph';
 import { NameText } from '@/ui/components/NameText';
 import { TapFlash } from '@/ui/components/TapFlash';
 import { Text } from '@/ui/components/Text';
@@ -29,23 +30,27 @@ type ScoreHalfProps = {
 /**
  * One side's half of the pad (layout A, owner 2026-10-31): the whole half is the button that gives that side the
  * rally, far larger than any other target. The names as typed and the serving plate, with the service court on it
- * (owner ruling 17), on top; the big value in the LED lime, centred in the space between them and the bottom row, at
- * the largest size the half holds (`scoreRole`); the bottom row: the finished games' boxes (owner ruling 16), the
- * sanction and the visible hint (owner ruling 14). A tap that counted flashes the half (`TapFlash`). A screen reader
- * reads the side, the value, the finished games, the sanction and Serving with the court as one name, and `hint` says
- * what a tap does; the boxes and the visible hint are hidden from it, so nothing is read twice. A half that takes no
- * tap (a card is up, a match is over) is disabled, draws the same, and shows no hint.
+ * (owner ruling 17), on top, then at the far right the marks (owner ruling 56, 2026-11-04): a stopwatch while the sport's
+ * clock rule is in force and the side's card; the big value in the LED lime, centred in the space between them and the
+ * bottom row, at the largest size the half holds (`scoreRole`); the bottom row: the finished games' boxes (owner ruling
+ * 16), a sport's one line after them if it has one (table tennis's doubles server) and the visible hint, the one word
+ * "Tap" (owner ruling 56, which superseded ruling 14's "Tap: rally to …"). A tap that counted flashes the half
+ * (`TapFlash`). A screen reader reads the side, the value, the finished games, the card and Expedite, and Serving with
+ * the court as one name, and `hint` says what a tap does; the boxes, the marks and the visible hint are hidden from it,
+ * so nothing is read twice. A half that takes no tap (a card is up, a match is over) is disabled, draws the same, and
+ * shows no hint.
  */
 export const ScoreHalf = memo(function ScoreHalf({ half, flash, onTap }: ScoreHalfProps) {
   const words = usePadText();
   const tap = useCallback(() => onTap(half.side), [onTap, half.side]);
   const [height, measure] = useHeight();
   const sub = half.sub === null ? null : words(half.sub);
+  const said = half.marks.said.map(words);
   return (
     <Pressable
       testID={`half-${half.side}`}
       accessibilityRole="button"
-      accessibilityLabel={halfName(half, words, sub)}
+      accessibilityLabel={halfName(half, words, sub, said)}
       accessibilityHint={words(half.hint)}
       disabled={!half.tappable}
       onPress={tap}
@@ -62,7 +67,7 @@ export const ScoreHalf = memo(function ScoreHalf({ half, flash, onTap }: ScoreHa
       <HalfFoot
         scores={half.periods?.scores ?? NO_SCORES}
         sub={sub}
-        hint={half.tappable ? words(half.hintLine) : null}
+        hint={half.tappable ? words(TAP) : null}
       />
     </Pressable>
   );
@@ -78,14 +83,31 @@ function useHeight(): readonly [number | null, (event: LayoutChangeEvent) => voi
   return [height, measure];
 }
 
-/** The half's one name to a screen reader: side, value, finished games, sanction, and Serving with the court. */
-function halfName(half: PadHalf<MessageKey>, words: PadWords, sub: string | null): string {
+/**
+ * The visible hint (owner ruling 56): the one word "Tap", the same in every sport and for every side, so the kit says it
+ * and a half carries no line of its own for it. A screen reader hears `hint` instead.
+ */
+const TAP: PadText<MessageKey> = { key: 'scoring.pad.tap' };
+
+/**
+ * The half's one name to a screen reader: side, value, finished games, the line after them, the marks (the card's name,
+ * then Expedite), and Serving with the court.
+ */
+function halfName(
+  half: PadHalf<MessageKey>,
+  words: PadWords,
+  sub: string | null,
+  marks: readonly string[],
+): string {
   const periods = half.periods === null ? NO_WORDS : half.periods.said.map(words);
   const serving = half.serving === null ? null : words(half.serving.said);
-  return [half.label, half.value, ...periods, sub, serving].filter(isWords).join(', ');
+  return [half.label, half.value, ...periods, sub, ...marks, serving].filter(isWords).join(', ');
 }
 
-/** The top of the half: the names as typed, and the serving plate with the court on it (owner ruling 17). */
+/**
+ * The top of the half: the names as typed, the serving plate with the court on it (owner ruling 17) and, at the far
+ * right, the marks (owner ruling 56). The names give way (two lines, then an ellipsis); the plate and the marks never do.
+ */
 const HalfHead = memo(function HalfHead({ half }: { readonly half: PadHalf<MessageKey> }) {
   const words = usePadText();
   return (
@@ -94,15 +116,41 @@ const HalfHead = memo(function HalfHead({ half }: { readonly half: PadHalf<Messa
         {half.label}
       </NameText>
       {half.serving === null ? null : <ServingPlate words={words(half.serving.shown)} />}
+      <HalfMarks clock={half.marks.clock} cards={half.marks.cards} />
     </View>
   );
 });
 
 /**
- * The bottom row, one line (owner rulings 14 and 16): the finished games' boxes, a dot and the sanction when there are
- * both, and the hint at the right. The boxes and the sanction keep their width; the hint takes what is left, cut with
- * an ellipsis, down to nothing (padFit.test.ts: at 320 dp, best of 3, it always keeps some). No row is taller than a
- * box (`halfNeeds`). The boxes and the hint are hidden from a screen reader, which hears the half's name and `hint`.
+ * The marks in the half's top-right corner (owner ruling 56): a stopwatch while the sport's clock rule is in force
+ * (table tennis's Expedite, on both halves), then the side's cards. Drawings only: a screen reader hears their words in
+ * the half's name. Nothing at all when a half has none, so its names keep the whole row.
+ */
+const HalfMarks = memo(function HalfMarks({
+  clock,
+  cards,
+}: {
+  readonly clock: boolean;
+  readonly cards: readonly PadCard[];
+}) {
+  if (!clock && cards.length === 0) return null;
+  return (
+    <View testID="marks" aria-hidden style={styles.marks}>
+      {clock ? <Glyph name="stopwatch" tone="ink" size={layout.padMarkGlyph} /> : null}
+      {cards.map((card, at) => (
+        // A card's place is its identity: the pair is yellow then red, and only ever changes whole.
+        <View key={at} testID="mark-card" style={cardStyle[card]} />
+      ))}
+    </View>
+  );
+});
+
+/**
+ * The bottom row, one line (owner rulings 14, 16 and 56): the finished games' boxes, a dot and the line after them
+ * (table tennis's doubles server) when there are both, and the hint, the word "Tap", at the right. The boxes and the
+ * line keep their width; the hint takes what is left, cut with an ellipsis, down to nothing (padFit.test.ts). No row is
+ * taller than a box (`halfNeeds`). The boxes and the hint are hidden from a screen reader, which hears the half's name
+ * and `hint`.
  */
 const HalfFoot = memo(function HalfFoot({
   scores,
@@ -136,7 +184,7 @@ const HalfFoot = memo(function HalfFoot({
   );
 });
 
-/** Typography, not copy (as the domain's en dash in a score): between the boxes and the sanction ("[21] · Penalty"). */
+/** Typography, not copy (as the domain's en dash in a score): between the boxes and the line after them ("[21] · M. Wong serves"). */
 const SEPARATOR = '·';
 const NO_SCORES: readonly PadPeriodScore<MessageKey>[] = [];
 const NO_WORDS: readonly string[] = [];
@@ -214,10 +262,27 @@ const styles = StyleSheet.create({
   pressed: { backgroundColor: colour.surface2 },
   head: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
   names: { flex: 1 },
+  // The row is as tall as the stopwatch, and a card sits at its middle; a View never shrinks, so only the names give way.
+  marks: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs,
+    height: layout.padMarkGlyph,
+  },
+  // An upright card (owner ruling 56): the token's colour, and a hairline so its edge reads against the night ground.
+  card: {
+    width: layout.padCardWidth,
+    height: layout.padCardHeight,
+    borderRadius: layout.padCardRadius,
+    borderWidth: layout.iconBorder,
+    borderColor: colour.ink3,
+  },
+  caution: { backgroundColor: colour.cardCaution },
+  dismissal: { backgroundColor: colour.cardDismissal },
   // The space between the names and the bottom row: the score sits in its middle, across and down.
   middle: { flex: 1, minHeight: 0, alignItems: 'center', justifyContent: 'center' },
   foot: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  // The boxes, the dot and the sanction are never cut: only the hint gives way (owner ruling 16). A View never shrinks
+  // The boxes, the dot and the line after them are never cut: only the hint gives way (owner ruling 16). A View never shrinks
   // (Yoga's default, and react-native-web's); a Text is told so.
   kept: { flexShrink: 0 },
   hint: { flex: 1, minWidth: 0, textAlign: 'right' },
@@ -249,6 +314,11 @@ function pressable(rest: StyleProp<ViewStyle>) {
 }
 
 const litStyle = pressable([styles.half, styles.lit]);
+/** Module-level, so render allocates no style array: a card's drawing by its family (the tokens are the kit's choice). */
+const cardStyle: Readonly<Record<PadCard, StyleProp<ViewStyle>>> = {
+  caution: [styles.card, styles.caution],
+  dismissal: [styles.card, styles.dismissal],
+};
 const wonBox = [styles.box, styles.won];
 const lostBox = [styles.box, styles.lost];
 const dimStyle = pressable([styles.half, styles.dim]);

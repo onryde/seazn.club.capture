@@ -7,7 +7,9 @@ import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
 import { TABLE_TENNIS_SINGLES_SEED } from '@/services/fakeTableTennisPad';
 import { STORE_KEYS } from '@/services/modeStore';
+import { colour } from '@/ui/theme/tokens';
 import { TEST_NOW } from '../../../test/fakePorts';
+import { fillOf, paintOf } from '../../../test/pressState';
 import { RAW, linkKey } from '../../../test/scoringHomeFixtures';
 import { screenIsHeld, type HoldLog } from '../../../test/heldScreen';
 import { backgroundAndBack, flush, launchApp, type LaunchedApp } from '../../../test/routedApp';
@@ -67,6 +69,17 @@ const plate = (side: 'first' | 'second') =>
 const score = (side: 'first' | 'second') => within(half(side)).getByTestId('score').textContent;
 const lastTap = () => screen.getByTestId('last-tap-sentence').textContent;
 const stripNote = () => screen.getByTestId('strip-note').textContent;
+/** How many stopwatches a half draws (owner ruling 56: Expedite is a clock on both halves, not a word in the strip). */
+const clocks = (side: 'first' | 'second') =>
+  within(half(side))
+    .queryAllByTestId('glyph')
+    .filter((glyph) => glyph.dataset.name === 'stopwatch').length;
+const bothClocks = () => [clocks('first'), clocks('second')];
+/** The fills of a half's cards, left to right. */
+const cardFills = (side: 'first' | 'second') =>
+  within(half(side))
+    .queryAllByTestId('mark-card')
+    .map((card) => paintOf(card).fill);
 /** The names of the buttons in the tools row, left to right. */
 const tools = () =>
   within(screen.getByTestId('tool-row'))
@@ -195,7 +208,8 @@ describe('a table tennis match from the scan to the pad', () => {
     ).toBeTruthy();
     await choose(app, en['scoring.tabletennis.expedite.start']);
     expect(sheet()).toBeNull();
-    expect(stripNote()).toBe(en['scoring.tabletennis.note.expedite']);
+    expect(stripNote()).toBe('');
+    expect(bothClocks()).toEqual([1, 1]);
     expect(tools()).toEqual([
       `${fill(en['scoring.tabletennis.tool.returns'], { returns: 13 })}, L. Chen`,
       en['scoring.tabletennis.tool.more'],
@@ -260,20 +274,24 @@ describe('More', () => {
         person: 'L. Chen',
       }),
     );
+    // Owner ruling 56: the penalty is the yellow and the red card in L. Chen's corner, and A. Sharma's has none.
+    expect(cardFills('second')).toEqual([fillOf(colour.cardCaution), fillOf(colour.cardDismissal)]);
+    expect(cardFills('first')).toEqual([]);
   });
 });
 
 describe('Expedite', () => {
-  it('the strip says Expedite, the serve changes every point, and 13 returns takes the cell’s place', async () => {
+  it('both halves carry the clock, the strip says nothing of it, and 13 returns takes the cell’s place', async () => {
     const app = await started();
     await rally(app, 'first');
-    expect(stripNote()).toBe('');
+    expect(bothClocks()).toEqual([0, 0]);
     await tool(app, en['scoring.tabletennis.tool.expediteSaid']);
     // The cell asks first (ruling 55): nothing is recorded until Start.
-    expect(stripNote()).toBe('');
+    expect(bothClocks()).toEqual([0, 0]);
     await choose(app, en['scoring.tabletennis.expedite.start']);
     expect(sheet()).toBeNull();
-    expect(stripNote()).toBe(en['scoring.tabletennis.note.expedite']);
+    expect(bothClocks()).toEqual([1, 1]);
+    expect(stripNote()).toBe('');
     expect(lastTap()).toBe(en['scoring.tabletennis.last.expedite']);
     const returns = fill(en['scoring.tabletennis.tool.returns'], { returns: 13 });
     expect(tools().filter((name) => name?.startsWith(returns))).toHaveLength(1);
@@ -301,6 +319,7 @@ describe('Expedite', () => {
       en['scoring.tabletennis.tool.more'],
     ]);
     expect(stripNote()).toBe('');
+    expect(bothClocks()).toEqual([0, 0]);
   });
 
   // ITTF 2.15.4: Expedite begun between rallies resumes with service by the player who received in the rally before. L. Chen
@@ -407,7 +426,14 @@ describe('in four languages', () => {
       expect(asked).toContain(words['scoring.tabletennis.expedite.title']);
       expect(asked).toContain(words['scoring.tabletennis.expedite.body']);
       await choose(app, words['scoring.tabletennis.expedite.start']);
-      expect(stripNote()).toBe(words['scoring.tabletennis.note.expedite']);
+      // Owner ruling 56: no word in the strip; the clock is on both halves, and each says Expedite in the language's term.
+      expect(stripNote()).toBe('');
+      expect(bothClocks()).toEqual([1, 1]);
+      for (const side of ['first', 'second'] as const) {
+        expect(half(side).getAttribute('aria-label')).toContain(
+          words['scoring.tabletennis.tool.expediteSaid'],
+        );
+      }
       expect(tools()).toEqual([
         `${fill(words['scoring.tabletennis.tool.returns'], { returns: 13 })}, L. Chen`,
         words['scoring.tabletennis.tool.more'],
@@ -476,6 +502,7 @@ describe('the four questions', () => {
     expect(sheet()).toBeNull();
     expect(append).not.toHaveBeenCalled();
     expect(stripNote()).toBe('');
+    expect(bothClocks()).toEqual([0, 0]);
   });
 
   it('the app sent away and back with More open leaves the pad as it was', async () => {

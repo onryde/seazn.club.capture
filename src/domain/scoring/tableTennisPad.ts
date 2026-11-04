@@ -2,6 +2,7 @@ import { tabletennisPadRules } from '@seazn/engine/pad';
 import type { MatchContext } from '@/domain/scoring/matchContext';
 import {
   withCard,
+  type PadCard,
   type PadHalf,
   type PadLastTap,
   type PadMatchDetails,
@@ -17,16 +18,19 @@ import {
 import type { SetBasedGame, SetBasedPhase } from '@/domain/scoring/setBasedBoard';
 import {
   gamesWon,
+  heaviestLevel,
+  padMarks,
   playedSaid,
   playedScore,
   resultCardOf,
   setBasedGameItem,
-  setBasedHalfWords,
   setBasedStart,
   setBasedTally,
+  type PadCardMark,
 } from '@/domain/scoring/setBasedPad';
 import { sideNames, type SetBasedSide } from '@/domain/scoring/setBasedSides';
 import { cardWord, doneSaid } from '@/domain/scoring/tableTennisHistory';
+import { isCardLevel } from '@/domain/scoring/tableTennisLedgerHistory';
 import { tableTennisRuleRows, type TableTennisRuleKey } from '@/domain/scoring/tableTennisRules';
 
 /**
@@ -41,6 +45,12 @@ export type TableTennisSanctionLevel = 'warning' | 'penalty';
 
 /** A side's players as the organiser typed them: one in singles, two in doubles. */
 export type TableTennisSide = SetBasedSide;
+
+/** A card standing on the pad (not undone): the side that holds it and its level. */
+export type TableTennisSanction = {
+  readonly side: PadSide;
+  readonly level: TableTennisSanctionLevel;
+};
 
 /**
  * One tap the scorer can make on the pad. `start` starts the match, the side picked serving first (design §4.1);
@@ -192,6 +202,8 @@ export type TableTennisDisplay = {
   readonly scoreEvents: number;
   /** Level in the endgame, where a side needs two clear: from the target less one (10–10; hardbat 20–20). */
   readonly deuce: boolean;
+  /** The cards standing in the scorer's view, oldest first, none an Undo took back (the half draws the heaviest). */
+  readonly sanctions: readonly TableTennisSanction[];
   readonly records: TableTennisRecords;
   readonly lastTap: TableTennisLastTap | null;
   /** This phone has a tap of its own that Undo can take back (owner, 2026-10-31: one Undo, own taps only). */
@@ -223,12 +235,10 @@ export type TableTennisPadKey =
   | 'scoring.tabletennis.gamesTally'
   | 'scoring.tabletennis.gameOf'
   | 'scoring.tabletennis.hint'
-  | 'scoring.tabletennis.hintLine'
   | 'scoring.tabletennis.start.ask'
   | `scoring.tabletennis.serving.${ServingForm}`
   | `scoring.tabletennis.servingSaid.${ServingForm}`
   | 'scoring.tabletennis.serverPerson'
-  | 'scoring.tabletennis.note.expedite'
   | 'scoring.tabletennis.note.deuce'
   | 'scoring.tabletennis.tool.setScore'
   | 'scoring.tabletennis.tool.setScoreShort'
@@ -272,7 +282,6 @@ const WORDS = {
   gamesTally: 'scoring.tabletennis.gamesTally',
   gameOf: 'scoring.tabletennis.gameOf',
   hint: 'scoring.tabletennis.hint',
-  hintLine: 'scoring.tabletennis.hintLine',
   startAsk: 'scoring.tabletennis.start.ask',
 } as const;
 
@@ -329,11 +338,12 @@ function half(display: TableTennisDisplay, side: PadSide): PadHalf<TableTennisPa
     value: String(display.points[side]),
     periods: periods(display.finished, side),
     sub: plate === null ? null : serverPerson(display),
+    marks: padMarks(sanctionCard(display, side), clockWords(display)),
     serving: plate,
     // The bar follows the plate (owner, 2026-11-02): the serving side's is lit, and neither is while the engine names no
     // server, before the match starts and once it is over.
     bar: plate === null ? 'dim' : 'lit',
-    ...setBasedHalfWords<TableTennisPadKey>(WORDS, names),
+    hint: { key: WORDS.hint },
     tappable: takesPoints(display),
   };
 }
@@ -367,7 +377,10 @@ function serverPerson(display: TableTennisDisplay): Text | null {
   return { key: 'scoring.tabletennis.serverPerson', vars: { person: display.serverPerson } };
 }
 
-/** "Game 2 of 5" and one note at the right (design §5.2): Expedite, in force match-wide, else Deuce, else nothing. */
+/**
+ * "Game 2 of 5" and one note at the right (design §5.2): Deuce, else nothing. Expedite is not a word here (owner ruling
+ * 56): it is the stopwatch on both halves.
+ */
 function strip(display: TableTennisDisplay): readonly PadStripItem<TableTennisPadKey>[] {
   return [
     setBasedGameItem(WORDS.gameOf, display.game, display.rules.bestOf),
@@ -378,8 +391,42 @@ function strip(display: TableTennisDisplay): readonly PadStripItem<TableTennisPa
 /** Nothing once the match is decided: a decided board has no next point to describe, as the web's. */
 function noteOf(display: TableTennisDisplay): Text | null {
   if (display.phase === 'decided') return null;
-  if (display.expedite === 'inForce') return { key: 'scoring.tabletennis.note.expedite' };
   return display.deuce ? { key: 'scoring.tabletennis.note.deuce' } : null;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The marks in a half's corner (owner ruling 56)
+// ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * The card each level is drawn as: ITTF's yellow card is the warning, and the penalty is the yellow and the red
+ * together (yellow-red). Typed over both levels the engine lists, so a third does not compile until it is given cards.
+ */
+const CARDS: Readonly<Record<TableTennisSanctionLevel, readonly PadCard[]>> = {
+  warning: ['caution'],
+  penalty: ['caution', 'dismissal'],
+};
+
+/** The engine's order of its cards (`tabletennisPadRules.sanctionLevels`), lightest first: never a list of our own. */
+const CARD_ORDER: readonly TableTennisSanctionLevel[] =
+  tabletennisPadRules.sanctionLevels.filter(isCardLevel);
+
+/** The side's heaviest card as marks, or none; its name is what a screen reader hears of it. */
+function sanctionCard(
+  display: TableTennisDisplay,
+  side: PadSide,
+): PadCardMark<TableTennisPadKey> | null {
+  const held = display.sanctions.filter((sanction) => sanction.side === side);
+  const level = heaviestLevel(
+    CARD_ORDER,
+    held.map((sanction) => sanction.level),
+  );
+  return level === null ? null : { cards: CARDS[level], said: cardWord(level) };
+}
+
+/** The stopwatch's words while Expedite is in force, on both halves: the full term, as the Expedite cell is spoken. */
+function clockWords(display: TableTennisDisplay): Text | null {
+  return display.expedite === 'inForce' ? { key: 'scoring.tabletennis.tool.expediteSaid' } : null;
 }
 
 // ---------------------------------------------------------------------------------------------------------------

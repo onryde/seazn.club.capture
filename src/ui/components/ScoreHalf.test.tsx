@@ -12,10 +12,12 @@ import { typeScale } from '@/ui/theme/type';
 import { declaredStyle } from '../../../test/declaredStyle';
 import { layOut } from '../../../test/layOut';
 import { linesAllowed } from '../../../test/linesAllowed';
-import { edgeOf, paintOf, unpaintedFill } from '../../../test/pressState';
+import { edgeOf, fillOf, paintOf, unpaintedFill } from '../../../test/pressState';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
-/** Game 3 under way (owner ruling 16's sample): game 1 won 21-15, game 2 lost 18-21; a penalty; serving from the right. */
+const NO_MARKS: PadHalf<MessageKey>['marks'] = { clock: false, cards: [], said: [] };
+
+/** Game 3 under way (owner ruling 16's sample): game 1 won 21-15, game 2 lost 18-21; serving from the right; no card. */
 const top: PadHalf<MessageKey> = {
   side: 'first',
   label: 'A. Sharma',
@@ -27,26 +29,46 @@ const top: PadHalf<MessageKey> = {
     ],
     said: [{ key: 'scoring.badminton.gamesSaid.other', count: 2, vars: { scores: '21, 18' } }],
   },
-  sub: { key: 'scoring.sanction.penalty' },
+  sub: null,
+  marks: NO_MARKS,
   serving: {
     shown: { key: 'scoring.badminton.serving.right' },
     said: { key: 'scoring.badminton.servingSaid.right' },
   },
   bar: 'lit',
   hint: { key: 'scoring.badminton.hint' },
-  hintLine: { key: 'scoring.badminton.hintLine', vars: { side: 'A. Sharma' } },
   tappable: true,
 };
 
-/** Game 1: no finished game, no sanction, receiving. */
-const gameOne: PadHalf<MessageKey> = { ...top, periods: null, sub: null, serving: null };
+/** The same half holding a penalty, the web's fault: a red card in the corner (owner ruling 56). */
+const carded: PadHalf<MessageKey> = {
+  ...top,
+  marks: { clock: false, cards: ['dismissal'], said: [{ key: 'scoring.sanction.penalty' }] },
+};
+
+/** Table tennis's doubles server: the one line the bottom row still holds after the boxes. */
+const SERVER: PadHalf<MessageKey>['sub'] = {
+  key: 'scoring.tabletennis.serverPerson',
+  vars: { person: 'M. Wong' },
+};
+
+/** Game 1: no finished game, no card, receiving. */
+const gameOne: PadHalf<MessageKey> = { ...top, periods: null, serving: null };
 
 type Dictionary = Readonly<Record<string, string>>;
 const gamesSaid = (words: Dictionary, scores: string) =>
   (words['scoring.badminton.gamesSaid.other'] ?? '').replace('{scores}', scores);
-const hintFor = (side: string) => en['scoring.badminton.hintLine'].replace('{side}', side);
-/** The half's name, as a screen reader hears it: side, value, finished games, sanction, serving with the court. */
+/** The visible hint: the one word "Tap" (owner ruling 56), whatever the sport and the side. */
+const TAP = en['scoring.pad.tap'];
+/** The half's name, as a screen reader hears it: side, value, finished games, serving with the court. */
 const NAME = [
+  'A. Sharma',
+  '11',
+  gamesSaid(en, '21, 18'),
+  en['scoring.badminton.servingSaid.right'],
+].join(', ');
+/** The same half's name when it holds a penalty: the card's name comes before the plate's (owner ruling 56). */
+const CARDED_NAME = [
   'A. Sharma',
   '11',
   gamesSaid(en, '21, 18'),
@@ -57,19 +79,24 @@ const boxes = () => screen.queryAllByTestId('period');
 const SEPARATOR = '·';
 
 describe('ScoreHalf', () => {
-  it('shows the names, the big value, the finished games’ scores, the sanction and the plate with its court', () => {
+  it('shows the names, the big value, the finished games’ scores and the plate with its court', () => {
     renderWithPorts(<ScoreHalf half={top} flash={0} onTap={vi.fn()} />);
     expect(screen.getByText('A. Sharma')).toBeTruthy();
     expect(screen.getByText('11')).toBeTruthy();
     expect(boxes().map((box) => box.textContent)).toEqual(['21', '18']);
-    expect(screen.getByText(en['scoring.sanction.penalty'])).toBeTruthy();
     expect(screen.getByTestId('serving').textContent).toBe(en['scoring.badminton.serving.right']);
   });
 
   // Owner rulings 16 and 17: "Games: 21, 18" and "Serving, right service court".
-  it('is one button a screen reader names by side, value, finished games, sanction and serving with the court', () => {
+  it('is one button a screen reader names by side, value, finished games and serving with the court', () => {
     renderWithPorts(<ScoreHalf half={top} flash={0} onTap={vi.fn()} />);
     expect(screen.getByRole('button', { name: NAME })).toBeTruthy();
+  });
+
+  // Owner ruling 56: the card is drawn, so its words move to the name; the card's name sits after the games, before Serving.
+  it('names its card in the half’s name, after the finished games and before the plate', () => {
+    renderWithPorts(<ScoreHalf half={carded} flash={0} onTap={vi.fn()} />);
+    expect(screen.getByRole('button', { name: CARDED_NAME })).toBeTruthy();
   });
 
   it('gives its side the tap', () => {
@@ -88,60 +115,65 @@ describe('ScoreHalf', () => {
   });
 
   it('draws no plate for the receiving side, and says no Serving', () => {
-    renderWithPorts(<ScoreHalf half={{ ...top, serving: null }} flash={0} onTap={vi.fn()} />);
+    renderWithPorts(<ScoreHalf half={{ ...carded, serving: null }} flash={0} onTap={vi.fn()} />);
     expect(screen.queryByTestId('serving')).toBeNull();
     const name = ['A. Sharma', '11', gamesSaid(en, '21, 18'), en['scoring.sanction.penalty']];
     expect(screen.getByRole('button', { name: name.join(', ') })).toBeTruthy();
   });
 
-  // Owner ruling 16: "Game 1 has no boxes yet: the row shows only the hint."
+  // Owner ruling 16: "Game 1 has no boxes yet: the row shows only the hint." (the word "Tap" since ruling 56).
   it('shows only the hint in game 1: no box, no dot, and no games in its name', () => {
     renderWithPorts(<ScoreHalf half={gameOne} flash={0} onTap={vi.fn()} />);
     expect(boxes()).toEqual([]);
     expect(screen.queryByText(SEPARATOR)).toBeNull();
-    const hint = screen.getByText(hintFor('A. Sharma'));
-    // Only: an empty box group or sanction would still take the row's gap from the hint (mutation check, 2026-11-01).
+    const hint = screen.getByText(TAP);
+    // Only: an empty box group or server line would still take the row's gap from the hint (mutation check, 2026-11-01).
     expect([...(hint.parentElement?.children ?? [])]).toEqual([hint]);
     expect(screen.getByRole('button', { name: 'A. Sharma, 11' })).toBeTruthy();
   });
 
-  it('names a sanction with no box before it, and no dot', () => {
-    renderWithPorts(
-      <ScoreHalf
-        half={{ ...gameOne, sub: { key: 'scoring.sanction.warning' } }}
-        flash={0}
-        onTap={vi.fn()}
-      />,
+  it('draws a server line with no box before it, and no dot', () => {
+    renderWithPorts(<ScoreHalf half={{ ...gameOne, sub: SERVER }} flash={0} onTap={vi.fn()} />);
+    const line = screen.getByText(
+      en['scoring.tabletennis.serverPerson'].replace('{person}', 'M. Wong'),
     );
-    const sanction = screen.getByText(en['scoring.sanction.warning']);
     expect(screen.queryByText(SEPARATOR)).toBeNull();
-    expect([...(sanction.parentElement?.children ?? [])]).toEqual([
-      sanction,
-      screen.getByText(hintFor('A. Sharma')),
-    ]);
+    expect([...(line.parentElement?.children ?? [])]).toEqual([line, screen.getByText(TAP)]);
   });
 
-  it('draws no dot after the boxes when there is no sanction', () => {
-    renderWithPorts(<ScoreHalf half={{ ...top, sub: null }} flash={0} onTap={vi.fn()} />);
+  it('draws no dot after the boxes when there is no server line', () => {
+    renderWithPorts(<ScoreHalf half={top} flash={0} onTap={vi.fn()} />);
     expect(boxes()).toHaveLength(2);
     expect(screen.queryByText(SEPARATOR)).toBeNull();
   });
 
-  // Owner ruling 16: "[21] [18] … [21] · Penalty", in one row with the hint, which gives way first.
-  it('puts the scores first, then a dot and the sanction, then the hint, in one row', () => {
-    renderWithPorts(<ScoreHalf half={top} flash={0} onTap={vi.fn()} />);
+  // Owner ruling 16: "[21] [18] … [21] · M. Wong serves", in one row with the hint, which gives way first. Owner ruling
+  // 56: a sanction is no longer words in this row; the doubles server's line is the one that stays.
+  it('puts the scores first, then a dot and the server line, then the hint, in one row', () => {
+    renderWithPorts(<ScoreHalf half={{ ...top, sub: SERVER }} flash={0} onTap={vi.fn()} />);
     const group = screen.getByTestId('periods');
     const dot = screen.getByText(SEPARATOR);
-    const sanction = screen.getByText(en['scoring.sanction.penalty']);
-    const hint = screen.getByText(hintFor('A. Sharma'));
+    const line = screen.getByText(
+      en['scoring.tabletennis.serverPerson'].replace('{person}', 'M. Wong'),
+    );
+    const hint = screen.getByText(TAP);
     const row = group.parentElement;
     if (row === null) throw new Error('no bottom row');
-    expect([...row.children]).toEqual([group, dot, sanction, hint]);
+    expect([...row.children]).toEqual([group, dot, line, hint]);
     expect(getComputedStyle(row).flexDirection).toBe('row');
     expect([group.getAttribute('aria-hidden'), dot.getAttribute('aria-hidden')]).toEqual([
       'true',
       'true',
     ]);
+  });
+
+  // Owner ruling 56: the bottom row is the boxes, then "Tap": no card words in it, in any sport.
+  it('puts no card words in the bottom row: the boxes, then Tap', () => {
+    renderWithPorts(<ScoreHalf half={carded} flash={0} onTap={vi.fn()} />);
+    const row = screen.getByTestId('periods').parentElement;
+    if (row === null) throw new Error('no bottom row');
+    expect([...row.children].map((child) => child.textContent)).toEqual(['2118', TAP]);
+    expect(row.textContent).not.toContain(en['scoring.sanction.penalty']);
   });
 
   it('marks a game the side won with lime digits and a lime hairline; a game it lost is plain', () => {
@@ -188,7 +220,11 @@ describe('ScoreHalf', () => {
         { key: 'scoring.badminton.gameSaid.disqualified', vars: { game: 2, points: 9 } },
       ],
     },
-    sub: { key: 'scoring.sanction.disqualification' },
+    marks: {
+      clock: false,
+      cards: ['dismissal'],
+      said: [{ key: 'scoring.sanction.disqualification' }],
+    },
     serving: null,
     tappable: false,
   };
@@ -247,14 +283,15 @@ describe('ScoreHalf', () => {
   });
 
   // Owner ruling 16: "the hint gives way (ellipsis, then hidden) before the boxes. Boxes are never cut."
-  it('never shrinks a box or the sanction: the hint alone gives way, one line', () => {
-    renderWithPorts(<ScoreHalf half={top} flash={0} onTap={vi.fn()} />);
+  it('never shrinks a box or the server line: the hint alone gives way, one line', () => {
+    renderWithPorts(<ScoreHalf half={{ ...top, sub: SERVER }} flash={0} onTap={vi.fn()} />);
     const shrink = (element: HTMLElement) => declaredStyle(element, 'flex-shrink');
     // A View's own 0 (react-native-web's view class, as Yoga's default); a Text is told.
     expect(shrink(screen.getByTestId('periods'))).toBe('0');
     for (const box of boxes()) expect(shrink(box)).toBe('0');
-    expect(shrink(screen.getByText(en['scoring.sanction.penalty']))).toBe('0');
-    const hint = screen.getByText(hintFor('A. Sharma'));
+    const line = en['scoring.tabletennis.serverPerson'].replace('{person}', 'M. Wong');
+    expect(shrink(screen.getByText(line))).toBe('0');
+    const hint = screen.getByText(TAP);
     expect([shrink(hint), declaredStyle(hint, 'min-width')]).toEqual(['1', '0px']);
     expect(linesAllowed(hint)).toBe(1);
   });
@@ -333,22 +370,33 @@ describe('ScoreHalf', () => {
     expect([follows(names, middle), follows(middle, bottom)]).toEqual([true, true]);
   });
 
-  // Owner ruling 14: "a one-line hint at the bottom of each half", on the bottom row so it costs no height.
-  it('shows the hint at the bottom row’s right, in the unit role, hidden from a screen reader', () => {
+  // Owner ruling 14: "a one-line hint at the bottom of each half", on the bottom row so it costs no height. Owner ruling
+  // 56 (2026-11-04: "bottom right, just tap Tap?"): the one word "Tap", no side name, in every sport.
+  it('shows the one word Tap at the bottom row’s right, in the unit role, hidden from a screen reader', () => {
     renderWithPorts(<ScoreHalf half={top} flash={0} onTap={vi.fn()} />);
-    const hint = screen.getByText(hintFor('A. Sharma'));
+    const hint = screen.getByText(TAP);
+    expect(hint.textContent).toBe('Tap');
     expect(getComputedStyle(hint).textAlign).toBe('right');
     expect(getComputedStyle(hint).fontSize).toBe(`${typeScale.metricUnit.fontSize}px`);
     expect(hint.getAttribute('aria-hidden')).toBe('true');
-    // The button's name is as it was: the hint is not read with it.
+    // The button's name is as it was: the hint is not read with it (`accessibilityHint` is dropped by react-native-web in
+    // jsdom, so what a screen reader hears of it is the device check's).
     expect(screen.getByRole('button', { name: NAME })).toBeTruthy();
   });
 
-  it('shows no hint on a half that takes no tap, and keeps its boxes and sanction', () => {
-    renderWithPorts(<ScoreHalf half={{ ...top, tappable: false }} flash={0} onTap={vi.fn()} />);
-    expect(screen.queryByText(hintFor('A. Sharma'))).toBeNull();
+  it('names no side in the hint, whoever the half is, doubles included', () => {
+    const doubles = { ...top, label: 'A. Sharma / R. Iyer' };
+    renderWithPorts(<ScoreHalf half={doubles} flash={0} onTap={vi.fn()} />);
+    expect(screen.getByText(TAP).textContent).toBe('Tap');
+    expect(screen.queryByText(/Tap:/)).toBeNull();
+    expect(screen.getAllByText(/A\. Sharma/)).toHaveLength(1);
+  });
+
+  it('shows no hint on a half that takes no tap, and keeps its boxes and card', () => {
+    renderWithPorts(<ScoreHalf half={{ ...carded, tappable: false }} flash={0} onTap={vi.fn()} />);
+    expect(screen.queryByText(TAP)).toBeNull();
     expect(boxes()).toHaveLength(2);
-    expect(screen.getByText(en['scoring.sanction.penalty'])).toBeTruthy();
+    expect(screen.getByTestId('mark-card')).toBeTruthy();
   });
 
   it('hands its flash the cue it is given (`flashCue`), and the flash takes no touch from the half', () => {
@@ -363,20 +411,20 @@ describe('ScoreHalf', () => {
   // The four questions: another language. getByText normalises the node's no-break space to a plain one, not the
   // matcher's (docs/i18n-glossary.md); the name is read from its attribute, as written.
   it.each([
-    ['es', es],
-    ['fr', fr],
-    ['nl', nl],
-  ] as const)('says it in %s', (lang, words: Dictionary) => {
-    renderWithPorts(<ScoreHalf half={top} flash={0} onTap={vi.fn()} />, {
+    ['es', es, 'Toca'],
+    ['fr', fr, 'Touchez'],
+    ['nl', nl, 'Tik'],
+  ] as const)('says it in %s', (lang, words: Dictionary, tap) => {
+    renderWithPorts(<ScoreHalf half={carded} flash={0} onTap={vi.fn()} />, {
       deviceLanguages: [lang],
     });
-    const plain = (text: string) => text.split(String.fromCodePoint(0x00a0)).join(' ');
     expect(screen.getByTestId('serving').textContent).toBe(
       words['scoring.badminton.serving.right'],
     );
-    expect(screen.getByText(words['scoring.sanction.penalty'] ?? '')).toBeTruthy();
-    const hint = (words['scoring.badminton.hintLine'] ?? '').replace('{side}', 'A. Sharma');
-    expect(screen.getByText(plain(hint))).toBeTruthy();
+    // The word is written out, not read from the dictionary under test: the imperative of each language's pad words.
+    expect(words['scoring.pad.tap']).toBe(tap);
+    expect(screen.getByText(tap)).toBeTruthy();
+    expect(screen.queryByText(en['scoring.pad.tap'])).toBeNull();
     const name = [
       'A. Sharma',
       '11',
@@ -385,6 +433,239 @@ describe('ScoreHalf', () => {
       words['scoring.badminton.servingSaid.right'],
     ].join(', ');
     expect(screen.getByTestId('half-first').getAttribute('aria-label')).toBe(name);
+  });
+});
+
+// Owner ruling 56 (2026-11-04, device check): "may in the top right corner", "just clock symbol on expetise and card symbol
+// on right cornor, both expetie clock on both card?". A side's card is a small upright card in its colour at the half's
+// top-right corner; while Expedite is in force a stopwatch sits before it. Colour, the hairline and the icon's size in sun
+// are the device check's: jsdom paints the tokens, not the glass.
+describe('ScoreHalf, the marks in the top-right corner (owner ruling 56)', () => {
+  const withMarks = (marks: PadHalf<MessageKey>['marks']): PadHalf<MessageKey> => ({
+    ...top,
+    marks,
+  });
+  const SAID_PENALTY = [{ key: 'scoring.sanction.penalty' }] as const;
+  const cards = () => screen.queryAllByTestId('mark-card');
+  const clock = () =>
+    screen.queryAllByTestId('glyph').filter((glyph) => glyph.dataset.name === 'stopwatch');
+
+  it('draws nothing in the corner for a half with no mark: no row, no icon', () => {
+    renderWithPorts(<ScoreHalf half={top} flash={0} onTap={vi.fn()} />);
+    expect(screen.queryByTestId('marks')).toBeNull();
+    expect(cards()).toEqual([]);
+    expect(clock()).toEqual([]);
+  });
+
+  it.each([
+    ['caution', colour.cardCaution],
+    ['dismissal', colour.cardDismissal],
+  ] as const)(
+    'draws a %s card in its token’s colour, with a hairline (ink3) round it',
+    (card, token) => {
+      renderWithPorts(
+        <ScoreHalf
+          half={withMarks({ clock: false, cards: [card], said: SAID_PENALTY })}
+          flash={0}
+          onTap={vi.fn()}
+        />,
+      );
+      const [only] = cards();
+      if (only === undefined || cards().length !== 1) throw new Error('one card');
+      expect(paintOf(only).fill).toBe(fillOf(token));
+      expect(paintOf(only).edges).toEqual(Array(4).fill(edgeOf(colour.ink3)));
+    },
+  );
+
+  it('draws a card upright, 8 by 11 dp with a 1 dp radius, from the layout tokens', () => {
+    renderWithPorts(
+      <ScoreHalf
+        half={withMarks({ clock: false, cards: ['caution'], said: SAID_PENALTY })}
+        flash={0}
+        onTap={vi.fn()}
+      />,
+    );
+    const style = getComputedStyle(cards()[0] as HTMLElement);
+    expect([style.width, style.height, style.borderTopLeftRadius]).toEqual(['8px', '11px', '1px']);
+    expect([layout.padCardWidth, layout.padCardHeight, layout.padCardRadius]).toEqual([8, 11, 1]);
+    expect(layout.padCardHeight).toBeGreaterThan(layout.padCardWidth);
+  });
+
+  it('draws a yellow and a red card side by side, the yellow first (ITTF’s yellow-red)', () => {
+    renderWithPorts(
+      <ScoreHalf
+        half={withMarks({ clock: false, cards: ['caution', 'dismissal'], said: SAID_PENALTY })}
+        flash={0}
+        onTap={vi.fn()}
+      />,
+    );
+    const [yellow, red] = cards();
+    if (yellow === undefined || red === undefined || cards().length !== 2) throw new Error('two');
+    expect([paintOf(yellow).fill, paintOf(red).fill]).toEqual([
+      fillOf(colour.cardCaution),
+      fillOf(colour.cardDismissal),
+    ]);
+    expect(yellow.compareDocumentPosition(red) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(yellow.parentElement).toBe(red.parentElement);
+    expect(getComputedStyle(yellow.parentElement as HTMLElement).flexDirection).toBe('row');
+  });
+
+  it('draws the stopwatch before the card, both in the corner row', () => {
+    renderWithPorts(
+      <ScoreHalf
+        half={withMarks({
+          clock: true,
+          cards: ['dismissal'],
+          said: [...SAID_PENALTY, { key: 'scoring.tabletennis.tool.expediteSaid' }],
+        })}
+        flash={0}
+        onTap={vi.fn()}
+      />,
+    );
+    const row = screen.getByTestId('marks');
+    const [watch] = clock();
+    expect(watch?.dataset.size).toBe(String(layout.padMarkGlyph));
+    expect(watch?.dataset.tone).toBe('ink');
+    expect([...row.children].map((child) => child.getAttribute('data-testid'))).toEqual([
+      'glyph',
+      'mark-card',
+    ]);
+  });
+
+  it('draws the stopwatch alone for a half under Expedite with no card', () => {
+    renderWithPorts(
+      <ScoreHalf
+        half={withMarks({
+          clock: true,
+          cards: [],
+          said: [{ key: 'scoring.tabletennis.tool.expediteSaid' }],
+        })}
+        flash={0}
+        onTap={vi.fn()}
+      />,
+    );
+    expect(clock()).toHaveLength(1);
+    expect(cards()).toEqual([]);
+  });
+
+  it('puts the marks at the far right of the name row, after the serving plate', () => {
+    renderWithPorts(
+      <ScoreHalf
+        half={withMarks({ clock: true, cards: ['caution'], said: SAID_PENALTY })}
+        flash={0}
+        onTap={vi.fn()}
+      />,
+    );
+    const head = screen.getByTestId('serving').parentElement;
+    if (head === null) throw new Error('no name row');
+    expect([...head.children].map((child) => child.getAttribute('data-testid'))).toEqual([
+      null,
+      'serving',
+      'marks',
+    ]);
+    expect(head.children[0]?.textContent).toBe('A. Sharma');
+  });
+
+  // "With a long name, the name gives way (ellipsis); the plate and the icons never do."
+  it('lets the name give way and never the plate or the icons', () => {
+    renderWithPorts(
+      <ScoreHalf
+        half={{
+          ...withMarks({ clock: true, cards: ['caution'], said: SAID_PENALTY }),
+          label: 'A. Sharma / R. Iyer',
+        }}
+        flash={0}
+        onTap={vi.fn()}
+      />,
+    );
+    const shrink = (element: HTMLElement) => declaredStyle(element, 'flex-shrink');
+    const names = screen.getByText('A. Sharma / R. Iyer');
+    expect([shrink(screen.getByTestId('serving')), shrink(screen.getByTestId('marks'))]).toEqual([
+      '0',
+      '0',
+    ]);
+    expect(declaredStyle(names, 'flex-grow')).toBe('1');
+    expect(declaredStyle(names, 'flex-shrink')).not.toBe('0');
+  });
+
+  it('hides the drawings from a screen reader, which hears the words in the half’s name', () => {
+    renderWithPorts(
+      <ScoreHalf
+        half={withMarks({
+          clock: true,
+          cards: ['caution', 'dismissal'],
+          said: [...SAID_PENALTY, { key: 'scoring.tabletennis.tool.expediteSaid' }],
+        })}
+        flash={0}
+        onTap={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('marks').getAttribute('aria-hidden')).toBe('true');
+    const name = [
+      'A. Sharma',
+      '11',
+      gamesSaid(en, '21, 18'),
+      en['scoring.sanction.penalty'],
+      en['scoring.tabletennis.tool.expediteSaid'],
+      en['scoring.badminton.servingSaid.right'],
+    ].join(', ');
+    expect(screen.getByRole('button', { name })).toBeTruthy();
+  });
+
+  it('keeps the marks on a half that takes no tap, and draws no hint there', () => {
+    renderWithPorts(
+      <ScoreHalf
+        half={{
+          ...withMarks({ clock: true, cards: ['caution'], said: SAID_PENALTY }),
+          tappable: false,
+        }}
+        flash={0}
+        onTap={vi.fn()}
+      />,
+    );
+    expect([clock().length, cards().length]).toEqual([1, 1]);
+    expect(screen.queryByText(TAP)).toBeNull();
+  });
+
+  // The four questions: a second call (a re-render with the same marks draws one icon), and an undo (the card goes).
+  it('draws one card per card, however often it renders, and none once the card is undone', () => {
+    const view = renderWithPorts(
+      <ScoreHalf
+        half={withMarks({ clock: false, cards: ['caution'], said: SAID_PENALTY })}
+        flash={0}
+        onTap={vi.fn()}
+      />,
+    );
+    view.rerender(
+      <ScoreHalf
+        half={withMarks({ clock: false, cards: ['caution'], said: SAID_PENALTY })}
+        flash={1}
+        onTap={vi.fn()}
+      />,
+    );
+    expect(cards()).toHaveLength(1);
+    view.rerender(<ScoreHalf half={top} flash={1} onTap={vi.fn()} />);
+    expect(cards()).toEqual([]);
+    expect(screen.queryByTestId('marks')).toBeNull();
+  });
+
+  it.each([
+    ['es', es],
+    ['fr', fr],
+    ['nl', nl],
+  ] as const)('says the card’s name in %s', (lang, words: Dictionary) => {
+    renderWithPorts(
+      <ScoreHalf
+        half={withMarks({ clock: false, cards: ['dismissal'], said: SAID_PENALTY })}
+        flash={0}
+        onTap={vi.fn()}
+      />,
+      { deviceLanguages: [lang] },
+    );
+    expect(screen.getByTestId('half-first').getAttribute('aria-label')).toContain(
+      words['scoring.sanction.penalty'] ?? '',
+    );
+    expect(cards()).toHaveLength(1);
   });
 });
 

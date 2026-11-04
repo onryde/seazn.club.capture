@@ -55,6 +55,7 @@ const LIVE: TableTennisDisplay = {
   expedite: 'off',
   deuce: false,
   records: { timeouts: true, sanctions: true, expedite: true },
+  sanctions: [],
   scoreEvents: 4,
   lastTap: { kind: 'rally', side: 'first', won: 'none', game: 1 },
   undoable: true,

@@ -533,7 +533,11 @@ describe('useBadmintonPadPreview, the four questions (hardening, 2026-11-01)', (
     expect(view.result.current.line).toEqual(COUNTED_ONCE);
     expect(points(view)).toEqual(['1', '0']);
     expect(view.result.current.sheet).toBeNull();
-    expect(view.result.current.view.halves[1]?.sub).toBeNull();
+    expect(view.result.current.view.halves[1]?.marks).toEqual({
+      clock: false,
+      cards: [],
+      said: [],
+    });
   });
 
   it('closes History when the preview row picks a state, as Match details', () => {
@@ -606,12 +610,20 @@ describe('useBadmintonPadPreview, a sheet step that has just appeared', () => {
       kind: 'sanction',
       sheet: { title: { key: 'scoring.sanction.who' } },
     });
-    expect(view.result.current.view.halves[1]?.sub).toBeNull();
+    expect(view.result.current.view.halves[1]?.marks).toEqual({
+      clock: false,
+      cards: [],
+      said: [],
+    });
     expect(view.result.current.line).toBeNull();
     at(fakes, 1250);
     choose(view, '0');
     expect(step(view)).toBeNull();
-    expect(view.result.current.view.halves[1]?.sub).toEqual({ key: 'scoring.sanction.penalty' });
+    expect(view.result.current.view.halves[1]?.marks).toEqual({
+      clock: false,
+      cards: ['dismissal'],
+      said: [{ key: 'scoring.sanction.penalty' }],
+    });
   });
 
   it('ignores the confirm within the window of the confirm step: no disqualification, then it is', () => {
@@ -676,7 +688,8 @@ describe('useBadmintonPadPreview, a sheet step that has just appeared', () => {
 describe('useBadmintonPadPreview, a sheet button that records opens the bounce window', () => {
   const T = 10_000;
   type View = ReturnType<typeof mount>;
-  const sub = (view: View) => view.result.current.view.halves[1]?.sub ?? null;
+  /** The second half's sanction as a screen reader hears it (owner ruling 56: a card in the corner), or none. */
+  const sub = (view: View) => view.result.current.view.halves[1]?.marks.said[0] ?? null;
   /** L. Chen disqualified from `t`, a step a second: the ending prompt up at t+3 s. */
   const disqualifyAt = (view: View, fakes: FakePorts, t: number) => {
     at(fakes, t);

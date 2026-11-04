@@ -1,3 +1,4 @@
+import { tabletennisPadRules } from '@seazn/engine/pad';
 import { describe, expect, it } from 'vitest';
 import type { PadView } from '@/domain/scoring/padView';
 import {
@@ -46,6 +47,7 @@ const pre: TableTennisDisplay = {
   anchorNeeded: false,
   expedite: 'offered',
   deuce: false,
+  sanctions: [],
   records: { timeouts: true, sanctions: true, expedite: true },
   scoreEvents: 0,
   lastTap: null,
@@ -253,6 +255,130 @@ describe('tableTennisPad: the halves', () => {
     });
   });
 
+  // Owner ruling 56 (2026-11-04): a side's card is a small upright card at the half's top-right corner, and while
+  // Expedite is in force both halves carry a stopwatch before it. ITTF: yellow is a warning; the yellow and the red
+  // together are the penalty (the engine's `penalty`, the card the umpire gives with a point).
+  describe('the marks in the corner (owner ruling 56)', () => {
+    const NONE = { clock: false, cards: [], said: [] };
+    const sanctioned = (display: TableTennisDisplay, ...held: TableTennisDisplay['sanctions']) =>
+      tableTennisPad({ ...display, sanctions: held });
+    const marks = (view: PadView<string>) => view.halves.map((half) => half.marks);
+
+    const CARDS = [
+      ['warning', ['caution']],
+      ['penalty', ['caution', 'dismissal']],
+    ] as const;
+
+    it('maps every card the pad can record (anti-vacuity: the table names exactly the engine’s two)', () => {
+      expect(CARDS.map(([level]) => level)).toEqual([...tabletennisPadRules.sanctionLevels]);
+    });
+
+    it.each(CARDS)(
+      'draws a %s as %j on the side that holds it only, and says its name',
+      (level, cards) => {
+        const view = sanctioned(live, { side: 'first', level });
+        expect(view.halves[0].marks).toEqual({
+          clock: false,
+          cards,
+          said: [{ key: `scoring.tabletennis.card.${level}` }],
+        });
+        expect(view.halves[1].marks).toEqual(NONE);
+      },
+    );
+
+    it('draws the second side’s card on the second half', () => {
+      const view = sanctioned(live, { side: 'second', level: 'penalty' });
+      expect(marks(view)[0]).toEqual(NONE);
+      expect(marks(view)[1]?.cards).toEqual(['caution', 'dismissal']);
+    });
+
+    it('draws no card for a match with none, and none either side of a cardless Expedite', () => {
+      expect(marks(tableTennisPad(live))).toEqual([NONE, NONE]);
+      for (const half of tableTennisPad(expedited).halves) expect(half.marks.cards).toEqual([]);
+    });
+
+    it('draws a side’s heaviest card only: a penalty over a warning, in either order', () => {
+      const a = sanctioned(
+        live,
+        { side: 'first', level: 'warning' },
+        { side: 'first', level: 'penalty' },
+      );
+      const b = sanctioned(
+        live,
+        { side: 'first', level: 'penalty' },
+        { side: 'first', level: 'warning' },
+      );
+      for (const view of [a, b]) {
+        expect(view.halves[0].marks.cards).toEqual(['caution', 'dismissal']);
+        expect(view.halves[0].marks.said).toEqual([{ key: 'scoring.tabletennis.card.penalty' }]);
+      }
+      const twice = sanctioned(
+        live,
+        { side: 'first', level: 'warning' },
+        { side: 'first', level: 'warning' },
+      );
+      expect(twice.halves[0].marks.cards).toEqual(['caution']);
+    });
+
+    it('holds each side’s own card', () => {
+      const view = sanctioned(
+        live,
+        { side: 'first', level: 'penalty' },
+        { side: 'second', level: 'warning' },
+      );
+      expect(view.halves.map((half) => half.marks.cards)).toEqual([
+        ['caution', 'dismissal'],
+        ['caution'],
+      ]);
+    });
+
+    describe('the clock: Expedite in force, on both halves', () => {
+      it('draws a stopwatch on BOTH halves while Expedite is in force, and says Expedite on each', () => {
+        for (const half of tableTennisPad(expedited).halves) {
+          expect(half.marks).toEqual({
+            clock: true,
+            cards: [],
+            said: [{ key: 'scoring.tabletennis.tool.expediteSaid' }],
+          });
+        }
+      });
+
+      it.each(['offered', 'off'] as const)('draws none while Expedite is only %s', (expedite) => {
+        expect(marks(tableTennisPad({ ...live, expedite }))).toEqual([NONE, NONE]);
+      });
+
+      it('keeps it for the rest of the match: between games, and once decided', () => {
+        for (const phase of ['betweenGames', 'decided'] as const) {
+          const view = tableTennisPad({ ...expedited, phase });
+          expect(
+            view.halves.map((half) => half.marks.clock),
+            phase,
+          ).toEqual([true, true]);
+        }
+      });
+
+      it('is drawn before the card, and a screen reader hears the card’s name before Expedite', () => {
+        const view = sanctioned(expedited, { side: 'second', level: 'penalty' });
+        expect(view.halves[1].marks).toEqual({
+          clock: true,
+          cards: ['caution', 'dismissal'],
+          said: [
+            { key: 'scoring.tabletennis.card.penalty' },
+            { key: 'scoring.tabletennis.tool.expediteSaid' },
+          ],
+        });
+        expect(view.halves[0].marks.cards).toEqual([]);
+      });
+
+      it('says Expedite in the language’s full term, the one the Expedite cell is spoken in', () => {
+        expect(en['scoring.tabletennis.tool.expediteSaid']).toBe('Expedite');
+        expect(es['scoring.tabletennis.tool.expediteSaid']).toBe('Sistema de aceleración');
+        expect(fr['scoring.tabletennis.tool.expediteSaid']).toBe('Système accéléré');
+        expect(nl['scoring.tabletennis.tool.expediteSaid']).toBe('Versnelling');
+      });
+    });
+  });
+
   it('has no finished game’s score in game 1', () => {
     expect(tableTennisPad(live).halves.map((half) => half.periods)).toEqual([null, null]);
   });
@@ -294,17 +420,18 @@ describe('tableTennisPad: the halves', () => {
     expect(en['scoring.tabletennis.gamesSaid.other']).toBe('Games: {scores}');
   });
 
-  it('tells a screen reader that a tap awards the point, and shows each half’s hint with its names', () => {
+  it('tells a screen reader that a tap awards the point', () => {
     expect(tableTennisPad(live).halves.map((half) => half.hint)).toEqual([
       { key: 'scoring.tabletennis.hint' },
       { key: 'scoring.tabletennis.hint' },
     ]);
-    expect(tableTennisPad(doubles).halves.map((half) => half.hintLine)).toEqual([
-      { key: 'scoring.tabletennis.hintLine', vars: { side: 'A. Sharma / R. Iyer' } },
-      { key: 'scoring.tabletennis.hintLine', vars: { side: 'L. Chen / M. Wong' } },
-    ]);
     expect(en['scoring.tabletennis.hint']).toBe('Tap to award the point');
-    expect(en['scoring.tabletennis.hintLine']).toBe('Tap: point to {side}');
+  });
+
+  // Owner ruling 56 (2026-11-04): "bottom right, just tap Tap?" The visible hint is the one word "Tap", no side name; the
+  // kit says it, so a half carries no hint line of its own (ruling 14's "Tap: point to …" is superseded).
+  it('carries no visible hint line: the kit says the one word', () => {
+    for (const half of tableTennisPad(doubles).halves) expect('hintLine' in half).toBe(false);
   });
 
   it.each(['pre', 'live', 'betweenGames'] as const)('takes taps %s', (phase) => {
@@ -342,8 +469,8 @@ describe('tableTennisPad: the strip', () => {
     });
   });
 
-  // Design §5.2: one note at the right, “Expedite” (in force, match-wide) before “Deuce”, else nothing.
-  describe('the note: Expedite, then Deuce, then nothing', () => {
+  // Design §5.2, ruling 56: one note at the right, “Deuce” or nothing. Expedite is the clock on both halves now, not a word.
+  describe('the note: Deuce, or nothing', () => {
     const note = (display: TableTennisDisplay) => tableTennisPad(display).strip[1]?.text;
 
     it('says Deuce at a level endgame score', () => {
@@ -351,27 +478,31 @@ describe('tableTennisPad: the strip', () => {
       expect(en['scoring.tabletennis.note.deuce']).toBe('Deuce');
     });
 
-    it('says Expedite once it is in force, for the rest of the match', () => {
-      expect(note(expedited)).toEqual({ key: 'scoring.tabletennis.note.expedite' });
-      expect(note({ ...expedited, phase: 'betweenGames' })).toEqual({
-        key: 'scoring.tabletennis.note.expedite',
-      });
-      expect(en['scoring.tabletennis.note.expedite']).toBe('Expedite');
-    });
-
-    it('says Expedite, not Deuce, when both hold', () => {
-      expect(note({ ...expedited, deuce: true })).toEqual({
-        key: 'scoring.tabletennis.note.expedite',
-      });
-    });
-
-    it('says nothing when Expedite is only offered or off, and no deuce', () => {
+    it('says nothing of Expedite, in force or not: its clock is on the halves', () => {
+      expect(note(expedited)).toBeNull();
+      expect(note({ ...expedited, phase: 'betweenGames' })).toBeNull();
       expect(note({ ...live, expedite: 'offered' })).toBeNull();
       expect(note({ ...live, expedite: 'off' })).toBeNull();
     });
 
+    it('says Deuce under Expedite: the strip’s one note is not taken by it', () => {
+      expect(note({ ...expedited, deuce: true })).toEqual({
+        key: 'scoring.tabletennis.note.deuce',
+      });
+    });
+
+    it('says nothing without a deuce', () => {
+      expect(note(live)).toBeNull();
+    });
+
     it('says nothing once the match is decided, whatever the engine still holds', () => {
       expect(note({ ...expedited, deuce: true, phase: 'decided' })).toBeNull();
+    });
+
+    it('has no Expedite word in any dictionary: the key is gone with the note', () => {
+      for (const dictionary of [en, es, fr, nl]) {
+        expect(Object.keys(dictionary)).not.toContain('scoring.tabletennis.note.expedite');
+      }
     });
   });
 

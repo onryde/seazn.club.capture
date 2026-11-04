@@ -51,6 +51,13 @@ export const colour = {
   caution: '#fb923c',
   /** --mk-purple. Decorative only — never as text or a plate on night. */
   violet: '#7c3aed',
+  /**
+   * The pad's card icons, and nothing else (owner ruling 56, 2026-11-04): the web's `--sport-caution` and
+   * `--sport-dismissal` (seazn.club `apps/web/src/app/globals.css:1180-1181`), the house card palette. Remote Scoring has
+   * no broadcast, so this red is never ON AIR: it sits on a half's corner as a card and nowhere else (AGENTS §5).
+   */
+  cardCaution: '#d97706',
+  cardDismissal: '#dc2626',
   /** Behind the camera frame. True black so the letterbox is not a grey slab. */
   stage: '#000000',
   /** A QR needs a white quiet zone to scan; the only white in the app. */
@@ -337,6 +344,19 @@ const base = {
    * (padFit.test.ts).
    */
   padPeriodBox: 26,
+  /**
+   * A card icon in a half's top-right corner (owner ruling 56, 2026-11-04: "just small squere icon", a TV scoreboard's
+   * card): an upright rectangle about 8 x 11 dp with a 1 dp radius and a hairline (`ink3`) so its edge reads against the
+   * night ground. A yellow-red pair is two of them, `space.xs` apart.
+   */
+  padCardWidth: 8,
+  padCardHeight: 11,
+  padCardRadius: 1,
+  /**
+   * The stopwatch beside the cards, drawn at this size in its 24-unit box (the ring a little over half of it), and the
+   * height of the marks' row: the card sits at its middle (padFit.test.ts).
+   */
+  padMarkGlyph: 20,
   /**
    * The pad's strip: each slot's text takes this many lines of `metricUnit`. One (owner, 2026-10-31: "Yes to the 8
    * dp"): with the court on the serving plate the strip has two slots, every fact fits one line at 320 dp in four

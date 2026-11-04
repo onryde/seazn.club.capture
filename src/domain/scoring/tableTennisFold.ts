@@ -32,12 +32,13 @@ import { sideOfEntrant, type SetBasedNames } from '@/domain/scoring/setBasedSide
 import { tableTennisRefusalOf } from '@/domain/scoring/tableTennisEngine';
 import { scoreEventsIn } from '@/domain/scoring/tableTennisEvents';
 import { tableTennisHistory } from '@/domain/scoring/tableTennisHistory';
-import { doneOf } from '@/domain/scoring/tableTennisLedgerHistory';
+import { doneOf, isCardLevel } from '@/domain/scoring/tableTennisLedgerHistory';
 import type {
   TableTennisDisplay,
   TableTennisDone,
   TableTennisExpedite,
   TableTennisRules,
+  TableTennisSanction,
   TableTennisTypes,
   TableTennisUndoneTap,
 } from '@/domain/scoring/tableTennisPad';
@@ -151,6 +152,7 @@ function displayOf(folding: SetBasedFolding<TableTennisDone>): TableTennisDispla
     expedite: expediteOf(match, state),
     scoreEvents: scoreEventsIn(stream.envelopes),
     deuce: R.deuceNote(state, match.rawCfg) !== null,
+    sanctions: sanctionsOf(state),
     records: recordsOf(match),
     lastTap: lastTapOf(stream.envelopes, folding.recorded, undoneTap),
     undoable: folding.undoable,
@@ -167,6 +169,24 @@ function rulesOf({ engine, rawCfg }: SetBasedMatch): TableTennisRules {
     winBy: engine.cfg.winBy,
     scoreBound: R.scoreBound(rawCfg),
   };
+}
+
+/**
+ * The cards standing, from the engine's own record of them (an undone card is not in it). A level the pad does not list
+ * (`expulsion`, `disqualification`: the engine's schema takes them, the pad never records them) draws no card, as History
+ * has no words for it.
+ */
+function sanctionsOf(state: SetBasedState): readonly TableTennisSanction[] {
+  return (state.sanctions ?? []).flatMap((record) =>
+    isCardLevel(record.level)
+      ? [
+          {
+            side: record.by === 'home' ? ('first' as const) : ('second' as const),
+            level: record.level,
+          },
+        ]
+      : [],
+  );
 }
 
 const recordsOf = ({ engine }: SetBasedMatch): TableTennisDisplay['records'] => ({

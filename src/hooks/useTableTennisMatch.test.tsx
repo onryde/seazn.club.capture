@@ -338,7 +338,7 @@ describe('Expedite (ruling 55): its cell asks first, and Start records it', () =
     expect(toolIds(pad(view).view)).toEqual(['expedite', 'more']);
   });
 
-  it('Start records one expedite.start: the cell is gone, 13 returns shows with the receiver, the strip says Expedite', async () => {
+  it('Start records one expedite.start: the cell is gone, 13 returns shows with the receiver, both halves carry the clock', async () => {
     const { fakes, view } = await underWay();
     await press(view, 'expedite');
     await choose(view, 'start');
@@ -352,10 +352,9 @@ describe('Expedite (ruling 55): its cell asks first, and Start records it', () =
       id: `returns.${receiver?.side}`,
       detail: receiver?.label,
     });
-    expect(pad(view).view.strip).toContainEqual({
-      slot: 'note',
-      text: { key: 'scoring.tabletennis.note.expedite' },
-    });
+    // Owner ruling 56: Expedite is the stopwatch on BOTH halves, no longer a word in the strip's note.
+    expect(pad(view).view.halves.map((half) => half.marks.clock)).toEqual([true, true]);
+    expect(pad(view).view.strip).toContainEqual({ slot: 'note', text: null });
   });
 
   it('a second Start in the same moment, a double tap, records once', async () => {

@@ -62,6 +62,26 @@ const toolTextOf = (cells: number) => (width: number) =>
 const toolText = toolTextOf(3);
 /** A strip slot: half the row less its gap (the game of how many, and the interval; owner rulings 16 and 17). */
 const stripSlot = (width: number) => (column(width) - space.sm) / 2;
+/** Inside a half: the column less the side bar and the half's padding (space.md a side). */
+const halfInner = (width: number) => column(width) - layout.padSideBar - 2 * space.md;
+/**
+ * A half's marks at the far right of its head (owner ruling 56, 2026-11-04): the stopwatch (`padMarkGlyph` square) while
+ * a clock rule is in force, then the side's cards (`padCardWidth` wide), `space.xs` apart. A half with none draws no
+ * marks and no gap, so its names keep the whole row.
+ */
+const marksWidth = (clock: boolean, cards: number) => {
+  const drawn = (clock ? 1 : 0) + cards;
+  const glyph = clock ? layout.padMarkGlyph : 0;
+  return drawn === 0 ? 0 : glyph + cards * layout.padCardWidth + (drawn - 1) * space.xs;
+};
+/**
+ * The names' room on a half's head: its inner width less every other part present (the serving plate, the marks) and
+ * the gap (`space.sm`) before each. The names are the only part that gives way (two lines, then an ellipsis).
+ */
+const headRoom = (width: number, ...others: readonly number[]) =>
+  others
+    .filter((part) => part > 0)
+    .reduce((room, part) => room - part - space.sm, halfInner(width));
 
 /** The sample names, as the fake's samples type them; doubles is the widest. */
 const NAMES = ['A. Sharma', 'L. Chen', 'A. Sharma / R. Iyer', 'L. Chen / M. Wong'] as const;
@@ -615,6 +635,41 @@ describe('a half', () => {
     ]);
   });
 
+  // Owner ruling 56 (2026-11-04): a side's card is one small icon at the far right of the head, after the plate (a
+  // warning is yellow, anything heavier red; a TV scoreboard's card). The names give way; the plate and the icon never do.
+  const withCard = (width: number, dictionary: Dictionary) =>
+    headRoom(width, plate(dictionary), marksWidth(false, 1));
+
+  it('costs the names 16 dp for a card icon: its 8 dp and the gap before it', () => {
+    expect(marksWidth(false, 1)).toBe(8);
+    for (const [, dictionary] of LANGUAGES)
+      for (const width of WIDTHS)
+        expect(namesRoom(width, dictionary) - withCard(width, dictionary)).toBe(16);
+  });
+
+  it.each(LANGUAGES)(
+    '%s: holds the sample names beside the plate and a card icon at 320 and 360, in their lines, no word broken',
+    (_lang, dictionary: Dictionary) => {
+      for (const width of WIDTHS)
+        for (const name of NAMES) {
+          expect(
+            linesOf(name, withCard(width, dictionary), nameWidth),
+            `${width} ${name}`,
+          ).toBeLessThanOrEqual(layout.padNameLines);
+          expect(wordsFit(name, withCard(width, dictionary), nameWidth)).toBe(true);
+        }
+    },
+  );
+
+  it('leaves the names 109, 74, 78 and 74 dp at 320 beside the plate and a card icon, in en, es, fr and nl', () => {
+    expect(LANGUAGES.map(([, dictionary]) => withCard(320, dictionary).toFixed(0))).toEqual([
+      '109',
+      '74',
+      '78',
+      '74',
+    ]);
+  });
+
   it('is one line of the plate’s word, 25 tall, inside the names’ two lines: the court costs the half no height', () => {
     const tall = typeScale.state.lineHeight + 2 * space.xs;
     expect(tall).toBe(25);
@@ -658,45 +713,30 @@ describe('a half', () => {
   });
 });
 
-describe('a half’s bottom row: the finished games’ boxes, the sanction and the hint (owner rulings 14, 16)', () => {
-  /** Inside a half: the column less the side bar and the half's padding (space.md a side). */
-  const inner = (width: number) => column(width) - layout.padSideBar - 2 * space.md;
+describe('a half’s bottom row: the finished games’ boxes and the hint (owner rulings 14, 16, 56)', () => {
   /** `periodScore`: Barlow Condensed 700 at 15, tabular digits (`zero.tf`, wider than any proportional digit). */
   const digit = barlow700.advanceOfName('zero.tf') * typeScale.periodScore.fontSize;
   /** `n` boxes, `space.xs` apart (none in game 1). */
   const boxes = (n: number) => (n === 0 ? 0 : n * layout.padPeriodBox + (n - 1) * space.xs);
-  /** The boxes and the sanction after them: a dot between (`control`) when there are both, `space.sm` around it. */
-  const kept = (n: number, sanction: string) => {
-    if (sanction === '') return boxes(n);
-    const dot = n === 0 ? 0 : space.sm + controlWidth('·') + space.sm;
-    return boxes(n) + dot + controlWidth(sanction);
-  };
-  /** What the hint has: the row less what is kept and the gap before it. */
-  const hintRoom = (width: number, n: number, sanction: string) =>
-    inner(width) - kept(n, sanction) - (kept(n, sanction) === 0 ? 0 : space.sm);
-  const widestSanction = (dictionary: Dictionary) =>
-    ['warning', 'penalty', 'expulsion', 'disqualification']
-      .map((level) => dictionary[`scoring.sanction.${level}`] ?? '')
-      .reduce((wide, word) => (controlWidth(word) > controlWidth(wide) ? word : wide), '');
-  const hint = (dictionary: Dictionary, side: string) =>
-    fill(dictionary['scoring.badminton.hintLine'] ?? '', { side });
-  /** The hints cut, at both widths and in four languages, beside `n` boxes and a sanction (or none). */
-  const cutHints = (n: number, withSanction: boolean) =>
+  /** The hint's word, owner ruling 56: the one word "Tap" (no name, no sanction: the card is an icon on the head). */
+  const tap = (dictionary: Dictionary) => dictionary['scoring.pad.tap'] ?? '';
+  /** What the hint has: the row less the boxes and the gap before them. */
+  const hintRoom = (width: number, n: number) =>
+    halfInner(width) - boxes(n) - (n === 0 ? 0 : space.sm);
+  /** The languages whose hint is cut, at both widths, beside `n` boxes. */
+  const cutBeside = (n: number) =>
     WIDTHS.flatMap((width) =>
-      LANGUAGES.flatMap(([lang, dictionary]) => {
-        const sanction = withSanction ? widestSanction(dictionary) : '';
-        return NAMES.filter(
-          (side) => unitWidth(hint(dictionary, side)) > hintRoom(width, n, sanction),
-        ).map((side) => `${width} ${lang} ${side}`);
-      }),
+      LANGUAGES.filter(([, dictionary]) => unitWidth(tap(dictionary)) > hintRoom(width, n)).map(
+        ([lang]) => `${width} ${lang}`,
+      ),
     );
 
   it('has 252 and 292 inside at 320 and 360', () => {
-    expect(WIDTHS.map(inner)).toEqual([252, 292]);
+    expect(WIDTHS.map(halfInner)).toEqual([252, 292]);
   });
 
-  // `halfNeeds` counts the taller of the sanction's line and the hint's: a box must be no taller than that.
-  it('costs no height: a box (16 dp of digits and two hairlines) is the sanction’s own 18 dp line', () => {
+  // `halfNeeds` counts the taller of the bottom row's line and the box: the box must be no taller than that.
+  it('costs no height: a box (16 dp of digits and two hairlines) is the control line’s own 18 dp', () => {
     const box = typeScale.periodScore.lineHeight + 2 * layout.iconBorder;
     expect(box).toBe(18);
     expect(box).toBeLessThanOrEqual(typeScale.control.lineHeight);
@@ -710,22 +750,26 @@ describe('a half’s bottom row: the finished games’ boxes, the sanction and t
     );
   });
 
-  it('has the widest sanction in every language: Disqualification, Descalificación, Disqualification, Diskwalificatie', () => {
-    expect(LANGUAGES.map(([, dictionary]) => widestSanction(dictionary))).toEqual([
-      en['scoring.sanction.disqualification'],
-      es['scoring.sanction.disqualification'],
-      fr['scoring.sanction.disqualification'],
-      nl['scoring.sanction.disqualification'],
+  // Owner ruling 56 ("bottom right, just tap Tap?"): the hint is one word in every sport, so it is short in every language.
+  it('says Tap, Toca, Touchez and Tik: one word each', () => {
+    expect(LANGUAGES.map(([, dictionary]) => tap(dictionary))).toEqual([
+      'Tap',
+      'Toca',
+      'Touchez',
+      'Tik',
+    ]);
+    expect(LANGUAGES.map(([, dictionary]) => unitWidth(tap(dictionary)).toFixed(1))).toEqual([
+      '20.9',
+      '27.4',
+      '48.3',
+      '17.2',
     ]);
   });
 
   // Owner ruling 16: "Boxes are never cut." A best of 3 decided shows three boxes and no hint (its halves take no tap).
-  it.each(LANGUAGES)(
-    '%s: three boxes, the dot and the widest sanction, whole at 320',
-    (_lang, dictionary: Dictionary) => {
-      expect(kept(3, widestSanction(dictionary))).toBeLessThanOrEqual(inner(320));
-    },
-  );
+  it('holds three boxes whole at 320', () => {
+    expect(boxes(3)).toBeLessThanOrEqual(halfInner(320));
+  });
 
   /** A box marked DQ (owner ruling 18): its padding and hairlines, two tabular digits, a gap and the mark. */
   const markedBox = (dictionary: Dictionary) =>
@@ -744,58 +788,31 @@ describe('a half’s bottom row: the finished games’ boxes, the sanction and t
     expect(markedBox(en).toFixed(1)).toBe('46.3');
   });
 
-  // Owner ruling 18: a match a disqualification ends in game 3 shows three boxes, one marked DQ, and the side
-  // disqualified has the widest sanction after them. Its halves take no tap, so there is no hint.
+  // Owner ruling 18: a match a disqualification ends in game 3 shows three boxes, one marked DQ. With the sanction word
+  // gone from the row (ruling 56: the card is an icon on the head) it is the boxes alone, and its halves take no tap.
   it.each(LANGUAGES)(
-    '%s: three boxes, one marked DQ, the dot and the widest sanction, whole at 320 and 360',
+    '%s: three boxes, one marked DQ, whole at 320 and 360',
     (_lang, dictionary: Dictionary) => {
-      const row =
-        2 * layout.padPeriodBox +
-        markedBox(dictionary) +
-        2 * space.xs +
-        space.sm +
-        controlWidth('·') +
-        space.sm +
-        controlWidth(widestSanction(dictionary));
-      for (const width of WIDTHS) expect(row).toBeLessThanOrEqual(inner(width));
+      const row = 2 * layout.padPeriodBox + markedBox(dictionary) + 2 * space.xs;
+      for (const width of WIDTHS) expect(row).toBeLessThanOrEqual(halfInner(width));
     },
   );
 
-  // In play there are two boxes at most. Beside them and the widest sanction the hint is cut with an ellipsis, never
-  // hidden: its first word and the ellipsis stay ("the hint gives way (ellipsis, then hidden) before the boxes").
-  it.each(LANGUAGES)(
-    '%s: beside two boxes and the widest sanction at 320, the hint keeps its first word and an ellipsis',
-    (_lang, dictionary: Dictionary) => {
-      const first = (dictionary['scoring.badminton.hintLine'] ?? '').split(' ')[0] ?? '';
-      expect(first).not.toBe('');
-      const room = hintRoom(320, 2, widestSanction(dictionary));
-      expect(unitWidth(`${first}…`)).toBeLessThanOrEqual(room);
-      for (const side of NAMES) expect(unitWidth(hint(dictionary, side))).toBeGreaterThan(room);
-    },
-  );
-
-  it('keeps 65 to 70 dp for the hint beside two boxes and the widest sanction at 320, 105 to 110 at 360', () => {
-    const rooms = (width: number) =>
-      LANGUAGES.map(([, dictionary]) => hintRoom(width, 2, widestSanction(dictionary)).toFixed(1));
-    expect(rooms(320)).toEqual(['65.0', '67.2', '65.0', '70.0']);
-    expect(rooms(360)).toEqual(['105.0', '107.2', '105.0', '110.0']);
-  });
-
-  // Game 1, no sanction: the row is the hint alone, whole everywhere (owner ruling 16: "the row shows only the hint").
-  it('holds every hint whole in game 1, at 320 and 360', () => {
-    expect(cutHints(0, false)).toEqual([]);
-  });
-
-  it('cuts only these hints beside two boxes with no sanction: doubles in es and fr, and fr singles, at 320', () => {
-    expect(cutHints(2, false)).toEqual([
-      '320 es A. Sharma / R. Iyer',
-      '320 es L. Chen / M. Wong',
-      '320 fr A. Sharma',
-      '320 fr A. Sharma / R. Iyer',
-      '320 fr L. Chen / M. Wong',
-      '360 fr A. Sharma / R. Iyer',
-      '360 fr L. Chen / M. Wong',
+  // In play there are two boxes at most (best of 3), four in best of 5. The hint is the one word and is whole beside them.
+  it('keeps 188 and 228 dp for the hint beside two boxes, 128 and 168 beside four, at 320 and 360', () => {
+    expect([2, 4].map((n) => WIDTHS.map((width) => hintRoom(width, n)))).toEqual([
+      [188, 228],
+      [128, 168],
     ]);
+  });
+
+  it('holds Tap whole beside none, two or four boxes, at 320 and 360, in four languages', () => {
+    for (const n of [0, 2, 4]) expect(cutBeside(n), `${n} boxes`).toEqual([]);
+  });
+
+  it('would cut Touchez beside seven boxes at 320, the only cut: no hint is drawn then (a decided match takes no tap)', () => {
+    expect(cutBeside(6)).toEqual([]);
+    expect(cutBeside(7)).toEqual(['320 fr']);
   });
 });
 
@@ -1327,6 +1344,74 @@ describe('table tennis: a half at 320 and 360 in four languages', () => {
     ]);
   });
 
+  // Owner ruling 56 (2026-11-04): the marks sit at the far right of the head, after the plate: a stopwatch on BOTH halves
+  // while Expedite is in force and the side's cards (a warning a yellow card, a penalty a yellow and a red). The worst head
+  // is a serving half with Expedite on and a penalty: the plate, the stopwatch and two cards. Only the names give way.
+  const worst = (width: number, dictionary: Dictionary) =>
+    headRoom(width, plate(dictionary), marksWidth(true, 2));
+
+  it('draws the stopwatch and two cards in 44 dp: 20 + 8 + 8, two gaps of 4', () => {
+    expect([
+      marksWidth(true, 0),
+      marksWidth(false, 1),
+      marksWidth(false, 2),
+      marksWidth(true, 2),
+    ]).toEqual([20, 8, 20, 44]);
+    expect(marksWidth(false, 0)).toBe(0);
+  });
+
+  // The names have 85, 86, 69 and 70 dp at 320 beside all three (137, 138, 121 and 122 without the marks) and 125, 126, 109
+  // and 110 at 360. The widest word, "Sharma" (54.4 dp), is whole in every one: no word is broken.
+  it('leaves the names 85, 86, 69 and 70 dp at 320 and 125, 126, 109 and 110 at 360 beside the plate, the stopwatch and two cards', () => {
+    expect(LANGUAGES.map(([, dictionary]) => worst(320, dictionary).toFixed(0))).toEqual([
+      '85',
+      '86',
+      '69',
+      '70',
+    ]);
+    expect(LANGUAGES.map(([, dictionary]) => worst(360, dictionary).toFixed(0))).toEqual([
+      '125',
+      '126',
+      '109',
+      '110',
+    ]);
+  });
+
+  it.each(LANGUAGES)(
+    '%s: no word of a sample name is broken beside the plate, the stopwatch and two cards, at 320 and 360',
+    (_lang, dictionary: Dictionary) => {
+      for (const width of WIDTHS)
+        for (const name of NAMES)
+          expect(wordsFit(name, worst(width, dictionary), nameWidth), `${width} ${name}`).toBe(
+            true,
+          );
+    },
+  );
+
+  // The names give way (two lines, then an ellipsis: `NameText`), the plate and the marks never do. Beside all three a
+  // singles name takes two lines in French and Dutch at 320, and a doubles side needs a third there: French and Dutch,
+  // "A. Sharma / R. Iyer", is cut after its second line. Everything else holds in two lines, 360 included.
+  it('cuts only a doubles side in French and Dutch at 320 beside all three marks: "A. Sharma / R. Iyer", after two lines', () => {
+    const needsMore = WIDTHS.flatMap((width) =>
+      LANGUAGES.flatMap(([lang, dictionary]) =>
+        NAMES.filter(
+          (name) => linesOf(name, worst(width, dictionary), nameWidth) > layout.padNameLines,
+        ).map((name) => `${width} ${lang} ${name}`),
+      ),
+    );
+    expect(needsMore).toEqual(['320 fr A. Sharma / R. Iyer', '320 nl A. Sharma / R. Iyer']);
+  });
+
+  it('holds every sample name in its two lines beside the plate and the stopwatch alone, or the plate and two cards, at 320', () => {
+    for (const marks of [marksWidth(true, 0), marksWidth(false, 2)])
+      for (const [lang, dictionary] of LANGUAGES)
+        for (const name of NAMES)
+          expect(
+            linesOf(name, headRoom(320, plate(dictionary), marks), nameWidth),
+            `${lang} ${name}`,
+          ).toBeLessThanOrEqual(layout.padNameLines);
+  });
+
   // The bottom row, one line: the finished games' boxes, a dot and the doubles server's line, never cut (`HalfFoot`), then
   // the hint with what is left. Best of 5 has four finished games at most while it is played.
   const inner = (width: number) => column(width) - layout.padSideBar - 2 * space.md;
@@ -1362,11 +1447,10 @@ describe('table tennis: a half at 320 and 360 in four languages', () => {
     expect(over(360)).toEqual(['6', '6', '6', '6']);
   });
 
-  // The hint line is what is left of the row after the boxes and, on the serving half of a pair, the server's line and a
-  // dot (`HalfFoot`): cut with an ellipsis, then hidden. (`scoring.tabletennis.hint`, "Tap to award the point", is the
-  // half's accessibility hint: it is not drawn, so there is nothing of it to fit.)
-  const hintLine = (dictionary: Dictionary, side: string) =>
-    fill(said(dictionary, `${TT}.hintLine`), { side });
+  // The hint is the word "Tap" (owner ruling 56) and is what is left of the row after the boxes and, on the serving half of
+  // a pair, the server's line and a dot (`HalfFoot`): cut with an ellipsis, then hidden. (`scoring.tabletennis.hint`, "Tap
+  // to award the point", is the half's accessibility hint: it is not drawn, so there is nothing of it to fit.)
+  const tap = (dictionary: Dictionary) => said(dictionary, 'scoring.pad.tap');
   /** The room the hint has beside `n` finished games' boxes and, if `server`, the widest server line with its dot. */
   const hintRoom = (width: number, dictionary: Dictionary, n: number, server: boolean) => {
     const line = Math.max(
@@ -1375,58 +1459,50 @@ describe('table tennis: a half at 320 and 360 in four languages', () => {
     const kept = (n === 0 ? 0 : boxes(n)) + (server ? (n === 0 ? 0 : dot) + line : 0);
     return inner(width) - kept - (kept === 0 ? 0 : space.sm);
   };
-  /** The sample sides whose hint is cut at all (wider than its room). */
-  const cutSides = (n: number, server: boolean) =>
+  /** The languages whose hint is cut at all (wider than its room), at each width. */
+  const cutLanguages = (n: number, server: boolean) =>
     WIDTHS.flatMap((width) =>
-      LANGUAGES.flatMap(([lang, dictionary]) =>
-        NAMES.filter(
-          (side) => unitWidth(hintLine(dictionary, side)) > hintRoom(width, dictionary, n, server),
-        ).map((side) => `${width} ${lang} ${side}`),
-      ),
+      LANGUAGES.filter(
+        ([, dictionary]) => unitWidth(tap(dictionary)) > hintRoom(width, dictionary, n, server),
+      ).map(([lang]) => `${width} ${lang}`),
     );
-  const firstWord = (dictionary: Dictionary) =>
-    hintLine(dictionary, 'A. Sharma').split(' ')[0] ?? '';
 
-  // Game 1 of a match played by singles, or the half not serving in a pair: the row is the hint alone, whole.
-  it('holds every hint line whole in game 1 with no server line, at 320 and 360, in four languages', () => {
-    expect(cutSides(0, false)).toEqual([]);
+  // One word (20.9, 27.4, 48.3 and 17.2 dp): it is whole in game 1 with no server line, and up to six finished games, the
+  // most a best-of-7 match has while it is played, at both widths in every language.
+  it('holds Tap whole with no server line, in game 1 and beside up to six boxes (best of 7 in play), in four languages', () => {
+    for (const n of [0, 1, 2, 3, 4, 5, 6]) expect(cutLanguages(n, false), `${n} boxes`).toEqual([]);
   });
 
-  // The hint gives way (ellipsis, then hidden) before the boxes and the server's line, which are never cut: its first
-  // word and the ellipsis stay beside up to four boxes (best of 5 in play) with no server line.
-  it.each(LANGUAGES)(
-    '%s: with no server line the hint keeps its first word and an ellipsis beside up to four boxes, at 320 and 360',
-    (_lang, dictionary: Dictionary) => {
-      expect(firstWord(dictionary)).not.toBe('');
-      for (const width of WIDTHS)
-        for (const n of [1, 2, 3, 4])
-          expect(unitWidth(`${firstWord(dictionary)}…`), `${width} ${n}`).toBeLessThanOrEqual(
-            hintRoom(width, dictionary, n, false),
-          );
-    },
-  );
+  // Seven boxes are a best-of-7 match decided, whose halves take no tap and draw no hint; measured because the controller
+  // asked (owner ruling 56: "just tap Tap"). Touchez (48.3 dp) is the one word that would not fit the 38 dp left at 320.
+  it('would cut Touchez beside seven boxes at 320, the only cut (no hint is drawn after game 7)', () => {
+    expect(cutLanguages(7, false)).toEqual(['320 fr']);
+    expect(Math.round(hintRoom(320, fr, 7, false))).toBe(38);
+  });
 
-  it.each(LANGUAGES)(
-    '%s: beside a pair’s server line the hint keeps its first word and an ellipsis up to two boxes, at 320 and 360',
-    (_lang, dictionary: Dictionary) => {
-      for (const width of WIDTHS)
-        for (const n of [0, 1, 2])
-          expect(unitWidth(`${firstWord(dictionary)}…`), `${width} ${n}`).toBeLessThanOrEqual(
-            hintRoom(width, dictionary, n, true),
-          );
-    },
-  );
+  // The pair's server line and its dot are never cut (115, 103, 97 and 114 dp, and 19 for the dot). Tap is whole beside
+  // it with up to two boxes at 320 in every language, three in English, Spanish and Dutch (French's Touchez, 48.3 dp, has
+  // 41.6 left) and four at 360 in all of them. Past that the hint is hidden, and the row is the boxes and the line.
+  it('holds Tap whole beside a pair’s server line up to two boxes at 320 and four at 360, in four languages', () => {
+    for (const n of [0, 1, 2]) expect(cutLanguages(n, true), `${n} boxes`).toEqual([]);
+    expect(cutLanguages(3, true)).toEqual(['320 fr']);
+    expect(cutLanguages(4, true)).toEqual(['320 en', '320 es', '320 fr', '320 nl']);
+    expect(cutLanguages(5, true)).toEqual([
+      '320 en',
+      '320 es',
+      '320 fr',
+      '320 nl',
+      '360 en',
+      '360 es',
+      '360 fr',
+      '360 nl',
+    ]);
+  });
 
-  // Three finished games, the dot and the pair's server line fill the half at 320 (220 of 252 dp): the hint is hidden in
-  // all four languages, and a shorter hint cannot bring it back. At 360 its first word and an ellipsis are kept.
-  it('hides the hint beside a pair’s server line from three finished games at 320, in every language, not at 360', () => {
-    const keeps = (width: number, n: number) =>
-      LANGUAGES.map(
-        ([, dictionary]) =>
-          unitWidth(`${firstWord(dictionary)}…`) <= hintRoom(width, dictionary, n, true),
-      );
-    expect(keeps(320, 3)).toEqual([false, false, false, false]);
-    expect(keeps(360, 3)).toEqual([true, true, true, true]);
+  it('leaves Tap 53.9, 65.6, 71.6 and 55.6 dp beside two boxes and a pair’s server line at 320 (en, es, fr, nl)', () => {
+    expect(
+      LANGUAGES.map(([, dictionary]) => hintRoom(320, dictionary, 2, true).toFixed(1)),
+    ).toEqual(['53.9', '65.6', '71.6', '55.6']);
   });
 });
 
@@ -1491,10 +1567,12 @@ describe('table tennis: a History heading at 320 and 360 in four languages', () 
 });
 
 describe('table tennis: the strip at 320 and 360 in four languages', () => {
-  /** Its facts at their widest: "Game 7 of 7" (best of 7, the deciding game), and the note. */
+  /**
+   * Its facts at their widest: "Game 7 of 7" (best of 7, the deciding game), and the note, which is Deuce or nothing:
+   * Expedite is the stopwatch on the halves now (owner ruling 56), no word in the strip.
+   */
   const facts = (dictionary: Dictionary) => [
     fill(said(dictionary, `${TT}.gameOf`), { game: '7', bestOf: '7' }),
-    said(dictionary, `${TT}.note.expedite`),
     said(dictionary, `${TT}.note.deuce`),
   ];
 

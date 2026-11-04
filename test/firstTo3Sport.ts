@@ -77,10 +77,10 @@ function half(display: FirstTo3Display, side: PadSide): PadHalf<FirstTo3Key> {
     value: String(display.points[side]),
     periods: null,
     sub: null,
+    marks: { clock: false, cards: [], said: [] },
     serving: null,
     bar: 'dim',
     hint: { key: 'first3.hint' },
-    hintLine: { key: 'first3.hint' },
     tappable: true,
   };
 }

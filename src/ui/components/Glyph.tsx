@@ -17,6 +17,7 @@ export const GLYPH_NAMES = [
   'history',
   'up',
   'upBlocked',
+  'stopwatch',
 ] as const;
 export type GlyphName = (typeof GLYPH_NAMES)[number];
 
@@ -79,6 +80,7 @@ const DRAWINGS: Record<GlyphName, (props: { slashed: boolean }) => ReactElement>
   history: HistoryGlyph,
   up: UpGlyph,
   upBlocked: UpBlockedGlyph,
+  stopwatch: StopwatchGlyph,
 };
 
 function CameraGlyph({ slashed }: { slashed: boolean }) {
@@ -184,4 +186,17 @@ function UpGlyph() {
  */
 function UpBlockedGlyph() {
   return <Path d="M12 20V10M7 14l5-5 5 5M5 4h14" />;
+}
+
+/**
+ * The pad half's Expedite mark (owner ruling 56, 2026-11-04: "just clock symbol on expetise"): a stopwatch, a ring with
+ * its crown and stem above and one hand. Drawn at the half's corner, so it reads at a glance and in sun.
+ */
+function StopwatchGlyph() {
+  return (
+    <>
+      <Circle cx={12} cy={14} r={7.5} />
+      <Path d="M9.5 2.5h5M12 2.5v4M12 14v-4" />
+    </>
+  );
 }

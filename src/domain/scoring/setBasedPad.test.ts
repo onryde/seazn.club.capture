@@ -4,8 +4,9 @@ import {
   playedSaid,
   playedScore,
   resultCardOf,
+  heaviestLevel,
+  padMarks,
   setBasedGameItem,
-  setBasedHalfWords,
   setBasedStart,
   setBasedTally,
 } from '@/domain/scoring/setBasedPad';
@@ -62,11 +63,51 @@ describe('setBasedStart', () => {
   });
 });
 
-describe('setBasedHalfWords', () => {
-  it('says what a tap does, and names the side in the visible hint', () => {
-    expect(setBasedHalfWords({ hint: 't.hint', hintLine: 't.line' }, 'L. Chen')).toEqual({
-      hint: { key: 't.hint' },
-      hintLine: { key: 't.line', vars: { side: 'L. Chen' } },
+describe('heaviestLevel', () => {
+  const ORDER = ['light', 'middle', 'heavy'] as const;
+
+  it('is the heaviest level of those given, whatever order they came in', () => {
+    expect(heaviestLevel(ORDER, ['middle', 'heavy', 'light'])).toBe('heavy');
+    expect(heaviestLevel(ORDER, ['heavy', 'middle'])).toBe('heavy');
+    expect(heaviestLevel(ORDER, ['light', 'middle'])).toBe('middle');
+  });
+
+  it('is the one level when there is one, and nothing when there is none', () => {
+    expect(heaviestLevel(ORDER, ['light'])).toBe('light');
+    expect(heaviestLevel(ORDER, [])).toBeNull();
+  });
+
+  it('ignores a level the order does not list, so an unknown one never outweighs a known one', () => {
+    expect(heaviestLevel(ORDER, ['unknown' as never, 'light'])).toBe('light');
+    expect(heaviestLevel(ORDER, ['unknown' as never])).toBeNull();
+  });
+});
+
+describe('padMarks', () => {
+  const CARD = { cards: ['caution', 'dismissal'], said: { key: 't.card' } } as const;
+  const CLOCK = { key: 't.clock' } as const;
+
+  it('is nothing to draw and nothing to say for no card and no clock', () => {
+    expect(padMarks(null, null)).toEqual({ clock: false, cards: [], said: [] });
+  });
+
+  it('draws a card’s cards in the order given and says its name', () => {
+    expect(padMarks(CARD, null)).toEqual({
+      clock: false,
+      cards: ['caution', 'dismissal'],
+      said: [{ key: 't.card' }],
+    });
+  });
+
+  it('draws a clock and says its words', () => {
+    expect(padMarks(null, CLOCK)).toEqual({ clock: true, cards: [], said: [{ key: 't.clock' }] });
+  });
+
+  it('says the card before the clock when a half has both', () => {
+    expect(padMarks(CARD, CLOCK)).toEqual({
+      clock: true,
+      cards: ['caution', 'dismissal'],
+      said: [{ key: 't.card' }, { key: 't.clock' }],
     });
   });
 });

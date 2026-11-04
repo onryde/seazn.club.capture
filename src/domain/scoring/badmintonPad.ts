@@ -6,6 +6,7 @@ import {
 } from '@/domain/scoring/badmintonRules';
 import {
   withCard,
+  type PadCard,
   type PadHalf,
   type PadLastTap,
   type PadMatchDetails,
@@ -22,11 +23,13 @@ import {
 import type { SetBasedPhase } from '@/domain/scoring/setBasedBoard';
 import {
   gamesWon,
+  heaviestLevel,
+  padMarks,
+  type PadCardMark,
   playedSaid,
   playedScore,
   resultCardOf,
   setBasedGameItem,
-  setBasedHalfWords,
   setBasedStart,
   setBasedTally,
 } from '@/domain/scoring/setBasedPad';
@@ -149,7 +152,6 @@ export type BadmintonPadKey =
   | 'scoring.badminton.gameSaid.stopped'
   | 'scoring.badminton.mark.disqualified'
   | 'scoring.badminton.hint'
-  | 'scoring.badminton.hintLine'
   | 'scoring.badminton.gameOf'
   | 'scoring.badminton.gameHeading'
   | `scoring.badminton.serving.${BadmintonCourt}`
@@ -189,7 +191,6 @@ const WORDS = {
   gamesTally: 'scoring.badminton.gamesTally',
   gameOf: 'scoring.badminton.gameOf',
   hint: 'scoring.badminton.hint',
-  hintLine: 'scoring.badminton.hintLine',
   startAsk: 'scoring.badminton.start.ask',
 } as const;
 
@@ -251,12 +252,13 @@ function half(state: BadmintonDisplay, side: PadSide): PadHalf<BadmintonPadKey> 
     label: sideNames(state.sides[side]),
     value: String(state.points[side]),
     periods: periods(state.finished, side),
-    sub: heaviestSanction(state, side),
+    sub: null,
+    marks: padMarks(sanctionCard(state, side), null),
     serving: plate,
     // The bar follows the plate (owner, 2026-11-02): the serving side's is lit, so when the serve changes the light moves
     // with it, and neither is lit while the ledger names no server, before the match starts and once it is over.
     bar: plate === null ? 'dim' : 'lit',
-    ...setBasedHalfWords<BadmintonPadKey>(WORDS, sideNames(state.sides[side])),
+    hint: { key: WORDS.hint },
     tappable: open(state),
   };
 }
@@ -309,14 +311,26 @@ export function badmintonDetails(state: BadmintonDisplay): PadMatchDetails<Badmi
   return { context: state.context, rules: badmintonRuleRows(state.rules) };
 }
 
-/** The side's heaviest sanction's word, or none. */
-function heaviestSanction(state: BadmintonDisplay, side: PadSide): Text | null {
-  const heaviest = state.sanctions
-    .filter((sanction) => sanction.side === side)
-    .map((sanction) => SANCTION_LEVELS.indexOf(sanction.level))
-    .reduce((top, at) => Math.max(top, at), -1);
-  const level = SANCTION_LEVELS[heaviest];
-  return level === undefined ? null : sanctionWord(level);
+/**
+ * The card each level is drawn as (owner ruling 56, 2026-11-04): a warning is the yellow card, a fault (the web's `penalty`)
+ * and a disqualification the red one, and so is an expulsion, the web's fourth level. Typed over every level, so a
+ * level added to the web's list does not compile until it is given a card.
+ */
+const CARDS: Readonly<Record<BadmintonSanctionLevel, readonly PadCard[]>> = {
+  warning: ['caution'],
+  penalty: ['dismissal'],
+  expulsion: ['dismissal'],
+  disqualification: ['dismissal'],
+};
+
+/** The side's heaviest sanction as a card, or none; its name is what a screen reader hears of it. */
+function sanctionCard(state: BadmintonDisplay, side: PadSide): PadCardMark<BadmintonPadKey> | null {
+  const held = state.sanctions.filter((sanction) => sanction.side === side);
+  const level = heaviestLevel(
+    SANCTION_LEVELS,
+    held.map((sanction) => sanction.level),
+  );
+  return level === null ? null : { cards: CARDS[level], said: sanctionWord(level) };
 }
 
 /** The plate's "Serving · right", said "Serving, right service court" (owner ruling 17). */

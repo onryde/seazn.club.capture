@@ -108,6 +108,7 @@ describe('foldTableTennis: before the start', () => {
       anchorNeeded: false,
       expedite: 'off',
       deuce: false,
+      sanctions: [],
       records: { timeouts: true, sanctions: true, expedite: true },
       scoreEvents: 0,
       lastTap: null,
@@ -701,6 +702,58 @@ describe('foldTableTennis: cards, timeouts and the set score', () => {
       side: 'first',
       level: 'warning',
       person: 'R. Iyer',
+    });
+  });
+
+  // Owner ruling 56: the half draws its side's card, so the display lists the cards standing.
+  describe('the cards standing (owner ruling 56)', () => {
+    it('lists none for a match with no card', () => {
+      expect(display(played('HA')).sanctions).toEqual([]);
+    });
+
+    it('lists a card by the side that holds it and its level, oldest first', () => {
+      const d = display([
+        ...played('HA'),
+        sanction('A', 'warning'),
+        sanction('H', 'penalty'),
+        sanction('A', 'penalty'),
+      ]);
+      expect(d.sanctions).toEqual([
+        { side: 'second', level: 'warning' },
+        { side: 'first', level: 'penalty' },
+        { side: 'second', level: 'penalty' },
+      ]);
+    });
+
+    it('lists a doubles card by its side, whoever the player is', () => {
+      const d = display([...played('HA'), sanction('H', 'warning', 'p-iyer')], {
+        bootstrap: DOUBLES,
+      });
+      expect(d.sanctions).toEqual([{ side: 'first', level: 'warning' }]);
+    });
+
+    it('takes a card out when an undo voids it, and leaves the others', () => {
+      const ledger = [...played('HA'), sanction('H', 'warning'), sanction('A', 'penalty')];
+      expect(display(ledger).sanctions).toHaveLength(2);
+      // The last card is the ledger's last event: its seq is the ledger's length.
+      const undone = display([...ledger, voiding(ledger.length)]);
+      expect(undone.sanctions).toEqual([{ side: 'first', level: 'warning' }]);
+      const both = display([...ledger, voiding(ledger.length), voiding(ledger.length - 1)]);
+      expect(both.sanctions).toEqual([]);
+    });
+
+    // Table tennis lists two cards (yellow and red). A level it does not list (the web's badminton levels, say, from a
+    // ledger written by another client) is not a card here, and draws none.
+    it('leaves out a level the engine does not list for table tennis', () => {
+      const d = display([...played('HA'), sanction('H', 'expulsion'), sanction('A', 'warning')]);
+      expect(d.sanctions).toEqual([{ side: 'second', level: 'warning' }]);
+    });
+
+    it('shows this phone’s queued card at once', () => {
+      const queued = [queuedOf('k-card', sanction('A', 'penalty'))];
+      expect(display(played('HA'), { queued }).sanctions).toEqual([
+        { side: 'second', level: 'penalty' },
+      ]);
     });
   });
 

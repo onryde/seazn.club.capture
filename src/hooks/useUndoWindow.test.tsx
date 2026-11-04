@@ -32,10 +32,10 @@ function padWith(card: PadStateCard | null, lastTap: PadView<'k.x'>['lastTap'] =
     value: '21',
     periods: null,
     sub: null,
+    marks: { clock: false, cards: [], said: [] },
     serving: null,
     bar: 'dim',
     hint: TEXT,
-    hintLine: TEXT,
     tappable: false,
   });
   return {

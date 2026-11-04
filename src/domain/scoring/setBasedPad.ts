@@ -1,5 +1,6 @@
 import type {
-  PadHalf,
+  PadCard,
+  PadMarks,
   PadSide,
   PadStart,
   PadStateCard,
@@ -61,14 +62,44 @@ export function setBasedStart<K extends string>(
   };
 }
 
-/** A half's two hints: what a tap does for a screen reader, and as the half shows it, naming the side. */
-export function setBasedHalfWords<K extends string>(
-  keys: { readonly hint: K; readonly hintLine: K },
-  label: string,
-): Pick<PadHalf<K>, 'hint' | 'hintLine'> {
+/**
+ * The heaviest of the levels a side holds, by the sport's order (lightest first), or none: a side shows one sanction,
+ * the heaviest (owner ruling 16; ruling 56 draws it as cards). A level the order does not list is no level: it never
+ * outweighs a known one.
+ */
+export function heaviestLevel<L extends string>(
+  order: readonly L[],
+  levels: readonly string[],
+): L | null {
+  const at = levels.reduce(
+    (top, level) =>
+      Math.max(
+        top,
+        order.findIndex((known) => known === level),
+      ),
+    -1,
+  );
+  return order[at] ?? null;
+}
+
+/** A sanction as marks: the cards drawn for its level, and its name said to a screen reader. */
+export type PadCardMark<K extends string> = {
+  readonly cards: readonly PadCard[];
+  readonly said: PadText<K>;
+};
+
+/**
+ * A half's marks (owner ruling 56): the side's card, if any, and the clock's words when the clock is drawn. The card
+ * comes first in what a screen reader hears, and the clock is drawn before the cards.
+ */
+export function padMarks<K extends string>(
+  card: PadCardMark<K> | null,
+  clock: PadText<K> | null,
+): PadMarks<K> {
   return {
-    hint: { key: keys.hint },
-    hintLine: { key: keys.hintLine, vars: { side: label } },
+    clock: clock !== null,
+    cards: card === null ? [] : card.cards,
+    said: [...(card === null ? [] : [card.said]), ...(clock === null ? [] : [clock])],
   };
 }
 

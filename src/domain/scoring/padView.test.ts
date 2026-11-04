@@ -11,7 +11,6 @@ import {
 
 type Key =
   | 'k.hint'
-  | 'k.hintLine'
   | 'k.sub'
   | 'k.periods'
   | 'k.serving'
@@ -33,10 +32,10 @@ const live: PadView<Key> = {
       value: '3',
       periods: { scores: [{ value: '7', won: true }], said: [{ key: 'k.periods' }] },
       sub: { key: 'k.sub' },
+      marks: { clock: true, cards: ['caution'], said: [{ key: 'k.sub' }] },
       serving: { shown: { key: 'k.serving' }, said: { key: 'k.servingSaid' } },
       bar: 'lit',
       hint: { key: 'k.hint' },
-      hintLine: { key: 'k.hintLine' },
       tappable: true,
     },
     {
@@ -45,10 +44,10 @@ const live: PadView<Key> = {
       value: '1',
       periods: null,
       sub: null,
+      marks: { clock: false, cards: [], said: [] },
       serving: null,
       bar: 'dim',
       hint: { key: 'k.hint' },
-      hintLine: { key: 'k.hintLine' },
       tappable: true,
     },
   ],

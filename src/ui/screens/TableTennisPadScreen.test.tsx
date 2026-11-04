@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { encodeSavedCode } from '@/domain/mode/savedCode';
 import { tableTennisCfg } from '@/domain/scoring/tableTennisEngine';
 import en from '@/i18n/en.json';
+import { colour } from '@/ui/theme/tokens';
 import type { FakeMatchSeed } from '@/services/fakeScoringPort';
 import {
   AWAY_ENTRANT,
@@ -16,6 +17,7 @@ import { STORE_KEYS } from '@/services/modeStore';
 import { TEST_NOW } from '../../../test/fakePorts';
 import { linkKey } from '../../../test/scoringHomeFixtures';
 import { screenIsHeld, type HoldLog } from '../../../test/heldScreen';
+import { fillOf, paintOf } from '../../../test/pressState';
 import { flush, launchApp, type LaunchedApp } from '../../../test/routedApp';
 
 const holds = vi.hoisted((): HoldLog => []);
@@ -62,6 +64,17 @@ const aSecondOn = (app: LaunchedApp) => {
 };
 const half = (side: 'first' | 'second') => screen.getByTestId(`half-${side}`);
 const score = (side: 'first' | 'second') => within(half(side)).getByTestId('score').textContent;
+/** The fills of a half's cards, left to right (owner ruling 56: the cards are small upright icons in the half's corner). */
+const cardFills = (side: 'first' | 'second') =>
+  within(half(side))
+    .queryAllByTestId('mark-card')
+    .map((card) => paintOf(card).fill);
+/** How many stopwatches a half draws (owner ruling 56: Expedite is a clock on both halves). */
+const clocks = (side: 'first' | 'second') =>
+  within(half(side))
+    .queryAllByTestId('glyph')
+    .filter((glyph) => glyph.dataset.name === 'stopwatch').length;
+const strip = (slot: string) => screen.getByTestId(`strip-${slot}`).textContent;
 const lastTap = () => screen.getByTestId('last-tap-sentence').textContent;
 const fill = (text: string, vars: Record<string, string | number>) =>
   Object.entries(vars).reduce(
@@ -163,6 +176,7 @@ describe('Card (in More)', () => {
       en['scoring.sheet.cancel'],
     ]);
     expect(within(sheet).getByText('L. Chen')).toBeTruthy();
+    expect(cardFills('second')).toEqual([]);
     await press(app, en['scoring.tabletennis.card.warning']);
     expect(screen.queryByTestId('step-sheet')).toBeNull();
     expect(lastTap()).toBe(
@@ -171,6 +185,14 @@ describe('Card (in More)', () => {
         person: 'L. Chen',
       }),
     );
+    // Owner ruling 56: a warning is one yellow card in L. Chen's corner, and the first side has none; the card's name is in
+    // the half's name for a screen reader, and not in its bottom row.
+    expect(cardFills('second')).toEqual([fillOf(colour.cardCaution)]);
+    expect(cardFills('first')).toEqual([]);
+    expect(half('second').getAttribute('aria-label')).toContain(
+      en['scoring.tabletennis.card.warning'],
+    );
+    expect(within(half('second')).queryByText(en['scoring.tabletennis.card.warning'])).toBeNull();
     expect((await events(app, TABLE_TENNIS_SINGLES_SEED)).at(-1)).toMatchObject({
       type: 'tabletennis.sanction',
       payload: { by: AWAY_ENTRANT, level: 'warning' },
@@ -195,6 +217,28 @@ describe('Card (in More)', () => {
     // A red card is recorded as it is: no ending prompt, however the card is read (table tennis has no sanction ending).
     expect(screen.queryByTestId('ending-prompt')).toBeNull();
     expect(screen.getByTestId('half-first')).toBeTruthy();
+    // The penalty is the yellow and the red card side by side on the side that holds it (owner ruling 56, ITTF's yellow-red).
+    expect(cardFills('first')).toEqual([fillOf(colour.cardCaution), fillOf(colour.cardDismissal)]);
+    expect(cardFills('second')).toEqual([]);
+  });
+
+  it('a card shows on its side only, the heavier one wins, and an Undo takes each away in turn', async () => {
+    const app = await started();
+    await openCard(app, 'A. Sharma');
+    await press(app, en['scoring.tabletennis.card.warning']);
+    expect([cardFills('first'), cardFills('second')]).toEqual([[fillOf(colour.cardCaution)], []]);
+    await openCard(app, 'A. Sharma');
+    await press(app, en['scoring.tabletennis.card.penalty']);
+    expect(cardFills('first')).toEqual([fillOf(colour.cardCaution), fillOf(colour.cardDismissal)]);
+    aSecondOn(app);
+    act(() => fireEvent.click(screen.getByRole('button', { name: en['scoring.pad.undo'] })));
+    await flush(400);
+    expect(cardFills('first')).toEqual([fillOf(colour.cardCaution)]);
+    aSecondOn(app);
+    act(() => fireEvent.click(screen.getByRole('button', { name: en['scoring.pad.undo'] })));
+    await flush(400);
+    expect([cardFills('first'), cardFills('second')]).toEqual([[], []]);
+    expect(screen.queryByTestId('marks')).toBeNull();
   });
 
   it('the Card takes More’s place, and Cancel closes it with nothing recorded', async () => {
@@ -418,10 +462,66 @@ describe('the row after the first point, and Expedite (rulings 54 and 55)', () =
       `${fill(en['scoring.tabletennis.tool.returns'], { returns: 13 })}, ${name}`,
       en['scoring.tabletennis.tool.more'],
     ]);
-    expect(screen.getByTestId('strip-note').textContent).toBe(
-      en['scoring.tabletennis.note.expedite'],
-    );
+    // Owner ruling 56: the strip's word is gone; the clock sits on BOTH halves, and each half's name says Expedite.
+    expect(strip('note')).toBe('');
+    expect([clocks('first'), clocks('second')]).toEqual([1, 1]);
+    for (const side of ['first', 'second'] as const) {
+      expect(half(side).getAttribute('aria-label')).toContain(
+        en['scoring.tabletennis.tool.expediteSaid'],
+      );
+    }
     expect(lastTap()).toBe(en['scoring.tabletennis.last.expedite']);
+  });
+
+  it('no clock before Expedite starts, and Cancel leaves none; Undo of the start takes both away', async () => {
+    const app = await underWay();
+    expect([clocks('first'), clocks('second')]).toEqual([0, 0]);
+    await press(app, en['scoring.tabletennis.tool.expediteSaid']);
+    expect([clocks('first'), clocks('second')]).toEqual([0, 0]);
+    await press(app, en['scoring.sheet.cancel']);
+    expect([clocks('first'), clocks('second')]).toEqual([0, 0]);
+    await press(app, en['scoring.tabletennis.tool.expediteSaid']);
+    await press(app, en['scoring.tabletennis.expedite.start']);
+    expect([clocks('first'), clocks('second')]).toEqual([1, 1]);
+    aSecondOn(app);
+    act(() => fireEvent.click(screen.getByRole('button', { name: en['scoring.pad.undo'] })));
+    await flush(400);
+    expect([clocks('first'), clocks('second')]).toEqual([0, 0]);
+    expect(screen.queryByTestId('marks')).toBeNull();
+  });
+
+  it('the clock and a card share the corner: the stopwatch first, then the cards, on the side that holds one', async () => {
+    const app = await underWay();
+    await press(app, en['scoring.tabletennis.tool.expediteSaid']);
+    await press(app, en['scoring.tabletennis.expedite.start']);
+    await openCard(app, 'L. Chen');
+    await press(app, en['scoring.tabletennis.card.penalty']);
+    const marks = within(half('second')).getByTestId('marks');
+    expect([...marks.children].map((child) => child.getAttribute('data-testid'))).toEqual([
+      'glyph',
+      'mark-card',
+      'mark-card',
+    ]);
+    expect(within(half('first')).getByTestId('marks').children).toHaveLength(1);
+    expect(half('second').getAttribute('aria-label')).toContain(
+      `${en['scoring.tabletennis.card.penalty']}, ${en['scoring.tabletennis.tool.expediteSaid']}`,
+    );
+  });
+
+  // The strip's one note under Expedite is Deuce (owner ruling 56; design §5.2): ten points each in a game to 11.
+  it('shows Deuce in the strip at 10-10 under Expedite, and nothing before it', async () => {
+    const app = await underWay();
+    await press(app, en['scoring.tabletennis.tool.expediteSaid']);
+    await press(app, en['scoring.tabletennis.expedite.start']);
+    expect(strip('note')).toBe('');
+    await rally(app, 'second');
+    for (let point = 0; point < 9; point += 1) {
+      await rally(app, 'first');
+      await rally(app, 'second');
+    }
+    expect([score('first'), score('second')]).toEqual(['10', '10']);
+    expect(strip('note')).toBe(en['scoring.tabletennis.note.deuce']);
+    expect([clocks('first'), clocks('second')]).toEqual([1, 1]);
   });
 
   it('a double tap on Start records once', async () => {
