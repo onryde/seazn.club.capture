@@ -344,11 +344,38 @@ describe('the payload a send is made with', () => {
     expect(send.body.payload).toEqual({ wonBy: HOME, serving: HOME });
   });
 
-  it('keeps what a tap was first sent with once it has an attempt', () => {
-    const send = sendsOf(
-      firstSend([{ ...serving, attempts: 1 }], [start(), rally('A')]).effects,
+  // Fix round 2 (I2 of the Batch C review): the server matches a resend by its key and never by its payload, so what a tap
+  // was first sent with matters only while the ledger holds its copy; with none, the first attempt may never have been
+  // stored and the resend is appended as new.
+  const resent = { ...serving, attempts: 1 };
+  /** The ledger as recorded just after the tap was made (`queuedOf`'s clock), so each event counts as made on top of it. */
+  const AFTER_TAP = '2026-11-01T10:29:00.000Z';
+  const sentWith = (specs: Parameters<typeof ledgerOf>[0]) =>
+    sendsOf(
+      step(
+        opened({ ...tapped([resent]), ledger: ledgerOf(specs, AFTER_TAP) }),
+        { kind: 'fetched', events: [] },
+        NOW,
+      ).effects,
     )[0];
-    expect(send.body.payload).toEqual({ wonBy: HOME, serving: HOME });
+
+  it('keeps what a tap was first sent with once it has an attempt, while the ledger holds its copy', () => {
+    const copy = { ...rally('H', 'H'), link: PHONE_LINK };
+    expect(sentWith([start(), copy, rally('A')]).body.payload).toEqual({
+      wonBy: HOME,
+      serving: HOME,
+    });
+  });
+
+  it('judges a tap with an attempt as a first send when the ledger holds no copy of it', () => {
+    const send = sentWith([start(), rally('A')]);
+    expect(send.body.payload).toEqual({ wonBy: HOME });
+    expect(send.sent.attempts).toBe(2);
+  });
+
+  it('does not take another link’s identical rally for the copy of a tap', () => {
+    const lookalike = { ...rally('H', 'H'), link: BROWSER_LINK };
+    expect(sentWith([start(), lookalike]).body.payload).toEqual({ wonBy: HOME });
   });
 });
 

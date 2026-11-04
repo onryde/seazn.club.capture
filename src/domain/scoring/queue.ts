@@ -31,9 +31,9 @@ export type QueuedEvent = {
   readonly voidsKey?: string;
   /**
    * The score a tap's `serving` was made at: the number of standing score events (points and game scores) in the phone's
-   * view when it was tapped, set by a sport whose `serving` is valid only at that score (table tennis; `SportEvent.base`).
-   * Its first send compares it with the ledger's count and drops `serving` if they differ. Absent on a tap that names no
-   * `serving`, on every badminton tap and on a queue file written before it existed.
+   * view when it was tapped, set by a sport whose `serving` is valid only at that score (`SportEvent.base`). The sport's
+   * send compares it with the ledger's count and drops `serving` if they differ. Absent on a tap that names no
+   * `serving`, on a tap of a sport that sets none, and on a queue file written before it existed.
    */
   readonly base?: number;
 };

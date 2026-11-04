@@ -72,17 +72,24 @@ export function standing<E extends VoidableEvent>(
 }
 
 /**
- * The payload to send for a queued tap whose `serving` anchors the server (the controller's ruling, 2026-11-02): at its
- * first send it goes without `serving` when `taken()` says the ledger already holds what the engine would take the
- * anchor from (a co-scorer's landed first: the engine would ignore it there, and its drift check could then name no
- * server). A tap with an attempt keeps what it was first sent with, since the server may hold it under its key already
- * (a tap in flight has one: `markSending` counts it as the send starts). Every other tap goes as queued. The key never
- * changes. `taken` is asked only for a tap that could lose something.
+ * The payload to send for a queued tap whose `serving` anchors the server (the controller's ruling, 2026-11-02): it goes
+ * without `serving` when `taken()` says the ledger already holds what the engine would take the anchor from, or what the
+ * stamp was made against has moved (a co-scorer's landed first: the engine would ignore it there, and its drift check
+ * could then name no server). A tap goes as queued while `copied`: the ledger holds the server's copy of it, which the web
+ * matches by the tap's key and never by its payload (a tap in flight has an attempt: `markSending` counts it as the send
+ * starts, so only a tap sent before can have a copy). A tap sent before whose copy is not there may never have been
+ * stored, and a resend is then appended as new (fix round 2, I2 of the Batch C review): it is judged as a first send is.
+ * Every other tap goes as queued. The key never changes. `taken` is asked only for a tap that could lose something.
  */
-export function payloadForFirstSend(queued: QueuedEvent, taken: () => boolean): unknown {
+export function payloadForFirstSend(
+  queued: QueuedEvent,
+  taken: () => boolean,
+  copied: boolean,
+): unknown {
   const { payload } = queued;
-  if (queued.attempts > 0 || !isRecord(payload)) return payload;
-  if (!('serving' in payload) || !taken()) return payload;
+  if (!isRecord(payload) || !('serving' in payload)) return payload;
+  if (copied) return payload;
+  if (!taken()) return payload;
   const { serving: _dropped, ...rest } = payload;
   return rest;
 }

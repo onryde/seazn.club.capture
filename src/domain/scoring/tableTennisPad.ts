@@ -44,12 +44,19 @@ export type TableTennisSide = SetBasedSide;
 
 /**
  * One tap the scorer can make on the pad. `start` starts the match, the side picked serving first (design §4.1);
- * `rally.serving` is the held Who is serving? answer, else null (design §4.2); `returns` is the point the receiver wins
- * on their thirteenth good return, under Expedite (design §4.5).
+ * `rally.serving` is the held Who is serving? answer, else null (design §4.2), and `servingAt` the display's count of
+ * score events (`TableTennisDisplay.scoreEvents`) when the answer was made, null with it: an answer is valid at that score
+ * only, and the event drops it at any other (`tableTennisEventFor`); `returns` is the point the receiver wins on their
+ * thirteenth good return, under Expedite (design §4.5).
  */
 export type TableTennisTap =
   | { readonly kind: 'start'; readonly server: PadSide }
-  | { readonly kind: 'rally'; readonly side: PadSide; readonly serving: PadSide | null }
+  | {
+      readonly kind: 'rally';
+      readonly side: PadSide;
+      readonly serving: PadSide | null;
+      readonly servingAt: number | null;
+    }
   | { readonly kind: 'returns'; readonly side: PadSide }
   | { readonly kind: 'timeout'; readonly side: PadSide }
   | { readonly kind: 'expedite' }

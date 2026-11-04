@@ -46,9 +46,9 @@ import { matchContextOf, type Bootstrap } from '@/domain/scoring/wire';
 /** A set-based sport's engine module and the two event types the shared fold reads by name. */
 export type SetBasedEvents = {
   readonly module: SetBasedModule;
-  /** The sport's rally event (`badminton.rally`): a point, which carries the server and the winner. */
+  /** The sport's rally event type (for instance `badminton.rally`): a point, which carries the server and the winner. */
   readonly rally: string;
-  /** The sport's whole-game score event (`badminton.game.summary`). */
+  /** The sport's whole-game score event type (for instance `badminton.game.summary`). */
   readonly summary: string;
 };
 

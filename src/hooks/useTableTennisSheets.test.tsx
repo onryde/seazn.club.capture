@@ -339,6 +339,29 @@ describe('More (design §5.3): its items record at once, or open Set score in it
     expect(result.current.view).toBeNull();
   });
 
+  // Fix round 2 (M3 of the Batch C review): Set score is offered before a game's first point only. Another scorer's point
+  // under the open sheet ends that, and a save would be a game score set into the middle of a game.
+  it('goes away when a point lands under it: Set score is no longer on offer', async () => {
+    const { result, rerender, wait } = mount(UNANCHORED);
+    act(() => result.current.actions.tool('more'));
+    await wait();
+    act(() => result.current.actions.choose('setScore'));
+    await wait();
+    expect(result.current.view?.kind).toBe('setScore');
+    rerender({ snapshot: LIVE });
+    expect(result.current.view).toBeNull();
+    expect(result.current.open).toBe(false);
+  });
+
+  it('stays while the display moves but still offers Set score', async () => {
+    const { result, rerender, wait } = mount(UNANCHORED);
+    act(() => result.current.actions.tool('more'));
+    await wait();
+    act(() => result.current.actions.choose('setScore'));
+    rerender({ snapshot: snapshotOf([start(), expedite()]) });
+    expect(result.current.view?.kind).toBe('setScore');
+  });
+
   it('Set score takes no save in the bounce window of the sheet appearing', async () => {
     const { result, calls, wait } = mount(UNANCHORED);
     act(() => result.current.actions.tool('more'));

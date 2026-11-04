@@ -258,7 +258,9 @@ function staleSheet(sheet: NonNullable<Sheet>, snapshot: TableTennisSheetSnapsho
   if (snapshot === null || staleByAsk(sheet.kind, snapshot)) return true;
   const { display } = snapshot;
   if (sheet.kind === 'serving') return !display.anchorNeeded;
-  return sheet.kind === 'more' && tableTennisMoreItems(display).length === 0;
+  const items = tableTennisMoreItems(display);
+  if (sheet.kind === 'setScore') return !items.includes('setScore');
+  return sheet.kind === 'more' && items.length === 0;
 }
 
 function sheetFor(id: string): Sheet {

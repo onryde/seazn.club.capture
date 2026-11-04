@@ -16,17 +16,18 @@ import type { PadSide } from '@/domain/scoring/padView';
  *   anchor is lost again: an answer made at one score is not an answer for another;
  * - it is tied to the score it was made at: `put` records the display's count of score events, and the answer goes the
  *   moment that count differs (another scorer's point that names no `serving` leaves the pad needing an answer, but a
- *   `serving` carried to the next rally would anchor the engine at the wrong score; a void or a refetch moves it too);
- * - `clear` is for the taps that move the score or take one back: Undo and Set score.
+ *   `serving` carried to the next rally would anchor the engine at the wrong score; a void or a refetch moves it too).
+ *   `carry` hands the tap that count too (`servingAt`), and the domain drops an answer whose count is not the display's
+ *   (`tableTennisEventFor`), so the wire invariant does not rest on this hook's commit alone;
+ * - `clear` is for the tap that takes one back without moving the score (Undo of a card or a timeout); a point, a game
+ *   score or an Undo that moves the count ends the answer by the count alone.
  *
  * `anchorNeeded` and `scoreEvents` are the display's (`TableTennisDisplay.anchorNeeded`, `.scoreEvents`).
  */
 export function useHeldServing(anchorNeeded: boolean, scoreEvents: number) {
   const [side, setSide] = useState<PadSide | null>(null);
-  // The side a tap reads at once, which a redraw may not have caught up with.
-  const latest = useRef<PadSide | null>(null);
-  // The count of score events the answer was made at.
-  const madeAt = useRef(scoreEvents);
+  // The answer a tap reads at once, which a redraw may not have caught up with, and the count of score events it was made at.
+  const latest = useRef<{ readonly side: PadSide; readonly at: number } | null>(null);
   const clear = useCallback(() => {
     latest.current = null;
     setSide(null);
@@ -34,21 +35,21 @@ export function useHeldServing(anchorNeeded: boolean, scoreEvents: number) {
   // In the commit that shows the engine naming a server, or the score moved, before any tap can read an answer that no
   // longer holds.
   useLayoutEffect(() => {
-    if (!anchorNeeded || madeAt.current !== scoreEvents) clear();
+    if (!anchorNeeded || (latest.current !== null && latest.current.at !== scoreEvents)) clear();
   }, [anchorNeeded, scoreEvents, clear]);
   const put = useCallback(
     (answer: PadSide): boolean => {
       if (!anchorNeeded) return false;
-      latest.current = answer;
-      madeAt.current = scoreEvents;
+      latest.current = { side: answer, at: scoreEvents };
       setSide(answer);
       return true;
     },
     [anchorNeeded, scoreEvents],
   );
   const carry = useCallback(
-    (send: (serving: PadSide | null) => PadOutcome): PadOutcome => {
-      const outcome = send(latest.current);
+    (send: (serving: PadSide | null, servingAt: number | null) => PadOutcome): PadOutcome => {
+      const held = latest.current;
+      const outcome = send(held?.side ?? null, held?.at ?? null);
       if (outcome.ok) clear();
       return outcome;
     },

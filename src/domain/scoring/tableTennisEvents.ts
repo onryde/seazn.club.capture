@@ -73,13 +73,17 @@ export function tableTennisEventFor(
 }
 
 /**
- * The answer to Who is serving? that a rally may carry: only where the pad needs one (`anchorNeeded`). With a pick
- * standing, or a server the engine names, the answer is stale or was never asked for (plan S2-2 Task 7, fix round 1): it
- * is dropped here, whatever the caller held, so the engine is never handed a `serving` it would take as an anchor at a
- * score it was not made at.
+ * The answer to Who is serving? that a rally may carry: only where the pad needs one (`anchorNeeded`) and at the score it
+ * was made at (`servingAt`, the display's count of score events then). With a pick standing, or a server the engine
+ * names, the answer is stale or was never asked for (plan S2-2 Task 7, fix round 1); and one made at another count was
+ * made to a score that no longer stands (fix round 2, M1 of the Batch C review). Either is dropped here, whatever the
+ * caller held, so the engine is never handed a `serving` it would take as an anchor at a score it was not made at.
  */
-const answered = (serving: PadSide | null, display: TableTennisDisplay): PadSide | null =>
-  display.anchorNeeded ? serving : null;
+const answered = (
+  tap: Extract<TableTennisTap, { readonly kind: 'rally' }>,
+  display: TableTennisDisplay,
+): PadSide | null =>
+  display.anchorNeeded && tap.servingAt === display.scoreEvents ? tap.serving : null;
 
 /**
  * A rally won by `tap.side`. It names `serving`, the side that served, only when the scorer said so: the answer held
@@ -94,7 +98,7 @@ function rallyEvent(
   tap: Extract<TableTennisTap, { readonly kind: 'rally' }>,
   display: TableTennisDisplay,
 ): SportEvent {
-  const serving = answered(tap.serving, display) ?? (display.serverPicked ? display.server : null);
+  const serving = answered(tap, display) ?? (display.serverPicked ? display.server : null);
   const server = servingPerson(seats, display);
   const payload = rallyPayload(seats, tap.side, { serving, server });
   return serving === null
@@ -127,28 +131,40 @@ function returnsEvent(seats: Seats, side: PadSide, display: TableTennisDisplay):
 }
 
 /**
- * The payload to send for a queued tap (the controller's rulings, 2026-11-03 and, fix round 1, 2026-11-04): a rally
- * holding the answer to Who is serving? (or the Start pick) goes without `serving` at its first send when
+ * The payload to send for a queued tap (the controller's rulings, 2026-11-03 and, fix rounds 1 and 2, 2026-11-04): a
+ * rally holding the answer to Who is serving? (or the Start pick) goes without `serving` at its first send when
  *
- *  - the score has moved since it was made: the ledger's count of score events is not the tap's `base`. The engine's
- *    fixed-turns rotation takes any `serving` as an anchor and works back from the turn parity, so a stamp made at 0–0
- *    that lands after 2 or 3 co-scorer points makes it name the wrong next server for the whole match; or
- *  - a rally that carries `serving` already stands: the engine takes the first as the anchor and ignores a later one
- *    (its drift check names the disagreement), so a second would only blur the first.
+ *  - it carries a `base` and the ledger's count of score events is not that `base`. The phone sends `serving` only while
+ *    the engine says the anchor is needed (`rallyEvent`), so a count equal to `base` is the ledger the phone saw when it
+ *    asked, and the answer is what the engine needs, whatever stamps stand in it: after a game whose stamps disagree
+ *    (`alternation-disputed`) the engine re-anchors from the next declaration, so an earlier game's stamp is no reason to
+ *    drop it. A count that moved is a score that moved: the fixed-turns rotation takes any `serving` as an anchor and
+ *    works back from the turn parity, so a stamp made at 0–0 that lands after 2 or 3 co-scorer points makes the engine
+ *    name the wrong next server for the whole match; or
+ *  - it carries no `base` (a queue file from before it existed) and a rally that carries `serving` already stands. With
+ *    no count to judge by, a stamp that stands is taken as the anchor the engine keeps (it ignores a later one in the
+ *    ordinary case and its drift check would only name the disagreement), so a second would blur the first. That is
+ *    wrong for the one case where the engine re-anchors, `alternation-disputed`, which is why a count judges a tap that
+ *    has one.
  *
  * Unlike badminton, a rally that carries none does not make the stamp stale by itself (a lost anchor is never recovered
- * from later rallies, design §4.1), only a moved score does. A tap with no `base` (a queue file from before it existed)
- * has only the second rule. An undone point does not count as played. The rest is `payloadForFirstSend`'s.
+ * from later rallies, design §4.1), only a moved score does. An undone point does not count as played. A tap that has
+ * been sent before is judged in the same way unless the ledger holds its copy (`copied`): the web matches a resend by its
+ * key and never compares payloads, so a first attempt it never stored is appended as new, with the stamp it was made
+ * with at another score. The rest is `payloadForFirstSend`'s.
  */
 export function tableTennisPayloadForSend(
   queued: QueuedEvent,
   ledger: readonly LedgerEvent[],
+  copied: boolean,
 ): unknown {
   return payloadForFirstSend(
     queued,
     () =>
-      (queued.base !== undefined && scoreEventsIn(ledger) !== queued.base) ||
-      standing(ledger, RALLY).some(namesServing),
+      queued.base === undefined
+        ? standing(ledger, RALLY).some(namesServing)
+        : scoreEventsIn(ledger) !== queued.base,
+    copied,
   );
 }
 

@@ -14,10 +14,19 @@ function mount(anchorNeeded: boolean, scoreEvents = 0) {
   );
 }
 
-/** A point that sees what it was handed, and is taken (or refused). */
+/** A point that sees what it was handed (the side, and the count of score events it was made at), and is taken (or refused). */
 const point = (outcome: PadOutcome = TAKEN) => {
   const seen: (PadSide | null)[] = [];
-  return { seen, send: (serving: PadSide | null) => (seen.push(serving), outcome) };
+  const seenAt: (number | null)[] = [];
+  return {
+    seen,
+    seenAt,
+    send: (serving: PadSide | null, servingAt: number | null) => (
+      seen.push(serving),
+      seenAt.push(servingAt),
+      outcome
+    ),
+  };
 };
 
 describe('put', () => {
@@ -68,6 +77,28 @@ describe('carry', () => {
     const sent = point();
     act(() => void result.current.carry(sent.send));
     expect(sent.seen).toEqual([null]);
+    expect(sent.seenAt).toEqual([null]);
+  });
+
+  // Fix round 2 (M1 of the Batch C review): the point is told the count the answer was made at, so the domain can drop an
+  // answer that is not for the score the point is tapped on.
+  it('hands the point the count of score events the answer was made at', () => {
+    const { result, rerender } = mount(true, 1);
+    rerender({ needed: true, events: 5 });
+    act(() => void result.current.put('second'));
+    const sent = point();
+    act(() => void result.current.carry(sent.send));
+    expect([sent.seen, sent.seenAt]).toEqual([['second'], [5]]);
+  });
+
+  it('hands a second answer’s count, not the first’s', () => {
+    const { result, rerender } = mount(true, 3);
+    act(() => void result.current.put('first'));
+    rerender({ needed: true, events: 4 });
+    act(() => void result.current.put('second'));
+    const sent = point();
+    act(() => void result.current.carry(sent.send));
+    expect([sent.seen, sent.seenAt]).toEqual([['second'], [4]]);
   });
 
   it('answers what the point came to', () => {
@@ -143,7 +174,7 @@ describe('the engine naming a server', () => {
     const send = vi.fn(() => TAKEN);
     rerender({ needed: false, events: 0 });
     act(() => void result.current.carry(send));
-    expect(send).toHaveBeenCalledWith(null);
+    expect(send).toHaveBeenCalledWith(null, null);
   });
 
   it('does not clear a fresh answer when nothing changed: a redraw alone keeps it', () => {
@@ -176,7 +207,7 @@ describe('the score moving', () => {
     rerender({ needed: true, events: 4 });
     const send = vi.fn(() => TAKEN);
     act(() => void result.current.carry(send));
-    expect(send).toHaveBeenCalledWith(null);
+    expect(send).toHaveBeenCalledWith(null, null);
   });
 
   it('records the count at the moment of the answer, not at mount', () => {

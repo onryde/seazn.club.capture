@@ -379,12 +379,12 @@ describe('payloadForSend', () => {
   });
 
   it('sends the pick when the ledger holds no rally yet', () => {
-    expect(payloadForSend(FIRST, ledgerOf([start()]))).toBe(FIRST.payload);
-    expect(payloadForSend(FIRST, [])).toBe(FIRST.payload);
+    expect(payloadForSend(FIRST, ledgerOf([start()]), false)).toBe(FIRST.payload);
+    expect(payloadForSend(FIRST, [], false)).toBe(FIRST.payload);
   });
 
   it('drops the pick when a co-scorer’s rally landed first, and keeps the rest of the tap', () => {
-    expect(payloadForSend(FIRST, ledgerOf([start(), rally('A')]))).toEqual({
+    expect(payloadForSend(FIRST, ledgerOf([start(), rally('A')]), false)).toEqual({
       wonBy: 'ent-home',
       scorer: 'p-sharma',
     });
@@ -392,27 +392,45 @@ describe('payloadForSend', () => {
 
   // The controller's ruling (2026-11-02): an undone rally does not count as played.
   it('sends the pick when the only rally in the ledger was undone', () => {
-    expect(payloadForSend(FIRST, ledgerOf([start(), rally('A'), voiding(2)]))).toBe(FIRST.payload);
+    expect(payloadForSend(FIRST, ledgerOf([start(), rally('A'), voiding(2)]), false)).toBe(
+      FIRST.payload,
+    );
   });
 
   it('drops it when a rally still stands beside one undone', () => {
-    expect(payloadForSend(FIRST, ledgerOf([start(), rally('A'), voiding(2), rally('H')]))).toEqual({
+    expect(
+      payloadForSend(FIRST, ledgerOf([start(), rally('A'), voiding(2), rally('H')]), false),
+    ).toEqual({
       wonBy: 'ent-home',
       scorer: 'p-sharma',
     });
   });
 
-  // After an interruption: a send may have reached the server, which then holds the tap under its key as first sent.
-  it('never changes a tap already sent', () => {
+  // After an interruption: a send may have reached the server. When the ledger holds the copy of the tap, that copy
+  // stands (the server matches a resend by its key and never its payload), so the tap goes as it was first sent.
+  it('never changes a tap already sent while the ledger holds its copy', () => {
     const sent = { ...FIRST, attempts: 1 };
-    expect(payloadForSend(sent, ledgerOf([start(), rally('A')]))).toBe(sent.payload);
+    expect(payloadForSend(sent, ledgerOf([start(), rally('A')]), true)).toBe(sent.payload);
+  });
+
+  // Fix round 2 (I2 of the Batch C review; the same fix, for the same reason, as table tennis's): with no copy in the
+  // ledger the first attempt may never have been stored, and a resend is appended as new. A pick made before a co-scorer's
+  // rally landed would then reach the engine after it, so the resend is judged as a first send is.
+  it('judges a tap already sent as a first send when the ledger holds no copy of it', () => {
+    const sent = { ...FIRST, attempts: 2 };
+    expect(payloadForSend(sent, ledgerOf([start(), rally('A')]), false)).toEqual({
+      wonBy: 'ent-home',
+      scorer: 'p-sharma',
+    });
+    expect(payloadForSend(sent, ledgerOf([start()]), false)).toBe(sent.payload);
   });
 
   it('changes no other tap', () => {
     const ledger = ledgerOf([start(), rally('A')]);
     for (const spec of [rally('H'), sanction('A', 'warning', 'p-chen'), start()]) {
       const tap = queuedOf('k', spec);
-      expect(payloadForSend(tap, ledger)).toBe(tap.payload);
+      expect(payloadForSend(tap, ledger, false)).toBe(tap.payload);
+      expect(payloadForSend({ ...tap, attempts: 2 }, ledger, false)).toBe(tap.payload);
     }
   });
 });

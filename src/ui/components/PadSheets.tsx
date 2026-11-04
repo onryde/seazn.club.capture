@@ -63,7 +63,7 @@ export const StepSheetView = memo(function StepSheetView({
 
 /**
  * Set score, its title naming the game it sets: "Set score · Game 2" (the controller's call, 2026-10-31). `bound` is the
- * most either field may hold, when the sport's rules say (table tennis's); badminton's fields take the sheet's own limit.
+ * most either field may hold, when the sport's rules say; a sport that names none takes the sheet's own limit.
  */
 export const SetScoreSheet = memo(function SetScoreSheet({
   game,

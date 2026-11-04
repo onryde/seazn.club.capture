@@ -8,6 +8,7 @@ import {
   revalidate,
 } from '@/domain/scoring/sync';
 import { withSync } from '@/domain/scoring/scoringMatchAnswers';
+import { copiesOf } from '@/domain/scoring/scoringMatchAsk';
 import { asking, bootstrapDueAt } from '@/domain/scoring/scoringMatchReads';
 import { resave } from '@/domain/scoring/scoringMatchSaves';
 import {
@@ -97,8 +98,9 @@ function revalidating<S extends SportTypes>(state: MatchState<S>): Part<S> {
 /**
  * The next send, if one is due. The payload is decided BEFORE the attempt is marked (the sport's `payloadForSend`:
  * badminton's first rally drops its `serving` if a rally already stands), and written into the queued head in the same
- * step that marks the attempt, so the fold and sync see what the server is sent. The save before the send is the
- * step's own.
+ * step that marks the attempt, so the fold and sync see what the server is sent. The sport is told whether the ledger
+ * holds the tap's copy (`copiesOf`, the reconnect question's own test; only a tap sent before has one), since only then
+ * does the server hold the payload as first sent. The save before the send is the step's own.
  */
 function sending<S extends SportTypes>(state: MatchState<S>, now: number): Part<S> {
   const { sync } = state;
@@ -106,7 +108,8 @@ function sending<S extends SportTypes>(state: MatchState<S>, now: number): Part<
   const body = nextSend(sync, now);
   const head = sync.queue.pending[0];
   if (body === null || head === undefined) return part(state);
-  const payload = state.sport.payloadForSend(head, sync.ledger);
+  const copied = copiesOf(state, sync.ledger).has(head.key);
+  const payload = state.sport.payloadForSend(head, sync.ledger, copied);
   const decided: SyncState =
     payload === head.payload
       ? sync

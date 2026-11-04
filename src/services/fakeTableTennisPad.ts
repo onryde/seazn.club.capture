@@ -1,3 +1,4 @@
+import { foldEpochOf } from '@seazn/engine/sport';
 import { tableTennisCfg } from '@/domain/scoring/tableTennisEngine';
 import type { PadSide } from '@/domain/scoring/padView';
 import type { BootstrapSide } from '@/domain/scoring/wire';
@@ -50,7 +51,7 @@ export function tableTennisSeed(
     linkId: `fake-link-${fixtureId}`,
     cfg: tableTennisCfg({}),
     rulesVersion: 0,
-    epochRequired: 2,
+    epochRequired: foldEpochOf('tabletennis'),
     screen: 'pad',
     context: {
       competition: 'Spring Open 2026',

@@ -83,7 +83,8 @@ function useTableTennisPad(
   const { carry, clear } = held;
   const driver = useMemo<PadTapDriver>(
     () => ({
-      rally: (side) => carry((serving) => sender.tap({ kind: 'rally', side, serving })),
+      rally: (side) =>
+        carry((serving, servingAt) => sender.tap({ kind: 'rally', side, serving, servingAt })),
       // Undo takes this phone's last tap back: the answer made after it is made to a score that no longer stands.
       undo: () => {
         const outcome = sender.undo();
@@ -131,24 +132,21 @@ function useSheets(
   pad: PadFacts | null,
 ) {
   const { tap, say } = sender;
-  const { put, clear } = held;
+  const { put } = held;
   const driver = useMemo<TableTennisSheetDriver>(
     () => ({
       card: (card) => tap({ kind: 'sanction', ...card }),
       timeout: (side) => tap({ kind: 'timeout', side }),
       expedite: () => tap({ kind: 'expedite' }),
-      // A game's score set: the answer was made to the score before it.
-      setScore: (first, second) => {
-        const outcome = tap({ kind: 'setScore', first, second });
-        if (outcome.ok) clear();
-        return outcome;
-      },
+      // A game's score set moves the count of score events, which ends an answer made before it (`useHeldServing` ties the
+      // answer to the count); a Set score the match refuses moves nothing and leaves it.
+      setScore: (first, second) => tap({ kind: 'setScore', first, second }),
       // `put` takes no answer once the pad needs none; but then the sheet is already stale and closes before a choice can
       // reach here (`useTableTennisSheets`: a serving step is stale when `anchorNeeded` is false), so no test reaches the
       // refusal. It stays on purpose, defence in depth: a refusal the scorer reads, never an answer silently dropped.
       serving: (side) => (put(side) ? TAKEN : refusing('notNow')),
     }),
-    [tap, put, clear],
+    [tap, put],
   );
   const refuseScore = useCallback(() => say(refusalLine('scoring.refusal.invalidScore')), [say]);
   const snapshot = useMemo<TableTennisSheetSnapshot | null>(

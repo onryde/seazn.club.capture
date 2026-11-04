@@ -122,7 +122,7 @@ describe('tableTennisSport: a tap', () => {
   it('picks the side to serve first with the Start tap only', () => {
     expect(tableTennisSport.tossOf({ kind: 'start', server: 'second' })).toBe('second');
     const others = [
-      { kind: 'rally', side: 'first', serving: 'second' },
+      { kind: 'rally', side: 'first', serving: 'second', servingAt: 4 },
       { kind: 'returns', side: 'first' },
       { kind: 'timeout', side: 'first' },
       { kind: 'expedite' },
@@ -136,9 +136,9 @@ describe('tableTennisSport: a tap', () => {
     expect(tableTennisSport.refusalFor({ kind: 'setScore', first: 40, second: 2 })).toBe(
       'invalidScore',
     );
-    expect(tableTennisSport.refusalFor({ kind: 'rally', side: 'first', serving: null })).toBe(
-      'notNow',
-    );
+    expect(
+      tableTennisSport.refusalFor({ kind: 'rally', side: 'first', serving: null, servingAt: null }),
+    ).toBe('notNow');
     expect(
       tableTennisSport.refusalFor({
         kind: 'sanction',
@@ -169,9 +169,12 @@ describe('tableTennisSport: a tap', () => {
 
   it('sends a rally’s serving only while no rally of the ledger already names one', () => {
     const queued = queuedOf('k1', rally({ wonBy: 'H', serving: 'H' }));
-    expect(tableTennisSport.payloadForSend(queued, [])).toEqual({ wonBy: HOME, serving: HOME });
+    expect(tableTennisSport.payloadForSend(queued, [], false)).toEqual({
+      wonBy: HOME,
+      serving: HOME,
+    });
     const taken = ledgerOf([start(), rally({ wonBy: 'A', serving: 'H' })]);
-    expect(tableTennisSport.payloadForSend(queued, taken)).toEqual({ wonBy: HOME });
+    expect(tableTennisSport.payloadForSend(queued, taken, false)).toEqual({ wonBy: HOME });
   });
 });
 
@@ -344,7 +347,7 @@ describe('a table tennis match through the runtime', () => {
     expect(padOf(state).view.start).toBeNull();
     expect(state.toss).toBe('first');
 
-    tap('tap', 'k1', { kind: 'rally', side: 'second', serving: null });
+    tap('tap', 'k1', { kind: 'rally', side: 'second', serving: null, servingAt: null });
     const pending = state.sync.queue.pending;
     expect(pending.map((queued) => [queued.key, queued.type])).toEqual([
       ['s1', 'core.start'],

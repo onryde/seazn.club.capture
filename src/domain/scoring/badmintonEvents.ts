@@ -97,10 +97,16 @@ const RALLY = 'badminton.rally';
  * The payload to send for a queued tap (the controller's ruling, 2026-11-02): the match's first rally (the one tap
  * that carries `serving`, `badmintonEventFor`) drops it at its first send if a rally already stands in the server's
  * ledger (a co-scorer's landed first): the engine would ignore it there, and its drift check would then name no server
- * for the rest of game 1. An undone rally does not count as played (the controller's ruling, 2026-11-02). A tap with an attempt keeps what it was first sent with, since the server
- * may hold it under its key already (a tap in flight has one: `markSending` counts it as the send starts). Every other
- * tap goes as queued. The key never changes.
+ * for the rest of game 1. An undone rally does not count as played (the controller's ruling, 2026-11-02). A tap with an
+ * attempt keeps what it was first sent with only while the ledger holds its copy (`copied`): the server matches a resend
+ * by its key, never its payload, so a first attempt it never stored is appended as new and is judged as a first send is
+ * (`payloadForFirstSend`; a tap in flight has an attempt: `markSending` counts it as the send starts). Every other tap
+ * goes as queued. The key never changes.
  */
-export function payloadForSend(queued: QueuedEvent, ledger: readonly LedgerEvent[]): unknown {
-  return payloadForFirstSend(queued, () => standing(ledger, RALLY).length > 0);
+export function payloadForSend(
+  queued: QueuedEvent,
+  ledger: readonly LedgerEvent[],
+  copied: boolean,
+): unknown {
+  return payloadForFirstSend(queued, () => standing(ledger, RALLY).length > 0, copied);
 }

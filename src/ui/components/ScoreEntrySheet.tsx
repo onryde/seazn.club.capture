@@ -18,7 +18,7 @@ type ScoreEntrySheetProps = {
   /** The points now, top side first: the fields start there. */
   readonly initial: readonly [number, number];
   /**
-   * The most either field may hold (table tennis gives its engine's bound for the match's rules). Confirm is disabled
+   * The most either field may hold (a sport may give its engine's bound for the match's rules). Confirm is disabled
    * while a field is over it, and a field takes no more digits than it has. Unset, the sheet's own limit (three digits).
    */
   readonly bound?: number;

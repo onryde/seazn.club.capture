@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { tableTennisEventFor, tableTennisPayloadForSend } from '@/domain/scoring/tableTennisEvents';
+import { foldTableTennis } from '@/domain/scoring/tableTennisFold';
 import type { TableTennisDisplay, TableTennisTap } from '@/domain/scoring/tableTennisPad';
-import type { Bootstrap } from '@/domain/scoring/wire';
+import type { QueuedEvent } from '@/domain/scoring/queue';
+import type { Bootstrap, LedgerEvent } from '@/domain/scoring/wire';
 import {
   DOUBLES,
   DOUBLES_BENCH,
@@ -10,6 +12,7 @@ import {
   expedite,
   ledgerOf,
   queuedOf,
+  rallies,
   rally,
   sanction,
   start,
@@ -17,6 +20,7 @@ import {
   timeout,
   voiding,
   wholeGame,
+  type Spec,
 } from '../../../test/tableTennisLedger';
 
 // Plan S2-2 Task 4 (design §4, §5.1): what each table tennis tap is on the wire. The top half is `home`, the bottom
@@ -97,8 +101,22 @@ const eventFor = (
   bootstrap: Bootstrap = DOUBLES,
 ) => tableTennisEventFor(tap, { bootstrap, display });
 
-const point = (side: 'first' | 'second', serving: 'first' | 'second' | null = null) =>
-  ({ kind: 'rally', side, serving }) as const;
+/** The count of score events LIVE, ANCHORLESS and the pick's displays hold unless a test says (`scoreEvents`). */
+const COUNT = 4;
+
+/** A point; a held answer (`serving`) says the count it was made at (`servingAt`), as the hook's `carry` does. */
+const point = (
+  side: 'first' | 'second',
+  serving: 'first' | 'second' | null = null,
+  servingAt: number | null = serving === null ? null : COUNT,
+) => ({ kind: 'rally', side, serving, servingAt }) as const;
+
+/**
+ * What a tap is sent with. `copied` is whether the ledger holds the server's copy of the tap (the match's `copiesOf`);
+ * it matters only for a tap that has been sent before, so it is false unless a test says.
+ */
+const sendOf = (queued: QueuedEvent, ledger: readonly LedgerEvent[], copied = false) =>
+  tableTennisPayloadForSend(queued, ledger, copied);
 
 const RALLY = 'tabletennis.rally';
 
@@ -243,9 +261,26 @@ describe('tableTennisEventFor: a rally', () => {
   // Fix round 1: a `serving` stamp is valid only at the score it was made at. The tap keeps the number of standing score
   // events (points and game scores) the scorer's view held, so its first send can tell the score has moved.
   it('a rally that names serving carries the display’s count of score events as its base', () => {
-    expect(eventFor(point('second', 'first'), { ...ANCHORLESS, scoreEvents: 7 })?.base).toBe(7);
+    expect(eventFor(point('second', 'first', 7), { ...ANCHORLESS, scoreEvents: 7 })?.base).toBe(7);
     expect(eventFor(point('first'), { ...PICKED, scoreEvents: 0 })?.base).toBe(0);
     expect(eventFor(point('first'), { ...PICKED, scoreEvents: 3 })?.base).toBe(3);
+  });
+
+  // Fix round 2 (M1 of the Batch C review): the tie between a held answer and its score is the domain's, not only the
+  // hook's. The tap says the count the answer was made at (`servingAt`); at another count the answer was made to a score
+  // that no longer stands, and the rally goes without it, with no base to judge.
+  it('a held serving made at another count of score events than the display holds is not stamped', () => {
+    for (const at of [3, 5, 0, null]) {
+      expect(eventFor(point('second', 'first', at), ANCHORLESS), String(at)).toStrictEqual({
+        type: RALLY,
+        payload: { wonBy: 'ent-away' },
+      });
+    }
+    expect(eventFor(point('second', 'first', 4), ANCHORLESS)).toStrictEqual({
+      type: RALLY,
+      payload: { wonBy: 'ent-away', serving: 'ent-home' },
+      base: 4,
+    });
   });
 
   it('a rally that names no serving, and every other tap, carries no base', () => {
@@ -464,42 +499,39 @@ describe('tableTennisEventFor: a match with an empty seat', () => {
 
 // The controller's ruling (2026-11-03), after badminton's (2026-11-02): the first rally can lose its `serving` at its
 // first send, but table tennis never recovers a lost anchor from later rallies (the engine's rotation is fixed-turns,
-// design §4.1), so a tap holding the answer keeps it unless a rally that carries one already stands.
-describe('tableTennisPayloadForSend', () => {
+// design §4.1). A tap with no `base` (a queue file from before it existed) therefore keeps its answer unless a rally that
+// carries one already stands: these taps are all of that kind. A tap with a `base` is judged by the count (next describe).
+describe('tableTennisPayloadForSend: a tap with no base', () => {
   const HELD = queuedOf('k-held', rally({ wonBy: 'H', serving: 'A' }));
   const WITHOUT = { wonBy: 'ent-home' };
 
   it('sends the answer when the ledger holds no rally yet', () => {
-    expect(tableTennisPayloadForSend(HELD, ledgerOf([start()]))).toBe(HELD.payload);
-    expect(tableTennisPayloadForSend(HELD, [])).toBe(HELD.payload);
+    expect(sendOf(HELD, ledgerOf([start()]))).toBe(HELD.payload);
+    expect(sendOf(HELD, [])).toBe(HELD.payload);
   });
 
   it('payloadForSend drops serving when a standing rally already carries it', () => {
-    expect(
-      tableTennisPayloadForSend(HELD, ledgerOf([start(), rally({ wonBy: 'A', serving: 'H' })])),
-    ).toEqual(WITHOUT);
+    expect(sendOf(HELD, ledgerOf([start(), rally({ wonBy: 'A', serving: 'H' })]))).toEqual(WITHOUT);
   });
 
   it('keeps the rest of the tap when it drops serving', () => {
     const attributed = queuedOf('k', rally({ wonBy: 'H', serving: 'A', returns: 5 }));
-    expect(
-      tableTennisPayloadForSend(
-        attributed,
-        ledgerOf([start(), rally({ wonBy: 'A', serving: 'H' })]),
-      ),
-    ).toEqual({ wonBy: 'ent-home', returns: 5 });
+    expect(sendOf(attributed, ledgerOf([start(), rally({ wonBy: 'A', serving: 'H' })]))).toEqual({
+      wonBy: 'ent-home',
+      returns: 5,
+    });
   });
 
   // Unlike badminton: with no anchor standing, rallies that name no `serving` do not make this one stale.
   it('payloadForSend keeps serving when no anchor stands, whatever rallies do', () => {
     const plain = ledgerOf([start(), rally({ wonBy: 'H' }), rally({ wonBy: 'A' })]);
-    expect(tableTennisPayloadForSend(HELD, plain)).toBe(HELD.payload);
+    expect(sendOf(HELD, plain)).toBe(HELD.payload);
   });
 
   // The controller's ruling, after badminton's: an undone rally does not count as played, so its anchor is gone.
   it('a voided anchor does not count', () => {
     const undone = ledgerOf([start(), rally({ wonBy: 'A', serving: 'H' }), voiding(2)]);
-    expect(tableTennisPayloadForSend(HELD, undone)).toBe(HELD.payload);
+    expect(sendOf(HELD, undone)).toBe(HELD.payload);
   });
 
   it('a voided anchor does not count beside a standing rally that names no serving', () => {
@@ -509,7 +541,7 @@ describe('tableTennisPayloadForSend', () => {
       voiding(2),
       rally({ wonBy: 'H' }),
     ]);
-    expect(tableTennisPayloadForSend(HELD, ledger)).toBe(HELD.payload);
+    expect(sendOf(HELD, ledger)).toBe(HELD.payload);
   });
 
   it('drops serving when an anchor still stands beside one that was undone', () => {
@@ -519,14 +551,24 @@ describe('tableTennisPayloadForSend', () => {
       voiding(2),
       rally({ wonBy: 'H', serving: 'H' }),
     ]);
-    expect(tableTennisPayloadForSend(HELD, ledger)).toEqual(WITHOUT);
+    expect(sendOf(HELD, ledger)).toEqual(WITHOUT);
   });
 
-  // After an interruption: a send may have reached the server, which then holds the tap under its key as first sent.
-  it('a retried tap keeps its payload', () => {
+  // After an interruption: a send may have reached the server. When the ledger holds the copy of the tap, that copy
+  // stands (the web matches a resend by its key and never compares payloads), so the tap is sent as it was first sent.
+  it('a retried tap whose copy is in the ledger keeps its payload', () => {
     const sent = { ...HELD, attempts: 1 };
     const ledger = ledgerOf([start(), rally({ wonBy: 'A', serving: 'H' })]);
-    expect(tableTennisPayloadForSend(sent, ledger)).toBe(sent.payload);
+    expect(sendOf(sent, ledger, true)).toBe(sent.payload);
+  });
+
+  // Fix round 2 (I2): with no copy in the ledger the first attempt may never have been stored, and a resend is then
+  // appended as new: it is judged as a first send is.
+  it('a retried tap whose copy is not in the ledger is judged as a first send', () => {
+    const sent = { ...HELD, attempts: 1 };
+    const ledger = ledgerOf([start(), rally({ wonBy: 'A', serving: 'H' })]);
+    expect(sendOf(sent, ledger, false)).toEqual(WITHOUT);
+    expect(sendOf(sent, ledgerOf([start()]), false)).toBe(sent.payload);
   });
 
   it('changes no tap that names no serving: a 13 returns point, a timeout, a card', () => {
@@ -541,7 +583,7 @@ describe('tableTennisPayloadForSend', () => {
       start(),
     ]) {
       const tap = queuedOf('k', spec);
-      expect(tableTennisPayloadForSend(tap, ledger)).toBe(tap.payload);
+      expect(sendOf(tap, ledger)).toBe(tap.payload);
     }
   });
 
@@ -550,7 +592,7 @@ describe('tableTennisPayloadForSend', () => {
       ...event,
       payload: event.type === RALLY ? null : event.payload,
     }));
-    expect(tableTennisPayloadForSend(HELD, garbled)).toBe(HELD.payload);
+    expect(sendOf(HELD, garbled)).toBe(HELD.payload);
   });
 });
 
@@ -572,23 +614,19 @@ describe('tableTennisPayloadForSend: a serving is valid at the score it was made
   // The reviewer's probe (rv/stalepick.mjs): the pick rally was made at 0–0, home having served first.
   it('drops the pick when 1, 2, 3 or 4 co-scorer points landed since it was made at 0–0', () => {
     for (const landed of [1, 2, 3, 4]) {
-      expect(tableTennisPayloadForSend(madeAt(0), behind(landed))).toEqual(WITHOUT);
+      expect(sendOf(madeAt(0), behind(landed))).toEqual(WITHOUT);
     }
   });
 
   it('keeps the pick when nothing landed since it was made', () => {
     const pick = madeAt(0);
-    expect(tableTennisPayloadForSend(pick, behind(0))).toBe(pick.payload);
-    expect(tableTennisPayloadForSend(pick, [])).toBe(pick.payload);
+    expect(sendOf(pick, behind(0))).toBe(pick.payload);
+    expect(sendOf(pick, [])).toBe(pick.payload);
   });
 
   it('drops the pick when a game score landed since: a set score moves the score as a point does', () => {
-    expect(tableTennisPayloadForSend(madeAt(0), ledgerOf([start(), summary(3, 2)]))).toEqual(
-      WITHOUT,
-    );
-    expect(tableTennisPayloadForSend(madeAt(0), ledgerOf([start(), wholeGame(11, 7)]))).toEqual(
-      WITHOUT,
-    );
+    expect(sendOf(madeAt(0), ledgerOf([start(), summary(3, 2)]))).toEqual(WITHOUT);
+    expect(sendOf(madeAt(0), ledgerOf([start(), wholeGame(11, 7)]))).toEqual(WITHOUT);
   });
 
   it('counts a point and a game score alike, and nothing else a scorer records', () => {
@@ -599,28 +637,28 @@ describe('tableTennisPayloadForSend: a serving is valid at the score it was made
       expedite(),
       sanction('H', 'warning'),
     ]);
-    expect(tableTennisPayloadForSend(madeAt(1), quiet)).toEqual(madeAt(1).payload);
+    expect(sendOf(madeAt(1), quiet)).toEqual(madeAt(1).payload);
     const withSummary = ledgerOf([start(), rally({ wonBy: 'H' }), summary(2, 1)]);
-    expect(tableTennisPayloadForSend(madeAt(2), withSummary)).toEqual(madeAt(2).payload);
+    expect(sendOf(madeAt(2), withSummary)).toEqual(madeAt(2).payload);
   });
 
   it('does not count a co-scorer’s point that was undone', () => {
     const undone = ledgerOf([start(), rally({ wonBy: 'A' }), voiding(2)]);
     const pick = madeAt(0);
-    expect(tableTennisPayloadForSend(pick, undone)).toBe(pick.payload);
+    expect(sendOf(pick, undone)).toBe(pick.payload);
     const net = ledgerOf([start(), rally({ wonBy: 'A' }), rally({ wonBy: 'H' }), voiding(3)]);
-    expect(tableTennisPayloadForSend(madeAt(1), net)).toEqual(madeAt(1).payload);
+    expect(sendOf(madeAt(1), net)).toEqual(madeAt(1).payload);
   });
 
   it('drops a held answer when the score moved since it was made at k, and keeps it at k', () => {
     const answered = madeAt(3);
-    expect(tableTennisPayloadForSend(answered, behind(3))).toBe(answered.payload);
-    expect(tableTennisPayloadForSend(answered, behind(4))).toEqual(WITHOUT);
+    expect(sendOf(answered, behind(3))).toBe(answered.payload);
+    expect(sendOf(answered, behind(4))).toEqual(WITHOUT);
   });
 
   // A tap of the phone's own that the server refused is no longer in the ledger: the score the stamp was made at is gone.
   it('drops the stamp when the ledger holds fewer score events than the tap was made at', () => {
-    expect(tableTennisPayloadForSend(madeAt(2), behind(1))).toEqual(WITHOUT);
+    expect(sendOf(madeAt(2), behind(1))).toEqual(WITHOUT);
   });
 
   it('keeps the rest of the tap when it drops serving', () => {
@@ -628,34 +666,143 @@ describe('tableTennisPayloadForSend: a serving is valid at the score it was made
       ...queuedOf('k', rally({ wonBy: 'H', serving: 'A', returns: 5 })),
       base: 0,
     };
-    expect(tableTennisPayloadForSend(attributed, behind(2))).toEqual({
+    expect(sendOf(attributed, behind(2))).toEqual({
       wonBy: 'ent-home',
       returns: 5,
     });
   });
 
-  // After an interruption: a send may have reached the server, which then holds the tap under its key as first sent.
-  it('a retried tap keeps its payload, whatever the count', () => {
-    const sent = { ...madeAt(0), attempts: 1 };
-    expect(tableTennisPayloadForSend(sent, behind(3))).toBe(sent.payload);
-  });
-
-  it('still drops the stamp when a standing rally carries one, whatever the count', () => {
+  // Fix round 2 (I1 of the Batch C review): a tap that carries a `base` is judged by the count alone. The phone sends
+  // `serving` only while the engine says the anchor is needed, and a count equal to `base` is the ledger the phone saw
+  // when it asked, whatever stamps stand in it.
+  it('keeps the stamp when the count is where it was made, though a standing rally carries one', () => {
     const anchored = ledgerOf([start(), rally({ wonBy: 'A', serving: 'H' })]);
-    expect(tableTennisPayloadForSend(madeAt(1), anchored)).toEqual(WITHOUT);
+    const answered = madeAt(1);
+    expect(sendOf(answered, anchored)).toBe(answered.payload);
   });
 
-  // A tap read back from a queue file written before `base` existed: only the rule that needs no count applies.
-  it('judges a tap with no base by the old rule alone', () => {
+  it('drops the stamp when the count moved, whatever stamps stand', () => {
+    const anchored = ledgerOf([
+      start(),
+      rally({ wonBy: 'A', serving: 'H' }),
+      rally({ wonBy: 'H' }),
+    ]);
+    expect(sendOf(madeAt(1), anchored)).toEqual(WITHOUT);
+  });
+
+  // A tap read back from a queue file written before `base` existed: only the rule that needs no count applies, and
+  // the rule that a standing stamp drops it still holds for these.
+  it('judges a tap with no base by the old rule alone: a standing stamp drops it, the count does not', () => {
     const old = queuedOf('k-old', rally({ wonBy: 'H', serving: 'A' }));
     expect(old).not.toHaveProperty('base');
-    expect(tableTennisPayloadForSend(old, behind(3))).toBe(old.payload);
+    expect(sendOf(old, behind(3))).toBe(old.payload);
     const anchored = ledgerOf([start(), rally({ wonBy: 'A', serving: 'H' })]);
-    expect(tableTennisPayloadForSend(old, anchored)).toEqual(WITHOUT);
+    expect(sendOf(old, anchored)).toEqual(WITHOUT);
   });
 
   it('changes no tap that names no serving, a base or not', () => {
     const plain = { ...queuedOf('k', rally({ wonBy: 'H' })), base: 0 };
-    expect(tableTennisPayloadForSend(plain, behind(3))).toBe(plain.payload);
+    expect(sendOf(plain, behind(3))).toBe(plain.payload);
+  });
+});
+
+// Fix round 2 (I1 of the Batch C review, probe rv-bc/disputed): game 1 holds two stamps that disagree, the phone's pick
+// and a co-scorer's anchor tile naming the other side. The engine marks the game `recorded-disagrees` and opens game 2
+// with no first server (`alternation-disputed`), so it needs an anchor again: Who is serving? is asked, and its answer
+// must reach the engine though game 1's stamps still stand.
+describe('tableTennisPayloadForSend: the answer that re-anchors after a game whose stamps disagree', () => {
+  /** Home's stamp at 0–0, then away's at 1–0 (the turn is home's: a contradiction), then home takes the game 11–1. */
+  const DISPUTED: readonly Spec[] = [
+    start(),
+    rally({ wonBy: 'H', serving: 'H' }),
+    rally({ wonBy: 'A', serving: 'A' }),
+    ...rallies('HHHHHHHHHH'),
+  ];
+  const foldOf = (queued: readonly QueuedEvent[]) => {
+    const fold = foldTableTennis({
+      bootstrap: SINGLES,
+      ledger: ledgerOf(DISPUTED),
+      queued,
+      ownEventIds: [],
+      toss: null,
+    });
+    if (fold.kind !== 'folded') throw new Error(`did not fold: ${fold.reason}`);
+    return fold.display;
+  };
+  /** The phone's rally, taken the way the hook takes it: the answer "home served" made at the count game 2 opened at. */
+  const answered = () => {
+    const display = foldOf([]);
+    const made = eventFor(point('first', 'first', 12), display, SINGLES);
+    if (made === null) throw new Error('the tap was refused');
+    return {
+      display,
+      queued: {
+        ...queuedOf('k-answer', { type: made.type, payload: made.payload }),
+        base: made.base,
+      },
+    };
+  };
+
+  it('asks for the answer: game 2 opens with no server named, after 12 score events', () => {
+    const display = foldOf([]);
+    expect([display.game, display.server, display.anchorNeeded, display.scoreEvents]).toEqual([
+      2,
+      null,
+      true,
+      12,
+    ]);
+  });
+
+  it('queues the answer as a stamp made at that count', () => {
+    const { queued } = answered();
+    expect(queued.payload).toEqual({ wonBy: 'ent-home', serving: 'ent-home', scorer: 'p-sharma' });
+    expect(queued.base).toBe(12);
+  });
+
+  it('keeps the answer at its first send, though the stamps of game 1 stand', () => {
+    const { queued } = answered();
+    expect(sendOf(queued, ledgerOf(DISPUTED))).toBe(queued.payload);
+  });
+
+  it('leaves the engine anchored once the send is written back to the queue', () => {
+    const { queued } = answered();
+    const sent = sendOf(queued, ledgerOf(DISPUTED));
+    const after = foldOf([{ ...queued, payload: sent }]);
+    expect([after.anchorNeeded, after.server]).toEqual([false, 'first']);
+  });
+});
+
+// Fix round 2 (I2 of the Batch C review, probe rv-bc/resend): an offline phone marks an attempt on every failed POST, and
+// a browser scorer may score meanwhile. The web matches a resend by its key and never compares payloads, so a first
+// attempt that was never stored is appended as new, and a stamp made at 0–0 would land after the points that moved it.
+// A resend keeps the payload as first sent only while the ledger holds a copy of the tap; otherwise it is judged as a
+// first send is.
+describe('tableTennisPayloadForSend: a resend whose first copy the ledger does not hold', () => {
+  const stamped = { ...queuedOf('k-pick', rally({ wonBy: 'H', serving: 'A' })), base: 0 };
+  const WITHOUT = { wonBy: 'ent-home' };
+  const behind = (n: number) =>
+    ledgerOf([start(), ...Array.from({ length: n }, () => rally({ wonBy: 'A' }))]);
+
+  it('drops the stamp after two attempts and two co-scorer points: no copy, the count moved', () => {
+    expect(sendOf({ ...stamped, attempts: 2 }, behind(2), false)).toEqual(WITHOUT);
+  });
+
+  it.each([1, 2, 3])('drops it on attempt %i too', (attempts) => {
+    expect(sendOf({ ...stamped, attempts }, behind(2), false)).toEqual(WITHOUT);
+  });
+
+  it('keeps the payload as first sent when the ledger holds a copy of the tap', () => {
+    const resent = { ...stamped, attempts: 2 };
+    expect(sendOf(resent, behind(2), true)).toBe(resent.payload);
+  });
+
+  it('keeps the stamp when no copy is there but the score has not moved since it was made', () => {
+    const resent = { ...stamped, attempts: 2 };
+    expect(sendOf(resent, behind(0), false)).toBe(resent.payload);
+  });
+
+  it('changes no resend that names no serving', () => {
+    const plain = { ...queuedOf('k', rally({ wonBy: 'H' })), base: 0, attempts: 2 };
+    expect(sendOf(plain, behind(2), false)).toBe(plain.payload);
   });
 });

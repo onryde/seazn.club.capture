@@ -178,36 +178,45 @@ describe('payloadForFirstSend', () => {
   const dropped = { wonBy: 'ent-home' };
 
   it('sends the payload as queued when the anchor is not taken', () => {
-    expect(payloadForFirstSend(ANCHOR, () => false)).toBe(ANCHOR.payload);
+    expect(payloadForFirstSend(ANCHOR, () => false, false)).toBe(ANCHOR.payload);
   });
 
   it('drops `serving` and keeps the rest of the tap when the anchor is taken', () => {
-    expect(payloadForFirstSend(ANCHOR, () => true)).toEqual(dropped);
+    expect(payloadForFirstSend(ANCHOR, () => true, false)).toEqual(dropped);
   });
 
-  // After an interruption: a send may have reached the server, which then holds the tap under its key as first sent.
-  it('never changes a tap already sent', () => {
+  // After an interruption: a send may have reached the server. With its copy in the ledger the server holds the tap under
+  // its key as first sent (it matches a resend by key and never compares payloads), so the tap is not changed.
+  it('never changes a tap already sent while the ledger holds its copy', () => {
     const sent = { ...ANCHOR, attempts: 1 };
-    expect(payloadForFirstSend(sent, () => true)).toBe(sent.payload);
+    expect(payloadForFirstSend(sent, () => true, true)).toBe(sent.payload);
+  });
+
+  // Fix round 2 (I2): with no copy the first attempt may never have been stored, and a resend is appended as new.
+  it('judges a tap already sent as a first send when the ledger holds no copy of it', () => {
+    const sent = { ...ANCHOR, attempts: 1 };
+    expect(payloadForFirstSend(sent, () => true, false)).toEqual(dropped);
+    expect(payloadForFirstSend(sent, () => false, false)).toBe(sent.payload);
   });
 
   it('changes no tap that names no `serving`', () => {
     for (const spec of [rally({ wonBy: 'H' }), timeout('H'), expedite()]) {
       const tap = queuedOf('k', spec);
-      expect(payloadForFirstSend(tap, () => true)).toBe(tap.payload);
+      expect(payloadForFirstSend(tap, () => true, false)).toBe(tap.payload);
     }
   });
 
   it('keeps a payload that is not a record', () => {
     const odd = { ...ANCHOR, payload: 'serving' };
-    expect(payloadForFirstSend(odd, () => true)).toBe('serving');
+    expect(payloadForFirstSend(odd, () => true, false)).toBe('serving');
   });
 
   // The ledger is read only for a tap that could lose something: the pump asks for every send.
-  it('asks the ledger nothing for a tap already sent or one with no `serving`', () => {
+  it('asks the ledger nothing for a tap whose copy stands in it or one with no `serving`', () => {
     const taken = vi.fn(() => true);
-    payloadForFirstSend({ ...ANCHOR, attempts: 2 }, taken);
-    payloadForFirstSend(queuedOf('k', timeout('A')), taken);
+    payloadForFirstSend({ ...ANCHOR, attempts: 2 }, taken, true);
+    payloadForFirstSend(queuedOf('k', timeout('A')), taken, false);
+    payloadForFirstSend({ ...queuedOf('k', timeout('A')), attempts: 2 }, taken, false);
     expect(taken).not.toHaveBeenCalled();
   });
 });

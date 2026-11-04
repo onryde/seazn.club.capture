@@ -52,7 +52,7 @@ export type Opening = (tap: string, make: () => PadOutcome) => boolean;
  * sheet's button that records: a sanction, Set score, Record the ending, Void) opens the window for every tap: the
  * second touch of a double tap on it lands on what was under it, a half, Undo or a tool (hardening and review I1,
  * 2026-11-01), and counts once with it; a tool then opens nothing (`secondTouch`). A tool that scores a point and stays
- * on screen (table tennis's 13 returns) is a `point`: it counts once as a half does, under its own name, and flashes the
+ * on screen (a sport's own scoring tool) is a `point`: it counts once as a half does, under its own name, and flashes the
  * half it credited.
  */
 export function useTaps(

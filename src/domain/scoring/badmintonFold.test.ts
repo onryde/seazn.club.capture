@@ -682,7 +682,7 @@ describe('foldBadminton: the start and the first rally', () => {
       payload: { wonBy: 'ent-away', serving: 'ent-home', scorer: 'p-chen' },
     });
     if (again === null) throw new Error('no event');
-    expect(payloadForSend(queuedOf('k', again), ledgerOf(undone))).toBe(again.payload);
+    expect(payloadForSend(queuedOf('k', again), ledgerOf(undone), false)).toBe(again.payload);
   });
 
   // The same while this phone's undo is still queued: the rally stands in the server's ledger, but not in the match the
