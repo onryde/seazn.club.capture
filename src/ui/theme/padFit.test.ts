@@ -1159,17 +1159,26 @@ const wordsFit = (text: string, room: number, measure: (text: string) => number)
   words(text).every((word) => measure(word) <= room);
 
 describe('table tennis: the tool row at 320 and 360 in four languages', () => {
-  // Rulings 54 and 55: the cells are Set score, Expedite, 13 returns or Who is serving?, and More. Set score, Expedite, Who is
-  // serving? and More stand together before the first point of a match another scorer started, so those four are measured
-  // in a four-cell row. Expedite and 13 returns never share a row (one is offered, the other in force), so 13 returns has
-  // Set score and More beside it at the most: three cells, which leave it room for its full term.
+  // Rulings 54 and 55, and the controller's Task 8b follow-up: the cells are Set score, Expedite, 13 returns or Who is
+  // serving?, and More, and a cell's word is the fullest that fits its row. Set score, Expedite, Who is serving? and More
+  // stand together (before the first point of a match another scorer started): a row of four, which leaves 48 dp at 320,
+  // and their short words. Every other row has three cells or fewer (Expedite and 13 returns never share a row), which leave
+  // 72.67 dp or more, and the full words.
   const room4 = toolTextOf(4);
   const room3 = toolTextOf(3);
   /** What a cell needs: each label in its two lines, and no word broken. */
   const fits = (label: string, room: number) =>
     linesOf(label, room, toolWidth) <= layout.padToolLines && wordsFit(label, room, toolWidth);
-  /** The four labels of the fullest row. */
+  /** The four labels of the fullest row, in their short words. */
   const labels4 = (dictionary: Dictionary) =>
+    [
+      said(dictionary, `${TT}.tool.setScoreShort`),
+      said(dictionary, `${TT}.tool.expediteShort`),
+      said(dictionary, `${TT}.tool.servingShort`),
+      said(dictionary, `${TT}.tool.more`),
+    ] as const;
+  /** The labels a row of three or fewer can hold, in their full words. */
+  const labels3 = (dictionary: Dictionary) =>
     [
       said(dictionary, `${TT}.tool.setScore`),
       said(dictionary, `${TT}.tool.expedite`),
@@ -1181,11 +1190,20 @@ describe('table tennis: the tool row at 320 and 360 in four languages', () => {
     fill(said(dictionary, `${TT}.tool.returns`), { returns: '13' });
 
   it.each(LANGUAGES)(
-    '%s: Set score, Expedite, Who is serving? and More in a row of four, every label in its two lines, no word broken',
+    '%s: Set score, Expedite, Who is serving? and More in a row of four, short words, every label in its two lines, no word broken',
     (_lang, dictionary: Dictionary) => {
       for (const label of labels4(dictionary))
         for (const width of WIDTHS)
           expect(fits(label, room4(width)), `${label} @${width}`).toBe(true);
+    },
+  );
+
+  it.each(LANGUAGES)(
+    '%s: the full words in a row of three, every label in its two lines, no word broken',
+    (_lang, dictionary: Dictionary) => {
+      for (const label of labels3(dictionary))
+        for (const width of WIDTHS)
+          expect(fits(label, room3(width)), `${label} @${width}`).toBe(true);
     },
   );
 
@@ -1211,22 +1229,56 @@ describe('table tennis: the tool row at 320 and 360 in four languages', () => {
     expect(fits('13 devoluciones', room3(360))).toBe(false);
   });
 
-  // Anti-vacuity: the full words (Expedite, Who is serving?, Set score as the badminton tool says it) each have a word wider
-  // than the 48 dp a four-cell row leaves at 320, or take a third line, and were shortened for it. A word that wide breaks
-  // at the letter on Android.
-  it('would not have fitted a row of four with the full words, which is why they were shortened', () => {
-    const full = [
-      'Expedite',
-      'Aceleración',
-      'Accéléré',
-      'Versnelling',
-      'Who is serving?',
-      'Wie serveert?',
-      'Fijar puntos',
-      'Saisir le score',
-      'Stand invoeren',
-    ];
-    expect(full.filter((label) => !fits(label, room4(320)))).toEqual(full);
+  // The web's own term for Expedite is the cell's full word where it fits three cells at both widths (en Expedite, fr
+  // Système accéléré), and is shortened in the dictionary where it does not: es Aceleración and nl Versnelling are 82.9 dp,
+  // wider than the 72.67 a row of three leaves at 320 (never a smaller type). The cell's word is then the same stem cut at
+  // the letter: es Aceler., nl Versnel.
+  it('draws the web’s term for Expedite where three cells fit it, and a cut of it where they do not', () => {
+    const terms = {
+      en: 'Expedite',
+      es: 'Aceleración',
+      fr: 'Système accéléré',
+      nl: 'Versnelling',
+    } as const;
+    const drawn = LANGUAGES.map(([, dictionary]) => said(dictionary, `${TT}.tool.expedite`));
+    expect(drawn).toEqual(['Expedite', 'Aceler.', 'Système accéléré', 'Versnel.']);
+    expect(Object.values(terms).map((term) => fits(term, room3(320)))).toEqual([
+      true,
+      false,
+      true,
+      false,
+    ]);
+    // Each cut is a letter-cut of its term: the same stem, so a scorer reads it as the strip's word.
+    expect(terms.es.startsWith('Aceler')).toBe(true);
+    expect(terms.nl.startsWith('Versnel')).toBe(true);
+  });
+
+  // Anti-vacuity for the short words: the full words each have a word wider than the 48 dp a row of four leaves at 320, or
+  // take a third line, so the row of four could not hold them. A word that wide breaks at the letter on Android.
+  it('would not have fitted a row of four with the full words, which is why they have short ones', () => {
+    for (const [lang, dictionary] of LANGUAGES) {
+      const crowded = [
+        [`${TT}.tool.setScore`, `${TT}.tool.setScoreShort`],
+        [`${TT}.tool.expedite`, `${TT}.tool.expediteShort`],
+        [`${TT}.tool.serving`, `${TT}.tool.servingShort`],
+      ] as const;
+      const wide = crowded.filter(([full]) => !fits(said(dictionary, full), room4(320)));
+      // Every language has a full word that does not fit a row of four (so it has a short one), and its short word does.
+      expect(wide.length, lang).toBeGreaterThan(0);
+      for (const [, short] of wide) expect(fits(said(dictionary, short), room4(320))).toBe(true);
+    }
+  });
+
+  // Where the full word fits a row of four the short word is the full word (nothing is cut for nothing); where it does not,
+  // the short word is not the full one.
+  it('has a short word only where the full word does not fit a row of four', () => {
+    for (const [lang, dictionary] of LANGUAGES)
+      for (const cell of ['setScore', 'expedite', 'serving'] as const) {
+        const full = said(dictionary, `${TT}.tool.${cell}`);
+        const short = said(dictionary, `${TT}.tool.${cell}Short`);
+        const holdsFour = WIDTHS.every((width) => fits(full, room4(width)));
+        expect(short === full, `${lang} ${cell}`).toBe(holdsFour);
+      }
   });
 
   // The second line of the 13 returns cell is the receiver's names, one line cut with an ellipsis (`ToolRow`); a screen

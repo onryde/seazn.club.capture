@@ -76,6 +76,11 @@ const tools = () =>
   within(screen.getByTestId('tool-row'))
     .getAllByRole('button')
     .map((button) => button.getAttribute('aria-label'));
+/** What the cells draw, left to right: the label and the side beneath it. */
+const drawn = () =>
+  within(screen.getByTestId('tool-row'))
+    .getAllByRole('button')
+    .map((button) => button.textContent);
 
 /** A button pressed a second after the last thing the scorer did, and the time its sheet needs before it takes a choice. */
 async function press(app: LaunchedApp, name: string): Promise<void> {
@@ -213,6 +218,14 @@ describe('Who is serving? (ruling 51)', () => {
       en['scoring.tabletennis.tool.serving'],
       en['scoring.tabletennis.tool.more'],
     ]);
+    // A row of four leaves each word 48 dp at 320: Set score, Expedite and Who is serving? are drawn in their short words
+    // (the names above, which a screen reader hears, are the full ones).
+    expect(drawn()).toEqual([
+      en['scoring.tabletennis.tool.setScoreShort'],
+      en['scoring.tabletennis.tool.expediteShort'],
+      en['scoring.tabletennis.tool.servingShort'],
+      en['scoring.tabletennis.tool.more'],
+    ]);
     // The engine names no server, so no plate shows on either half.
     expect(within(half('first')).queryByTestId('serving')).toBeNull();
     expect(within(half('second')).queryByTestId('serving')).toBeNull();
@@ -241,6 +254,11 @@ describe('Who is serving? (ruling 51)', () => {
     });
     // The anchor is in: the tool goes for the match, the plate names the server (L. Chen's second serve), the held line is gone.
     expect(tools()).not.toContain(en['scoring.tabletennis.tool.serving']);
+    // The row fell to two cells, so Expedite gives the short word back to the full one.
+    expect(drawn()).toEqual([
+      en['scoring.tabletennis.tool.expedite'],
+      en['scoring.tabletennis.tool.more'],
+    ]);
     expect(within(half('second')).getByTestId('serving').textContent).toBe(
       en['scoring.tabletennis.serving.second'],
     );

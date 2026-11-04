@@ -186,11 +186,28 @@ the match.", Start and Cancel. Cancel, the dim and Back close it and record noth
 window of its appearing (the second touch of a double tap on the cell lands on Start), and a second Start counts once.
 It goes stale and closes, as the More re-check does, if Expedite is no longer on offer while it shows.
 
-**Copy.** The cells are fitted to the most that can share their row (Set score, Expedite, Who is serving? and More: four,
-48 dp of text at 320 dp; 13 returns: three, 72.67 dp), and a word that does not fit is shortened in the dictionary, never
-in the type. The owner's full terms return wherever they fit: 13 returns reads "returns / renvois / retours" again
-(es "golpes": the full term does not fit). _Expedite_ and _Who is serving?_ do not fit a row of four and are shortened
-(the Expedite cell is drawn "Exped." and spoken as the full term).
+**Copy.** A cell's word is the fullest that fits its row (the controller's follow-up to Task 8b, 2026-11-04). The row has
+four cells only when Set score, Expedite, Who is serving? and More stand together (a match another scorer started, before
+its first point), which leaves each 48 dp of text at 320 dp; every other row has three or fewer, which leave 72.67 dp or
+more. So Set score, Expedite and Who is serving? have two words each, picked by the row's final cell count in the pure
+`tools()`: the full word (three cells or fewer) and a short one (a row of four). A screen reader hears the same name
+whatever the row: Expedite has its spoken name always, and a short Set score or Who is serving? is spoken in its full
+word. A word that does not fit is shortened in the dictionary, never in the type.
+
+| Cell            | Three cells or fewer (full)                                                                  | Row of four (short)                                     |
+| --------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| Set score       | the Set score sheet's own words: Set score / Fijar puntos / Saisir le score / Stand invoeren | Set score / Fijar tanteo / Saisir score / Stand zetten  |
+| Expedite        | Expedite / Aceler. / Système accéléré / Versnel.                                             | Exped. / Sist. acel. / Syst. accél. / Versn.            |
+| Who is serving? | the sheet's title: Who is serving? / ¿Quién saca? / Qui sert ? / Wie serveert?               | Whose serve? / ¿Quién saca? / Qui sert ? / Wiens serve? |
+| 13 returns      | returns / golpes / renvois / retours (never in a row of four)                                | none                                                    |
+
+The web's term for Expedite fits three cells in en and fr only: es _Aceleración_ and nl _Versnelling_ are 82.9 dp, wider
+than the 72.67 dp a row of three leaves at 320, so those two draw a cut of the same stem (_Aceler._, _Versnel._), the
+strip's word. 13 returns is never in a row of four, so nothing about it changed: es keeps "golpes" because _devoluciones_
+(91.4 dp) is wider than 86 dp, the room of a row of three at 360. In a row of four the Set score cell cannot share the
+sheet's words in es and nl (_puntos_ is 48.3 dp, _invoeren_ 60.9): es keeps the verb (_Fijar tanteo_), nl cannot (_Stand
+zetten_, where the sheet says _Stand invoeren_); the sheet's title is the generic `scoring.setScore.title`, which
+badminton shares, so it is not changed here.
 
 ### 5.4 Match details
 

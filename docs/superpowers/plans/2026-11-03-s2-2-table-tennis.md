@@ -283,7 +283,8 @@ modify `src/ui/screens/scoringScreens.ts` (a `tabletennis` row), `src/ui/theme/p
 re-cut. Set score and Expedite are cells, the cards move into More, and a tap on Expedite asks "Start
 Expedite?" first. The tools table of Task 8 above is superseded by design §5.3; the fit cases and copy
 follow the cells' new rooms (four cells for Set score, Expedite, Who is serving? and More; three for 13
-returns).
+returns). A follow-up (the controller, 2026-11-04): each of those three cells has a full word (a row of
+three cells or fewer) and a short one (the row of four), chosen by the row's cell count.
 
 ## Batch D — the exit bar
 

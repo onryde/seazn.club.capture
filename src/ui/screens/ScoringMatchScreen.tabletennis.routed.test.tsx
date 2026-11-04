@@ -379,8 +379,9 @@ describe('in four languages', () => {
       expect(screen.getByTestId('strip-game').textContent).toBe(
         fill(words['scoring.tabletennis.gameOf'], { game: 1, bestOf: 5 }),
       );
-      // Before the first point: Set score, Expedite and More. A screen reader hears Expedite's full term; the cell draws the
-      // shortened word (en "Exped.", es "Sist. acel.", fr "Syst. accél.", nl "Versn.").
+      // Before the first point: Set score, Expedite and More, three cells. A screen reader hears Expedite's full term; the
+      // cell draws the web's term where it fits three cells (en, fr) and a cut of it where it does not (es "Aceler.", nl
+      // "Versnel."). The short words are the row of four's (TableTennisPadScreen.test.tsx).
       expect(tools()).toEqual([
         words['scoring.tabletennis.tool.setScore'],
         words['scoring.tabletennis.tool.expediteSaid'],

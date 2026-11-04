@@ -231,10 +231,13 @@ export type TableTennisPadKey =
   | 'scoring.tabletennis.note.expedite'
   | 'scoring.tabletennis.note.deuce'
   | 'scoring.tabletennis.tool.setScore'
+  | 'scoring.tabletennis.tool.setScoreShort'
   | 'scoring.tabletennis.tool.expedite'
+  | 'scoring.tabletennis.tool.expediteShort'
   | 'scoring.tabletennis.tool.expediteSaid'
   | 'scoring.tabletennis.tool.returns'
   | 'scoring.tabletennis.tool.serving'
+  | 'scoring.tabletennis.tool.servingShort'
   | 'scoring.tabletennis.tool.more'
   | 'scoring.tabletennis.sheet.card'
   | 'scoring.tabletennis.sheet.serving'
@@ -427,18 +430,45 @@ export function tableTennisExpediteOffered(display: TableTennisDisplay): boolean
 }
 
 /**
+ * A row of this many cells leaves each cell's text 48 dp at 320 (padFit.test.ts); three or fewer leave 72.67 or more. It is
+ * the one row (Set score, Expedite, Who is serving? and More, before a game's first point in a match another scorer
+ * started) in which the cells' full words do not fit.
+ */
+const CROWDED_ROW = 4;
+
+/**
  * The cells, in order, at most four (ruling 54): Set score and Expedite while each is offered, 13 returns or Who is
  * serving?, and More. Expedite and 13 returns never share a row (one is offered, the other in force), nor do 13 returns
- * and Who is serving?, so no more than four ever stand together.
+ * and Who is serving?, so no more than four ever stand together. A word is the fullest that fits its row: a row of four
+ * draws Set score, Expedite and Who is serving? in their short words (`crowded`), any other row in the full ones (the
+ * controller's Task 8b follow-up).
  */
 function tools(display: TableTennisDisplay): readonly Tool[] {
   if (!started(display)) return [];
-  return [
+  const cells = [
     ...setScoreTool(display),
     ...expediteTool(display),
     ...serveTool(display),
     ...moreTool(display),
   ];
+  return cells.length < CROWDED_ROW ? cells : cells.map(crowded);
+}
+
+/** The short word of each cell that has one, for a row of four. */
+const SHORT_LABEL: Readonly<Record<string, TableTennisPadKey>> = {
+  [SET_SCORE]: 'scoring.tabletennis.tool.setScoreShort',
+  [EXPEDITE]: 'scoring.tabletennis.tool.expediteShort',
+  [SERVING]: 'scoring.tabletennis.tool.servingShort',
+};
+
+/**
+ * A cell in a row of four: its short word drawn, and the full word spoken, so a screen reader hears the same name
+ * whatever the row (Expedite has its spoken name always: `expediteSaid`).
+ */
+function crowded(tool: Tool): Tool {
+  const key = SHORT_LABEL[tool.id];
+  if (key === undefined) return tool;
+  return { ...tool, label: { key }, said: tool.said ?? tool.label };
 }
 
 function setScoreTool(display: TableTennisDisplay): readonly Tool[] {
@@ -447,8 +477,9 @@ function setScoreTool(display: TableTennisDisplay): readonly Tool[] {
 }
 
 /**
- * Expedite: a cell until it is in force, and then 13 returns takes its place. Four cells leave a word 48 dp at 320, so the
- * drawn word is shortened and a screen reader hears the full term (`said`).
+ * Expedite: a cell until it is in force, and then 13 returns takes its place. Its drawn word is the web's term where it
+ * fits the row (en, fr), else a shortening of it (es, nl; a row of four, every language); a screen reader hears the full
+ * term whatever is drawn (`said`).
  */
 function expediteTool(display: TableTennisDisplay): readonly Tool[] {
   if (!tableTennisExpediteOffered(display)) return [];

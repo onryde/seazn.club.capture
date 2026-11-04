@@ -406,24 +406,135 @@ describe('tableTennisPad: the sheets say the full words the cells shorten', () =
     },
   );
 
-  it('draws the Expedite cell shortened in es, fr, nl and en: four languages, a word that fits four cells', () => {
-    expect([en, es, fr, nl].map((d) => d['scoring.tabletennis.tool.expedite'])).toEqual([
-      'Exped.',
-      'Sist. acel.',
-      'Syst. accél.',
-      'Versn.',
-    ]);
-  });
-
-  it('gives the Expedite cell the full term to a screen reader, and no other cell a spoken name', () => {
-    const cells = tableTennisPad({ ...pre, anchorNeeded: true, serverPicked: false }).tools;
-    expect(cells.map((tool) => [tool.id, tool.said])).toEqual([
-      ['setScore', undefined],
+  it('gives the Expedite cell the full term to a screen reader in every row, and the other cells theirs only when crowded', () => {
+    const cells = (display: TableTennisDisplay) =>
+      tableTennisPad(display).tools.map((tool) => [tool.id, tool.said]);
+    // Three cells or fewer: only Expedite has a spoken name (its drawn word is itself shortened in es and nl).
+    expect(cells(unanchored)).toEqual([
       ['expedite', { key: 'scoring.tabletennis.tool.expediteSaid' }],
       ['serving', undefined],
       ['more', undefined],
     ]);
+    // Four cells: Set score and Who is serving? are drawn short, and a screen reader hears their full words all the same.
+    expect(
+      cells({ ...pre, server: null, serveNumber: null, serverPicked: false, anchorNeeded: true }),
+    ).toEqual([
+      ['setScore', { key: 'scoring.tabletennis.tool.setScore' }],
+      ['expedite', { key: 'scoring.tabletennis.tool.expediteSaid' }],
+      ['serving', { key: 'scoring.tabletennis.tool.serving' }],
+      ['more', undefined],
+    ]);
   });
+});
+
+// The controller's Task 8b follow-up rulings: a cell word is the fullest that fits the row it stands in. A row of four cells
+// leaves a word 48 dp at 320; three or fewer leave 72.67 or more. So Set score, Expedite and Who is serving? have two
+// words each: the full one (three cells or fewer) and a short one (a row of four, the rare state in which Set score,
+// Expedite, Who is serving? and More stand together), both measured in padFit.test.ts.
+describe('tableTennisPad: a cell word by the number of cells in its row', () => {
+  const TOOL = 'scoring.tabletennis.tool';
+  /** Started elsewhere, no first server named, before the game's first point: the one row of four. */
+  const unanchoredPre: TableTennisDisplay = {
+    ...pre,
+    server: null,
+    serveNumber: null,
+    serverPicked: false,
+    anchorNeeded: true,
+  };
+  const labels = (display: TableTennisDisplay) =>
+    tableTennisPad(display).tools.map((tool) => [tool.id, tool.label.key]);
+
+  it('draws the short words in the row of four, and More as always', () => {
+    expect(labels(unanchoredPre)).toEqual([
+      ['setScore', `${TOOL}.setScoreShort`],
+      ['expedite', `${TOOL}.expediteShort`],
+      ['serving', `${TOOL}.servingShort`],
+      ['more', `${TOOL}.more`],
+    ]);
+  });
+
+  it.each([
+    ['Set score, Expedite and More (the server named)', pre, ['setScore', 'expedite', 'more']],
+    [
+      'Expedite, Who is serving? and More (a game under way)',
+      unanchored,
+      ['expedite', 'serving', 'more'],
+    ],
+    [
+      'Set score, Who is serving? and More (Expedite not offered)',
+      { ...unanchoredPre, expedite: 'off' },
+      ['setScore', 'serving', 'more'],
+    ],
+    ['Expedite and More', live, ['expedite', 'more']],
+  ] as const)('draws the full words in a row of three or fewer: %s', (_name, display, row) => {
+    expect(labels(display).map(([id]) => id)).toEqual(row);
+    expect(labels(display)).toEqual(row.map((id) => [id, `${TOOL}.${id}`]));
+  });
+
+  it('names a row by its final cells: a fourth cell shortens the others, and one fewer gives them back', () => {
+    // The same display, with and without the More cell (a match that records neither cards nor timeouts).
+    const noMore = {
+      ...unanchoredPre,
+      records: { timeouts: false, sanctions: false, expedite: true },
+    };
+    expect(labels(noMore)).toEqual([
+      ['setScore', `${TOOL}.setScore`],
+      ['expedite', `${TOOL}.expedite`],
+      ['serving', `${TOOL}.serving`],
+    ]);
+  });
+
+  // The words, by hand, in four languages. The full Set score words are the Set score sheet's own (ruling 2: one verb
+  // for the cell and the sheet); the full Who is serving? words are the Who is serving? sheet's; the full Expedite word
+  // is the web's term where it fits three cells (en, fr) and its truncation where it does not (es, nl: padFit).
+  const words = {
+    en: {
+      setScore: ['Set score', 'Set score'],
+      expedite: ['Expedite', 'Exped.'],
+      serving: ['Who is serving?', 'Whose serve?'],
+    },
+    es: {
+      setScore: ['Fijar puntos', 'Fijar tanteo'],
+      expedite: ['Aceler.', 'Sist. acel.'],
+      serving: ['¿Quién saca?', '¿Quién saca?'],
+    },
+    fr: {
+      setScore: ['Saisir le score', 'Saisir score'],
+      expedite: ['Système accéléré', 'Syst. accél.'],
+      serving: ['Qui sert\u00a0?', 'Qui sert\u00a0?'],
+    },
+    nl: {
+      setScore: ['Stand invoeren', 'Stand zetten'],
+      expedite: ['Versnel.', 'Versn.'],
+      serving: ['Wie serveert?', 'Wiens serve?'],
+    },
+  } as const;
+
+  it.each(Object.entries({ en, es, fr, nl }))(
+    '%s: the full and the short word of each cell',
+    (name, dictionary: Record<string, string>) => {
+      const mine = words[name as keyof typeof words];
+      for (const cell of ['setScore', 'expedite', 'serving'] as const) {
+        expect(dictionary[`${TOOL}.${cell}`], cell).toBe(mine[cell][0]);
+        expect(dictionary[`${TOOL}.${cell}Short`], `${cell}Short`).toBe(mine[cell][1]);
+      }
+    },
+  );
+
+  it.each(Object.entries({ en, es, fr, nl }))(
+    '%s: the full Set score word is the Set score sheet’s own verb and noun',
+    (_name, dictionary: Record<string, string>) => {
+      const sheet = (dictionary['scoring.setScore.title'] ?? '').split(' · ')[0];
+      expect(dictionary[`${TOOL}.setScore`]).toBe(sheet);
+    },
+  );
+
+  it.each(Object.entries({ en, es, fr, nl }))(
+    '%s: the full Who is serving? word is the sheet’s title',
+    (_name, dictionary: Record<string, string>) => {
+      expect(dictionary[`${TOOL}.serving`]).toBe(dictionary['scoring.tabletennis.sheet.serving']);
+    },
+  );
 });
 
 // Owner rulings 54 and 55 (2026-11-04, supersedes ruling 52's cells) and design §5.3: one row, at most four cells, in
@@ -557,9 +668,9 @@ describe('tableTennisPad: the tools', () => {
         kind: 'standard',
         enabled: true,
       });
-      // The owner's "Who is serving?" (ruling 51), shortened to fit four cells in a row at 320 dp (padFit.test.ts, Task 8):
-      // Set score, Expedite, this and More share a row before the game's first point, and the full words do not fit there.
-      expect(en['scoring.tabletennis.tool.serving']).toBe('Whose serve?');
+      // The owner's "Who is serving?" (ruling 51) in full, in a row of three or fewer; a row of four shortens it
+      // (`servingShort`, the describe below).
+      expect(en['scoring.tabletennis.tool.serving']).toBe('Who is serving?');
     });
 
     it('is hidden once the engine names a server', () => {
@@ -1142,6 +1253,14 @@ describe('tableTennisPad: its words', () => {
     tableTennisPad({ ...live, serveNumber: null, deuce: true }),
     tableTennisPad(expedited),
     tableTennisPad(unanchored),
+    // The one row of four: Set score, Expedite and Who is serving? are drawn in their short words.
+    tableTennisPad({
+      ...pre,
+      server: null,
+      serveNumber: null,
+      serverPicked: false,
+      anchorNeeded: true,
+    }),
     withHeldServing(tableTennisPad(unanchored), 'first', unanchored),
     tableTennisPad({
       ...doubles,
