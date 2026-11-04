@@ -14,7 +14,7 @@ learns a sport's name.
 **Tech Stack:** Expo SDK 57 / React Native 0.86.3 / Hermes; `@seazn/engine` = `@onryde/seazn-engine`
 2.0.0 (`tabletennis`, `tabletennisPadRules`, `setBasedServeContext`); vitest on react-native-web.
 
-**Spec:** `docs/specs/2026-11-03-s2-2-table-tennis-design.md` (approved 2026-11-03, rulings 48–52),
+**Spec:** `docs/specs/2026-11-03-s2-2-table-tennis-design.md` (approved 2026-11-03, rulings 48–56),
 on top of `docs/specs/2026-11-01-s2-remote-scoring-design.md`. Read both; this plan argues from them.
 
 ## Global Constraints
@@ -249,7 +249,7 @@ players records by side`; `two levels only`; History rows for each type in en an
 **Interfaces:**
 
 - Produces: `useTableTennisMatch(fixtureId): TableTennisPadModel` = `PadScreenModel & {toss, actions:
-{choose, saveScore, pickServer, start, pickServing, sendTaps, askDiscard, confirmDiscard}}`, built on
+{choose, saveScore, pickServer, start, sendTaps, askDiscard, confirmDiscard}}`, built on
   `useScoringMatch(id, tableTennisSport, …)` as `useBadmintonMatch` is. It holds `held: PadSide | null`
   in memory: set by Who is serving?, cleared once a rally is queued, on Undo, and when `anchorNeeded`
   turns false; applied with `withHeldServing`. `useTableTennisSheets`: sheets `card`, `more`, `serving`,

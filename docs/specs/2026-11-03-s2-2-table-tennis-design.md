@@ -46,7 +46,8 @@ organiser's final, with the console agreeing point for point (§8).
 - No enforcement of expedite's 10-minute trigger: the umpire decides when to start it, as on the web.
 - No engine change: `@seazn/engine` has the `tabletennis` kernel and `tabletennisPadRules` inside the phone's
   subpaths (`phone-subpaths.json`). The phone takes 2.0.0 (ruling 53): its subpaths are unchanged from 1.1.0, and
-  its breaking changes (the Swiss work) do not touch table tennis or anything the phone uses.
+  its breaking changes (the Swiss work) touch table tennis only in its Swiss tiebreaker list, which the phone never
+  reads.
 - No change to badminton's screen or behaviour.
 
 **Anti-goals**
