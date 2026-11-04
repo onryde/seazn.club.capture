@@ -46,7 +46,7 @@ export function doneOf(
 }
 
 /** A card level the engine lists for table tennis (`tabletennisPadRules.sanctionLevels`: yellow and red). */
-const isCardLevel = (level: unknown): level is TableTennisSanctionLevel =>
+export const isCardLevel = (level: unknown): level is TableTennisSanctionLevel =>
   typeof level === 'string' && R.sanctionLevels.includes(level);
 
 /** A point; one that reached the receiver's thirteenth return (under Expedite) says so, with the returns it carried. */

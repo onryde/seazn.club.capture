@@ -118,6 +118,8 @@ const TT_CAPITAL =
 const TT_OWN = [
   'src/domain/scoring/tableTennisFold.ts',
   'src/domain/scoring/tableTennisLedgerHistory.ts',
+  'src/domain/scoring/tableTennisSanction.ts',
+  'src/domain/scoring/tableTennisSport.ts',
   'src/hooks/useTableTennisMatch.ts',
   'src/ui/screens/TableTennisPadScreen.tsx',
   'src/services/fakeTableTennisPad.ts',
@@ -143,6 +145,28 @@ describe('a generic scoring file names no table tennis module either', { timeout
     );
     expect(counts).toEqual(GENERIC.map(() => 1));
   });
+
+  // The sport module and the card steps (plan S2-2 Task 6): the lifted set-based file stands where a copy would have been.
+  it.each([
+    [
+      'the sport',
+      "import { tableTennisSport } from '@/domain/scoring/tableTennisSport';\nexport const s = tableTennisSport;\n",
+    ],
+    [
+      'the card steps',
+      "import { chooseCard } from '@/domain/scoring/tableTennisSanction';\nexport const c = chooseCard;\n",
+    ],
+  ])(
+    'refuses %s from a path of every glob, and from the shared card file itself',
+    async (_name, source) => {
+      const counts = await Promise.all(
+        [...GENERIC, 'src/domain/scoring/setBasedSanction.ts'].map(
+          async (file) => (await refusals(source, file)).length,
+        ),
+      );
+      expect(counts).toEqual([...GENERIC, 'src/domain/scoring/setBasedSanction.ts'].map(() => 1));
+    },
+  );
 
   it('stays silent in table tennis’s own files, and in a test', async () => {
     const own = await Promise.all(

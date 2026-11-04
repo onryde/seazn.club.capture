@@ -2,6 +2,7 @@ import type { EventEnvelope } from '@seazn/engine/core';
 import type { SetBasedServeContext, SetBasedState, SetState } from '@seazn/engine/sports/setbased';
 import type { PadSide } from '@/domain/scoring/padView';
 import type { EventFacts, Recorded } from '@/domain/scoring/setBasedLedgerHistory';
+import { scoreText } from '@/domain/scoring/setBasedSides';
 
 /**
  * What the set-based sports (badminton, table tennis) read off a folded state to draw the board (plan S2-2 Task 3,
@@ -39,6 +40,14 @@ export const wonGame = (set: SetState): SetBasedGame => ({
 /** The games over, in order. */
 export const wonGames = (state: SetBasedState): readonly SetBasedGame[] =>
   state.sets.filter((set) => set.closed).map(wonGame);
+
+/**
+ * The games over as one line, the top side's score first in each: Home's Finished card ("11–7, 11–9"). Numbers and
+ * punctuation, never translated; a game that ended at its points (a disqualification's) is there at them.
+ */
+export const resultLineOf = (
+  finished: readonly { readonly points: Readonly<Record<PadSide, number>> }[],
+): string => finished.map((game) => scoreText(game.points)).join(', ');
 
 /** The game under way, or undefined between games and before the first. */
 export function openGameOf(state: SetBasedState): SetState | undefined {

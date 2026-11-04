@@ -14,6 +14,7 @@ import {
   openGameOf,
   phaseOf,
   pickedServer,
+  resultLineOf,
   serverOf,
   wonGames,
   ZERO,
@@ -226,5 +227,25 @@ describe('lastTapOf', () => {
     });
     expect(lastTapOf(envelopes, recordedOf(), undoneTap)).toBeNull();
     expect(lastTapOf([], recordedOf(['ev-1', 'start']), undoneTap)).toBeNull();
+  });
+});
+
+describe('resultLineOf: the games over as one line (Home’s Finished card)', () => {
+  const game = (first: number, second: number) => ({
+    points: { first, second },
+    winner: first > second ? ('first' as const) : ('second' as const),
+  });
+
+  it('is empty while no game is over', () => {
+    expect(resultLineOf([])).toBe('');
+  });
+
+  it('writes each game top side first with an en dash, joined by a comma and a space', () => {
+    expect(resultLineOf([game(11, 7)])).toBe('11–7');
+    expect(resultLineOf([game(11, 7), game(11, 9), game(5, 11)])).toBe('11–7, 11–9, 5–11');
+  });
+
+  it('keeps the top side first when the bottom side won the game', () => {
+    expect(resultLineOf([game(4, 11)])).toBe('4–11');
   });
 });
