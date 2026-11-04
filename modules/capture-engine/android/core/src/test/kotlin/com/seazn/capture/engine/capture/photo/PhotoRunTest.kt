@@ -89,7 +89,7 @@ class PhotoRunTest {
   @Test
   fun `M1 an Error and an Exception alike fail the photo, and the line carries the class name and nothing else`() =
     runTest {
-      val secret = "content://media/external/images/media/77 /storage/emulated/0/Pictures/Seazn Capture/x.jpg"
+      val secret = "content://media/external/images/media/77 /storage/emulated/0/Pictures/Seazn Club/x.jpg"
       // An Error that is not OutOfMemoryError: JUnit rethrows that one as unrecoverable, so under a mutant that lets it
       // through it would kill the test worker instead of failing this test. PhotoRun catches every Throwable alike.
       val thrown = listOf<Throwable>(NoClassDefFoundError(secret), IllegalStateException(secret), java.io.IOException(secret))

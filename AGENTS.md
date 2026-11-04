@@ -686,7 +686,7 @@ thermal member. Only transport trouble degrades a session.
   anything native (it gated P5), but it is a local one: `pnpm expo prebuild -p
   android --no-install`, then `pnpm expo run:android --no-bundler` or
   `./gradlew assembleDebug|assembleRelease`, installed with `adb`. A local build is the dev twin,
-  `com.seazn.capture.dev`, named "Seazn Capture (dev)" with the scheme
+  `com.seazn.capture.dev`, named "Seazn Club (dev)" with the scheme
   `seazn-capture-dev`, so it installs beside the Play app; only `eas.json`'s
   `production` profile sets `APP_VARIANT=production` and builds
   `com.seazn.capture` (owner, 2026-10-30, option 2; `appVariant` in

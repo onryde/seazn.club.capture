@@ -117,12 +117,12 @@ export function appVariant(
 export default ({ config, projectRoot }: ConfigContext): ExpoConfig => {
   const number = buildNumber(projectRoot);
   const pinned = pinnedBuildNumber(projectRoot);
-  const variant = appVariant({ ...config, name: config.name ?? 'Seazn Capture' });
+  const variant = appVariant({ ...config, name: config.name ?? 'Seazn Club' });
   return withAppBuildGradle(
     {
       ...config,
       ...variant,
-      name: variant.name ?? 'Seazn Capture',
+      name: variant.name ?? 'Seazn Club',
       slug: config.slug ?? 'capture',
       android: { ...variant.android, versionCode: number },
       ios: { ...variant.ios, buildNumber: String(number) },

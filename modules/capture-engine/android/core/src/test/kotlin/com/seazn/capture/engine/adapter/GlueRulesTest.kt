@@ -1032,7 +1032,7 @@ class GlueRulesTest {
     val needles =
       listOf(
         "MediaStore.Images.Media.EXTERNAL_CONTENT_URI",
-        "RELATIVE_PATH, \"Pictures/Seazn Capture\"",
+        "RELATIVE_PATH, \"Pictures/Seazn Club\"",
         "IS_PENDING, 1",
         "IS_PENDING, 0",
         "check(bitmap.compress(", // a failed compress is a failed photo, never an empty file reported as saved

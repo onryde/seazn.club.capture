@@ -25,7 +25,7 @@ const count = Number(
 );
 
 const base: ExpoConfig = {
-  name: 'Seazn Capture',
+  name: 'Seazn Club',
   slug: 'capture',
   scheme: 'seazn-capture',
   version: '1.0.0',
@@ -82,7 +82,7 @@ describe('the app variant (app.config.ts)', () => {
     const config = appConfig(context(root));
     expect(config.android?.package).toBe('com.seazn.capture');
     expect(config.ios?.bundleIdentifier).toBe('com.seazn.capture');
-    expect(config.name).toBe('Seazn Capture');
+    expect(config.name).toBe('Seazn Club');
     expect(config.scheme).toBe('seazn-capture');
   });
 
@@ -91,7 +91,7 @@ describe('the app variant (app.config.ts)', () => {
     const config = appConfig(context(root));
     expect(config.android?.package).toBe('com.seazn.capture.dev');
     expect(config.ios?.bundleIdentifier).toBe('com.seazn.capture.dev');
-    expect(config.name).toBe('Seazn Capture (dev)');
+    expect(config.name).toBe('Seazn Club (dev)');
     expect(config.scheme).toBe('seazn-capture-dev');
   });
 
