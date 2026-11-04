@@ -333,6 +333,9 @@ design surface.
     ledger is fetched again, and the record gets `scoring.dropped {reason, count}`;
   - no network, timeout, 5xx → stay queued, retry with backoff, with the same `idempotency_key`, so a
     tap the server accepted before the answer was lost is not counted twice; the send badge says offline and counts.
+    A tap sent before whose copy the ledger does not hold (matched by key) may never have been stored, and the sport's
+    `payloadForSend` judges it as a first send, for every sport (S2-2 design §4.1): the web matches a resend by its key
+    and never compares payloads, so a first attempt it never stored is appended as new.
 - **The reconnect question** (ruling 43, owner, 2026-11-02). Taps queued only by this phone, offline,
   go by themselves when the signal is back. But a ledger fetch that brings events _another scorer_
   made, while this phone has taps queued, stops the sender: nothing is sent until the scorer answers.
@@ -516,7 +519,7 @@ In order: (1) R4, the engine folded on the OnePlus under Hermes in a release bui
 bootstrap endpoint in a seazn.club worktree, on staging; (3) the app's port, queue, sync and Realtime;
 (4) the real badminton pad on the kit, the scan and the Continue card; (5) the exit bar on staging.
 Table tennis is plan S2-2, designed in `docs/specs/2026-11-03-s2-2-table-tennis-design.md` (rulings
-48–52). The endpoint's production deploy goes with the 1.0.x release notes.
+48–56). The endpoint's production deploy goes with the 1.0.x release notes.
 
 ## 14. Left to the builder
 

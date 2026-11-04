@@ -48,7 +48,10 @@ organiser's final, with the console agreeing point for point (§8).
   subpaths (`phone-subpaths.json`). The phone takes 2.0.0 (ruling 53): its subpaths are unchanged from 1.1.0, and
   its breaking changes (the Swiss work) touch table tennis only in its Swiss tiebreaker list, which the phone never
   reads.
-- No change to badminton's screen or behaviour.
+- No change to badminton's screen or behaviour. _Amended 2026-11-04:_ ruling 56 (the owner's, "badminton too"), the
+  owner's rename, and rulings of the controller's during the build (card colours, History's "Match started" line, the
+  resend rule, the carried-forward family, the disabled ghost outline) changed it. The results doc's "What changes for
+  badminton and the rest of the app" lists each, with who ruled.
 
 **Anti-goals**
 
@@ -91,17 +94,45 @@ As the S2 design §4, with these differences.
 
 1. **Start.** Match details with table tennis's rules (§5.4), "Who serves first?", Start match. The
    pick goes out as `serving` on the match's first rally, as badminton's does (`rallyEvent`,
-   `payloadForSend`: the first send drops it if a rally already stands). One pick carries the whole
+   `payloadForSend`: dropped at a send when the score has moved since the pick, not whenever a rally stands, as badminton's
+   is; the rule is below). One pick carries the whole
    match: the engine alternates the first server game by game (ITTF 2.13.6,
    `serve.setStart: "alternate"`). **Unlike badminton, a lost pick does not mend itself**: table
    tennis's rotation never recovers from later rallies, so without an anchor the engine names no
    server for the rest of the match (web `tabletennis.tsx:36-52`, `believedServer`). The pick is lost
    when a co-scorer's rally lands first, or when the first game was entered with Set score.
+
+   **The stamp's send rule** (amended 2026-11-04; the controller's rulings from the Batch B and Batch C reviews, which
+   proved this section's first text, "the first send drops it if a rally already stands", wrong; the owner has not ruled
+   on it). A stamp, the Start pick or the answer to Who is serving?, is valid only at the score it was made at, so a rally
+   that carries one also carries `base`, the count of standing score events then (`scoreEventsIn`: rallies and Set score
+   summaries that no Undo voids). At a send:
+
+   - the phone puts `serving` on a rally only while the engine says the anchor is needed, and then only the held answer
+     made at the present count (`servingAt`) or the Start pick while it is the server shown;
+   - `serving` is dropped when the ledger's count of standing score events differs from the tap's `base`. A co-scorer's
+     point landed first, and the engine's fixed-turns rotation takes any `serving` as an anchor, so a stale stamp names
+     the wrong server for the rest of the match (Batch B's finding);
+   - `serving` is kept when the count equals `base`, whatever stamps stand in the ledger: after `alternation-disputed` the
+     engine re-anchors from the next declaration, so an earlier game's stamp is no reason to drop it (Batch C's first
+     Important finding);
+   - a tap with no `base` (a queue file from before it existed) keeps the older rule: dropped when a rally that names
+     `serving` already stands;
+   - a tap sent before is judged the same way unless the ledger holds its copy, matched by key (`copied`). The web matches
+     a resend by its key and never compares payloads, so a first attempt it never stored is appended as new, and would
+     carry a stamp made at another score (Batch C's second Important finding). This is the shared rule, for badminton too
+     (`payloadForFirstSend`).
+
+   Known limit: `base` counts score events, not the score. A co-scorer's Undo plus a mid-game partial game summary nets to
+   zero, and a stale stamp is kept; it needs a mid-game score entry from the web inside the same window.
+
 2. **Who is serving? (ruling 51).** Only while the engine says the server is unknown for want of an
    anchor (`setBasedServeContext` `side === null`, and `unknownBecause` is not a drift value), the
    tools row shows "Who is serving?". It opens a two-button sheet (the sides, as the Start screen's
    `TossPicker`); the answer is held for the next point tapped, which carries it as `serving`, as the
-   web's anchor tile records it. Once the engine names a server the tool is gone; it does not come back
+   web's anchor tile records it. It is held with the count of score events it was made at (`useHeldServing`): it clears in
+   the commit where that count moves or the engine names a server, and a rally carries it only while the display still says
+   the anchor is needed and the count is the same (`servingAt`), so a stale answer never reaches the engine. Once the engine names a server the tool is gone; it does not come back
    unless the anchor is lost again (an Undo of the anchoring point). The held answer is in memory only,
    and the pad says "Next point: {side} serving" on the last-tap line until it is used (_the
    controller's_ wording). Before the match's first point the Start pick does this job, so the tool
@@ -254,8 +285,8 @@ word. A word that does not fit is shortened in the dictionary, never in the type
 | 13 returns      | returns / golpes / renvois / retours (never in a row of four)                                | none                                                    |
 
 The web's term for Expedite fits three cells in en and fr only: es _Aceleración_ and nl _Versnelling_ are 82.9 dp, wider
-than the 72.67 dp a row of three leaves at 320, so those two draw a cut of the same stem (_Aceler._, _Versnel._), the
-strip's word. 13 returns is never in a row of four, so nothing about it changed: es keeps "golpes" because _devoluciones_
+than the 72.67 dp a row of three leaves at 320, so those two draw a cut of the same stem (_Aceler._, _Versnel._); the
+strip carries no Expedite word since ruling 56. 13 returns is never in a row of four, so nothing about it changed: es keeps "golpes" because _devoluciones_
 (91.4 dp) is wider than 86 dp, the room of a row of three at 360. In a row of four the Set score cell cannot share the
 sheet's words in es and nl (_puntos_ is 48.3 dp, _invoeren_ 60.9): es keeps the verb (_Fijar tanteo_), nl cannot (_Stand
 zetten_, where the sheet says _Stand invoeren_); the sheet's title is the generic `scoring.setScore.title`, which

@@ -208,7 +208,8 @@ starts.
   camera picture, no scorebug, and answers `saved` or `failed`; the app says so for 3 s. A tap while a photo is saving
   does nothing. It is one of the two requests-with-an-answer among the commands (the other is the scoring link, §10;
   AGENTS §2, recorded).
-- **Gallery permission: none.** The still is written with `MediaStore.Images` to `Pictures/Seazn Capture`. minSdk is 31,
+- **Gallery permission: none.** The still is written with `MediaStore.Images` to `Pictures/Seazn Capture` (renamed
+  `Pictures/Seazn Club` on 2026-11-04, with the app: the owner's rename, S2-2 results). minSdk is 31,
   so the app writes its own image with no storage permission, no prompt, no library and no config plugin.
 - **Confirmation copy:** _Photo saved_ (lime) or _Couldn't save the photo_ (caution), one line for 3 s in the controls
   half's gap, just above the icon row, never over the camera box.
