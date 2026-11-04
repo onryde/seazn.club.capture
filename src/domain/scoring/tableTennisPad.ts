@@ -294,9 +294,9 @@ const takesPoints = (display: TableTennisDisplay) =>
   started(display) && display.phase !== 'decided';
 
 /**
- * The pad for a table tennis match (design §5; the owner's rulings 48 to 55): the first side on top, the second below,
+ * The pad for a table tennis match (design §5; the owner's rulings 48 to 56): the first side on top, the second below,
  * each with its finished games' scores and, on the server's, the serving plate with the engine's serve number and in
- * doubles the player; the game of how many and one note (Expedite, else Deuce) in the strip; and in the tool row Set
+ * doubles the player; the game of how many and one note (Deuce) in the strip; and in the tool row Set
  * score and Expedite while they are offered, 13 returns or Who is serving?, and More (the cards and the timeouts). A
  * decided match is the recorded result's card over the final score. Before the match starts, the Start screen's
  * question in the halves' place, and no tools. `sync` is the transport's word, not the match's.

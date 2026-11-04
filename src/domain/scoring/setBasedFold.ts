@@ -263,7 +263,7 @@ const FIRST_GAME = 1;
 /**
  * The start's first server: the one the first standing rally names, if that rally is game 1's; before any rally, this
  * phone's pick if shown. A rally names the server of its own game, so when game 1 was entered whole by Set score the first
- * standing rally is game 2's, and its server is the other side's first server, not the match's: nobody is named.
+ * standing rally is game 2's, and its server is that game's first server, not the match's: nobody is named.
  */
 function startServerOf(
   events: SetBasedEvents,

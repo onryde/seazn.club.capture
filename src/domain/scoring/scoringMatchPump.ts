@@ -58,8 +58,12 @@ function rereading<S extends SportTypes>(state: MatchState<S>, now: number): Par
   return due === null || now < due ? part(state) : asking(state, now);
 }
 
-/** A rules read that failed is asked for again once due (`retryRules`), even with nothing queued. */
+/**
+ * A rules read that failed is asked for again once due (`retryRules`), even with nothing queued. Not for a dead queue:
+ * nothing is sent on those rules, so there is nothing to read them for.
+ */
 function rulesRetry<S extends SportTypes>(state: MatchState<S>, now: number): Part<S> {
+  if (deadOf(state) !== null) return part(state);
   return withSync(state, retryRules(state.sync, now));
 }
 
@@ -87,9 +91,11 @@ const undoPairs = (pending: readonly QueuedEvent[]): readonly string[] =>
 /**
  * The queue judged on the ledger and rules as they stand, when sync asks (hold `revalidate`). A match that cannot be
  * folded is never judged: an empty `legalQueued` would drop the whole queue. The hold then stands, and the pad says why.
+ * A dead queue is never judged either: its taps are leftovers, kept whole, and a rules answer after the close would
+ * drop the ones the ledger has made illegal.
  */
 function revalidating<S extends SportTypes>(state: MatchState<S>): Part<S> {
-  if (state.sync.hold !== 'revalidate') return part(state);
+  if (state.sync.hold !== 'revalidate' || deadOf(state) !== null) return part(state);
   const judge = judgeOf(state);
   if (judge === null) return part(state);
   return withSync(state, revalidate(state.sync, judge));

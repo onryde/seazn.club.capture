@@ -15,7 +15,9 @@ import {
   SANCTION_LEVELS,
   type BadmintonDisplay,
   type BadmintonDone,
+  type BadmintonPadKey,
   type BadmintonSanction,
+  type BadmintonUndoneTap,
 } from '@/domain/scoring/badmintonPad';
 import type { BadmintonRules } from '@/domain/scoring/badmintonRules';
 import type { PadHistoryGroup, PadSide } from '@/domain/scoring/padView';
@@ -42,7 +44,6 @@ import {
 } from '@/domain/scoring/setBasedFold';
 import { ledgerRows } from '@/domain/scoring/setBasedLedgerHistory';
 import { personName, sideOfEntrant, type SetBasedNames } from '@/domain/scoring/setBasedSides';
-import type { BadmintonPadKey, BadmintonUndoneTap } from '@/domain/scoring/badmintonPad';
 
 /**
  * A badminton match on the pad (design §6.2, §7.3; plan S2-1 Task 7): the server's ledger with this phone's queued taps

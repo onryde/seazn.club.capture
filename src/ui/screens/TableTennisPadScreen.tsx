@@ -18,7 +18,7 @@ import { colour } from '@/ui/theme/tokens';
 /**
  * The table tennis pad (plan S2-2 Task 8; design §5; owner ruling 38: a screen per sport), drawn from the model of
  * `useTableTennisMatch`. Its layout is the set-based sports' (`PadContent`, lifted from badminton's screen): the top bar,
- * the strip (Game N of M, and Expedite or Deuce), the two halves with the serving plate ("Serving · 1st"), the last-tap
+ * the strip (Game N of M, and Deuce), the two halves with the serving plate ("Serving · 1st"), the last-tap
  * line with the one Undo, and the tools (Set score and Expedite while offered, 13 returns or Who is serving?, and More:
  * owner rulings 54 and 55). What is table tennis's here: that the screen is held on while the pad is (`holdsScreen`), and
  * its sheets: More with the Card steps in its place, Start Expedite?, Who is serving?, Set score bounded by the rules'

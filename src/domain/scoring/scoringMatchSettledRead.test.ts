@@ -12,7 +12,15 @@ import {
   rallies,
   rally,
 } from '../../../test/badmintonLedger';
-import { NOW, opened, queueOf, savesOf, sendsOf } from '../../../test/scoringMatchFixtures';
+import {
+  NOW,
+  kinds,
+  opened,
+  queueOf,
+  savesOf,
+  sendsOf,
+  sentOnce,
+} from '../../../test/scoringMatchFixtures';
 
 // Fix round 1 of Task 8d (controller, 2026-11-04). A queue that closes on a result that stands (a 403
 // RESULT_CARRIED_FORWARD, or a finalized status read with taps queued) leaves the pad and Home scoring from the
@@ -24,6 +32,7 @@ import { NOW, opened, queueOf, savesOf, sendsOf } from '../../../test/scoringMat
 
 const SPECS = [...GAME_ONE_21_15, ...rallies('H'.repeat(20))];
 const TIP = 57;
+const FINALIZED = { ...SINGLES, status: 'finalized' };
 const CARRIED = { kind: 'refused', status: 403, code: 'RESULT_CARRIED_FORWARD' } as const;
 
 const holding = () =>
@@ -208,5 +217,40 @@ describe('the closes that say no result stands read nothing', () => {
     const saved = step(read.state, { kind: 'saved', n: 99 }, NOW);
     const closed = step(saved.state, { kind: 'answered', sent, answer }, NOW);
     expect(fetchesOf(closed.effects)).toEqual([]);
+  });
+});
+
+// Final review M1 (2026-11-04). A dead queue is never looked at again: its taps are leftovers, and judging them on a
+// ledger or rules that moved after the close would drop the ones those make illegal, and save them out of the file.
+describe('a dead queue is not judged or read for rules again', () => {
+  // The finalized close, where no tap was ever sent: the carried-forward close leaves a sent head, which revalidation
+  // never drops (`isUnresolved`), so only this one shows the drop.
+  it('a rules answer that lands after the close drops nothing: the leftovers stay, even those the ledger made illegal', () => {
+    const closed = step(holding(), { kind: 'bootstrapRead', bootstrap: FINALIZED }, NOW);
+    const served = serve(closed, serverWith('H'));
+    expect(served.state.sync.queue.pending.map((tap) => tap.key)).toEqual(['k1', 'k2']);
+    const rules = { cfg: SINGLES.cfg, rulesVersion: 1, formatLine: null };
+    const read = step(served.state, { kind: 'rulesRead', rules }, NOW);
+    expect(deadOf(read.state)).toBe('finalized');
+    expect(read.state.sync.queue.pending.map((tap) => tap.key)).toEqual(['k1', 'k2']);
+    expect(read.state.line).toBeNull();
+    expect(savesOf(read.effects).filter((save) => save.queue !== null)).toEqual([]);
+    expect(sendsOf(read.effects)).toEqual([]);
+  });
+
+  it('a rules read that failed before the close is not asked for again once it is due', () => {
+    const { state, sent } = sentOnce();
+    const asked = step(
+      state,
+      { kind: 'answered', sent, answer: { kind: 'rulesChanged', rulesVersion: 2 } },
+      NOW,
+    );
+    const failed = step(asked.state, { kind: 'rulesFailed', failure: { kind: 'offline' } }, NOW);
+    const closed = step(failed.state, { kind: 'bootstrapRead', bootstrap: FINALIZED }, NOW);
+    expect(deadOf(closed.state)).toBe('finalized');
+    expect(closed.state.sync.queue.pending.map((tap) => tap.key)).toEqual(['k1']);
+    for (const at of [NOW + 15_000, NOW + 60_000]) {
+      expect(kinds(step(closed.state, { kind: 'tick' }, at).effects)).not.toContain('loadRules');
+    }
   });
 });
