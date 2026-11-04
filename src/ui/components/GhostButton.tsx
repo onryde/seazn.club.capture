@@ -37,14 +37,14 @@ export const GhostButton = memo(function GhostButton({
   accessibilityLabel,
 }: GhostButtonProps) {
   const labelStyle = disabled ? styles.labelOff : undefined;
-  const compactBox = useCompactBox(label, labelStyle);
+  const compactBox = useCompactBox(label, labelStyle, disabled);
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       disabled={disabled}
       onPress={onPress}
-      style={compact ? styles.target : ghostStyle}
+      style={compact ? styles.target : disabled ? offGhost : ghostStyle}
     >
       {compact ? (
         compactBox
@@ -61,16 +61,16 @@ export const GhostButton = memo(function GhostButton({
  * The compact form's child. Its outline is the box inside the target, so the box reads the target's press: Pressable
  * hands a function child its state, on the phone as on the web. One function per label and state, not per render.
  */
-function useCompactBox(label: string, labelStyle: StyleProp<TextStyle>) {
+function useCompactBox(label: string, labelStyle: StyleProp<TextStyle>, off: boolean) {
   return useCallback(
     ({ pressed }: PressableStateCallbackType) => (
-      <View testID="ghost-box" style={pressed ? pressedBox : styles.box}>
+      <View testID="ghost-box" style={off ? offBox : pressed ? pressedBox : styles.box}>
         <Text variant="controlSmall" style={labelStyle}>
           {label}
         </Text>
       </View>
     ),
-    [label, labelStyle],
+    [label, labelStyle, off],
   );
 }
 
@@ -110,9 +110,14 @@ const styles = StyleSheet.create({
     ...outline,
   },
   pressed: { backgroundColor: colour.pressFill, borderColor: colour.ink },
+  // A disabled ghost's edge fades to the hairline (owner, 2026-11-04: "Undo button looks same when enabled and
+  // disabled"): with the label at the inert ink, the outline was the one thing a resting and a disabled ghost shared.
+  off: { borderColor: colour.rule },
   labelOff: { color: colour.ink3 },
 });
 
 const pressedGhost = [styles.ghost, styles.pressed];
+const offGhost = [styles.ghost, styles.off];
 /** The compact form: the box fills and its edge goes cream; the 48 dp target around it still draws nothing. */
 const pressedBox = [styles.box, styles.pressed];
+const offBox = [styles.box, styles.off];

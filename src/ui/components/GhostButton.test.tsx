@@ -190,6 +190,18 @@ describe('GhostButton disabled', () => {
     },
   );
 
+  // Owner, 2026-11-04: "Undo button looks same when enabled and disabled". A disabled ghost's outline fades to the
+  // hairline (`rule`); an enabled one keeps the inert-ink edge. Both forms: the regular button and the compact box.
+  it.each([false, true])('compact %s: a disabled outline fades to the hairline', (compact) => {
+    const outline = () => (compact ? (boxOf() as HTMLElement) : button());
+    const view = render(<GhostButton label="Share record" onPress={vi.fn()} compact={compact} />);
+    expect(paintOf(outline()).edges).toEqual(Array(4).fill(edgeOf(colour.ink3)));
+    view.rerender(
+      <GhostButton label="Share record" onPress={vi.fn()} compact={compact} disabled />,
+    );
+    expect(paintOf(outline()).edges).toEqual(Array(4).fill(edgeOf(colour.rule)));
+  });
+
   it('enabled by default: not marked, and a tap fires once', () => {
     const onPress = vi.fn();
     render(<GhostButton label="Share record" onPress={onPress} compact />);
