@@ -1449,8 +1449,7 @@ describe('table tennis: the last-tap line at 320 and 360 in four languages', () 
     return Object.keys(dictionary)
       .filter(
         (key) =>
-          new RegExp(`^${TT.replace(/\./g, '\\.')}\\.(last|undone)\\.`).test(key) ||
-          key === `${TT}.held`,
+          key.startsWith(`${TT}.last.`) || key.startsWith(`${TT}.undone.`) || key === `${TT}.held`,
       )
       .map((key) => ({ key, text: fill(said(dictionary, key), vars) }));
   };
