@@ -175,6 +175,50 @@ describe('Undo refused because the result was carried forward (403 RESULT_CARRIE
     expect([score('first'), score('second')]).toEqual(['21', '0']);
   });
 
+  // Fix round 1 (controller, 2026-11-04). The queue is dead once the 403 comes and nothing reads the ledger after that, so
+  // the score the pad and Home show would be the one the phone last read: here two rallies short, with the match decided
+  // on the server. The close reads the ledger once, and then no more.
+  it('reads what the phone had not, once, when the queue closes: the pad and Home show the server’s 21, and no read follows', async () => {
+    const app = await startedMatch();
+    const other = () =>
+      app.scoring.addOtherScorerEvent('badminton.rally', {
+        wonBy: SINGLES_SEED.sides.home.entrantId,
+      });
+    // The phone has read 40 rallies (game one 21-0, game two 19-0)...
+    for (let at = 0; at < 40; at += 1) other();
+    app.realtime.ping();
+    await flush(1_000);
+    // ...and the other scorer took two more, which no ping told it: the match is decided, and carried forward.
+    other();
+    other();
+    app.scoring.carryForward(true);
+    const score = () => within(half('first')).getByTestId('score').textContent;
+    expect(score()).toBe('19');
+    const reads = vi.spyOn(app.scoring, 'events');
+    aSecondOn(app);
+    act(() => fireEvent.click(half('first')));
+    await flush(0);
+    await flush(0);
+    await flush(1_000);
+    expect(cardText()).toBe(carriedCard(en));
+    expect(reads).toHaveBeenCalledTimes(1);
+    expect(score()).toBe('21');
+    await pass(app, 60_000);
+    await backgroundAndBack(app);
+    await flush(2_000);
+    expect(reads).toHaveBeenCalledTimes(1);
+    expect(score()).toBe('21');
+    // Home reads the files this left: the ledger the read brought, not the one the phone had.
+    let handled = false;
+    act(() => {
+      handled = app.back.press();
+    });
+    await flush(1_000);
+    expect(handled).toBe(true);
+    expect(app.nav.current()).toBe('home');
+    expect(screen.getByText(/Finished.*21–0, 21–0/)).toBeTruthy();
+  });
+
   // A bare 403 on a void is that one tap's (the link may not undo it), never a closed match: `sync.ts` ONE_TAP_403.
   it('another 403 on the Undo is not this: the card stays the recorded result’s', async () => {
     const app = await startedMatch();

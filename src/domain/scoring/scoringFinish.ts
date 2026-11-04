@@ -1,3 +1,4 @@
+import { resultStands } from '@/domain/scoring/queue';
 import { isDecided } from '@/domain/scoring/scoringMatchReads';
 import { deadOf, foldRead, type MatchState } from '@/domain/scoring/scoringMatchState';
 import { carriedForwardBy } from '@/domain/scoring/wire';
@@ -24,8 +25,7 @@ export type Finish = { readonly score: string };
 export function finishOf(state: MatchState): Finish | null {
   const { bootstrap, sport } = state;
   if (bootstrap === null || bootstrap.sportKey !== sport.key) return null;
-  const dead = deadOf(state);
-  const closed = dead === 'finalized' || dead === 'carriedForward';
+  const closed = resultStands(deadOf(state));
   const locked = bootstrap.status === 'finalized' || carriedForwardBy(bootstrap);
   if (!closed && !locked && !isDecided(state)) return null;
   const fold = foldRead(state);

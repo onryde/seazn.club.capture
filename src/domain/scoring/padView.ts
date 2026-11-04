@@ -306,6 +306,16 @@ export function hasUndoCell(card: PadStateCard | null): boolean {
   return !(card?.kind === 'resultRecorded' && card.undoLeft === null);
 }
 
+/** The cards under which the pad lets the screen go (`holdsScreen`, below, says why). */
+const SCREEN_RELEASED: ReadonlySet<PadStateCard['kind']> = new Set([
+  'viewOnly',
+  'carriedForward',
+  'cancelled',
+  'noOpponent',
+  'linkInvalid',
+  'updateNeeded',
+]);
+
 /**
  * Whether the pad keeps the phone's screen on under this card (owner ruling 9, the screen stays on while the pad shows;
  * applied by the controller on 2026-11-02): on the pad and under the two cards the scorer is still waiting on (the match
@@ -318,15 +328,6 @@ export function hasUndoCell(card: PadStateCard | null): boolean {
  * organiser may finalise the result while the scorer watches the card, so the 45 s of Undo are not what the screen is
  * held for.
  */
-const SCREEN_RELEASED: ReadonlySet<PadStateCard['kind']> = new Set([
-  'viewOnly',
-  'carriedForward',
-  'cancelled',
-  'noOpponent',
-  'linkInvalid',
-  'updateNeeded',
-]);
-
 export function holdsScreen(card: PadStateCard | null): boolean {
   return card === null || !SCREEN_RELEASED.has(card.kind);
 }

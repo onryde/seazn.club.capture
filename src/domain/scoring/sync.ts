@@ -1,4 +1,9 @@
-import type { MatchQueue, QueueDead, QueuedEvent } from '@/domain/scoring/queue';
+import {
+  resultStands,
+  type MatchQueue,
+  type QueueDead,
+  type QueuedEvent,
+} from '@/domain/scoring/queue';
 import {
   voidTargetOf,
   type AppendAnswer,
@@ -477,11 +482,26 @@ function waitFor(state: SyncState, sent: QueuedEvent, ms: number, now: number): 
   return step(next, [{ kind: 'retryIn', ms }]);
 }
 
-/** The queue can send no more: the taps are kept as they are, and saved with the word. */
+/**
+ * The queue can send no more: the taps are kept as they are, and saved with the word. A close on a result that stands
+ * reads the ledger once more (`settledRead`).
+ */
 function died(state: SyncState, sent: QueuedEvent, dead: QueueDead): SyncStep {
   const freed = landed(state, sent);
-  return step({ ...freed, status: 'dead', queue: { ...freed.queue, dead } }, [PERSIST]);
+  const next: SyncState = { ...freed, status: 'dead', queue: { ...freed.queue, dead } };
+  return step(next, [PERSIST, ...settledRead(state, dead)]);
 }
+
+/**
+ * One ledger read when the queue closes on a result that stands (`resultStands`): the pad and the Finished card then
+ * score from the ledger alone, and nothing reads it again once the queue is dead (`wanting` is shut), so a co-scorer's
+ * events, or ones this phone missed offline, would stay missing for good. One read, from the tip; its answer asks for
+ * nothing more (`heldAfter` never holds a dead queue), and a failed one is let go, not retried. Not on a close that
+ * says no result stands: a refused link, a payment, a cancelled match have nothing to show from it. Not again for a
+ * queue already closed on a result that stands: a repeated answer or status read is the same close, not a new one.
+ */
+const settledRead = (was: SyncState, dead: QueueDead): readonly SyncEffect[] =>
+  resultStands(dead) && !resultStands(was.queue.dead) ? [{ kind: 'fetchSince', seq: was.tip }] : [];
 
 /**
  * No answer: the tap stays, with its key, its attempt already counted when it was sent (`markSending`), and is tried
@@ -585,6 +605,8 @@ function mergedWith(state: SyncState, events: readonly LedgerEvent[]): SyncState
  */
 function heldAfter(state: SyncState, moved: boolean): SyncHold | null {
   if (state.hold === 'rules' || state.hold === 'status') return state.hold;
+  // A dead queue is never looked at again: its taps are leftovers, and a revalidation would drop the ones the new events make illegal.
+  if (state.queue.dead !== null) return null;
   if (moved || state.revalidateOwed) return 'revalidate';
   return state.hold === 'ledger' ? null : state.hold;
 }
@@ -627,7 +649,8 @@ export function onBootstrapStatus(state: SyncState, status: string): SyncStep {
   const dead = status === 'finalized' || status === 'cancelled' ? status : null;
   if (dead !== null) {
     if (state.queue.pending.length === 0) return step(cleared, []);
-    return step({ ...cleared, status: 'dead', queue: { ...cleared.queue, dead } }, [PERSIST]);
+    const next: SyncState = { ...cleared, status: 'dead', queue: { ...cleared.queue, dead } };
+    return step(next, [PERSIST, ...settledRead(state, dead)]);
   }
   const held = state.queue.pending.find((queued) => queued.key === key);
   if (held !== undefined) {

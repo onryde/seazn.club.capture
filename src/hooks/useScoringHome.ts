@@ -46,6 +46,10 @@ function unsentOf(rows: readonly QueueRow[], saved: string): number {
   return own?.kind === 'queue' ? own.queue.pending.length : 0;
 }
 
+/** Whether a queue's files may be asked if the match is over: readable, and either empty or settled by the server's word. */
+const askable = (own: QueueRow): boolean =>
+  own.kind === 'queue' && (own.queue.pending.length === 0 || resultStands(own.queue.dead));
+
 /**
  * The saved match's files, asked whether it is over, only when nothing of it is unsent: a match with taps still going
  * is Continue whatever its files say, and a queue that cannot be read is not asked about (its card says so). The one
@@ -53,10 +57,6 @@ function unsentOf(rows: readonly QueueRow[], saved: string): number {
  * server refused or will never take, the result is the server's, and the files are asked (controller, 2026-11-04). A
  * read that throws is recorded and is "not over", never a Finished card on a guess.
  */
-/** Whether a queue's files may be asked if the match is over: readable, and either empty or settled by the server's word. */
-const askable = (own: QueueRow): boolean =>
-  own.kind === 'queue' && (own.queue.pending.length === 0 || resultStands(own.queue.dead));
-
 async function finishOfSaved(
   ports: Pick<Ports, 'kv' | 'hosts' | 'tapQueue' | 'clock' | 'logger'>,
   saved: string | null,
