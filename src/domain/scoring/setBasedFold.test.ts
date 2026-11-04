@@ -263,6 +263,21 @@ describe.each(CASES)('foldSetBased ($name)', (sportCase) => {
       });
     });
 
+    // A game recorded whole closes the game it scored: its score is that game's, not the next one's.
+    it('puts a game recorded whole in the game it scored, at its score, and the next event in the next game', () => {
+      const whole: Spec = { type: SUMMARY, payload: { home: sportCase.gameTo, away: 7 } };
+      const result = folded([begin(), whole, card()]);
+      expect(result.folded.facts.get('ev-2')).toMatchObject({
+        game: 1,
+        after: { first: sportCase.gameTo, second: 7 },
+        won: 'none',
+      });
+      expect(result.folded.facts.get('ev-3')).toMatchObject({
+        game: 2,
+        after: { first: 0, second: 0 },
+      });
+    });
+
     it('names the person of the latest sanction standing then, and none before any', () => {
       const result = folded([begin(), point('H', 'H'), card('p-sharma'), point('A')]);
       expect(result.folded.facts.get('ev-2')?.sanctionedPerson).toBeNull();
@@ -285,6 +300,20 @@ describe.each(CASES)('foldSetBased ($name)', (sportCase) => {
         game: 1,
         after: { first: 1, second: 0 },
       });
+    });
+
+    it('hands the start’s server from the first rally still standing, never one a void took back', () => {
+      const seen: (string | null)[] = [];
+      const kit: SetBasedKit<string> = {
+        ...kitOf(),
+        doneOf: (envelope, _facts, _names, startServer) => {
+          if (envelope.type === 'core.start') seen.push(startServer);
+          return envelope.type;
+        },
+      };
+      // Home's first rally named home as the server; it was taken back, and away's, which names away, stands.
+      folded([begin(), point('H', 'H'), undo(2), point('A', 'A')], { kit });
+      expect(seen).toEqual(['second']);
     });
 
     it('hands the start’s server to the kit: the first standing rally’s, else this phone’s pick', () => {

@@ -204,6 +204,44 @@ describe('setBasedRefusalOf', () => {
   });
 });
 
+// The server judges the new event alone strictly (`strictFromSeq`): the ledger before it is replayed as it was accepted,
+// even if the organiser has since edited the rules so that it would be refused now (the four questions: another rule set).
+describe('setBasedRefusalOf: only the last event is judged strictly', () => {
+  it.each([
+    ['badminton', badminton],
+    ['tabletennis', tabletennis],
+  ])('takes a point after a set score the edited rules would refuse (%s)', (_, module) => {
+    // Played to 15: a score of 15–10 is a finished game now, though it was recorded as one under way under 21 or 11.
+    const cfg = setBasedCfgOf(module, { setTo: 15, finalSetTo: 15 });
+    if (cfg === null) throw new Error('the edited config did not parse');
+    const match = {
+      fixtureId: 'fx-1',
+      cfg,
+      lineups: {
+        home: {
+          entrantId: HOME,
+          slots: [{ personId: 'p-sharma', slot: 'starting' as const, orderNo: 1 }],
+        },
+        away: {
+          entrantId: AWAY,
+          slots: [{ personId: 'p-chen', slot: 'starting' as const, orderNo: 1 }],
+        },
+      },
+    };
+    const [begin, score, next] = ledgerOf([start(), rally('H', 'H'), rally('A')]);
+    const partial = {
+      ...score!,
+      type: `${module.key}.game.summary`,
+      payload: { home: 15, away: 10, partial: true },
+    };
+    const point = { ...next!, type: `${module.key}.rally`, payload: { wonBy: AWAY } };
+    const stream = [begin!, partial, point].map((event) => envelopeOf('fx-1', event));
+    expect(setBasedRefusalOf(module, match, stream)).toBeNull();
+    // The same set score as the last event is refused: the engine judges the new event strictly.
+    expect(setBasedRefusalOf(module, match, stream.slice(0, 2))).not.toBeNull();
+  });
+});
+
 describe('setBasedCfgOf', () => {
   it('fills what the organiser left out from the sport’s own schema', () => {
     expect(setBasedCfgOf(badminton, {})).toMatchObject({ bestOf: 3, setTo: 21 });
