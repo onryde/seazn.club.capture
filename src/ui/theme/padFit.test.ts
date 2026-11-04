@@ -1233,6 +1233,92 @@ describe('the carried-forward card at 320 and 360 in four languages (Task 8d)', 
 });
 
 /**
+ * The view-only cards whose words follow their reason (Task 8d follow-up, controller 2026-11-04), on the pad at 320 and
+ * 360 in four languages: the shared title (the screen's state) over the sentence of the organiser's lock, of a cancelled
+ * match and of a seat with no opponent. As the carried-forward card they stand above the halves, which give way, so the
+ * limits are a word wider than its room, a title on one line and a card no taller than the recorded result's.
+ */
+describe('the view-only cards by reason at 320 and 360 in four languages (Task 8d follow-up)', () => {
+  const geist400 = loadFont('geist-400');
+  const titleWidth = (text: string) =>
+    barlow700.width(text.toUpperCase(), typeScale.panelTitle.fontSize) +
+    typeScale.panelTitle.letterSpacing * [...text].length;
+  const bodyWidth = (text: string) => geist400.width(text, typeScale.body.fontSize);
+  const room = (width: number) => column(width) - 2 * space.md - layout.padSideBar;
+  const KEYS = [
+    'scoring.card.viewOnly.body',
+    'scoring.card.cancelled.body',
+    'scoring.card.noOpponent.body',
+  ] as const;
+  const linesAt = (key: string, measure: (text: string) => number) =>
+    LANGUAGES.map(([, dictionary]) =>
+      WIDTHS.map((width) => linesOf(said(dictionary, key), room(width), measure)),
+    );
+
+  it.each(LANGUAGES)(
+    '%s: no word wider than its room at 320 or 360, so nothing is broken',
+    (_lang, dictionary: Dictionary) => {
+      for (const width of WIDTHS) {
+        for (const word of words(said(dictionary, 'scoring.card.viewOnly.title')))
+          expect(titleWidth(word)).toBeLessThanOrEqual(room(width));
+        for (const key of KEYS)
+          for (const word of words(said(dictionary, key)))
+            expect(bodyWidth(word)).toBeLessThanOrEqual(room(width));
+      }
+    },
+  );
+
+  // en, es, fr, nl; each at 320 then 360. Written out from a run, as the other cards' are. The title is the screen's
+  // state ("View only") and one line everywhere; the cancelled sentence is one line, the no-opponent one two, and the
+  // organiser's lock's the longest, three in es, fr and nl at 320.
+  it('is one line of title in each language, and the sentences are as long as they are written', () => {
+    expect(linesAt('scoring.card.viewOnly.title', titleWidth)).toEqual([
+      [1, 1],
+      [1, 1],
+      [1, 1],
+      [1, 1],
+    ]);
+    expect(linesAt('scoring.card.viewOnly.body', bodyWidth)).toEqual([
+      [2, 2],
+      [3, 2],
+      [3, 2],
+      [3, 2],
+    ]);
+    expect(linesAt('scoring.card.cancelled.body', bodyWidth)).toEqual([
+      [1, 1],
+      [1, 1],
+      [1, 1],
+      [1, 1],
+    ]);
+    expect(linesAt('scoring.card.noOpponent.body', bodyWidth)).toEqual([
+      [2, 2],
+      [2, 2],
+      [2, 2],
+      [2, 2],
+    ]);
+  });
+
+  // The tallest of the three: padding, the title (24), a gap, three lines of sentence (22 each). The carried-forward card
+  // is 154 and the recorded result's with Undo open 160, and the halves already give that room.
+  it('is 130 tall at most, within the 154 the carried-forward card takes', () => {
+    expect([typeScale.panelTitle.lineHeight, typeScale.body.lineHeight]).toEqual([24, 22]);
+    const rows = KEYS.flatMap((key) => linesAt(key, bodyWidth));
+    const titles = linesAt('scoring.card.viewOnly.title', titleWidth);
+    const chrome = 2 * space.md + space.sm;
+    const tall =
+      chrome +
+      Math.max(...titles.flat()) * typeScale.panelTitle.lineHeight +
+      Math.max(...rows.flat()) * typeScale.body.lineHeight;
+    expect(tall).toBe(130);
+    expect(tall).toBeLessThanOrEqual(154);
+  });
+
+  it('has 252 and 292 for its text', () => {
+    expect(WIDTHS.map(room)).toEqual([252, 292]);
+  });
+});
+
+/**
  * Table tennis (plan S2-2 Task 8; the controller's ruling 3): every string the table tennis pad draws, at 320 and 360 in
  * four languages, singles and doubles. The rooms are written out from the tokens and the screens' styles as above; the
  * copy is read from the dictionaries. A string that does not fit is shortened in the dictionary, never set smaller.

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ModeCode } from '@/domain/mode/Mode';
 import { asksBeforeOpening } from '@/domain/mode/otherMode';
 import { rowsKey, type MatchFinish, type QueueRow } from '@/domain/mode/scoringHome';
+import { resultStands } from '@/domain/scoring/queue';
 import { selectEngineStatus } from '@/hooks/engineSelectors';
 import { readFinish } from '@/hooks/scoringFinish';
 import { scoringHubOf } from '@/hooks/scoringHub';
@@ -47,9 +48,15 @@ function unsentOf(rows: readonly QueueRow[], saved: string): number {
 
 /**
  * The saved match's files, asked whether it is over, only when nothing of it is unsent: a match with taps still going
- * is Continue whatever its files say, and a queue that cannot be read is not asked about (its card says so). A read
- * that throws is recorded and is "not over", never a Finished card on a guess.
+ * is Continue whatever its files say, and a queue that cannot be read is not asked about (its card says so). The one
+ * exception is a queue whose word says the result stands (finalized, or carried forward): the taps in it are ones the
+ * server refused or will never take, the result is the server's, and the files are asked (controller, 2026-11-04). A
+ * read that throws is recorded and is "not over", never a Finished card on a guess.
  */
+/** Whether a queue's files may be asked if the match is over: readable, and either empty or settled by the server's word. */
+const askable = (own: QueueRow): boolean =>
+  own.kind === 'queue' && (own.queue.pending.length === 0 || resultStands(own.queue.dead));
+
 async function finishOfSaved(
   ports: Pick<Ports, 'kv' | 'hosts' | 'tapQueue' | 'clock' | 'logger'>,
   saved: string | null,
@@ -59,7 +66,7 @@ async function finishOfSaved(
   const own = rows.find(
     (row) => (row.kind === 'queue' ? row.queue.fixtureId : row.fixtureId) === saved,
   );
-  if (own !== undefined && (own.kind === 'unreadable' || own.queue.pending.length > 0)) return null;
+  if (own !== undefined && !askable(own)) return null;
   try {
     const finish = await readFinish(ports, saved);
     return finish === null ? null : { fixtureId: saved, score: finish.score };

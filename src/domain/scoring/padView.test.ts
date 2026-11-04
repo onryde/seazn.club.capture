@@ -75,6 +75,8 @@ const CARDS: readonly PadStateCard[] = [
   { kind: 'resultRecorded', undoLeft: 45 },
   { kind: 'viewOnly' },
   { kind: 'carriedForward' },
+  { kind: 'cancelled' },
+  { kind: 'noOpponent' },
   { kind: 'linkInvalid' },
   { kind: 'updateNeeded', unsent: 3 },
 ];
@@ -88,6 +90,8 @@ describe('cardPlacement', () => {
       ['resultRecorded', 'withScore'],
       ['viewOnly', 'withScore'],
       ['carriedForward', 'withScore'],
+      ['cancelled', 'withScore'],
+      ['noOpponent', 'withScore'],
       ['linkInvalid', 'instead'],
       ['updateNeeded', 'forControls'],
     ]);
@@ -104,6 +108,8 @@ describe('matchKnown', () => {
       ['resultRecorded', true],
       ['viewOnly', true],
       ['carriedForward', true],
+      ['cancelled', true],
+      ['noOpponent', true],
       ['linkInvalid', false],
       ['updateNeeded', true],
     ]);
@@ -122,6 +128,8 @@ describe('holdsScreen', () => {
       ['resultRecorded', true],
       ['viewOnly', false],
       ['carriedForward', false],
+      ['cancelled', false],
+      ['noOpponent', false],
       ['linkInvalid', false],
       ['updateNeeded', false],
     ]);
@@ -143,6 +151,8 @@ describe('hasUndoCell', () => {
       ['resultRecorded', true],
       ['viewOnly', true],
       ['carriedForward', true],
+      ['cancelled', true],
+      ['noOpponent', true],
       ['linkInvalid', true],
       ['updateNeeded', true],
     ]);
@@ -186,6 +196,14 @@ describe('withCard', () => {
       undo: false,
     });
   });
+
+  // Task 8d follow-up: a cancelled match and one with no opponent are as view only as a finalized one.
+  it.each([{ kind: 'cancelled' }, { kind: 'noOpponent' }] as const)(
+    'keeps the last tap but offers no Undo under $kind',
+    (card) => {
+      expect(withCard(live, card).lastTap).toEqual({ text: { key: 'k.last' }, undo: false });
+    },
+  );
 
   it.each([
     { kind: 'notStarted' },

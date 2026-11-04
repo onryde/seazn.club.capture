@@ -316,7 +316,15 @@ design surface.
     (`QueueDead`): every tap is kept, nothing more is sent, and the pad says so. A carried-forward result
     is its own word, `carriedForward`, and its own card ("Result carried forward"), not the finalized
     match's: nobody finalized it (Task 8d, 2026-11-04; the bootstrap names it too, as the View-only
-    reason `carried_forward`, which changes the card and leaves the queue to the 403). The one 403
+    reason `carried_forward`, which changes the card and leaves the queue to the 403). The card's words
+    follow the reason the web names (finalized, cancelled, carried forward, no opponent; its table puts
+    them in that order), and only a finalize says "finalised". Under a result that stands (`finalized`
+    or `carriedForward`) the taps the queue still holds were refused or will never be taken, and the
+    server's ledger is the one authority for the result: the pad's score and Home's Finished card are
+    the ledger folded alone (`foldRead`, `resultStands`), not a fold with those taps (a refused Undo must
+    not take a point off a recorded result). The badge still counts them, History still lists them as it
+    listed them (an unsent rally as a Sending row, an unsent Undo as its rally struck out), and Close on
+    Home still asks before it discards them (Task 8d follow-up, the controller, 2026-11-04). The one 403
     that is about a single tap is a bare one answering a void or a forfeit (the link may not make that
     one write): that tap alone is refused, as below. A 422 `ALREADY_DECIDED` holds its tap while the
     bootstrap's status is read: a finalized or cancelled match closes the queue, any other status refuses

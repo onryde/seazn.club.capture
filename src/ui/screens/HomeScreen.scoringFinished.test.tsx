@@ -9,7 +9,7 @@ import { createTapQueueStore } from '@/services/tapQueueStore';
 import { STORE_KEYS } from '@/services/modeStore';
 import { colour, layout } from '@/ui/theme/tokens';
 import { HomeScreen } from '@/ui/screens/HomeScreen';
-import { DECIDED_MATCH, GAME_ONE_21_15 } from '../../../test/badmintonLedger';
+import { DECIDED_MATCH, GAME_ONE_21_15, queuedOf, voiding } from '../../../test/badmintonLedger';
 import { createFakePorts, readRecord, type FakePorts } from '../../../test/fakePorts';
 import {
   DECIDED_3_0,
@@ -240,6 +240,34 @@ describe('a decided match whose taps are not all sent', () => {
     expect(screen.queryByText(/Finished/)).toBeNull();
   });
 
+  // The files are asked only when the answer can change the card: a tap that can still go keeps the card as Continue
+  // whatever they say, so they are not read (a read per refresh and per return to the app).
+  it('does not read the match’s history while a tap that can still go is unsent', async () => {
+    let asked = vi.fn();
+    await homeWith(
+      async (fakes) => {
+        await overOnDisk(fakes, 2);
+        asked = vi.spyOn(fakes.tapQueue, 'loadBoot');
+      },
+      { kvSeed: inMatch() },
+    );
+    expect(within(card()).getByText('2 taps not sent yet')).toBeTruthy();
+    expect(asked).not.toHaveBeenCalled();
+  });
+
+  it('does read it when the queue says the result stands, taps unsent or not', async () => {
+    let asked = vi.fn();
+    await homeWith(
+      async (fakes) => {
+        await leave(fakes, queueHolding(FAKE_MATCH, 2, { dead: 'carriedForward' }));
+        await leaveHistory(fakes, FAKE_MATCH, DECIDED_MATCH);
+        asked = vi.spyOn(fakes.tapQueue, 'loadBoot');
+      },
+      { kvSeed: inMatch() },
+    );
+    expect(asked).toHaveBeenCalled();
+  });
+
   it('becomes Finished with Close once the server has them all', async () => {
     const home = await homeWith((fakes) => overOnDisk(fakes, 2), { kvSeed: inMatch() });
     expect(screen.queryByRole('button', { name: /^Close/ })).toBeNull();
@@ -267,6 +295,68 @@ describe('a decided match whose taps are not all sent', () => {
     await screen.findByText(FINISHED);
     expect(screen.queryByRole('button', { name: 'Forget' })).toBeNull();
     expect(closeButton()).toBeTruthy();
+  });
+
+  // Controller, 2026-11-04 (AGENTS §2, the server's ledger is the one authority): under a result that stands, the taps
+  // left in the queue were refused or will never be taken. Home shows the server's result, not "1 tap not sent", and
+  // Close still asks before it lets the held tap go.
+  describe('whose result stands on the server, with a refused Undo still in the queue', () => {
+    const refusedUndo = (fakes: FakePorts, dead: 'finalized' | 'carriedForward') =>
+      leave(fakes, {
+        ...queueHolding(FAKE_MATCH, 0, { dead, label: FAKE_LABEL }),
+        pending: [queuedOf('k-undo', voiding(DECIDED_MATCH.length))],
+      });
+
+    it.each(['finalized', 'carriedForward'] as const)(
+      'a %s queue is Finished with the ledger’s score, Close and no count of unsent taps',
+      async (dead) => {
+        await homeWith(
+          async (fakes) => {
+            await refusedUndo(fakes, dead);
+            await leaveHistory(fakes, FAKE_MATCH, DECIDED_MATCH);
+          },
+          { kvSeed: inMatch() },
+        );
+        expect(within(card()).getByText(FINISHED)).toBeTruthy();
+        expect(closeButton()).toBeTruthy();
+        expect(screen.queryByText(/not sent/)).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+        expect(screen.queryByRole('button', { name: /^Dismiss/ })).toBeNull();
+      },
+    );
+
+    it('Close asks first, naming the held tap, and Keep leaves the match and its queue as they were', async () => {
+      const home = await homeWith(
+        async (fakes) => {
+          await refusedUndo(fakes, 'carriedForward');
+          await leaveHistory(fakes, FAKE_MATCH, DECIDED_MATCH);
+        },
+        { kvSeed: inMatch() },
+      );
+      fireEvent.click(closeButton());
+      await screen.findByText('Dismiss Match 4?');
+      expect(
+        screen.getByText('1 tap that was not sent will be deleted. It will not reach Seazn.'),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Keep' }));
+      expect(home.kv.entries.has(STORE_KEYS.code('scoring'))).toBe(true);
+      expect((await home.tapQueue.load(FAKE_MATCH))?.pending).toHaveLength(1);
+    });
+
+    it('a cancelled queue holding the same tap is still the dead card: no result stands there', async () => {
+      await homeWith(
+        async (fakes) => {
+          await leave(fakes, {
+            ...queueHolding(FAKE_MATCH, 0, { dead: 'cancelled' }),
+            pending: [queuedOf('k-undo', voiding(DECIDED_MATCH.length))],
+          });
+          await leaveHistory(fakes, FAKE_MATCH, DECIDED_MATCH);
+        },
+        { kvSeed: inMatch() },
+      );
+      expect(within(card()).getByText('1 tap not sent — tell the organiser')).toBeTruthy();
+      expect(screen.queryByText(/Finished/)).toBeNull();
+    });
   });
 
   it('is still a dead card with Dismiss when its taps can never go, finished or not', async () => {

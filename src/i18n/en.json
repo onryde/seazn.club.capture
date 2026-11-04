@@ -364,6 +364,8 @@
   "scoring.card.viewOnly.body": "Match over — result finalised. Ask the organiser to correct it.",
   "scoring.card.carriedForward.title": "Result carried forward",
   "scoring.card.carriedForward.body": "This result has already moved the competition on. Ask the organiser to correct it.",
+  "scoring.card.cancelled.body": "This match was cancelled.",
+  "scoring.card.noOpponent.body": "There is no match to score here — one side has no opponent.",
   "scoring.card.linkInvalid.title": "Link not valid",
   "scoring.card.linkInvalid.body": "This scoring link is not valid. Ask the organiser for a fresh link.",
   "scoring.card.updateNeeded.body": "Seazn needs an update to keep scoring this match.",

@@ -7,9 +7,13 @@ import {
   DECIDED_MATCH as DECIDED,
   GAME_ONE_21_15 as GAME_ONE,
   SINGLES,
+  eventId,
   ledgerOf,
+  queuedOf,
   rallies,
+  rally,
   start,
+  voiding,
   type Spec,
 } from '../../../test/badmintonLedger';
 import { firstTo3, type FirstTo3 } from '../../../test/firstTo3Sport';
@@ -64,6 +68,27 @@ describe('finishOf', () => {
     expect(finishOf(cold(GAME_ONE, { bootstrap: carried }))).toEqual({ score: '21–15' });
     expect(finishOf(cold([start()], { bootstrap: carried }))).toEqual({ score: '' });
   });
+
+  // Task 8d follow-up (controller, 2026-11-04). The result of a closed match is the server's ledger (AGENTS §2): a tap
+  // the phone still holds, one the server refused or never took, is not in it. Home's Finished card says the ledger's.
+  it.each(['finalized', 'carriedForward'] as const)(
+    'is the ledger’s score when the %s queue still holds a refused Undo of the deciding rally',
+    (dead) => {
+      const undo = queuedOf('k1', voiding(DECIDED.length));
+      const queue = queueOf({ dead, pending: [undo], ownEventIds: [eventId(DECIDED.length)] });
+      expect(finishOf(cold(DECIDED, { queue }))).toEqual({ score: '21–15, 21–18' });
+    },
+  );
+
+  it.each(['finalized', 'carriedForward'] as const)(
+    'is the ledger’s score when the %s queue holds a rally the server never took, which would have won game 2',
+    (dead) => {
+      const queue = queueOf({ dead, pending: [queuedOf('k1', rally('H'))] });
+      expect(finishOf(cold([...GAME_ONE, ...rallies('H'.repeat(20))], { queue }))).toEqual({
+        score: '21–15',
+      });
+    },
+  );
 
   it('is not finished by a view-only screen for another reason (no opponent), which decides nothing', () => {
     const noOpponent = {

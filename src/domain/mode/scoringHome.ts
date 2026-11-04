@@ -1,5 +1,5 @@
 import type { SavedCode } from '@/domain/mode/savedCode';
-import type { MatchQueue } from '@/domain/scoring/queue';
+import { resultStands, type MatchQueue } from '@/domain/scoring/queue';
 
 /**
  * What Home's Remote Scoring cards say (design §5 and §6.3, ruling 29; plan S2-1 Task 10), pure: the saved match with
@@ -24,8 +24,11 @@ export type MatchFinish = { readonly fixtureId: string; readonly score: string }
  * reconnect question (owner ruling 43): nothing is sent until the pad is opened and the scorer chooses, so it is not
  * sending. `unreadable`: its file cannot be read, and the count is unknown.
  * `finished`: the match is over and every tap of this phone has reached the server (owner ruling 41, 2026-11-02): the card
- * says Finished with the score and offers Close, and nothing is lost by closing it. Null while a tap is unsent, dead or
- * unreadable, and while the files do not say the match is over.
+ * says Finished with the score and offers Close, and nothing is lost by closing it. It is also the card of a result that
+ * stands on the server (finalized, or carried forward) while the queue still holds taps it will never send: the score is
+ * the server's, `unsent` still counts them, and Close asks before it lets them go (controller, 2026-11-04). Null while a
+ * tap is unsent and can still go, or its link is dead, or the file is unreadable, and while the files do not say the
+ * match is over.
  */
 export type ScoringCurrent = {
   readonly fixtureId: string;
@@ -72,24 +75,34 @@ export function scoringHome(
   const current =
     part === null
       ? null
-      : { fixtureId: part.fixtureId, label: part.label, ...finishedOf(stateOf(own), finish, part) };
+      : {
+          fixtureId: part.fixtureId,
+          label: part.label,
+          ...finishedOf(stateOf(own), standsIn(own), finish, part),
+        };
   const others = rows.filter((row) => idOf(row) !== fixtureId);
   return { current, leftovers: others.flatMap(leftoverOf) };
 }
 
-/** Over, with nothing unsent and every tap able to go: the one state that is finished. Anything else is as it was. */
+/**
+ * Over, and nothing the phone holds is left to go: no taps, or a queue that says the result stands (finalized, or carried
+ * forward), where the taps left are ones the server refused or will never take and the result is the server's
+ * (`resultStands`). Anything else is as it was: the count stands, and Close waits for the server.
+ */
 function finishedOf(
   own: Pick<ScoringCurrent, 'unsent' | 'state'>,
+  stands: boolean,
   finish: MatchFinish | null,
   match: { readonly fixtureId: string },
 ): Pick<ScoringCurrent, 'unsent' | 'state' | 'finished'> {
-  const over =
-    finish !== null &&
-    finish.fixtureId === match.fixtureId &&
-    own.state === 'live' &&
-    own.unsent === 0;
+  const settled = stands || (own.state === 'live' && own.unsent === 0);
+  const over = finish !== null && finish.fixtureId === match.fixtureId && settled;
   return { ...own, finished: over ? { score: finish.score } : null };
 }
+
+/** The saved match's queue says its result stands. */
+const standsIn = (row: QueueRow | undefined): boolean =>
+  row?.kind === 'queue' && resultStands(row.queue.dead);
 
 const idOf = (row: QueueRow): string =>
   row.kind === 'queue' ? row.queue.fixtureId : row.fixtureId;

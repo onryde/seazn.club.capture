@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFinish } from '@/hooks/scoringFinish';
-import { DECIDED_MATCH, GAME_ONE_21_15 } from '../../test/badmintonLedger';
+import { DECIDED_MATCH, GAME_ONE_21_15, queuedOf, voiding } from '../../test/badmintonLedger';
 import { createFakePorts } from '../../test/fakePorts';
 import {
   FAKE_MATCH,
@@ -55,6 +55,22 @@ describe('readFinish', () => {
     await leaveHistory(fakes, FAKE_MATCH, GAME_ONE_21_15);
     await expect(readFinish(fakes.ports, FAKE_MATCH)).resolves.toEqual({ score: '21–15' });
   });
+
+  // Controller, 2026-11-04: a result that stands is the ledger's. The queue file may still hold a refused Undo of the
+  // deciding rally; the score Home reads is the server's, whatever the file holds.
+  it.each(['finalized', 'carriedForward'] as const)(
+    'reads the ledger’s score under a %s queue that still holds a refused Undo of the deciding rally',
+    async (dead) => {
+      const fakes = createFakePorts();
+      const queue = queueHolding(FAKE_MATCH, 0, { dead });
+      await leave(fakes, {
+        ...queue,
+        pending: [queuedOf('k-undo', voiding(DECIDED_MATCH.length))],
+      });
+      await leaveHistory(fakes, FAKE_MATCH, DECIDED_MATCH);
+      await expect(readFinish(fakes.ports, FAKE_MATCH)).resolves.toEqual({ score: LINE });
+    },
+  );
 
   it('is null for a view-only match whose reason is not a result: one side has no opponent', async () => {
     const fakes = createFakePorts();

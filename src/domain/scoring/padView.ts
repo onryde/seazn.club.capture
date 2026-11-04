@@ -208,12 +208,20 @@ export type PadStateCard =
    * was. A sport's pad says null; `withUndoWindow` (`undoWindow.ts`) fills it from the phone's clock.
    */
   | { readonly kind: 'resultRecorded'; readonly undoLeft: number | null }
+  /**
+   * The organiser's lock: the match is finalized and the card says so. Also the card of a View-only screen whose reason
+   * this build does not know, which keeps what the card said before it had reasons.
+   */
   | { readonly kind: 'viewOnly' }
   /**
    * A decided match whose result the web has carried forward (it moved the competition on, so it refuses this link a
    * write; Task 8d). Not `viewOnly`: nobody finalized it, and the card must not say they did.
    */
   | { readonly kind: 'carriedForward' }
+  /** A cancelled match: nothing was decided, and nobody finalized anything (the web's `device.scan.viewOnly.cancelled`). */
+  | { readonly kind: 'cancelled' }
+  /** A seat with no entrant in a match that is not to be played, a bye (the web's `device.scan.viewOnly.noOpponent`). */
+  | { readonly kind: 'noOpponent' }
   | { readonly kind: 'linkInvalid' }
   | { readonly kind: 'updateNeeded'; readonly unsent: number };
 
@@ -301,22 +309,26 @@ export function hasUndoCell(card: PadStateCard | null): boolean {
 /**
  * Whether the pad keeps the phone's screen on under this card (owner ruling 9, the screen stays on while the pad shows;
  * applied by the controller on 2026-11-02): on the pad and under the two cards the scorer is still waiting on (the match
- * not open yet, a recorded result). Off under the four that need a person to act or end the scorer's part, which have
+ * not open yet, a recorded result). Off under the six that need a person to act or end the scorer's part, which have
  * nothing left to wait for: the organiser's lock (view only), a result carried forward (the organiser's to correct), a
- * dead link, and an app to update (as the full-screen `outdated` state).
+ * cancelled match and one with no opponent (nothing to score, ever), a dead link, and an app to update (as the
+ * full-screen `outdated` state).
  *
  * A recorded result holds the screen after its Undo window has closed too (the controller's ruling, 2026-11-03): the
  * organiser may finalise the result while the scorer watches the card, so the 45 s of Undo are not what the screen is
  * held for.
  */
+const SCREEN_RELEASED: ReadonlySet<PadStateCard['kind']> = new Set([
+  'viewOnly',
+  'carriedForward',
+  'cancelled',
+  'noOpponent',
+  'linkInvalid',
+  'updateNeeded',
+]);
+
 export function holdsScreen(card: PadStateCard | null): boolean {
-  const kind = card?.kind;
-  return (
-    kind !== 'viewOnly' &&
-    kind !== 'carriedForward' &&
-    kind !== 'linkInvalid' &&
-    kind !== 'updateNeeded'
-  );
+  return card === null || !SCREEN_RELEASED.has(card.kind);
 }
 
 /**

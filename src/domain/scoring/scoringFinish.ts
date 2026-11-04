@@ -1,5 +1,5 @@
 import { isDecided } from '@/domain/scoring/scoringMatchReads';
-import { deadOf, foldOfState, type MatchState } from '@/domain/scoring/scoringMatchState';
+import { deadOf, foldRead, type MatchState } from '@/domain/scoring/scoringMatchState';
 import { carriedForwardBy } from '@/domain/scoring/wire';
 
 /**
@@ -17,7 +17,9 @@ export type Finish = { readonly score: string };
  * anything: null.
  *
  * Pure: what it says of a match opened from the phone's files with no signal is what the pad draws first. Taps still
- * queued are folded as the pad folds them, so the caller (Home) asks only when nothing is unsent.
+ * queued are folded as the pad folds them, so the caller (Home) asks only when nothing is unsent. The exception is a
+ * result that stands (finalized, or carried forward): its score is the server's ledger alone (`foldRead`), whatever
+ * taps the queue still holds, and Home asks then too (controller, 2026-11-04).
  */
 export function finishOf(state: MatchState): Finish | null {
   const { bootstrap, sport } = state;
@@ -26,6 +28,6 @@ export function finishOf(state: MatchState): Finish | null {
   const closed = dead === 'finalized' || dead === 'carriedForward';
   const locked = bootstrap.status === 'finalized' || carriedForwardBy(bootstrap);
   if (!closed && !locked && !isDecided(state)) return null;
-  const fold = foldOfState(state);
+  const fold = foldRead(state);
   return { score: fold?.kind === 'folded' ? sport.resultLine(fold.display) : '' };
 }

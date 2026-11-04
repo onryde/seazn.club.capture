@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   carriedForwardBy,
+  viewOnlyWhy,
   matchContextOf,
   parseAppendAnswer,
   parseBootstrap,
@@ -216,6 +217,30 @@ describe('parseBootstrap', () => {
       expect(parsed && carriedForwardBy(parsed)).toBe(carried);
     },
   );
+
+  // Task 8d follow-up. The same four reasons, named as the phone's card tells them apart.
+  it.each([
+    ['carried_forward', 'carriedForward'],
+    ['finalized', 'finalized'],
+    ['cancelled', 'cancelled'],
+    ['no_opponent', 'noOpponent'],
+  ] as const)('names the View-only reason %s as %s', (reason, why) => {
+    const parsed = parseBootstrap(
+      envelope(bootstrapData({ screen: 'view_only', view_only_reason: reason })),
+    );
+    expect(parsed && viewOnlyWhy(parsed)).toBe(why);
+  });
+
+  it('names no reason for a pad, a missing reason or one the server made up, even a word of Object’s own', () => {
+    for (const reason of [undefined, null, 'carried', '', 'toString', '__proto__']) {
+      const parsed = parseBootstrap(
+        envelope(bootstrapData({ screen: 'view_only', view_only_reason: reason })),
+      );
+      expect(parsed && viewOnlyWhy(parsed)).toBeNull();
+    }
+    const pad = parseBootstrap(envelope(bootstrapData()));
+    expect(pad && viewOnlyWhy(pad)).toBeNull();
+  });
 
   it('does not read a pad with no reason, or a reason the server made up, as carried forward', () => {
     const pad = parseBootstrap(envelope(bootstrapData()));

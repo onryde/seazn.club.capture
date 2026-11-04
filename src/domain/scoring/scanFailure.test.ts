@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isLinkDead } from '@/domain/scoring/queue';
+import { isLinkDead, resultStands } from '@/domain/scoring/queue';
 import { scanErrorOf } from '@/domain/scoring/scanFailure';
 
 /**
@@ -54,10 +54,36 @@ describe('isLinkDead', () => {
     expect(isLinkDead(word)).toBe(true);
   });
 
-  it.each(['finalized', 'forbidden', 'gone', 'payment', 'cancelled', null] as const)(
-    'is false for %s: a new link would not make the queue sendable',
-    (word) => {
-      expect(isLinkDead(word)).toBe(false);
-    },
-  );
+  it.each([
+    'finalized',
+    'forbidden',
+    'gone',
+    'payment',
+    'cancelled',
+    'carriedForward',
+    null,
+  ] as const)('is false for %s: a new link would not make the queue sendable', (word) => {
+    expect(isLinkDead(word)).toBe(false);
+  });
+});
+
+// Task 8d follow-up. The two words that say the match has a result and the server holds it: what the phone still
+// queues is not part of that result.
+describe('resultStands', () => {
+  it.each(['finalized', 'carriedForward'] as const)('is true for %s', (word) => {
+    expect(resultStands(word)).toBe(true);
+  });
+
+  it.each([
+    'LINK_INVALID',
+    'LINK_REVOKED',
+    'LINK_EXPIRED',
+    'forbidden',
+    'gone',
+    'payment',
+    'cancelled',
+    null,
+  ] as const)('is false for %s', (word) => {
+    expect(resultStands(word)).toBe(false);
+  });
 });

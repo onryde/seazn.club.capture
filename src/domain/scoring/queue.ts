@@ -78,6 +78,16 @@ export function isLinkDead(dead: QueueDead | null): boolean {
   return dead === 'LINK_INVALID' || dead === 'LINK_REVOKED' || dead === 'LINK_EXPIRED';
 }
 
+/**
+ * The queue is dead because the match has a RESULT and the server holds it: the organiser finalized it, or the web
+ * carried its result forward. The server's ledger is the authority for what that result is (AGENTS §2), so what the
+ * phone still queues, a tap the server refused or never took, is not part of it: the pad and Home read the ledger
+ * alone. Not `cancelled` (nothing was decided) and not a dead link or writer (they say nothing of the match).
+ */
+export function resultStands(dead: QueueDead | null): boolean {
+  return dead === 'finalized' || dead === 'carriedForward';
+}
+
 export type MatchQueue = {
   readonly fixtureId: string;
   /** What Home's Continue card names the match by, as typed by the organiser. */

@@ -150,6 +150,31 @@ describe('Undo refused because the result was carried forward (403 RESULT_CARRIE
     expect(cardText()).not.toContain(en['scoring.card.resultRecorded.bodyClosed']);
   });
 
+  // Controller, 2026-11-04 (AGENTS §2: the server's ledger is the one authority). The Undo the web refused is still in
+  // the queue, but the result is the web's: the deciding rally stands, so the pad says 21, not the 20 a fold with the
+  // refused Undo gave (the device probe: pad 20, server 21). The badge and the card still tell the scorer to ask.
+  it('keeps the server’s score after the refused Undo: the deciding rally still counts, 21 and not 20', async () => {
+    const app = await startedMatch();
+    await decided(app);
+    const score = (side: 'first' | 'second') => within(half(side)).getByTestId('score').textContent;
+    expect([score('first'), score('second')]).toEqual(['21', '0']);
+    app.scoring.carryForward(true);
+    await pass(app, 5_000);
+    press(en['scoring.pad.undo']);
+    await flush(1_000);
+    expect(cardText()).toBe(carriedCard(en));
+    expect([score('first'), score('second')]).toEqual(['21', '0']);
+    const badge = screen.getByTestId('sync');
+    expect([badge.getAttribute('aria-label'), badge.textContent]).toEqual([
+      en['scoring.sync.refused.one'].replace('{count}', '1'),
+      '1',
+    ]);
+    await pass(app, 60_000);
+    await backgroundAndBack(app);
+    await flush(2_000);
+    expect([score('first'), score('second')]).toEqual(['21', '0']);
+  });
+
   // A bare 403 on a void is that one tap's (the link may not undo it), never a closed match: `sync.ts` ONE_TAP_403.
   it('another 403 on the Undo is not this: the card stays the recorded result’s', async () => {
     const app = await startedMatch();
@@ -190,6 +215,35 @@ describe('the bootstrap says the result was carried forward', () => {
     await flush(2_000);
     expect(cardText()).toBe(en['scoring.card.viewOnly.title'] + en['scoring.card.viewOnly.body']);
   });
+
+  // Controller, 2026-11-04. The card's words follow the reason the web names: only the organiser's lock says "finalised".
+  // The fake server's View-only seed names the reason, as the web's bootstrap does for a cancelled match or a bye.
+  it.each([
+    ['en', en],
+    ['es', es],
+    ['fr', fr],
+    ['nl', nl],
+  ] as const)(
+    'shows a cancelled match and a seat with no opponent each in its own words in %s, neither finalised',
+    async (lang, words) => {
+      for (const [reason, body] of [
+        ['cancelled', 'scoring.card.cancelled.body'],
+        ['no_opponent', 'scoring.card.noOpponent.body'],
+      ] as const) {
+        const app = await launchApp({
+          kvSeed: IN_MATCH,
+          deviceLanguages: [lang],
+          scoringSeed: { ...SINGLES_SEED, screen: 'viewOnly', viewOnlyReason: reason },
+        });
+        await flush(200);
+        expect(cardText()).toBe(words['scoring.card.viewOnly.title'] + words[body]);
+        expect(cardText()).not.toContain(words['scoring.card.viewOnly.body']);
+        expect(cardText()).not.toContain(words['scoring.card.carriedForward.title']);
+        expect(half('first').getAttribute('aria-disabled')).toBe('true');
+        app.unmount();
+      }
+    },
+  );
 
   it('a match still in play is the pad, whatever the competition has carried', async () => {
     const app = await startedMatch();

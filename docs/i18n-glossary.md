@@ -272,6 +272,24 @@ heading. fr avoids _reporté_, which is _postponed_ on a fixture list. The sente
 | Result carried forward                                                             | Resultado ya trasladado                                                                | Résultat déjà pris en compte                                                              | Uitslag al doorgeschoven                                                                     | `title`.                 |
 | This result has already moved the competition on. Ask the organiser to correct it. | Este resultado ya ha hecho avanzar la competición. Pide al organizador que lo corrija. | Ce résultat a déjà fait avancer la compétition. Demandez à l'organisateur de le corriger. | Deze uitslag heeft de competitie al verder gezet. Vraag de organisator om het te corrigeren. | `body`. The web's words. |
 
+### The view-only card by reason (S2-2 Task 8d follow-up, 2026-11-04)
+
+The View-only card's words follow the reason the web names for its scan screen (`scan-screen.ts` `ViewOnlyReason`), and
+only the organiser's lock says "finalised": `scoring.card.viewOnly.*` (finalized, and a reason this build does not know),
+`scoring.card.carriedForward.*` (above), and the two below. A cancelled match and a seat with no opponent keep the
+card's heading, _View only_ (es _Solo lectura_, fr _Lecture seule_, nl _Alleen bekijken_), since the web gives them a
+sentence and no heading, and the heading is the screen's state. The sentences are the web's own
+(`device.scan.viewOnly.cancelled` and `.noOpponent`, `apps/web/src/dictionaries/<lang>/ui.json`), with the phone's
+convention for a status sentence: where the web has a dash, es, fr and nl have a colon (fr with a no-break space before
+it, written `\u00a0`). _Score_ is the web's verb here: es _puntuar_, fr _noter_, nl _scoren_. Neither sentence is
+held to more than the two lines it takes at 320 dp (`padFit.test.ts`). Committed without a `_review` marker, as the
+rest of S2's copy.
+
+| English                                                     | Español                                                  | Français                                                               | Nederlands                                                            |
+| ----------------------------------------------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| This match was cancelled.                                   | Este partido se ha cancelado.                            | Ce match a été annulé.                                                 | Deze wedstrijd is geannuleerd.                                        |
+| There is no match to score here — one side has no opponent. | Aquí no hay partido que puntuar: un lado no tiene rival. | Il n'y a pas de match à noter ici\u00a0: un côté n'a pas d'adversaire. | Hier valt geen wedstrijd te scoren: één kant heeft geen tegenstander. |
+
 ### The match's own screens (S2-1 Task 11, 2026-11-02)
 
 What the scoring route shows when it is not the pad (design §4, §8): one card per state, the same in every sport.

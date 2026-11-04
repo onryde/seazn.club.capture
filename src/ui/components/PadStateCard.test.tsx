@@ -81,6 +81,87 @@ describe('PadStateCard', () => {
     });
   });
 
+  // Task 8d follow-up (controller, 2026-11-04). The view-only card's words follow its reason: only the organiser's lock
+  // says "finalised". A cancelled match and a seat with no opponent say what the web's scan screen says of them
+  // (`device.scan.viewOnly.cancelled` and `.noOpponent`, apps/web dictionaries ui.json), under the screen's own heading,
+  // with the phone's colon where the web has a dash in a status sentence (es, fr, nl). The words are written out here.
+  describe('for a cancelled match and a seat with no opponent', () => {
+    const WORDS = [
+      [
+        'en',
+        'View only',
+        'This match was cancelled.',
+        'There is no match to score here — one side has no opponent.',
+        'finalised',
+      ],
+      [
+        'es',
+        'Solo lectura',
+        'Este partido se ha cancelado.',
+        'Aquí no hay partido que puntuar: un lado no tiene rival.',
+        'cerrado',
+      ],
+      [
+        'fr',
+        'Lecture seule',
+        'Ce match a été annulé.',
+        "Il n'y a pas de match à noter ici\u00a0: un côté n'a pas d'adversaire.",
+        'validé',
+      ],
+      [
+        'nl',
+        'Alleen bekijken',
+        'Deze wedstrijd is geannuleerd.',
+        'Hier valt geen wedstrijd te scoren: één kant heeft geen tegenstander.',
+        'definitief',
+      ],
+    ] as const;
+
+    it.each(WORDS)(
+      'says a cancelled match in %s, and not what a finalized match says',
+      (lang, title, cancelled, _noOpponent, lock) => {
+        renderWithPorts(<PadStateCard card={{ kind: 'cancelled' }} />, { deviceLanguages: [lang] });
+        expect(card().textContent).toBe(title + cancelled);
+        expect(card().textContent).not.toContain(lock);
+        expect(getComputedStyle(card()).borderLeftColor).toBe(edgeOf(colour.ink3));
+        expect(card().getAttribute('aria-live')).toBe('polite');
+      },
+    );
+
+    it.each(WORDS)(
+      'says a seat with no opponent in %s, and not what a finalized match says',
+      (lang, title, _cancelled, noOpponent, lock) => {
+        renderWithPorts(<PadStateCard card={{ kind: 'noOpponent' }} />, {
+          deviceLanguages: [lang],
+        });
+        expect(card().textContent).toBe(title + noOpponent);
+        expect(card().textContent).not.toContain(lock);
+        expect(getComputedStyle(card()).borderLeftColor).toBe(edgeOf(colour.ink3));
+        expect(card().getAttribute('aria-live')).toBe('polite');
+      },
+    );
+
+    it('is two nodes, the title above the sentence, with no Undo and no countdown', () => {
+      renderWithPorts(<PadStateCard card={{ kind: 'cancelled' }} />);
+      expect([...card().children].map((child) => child.textContent)).toEqual([
+        WORDS[0][1],
+        WORDS[0][2],
+      ]);
+      expect(screen.queryByTestId('pad-card-countdown')).toBeNull();
+    });
+
+    it('keeps the finalized card to its own words in each language', () => {
+      for (const [lang, title, , , lock] of WORDS) {
+        const view = renderWithPorts(<PadStateCard card={{ kind: 'viewOnly' }} />, {
+          deviceLanguages: [lang],
+        });
+        expect(card().textContent?.startsWith(title)).toBe(true);
+        expect(card().textContent).toContain(lock);
+        view.unmount();
+      }
+    });
+  });
+
   // Owner, 2026-11-03: a decided match keeps Undo for 45 s, and the card counts the seconds down.
   const said = () => screen.getByTestId('pad-card-said');
   const countdown = () => screen.getByTestId('pad-card-countdown');
