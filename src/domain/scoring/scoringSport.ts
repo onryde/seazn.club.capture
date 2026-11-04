@@ -51,8 +51,15 @@ export type SportFold<S extends SportTypes> =
     }
   | { readonly kind: 'unfoldable'; readonly reason: Unfoldable };
 
-/** A tap as the event the server records. */
-export type SportEvent = { readonly type: string; readonly payload: unknown };
+/**
+ * A tap as the event the server records. `base` is optional and a sport's to set: the score count its payload was made
+ * at, which the runtime keeps on the queued tap (`QueuedEvent.base`) for the sport's `payloadForSend` to read.
+ */
+export type SportEvent = {
+  readonly type: string;
+  readonly payload: unknown;
+  readonly base?: number;
+};
 
 /**
  * One sport behind the runtime. Members are methods, not function-valued properties, on purpose: a method's parameters

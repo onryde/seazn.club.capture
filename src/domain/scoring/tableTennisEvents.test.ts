@@ -16,6 +16,7 @@ import {
   summary,
   timeout,
   voiding,
+  wholeGame,
 } from '../../../test/tableTennisLedger';
 
 // Plan S2-2 Task 4 (design §4, §5.1): what each table tennis tap is on the wire. The top half is `home`, the bottom
@@ -50,6 +51,7 @@ const LIVE: TableTennisDisplay = {
   expedite: 'off',
   deuce: false,
   records: { timeouts: true, sanctions: true, expedite: true },
+  scoreEvents: 4,
   lastTap: { kind: 'rally', side: 'first', won: 'none', game: 1 },
   undoable: true,
 };
@@ -71,6 +73,7 @@ const PICKED: TableTennisDisplay = {
   serverPerson: null,
   serverPersonId: null,
   serverPicked: true,
+  scoreEvents: 0,
   lastTap: { kind: 'start', server: 'second' },
 };
 
@@ -167,10 +170,12 @@ describe('tableTennisEventFor: a rally', () => {
     expect(eventFor(point('first'), PICKED)).toStrictEqual({
       type: RALLY,
       payload: { wonBy: 'ent-home', serving: 'ent-away' },
+      base: 0,
     });
     expect(eventFor(point('second'), { ...PICKED, server: 'first' })).toStrictEqual({
       type: RALLY,
       payload: { wonBy: 'ent-away', serving: 'ent-home' },
+      base: 0,
     });
   });
 
@@ -179,11 +184,13 @@ describe('tableTennisEventFor: a rally', () => {
     expect(eventFor(point('first'), PICKED, SINGLES)).toStrictEqual({
       type: RALLY,
       payload: { wonBy: 'ent-home', serving: 'ent-away', scorer: 'p-sharma' },
+      base: 0,
     });
     const confused: TableTennisDisplay = { ...PICKED, serverPersonId: 'p-chen' };
     expect(eventFor(point('first'), confused)).toStrictEqual({
       type: RALLY,
       payload: { wonBy: 'ent-home', serving: 'ent-away' },
+      base: 0,
     });
   });
 
@@ -191,12 +198,14 @@ describe('tableTennisEventFor: a rally', () => {
     expect(eventFor(point('second', 'first'), ANCHORLESS)).toStrictEqual({
       type: RALLY,
       payload: { wonBy: 'ent-away', serving: 'ent-home' },
+      base: 4,
     });
     expect(
       eventFor(point('first', 'second'), { ...ANCHORLESS, sides: SINGLES_LIVE.sides }, SINGLES),
     ).toStrictEqual({
       type: RALLY,
       payload: { wonBy: 'ent-home', serving: 'ent-away', scorer: 'p-sharma' },
+      base: 4,
     });
   });
 
@@ -204,7 +213,31 @@ describe('tableTennisEventFor: a rally', () => {
     expect(eventFor(point('first', 'first'), PICKED)).toStrictEqual({
       type: RALLY,
       payload: { wonBy: 'ent-home', serving: 'ent-home' },
+      base: 0,
     });
+  });
+
+  // Fix round 1: a `serving` stamp is valid only at the score it was made at. The tap keeps the number of standing score
+  // events (points and game scores) the scorer's view held, so its first send can tell the score has moved.
+  it('a rally that names serving carries the display’s count of score events as its base', () => {
+    expect(eventFor(point('second', 'first'), { ...ANCHORLESS, scoreEvents: 7 })?.base).toBe(7);
+    expect(eventFor(point('first'), { ...PICKED, scoreEvents: 0 })?.base).toBe(0);
+    expect(eventFor(point('first'), { ...PICKED, scoreEvents: 3 })?.base).toBe(3);
+  });
+
+  it('a rally that names no serving, and every other tap, carries no base', () => {
+    const taps: readonly TableTennisTap[] = [
+      point('second'),
+      { kind: 'returns', side: 'second' },
+      { kind: 'timeout', side: 'first' },
+      { kind: 'expedite' },
+      { kind: 'sanction', side: 'first', level: 'warning', person: null },
+      { kind: 'setScore', first: 1, second: 0 },
+      { kind: 'start', server: 'first' },
+    ];
+    for (const tap of taps) {
+      expect(eventFor(tap, { ...IN_FORCE, scoreEvents: 7 })).not.toHaveProperty('base');
+    }
   });
 
   // The web leaves `serving` off the ordinary tap: a stamp of the engine's own belief would make its drift check check
@@ -495,5 +528,111 @@ describe('tableTennisPayloadForSend', () => {
       payload: event.type === RALLY ? null : event.payload,
     }));
     expect(tableTennisPayloadForSend(HELD, garbled)).toBe(HELD.payload);
+  });
+});
+
+// Fix round 1 (the controller's ruling, 2026-11-04, from the Batch B review): the engine's fixed-turns rotation takes any
+// `serving` as an anchor and works back from the turn parity, so a stamp made at 0–0 that lands after n co-scorer points
+// that named none makes the engine name the wrong next server for n = 2 and 3, with no `unknownBecause`, for the whole
+// match. A stamp is valid only at the score it was made at: the tap keeps `base`, the number of standing score events
+// (points and game scores) in the scorer's view, and its first send drops `serving` if the ledger's count is another.
+describe('tableTennisPayloadForSend: a serving is valid at the score it was made at', () => {
+  const madeAt = (base: number) => ({
+    ...queuedOf('k-base', rally({ wonBy: 'H', serving: 'A' })),
+    base,
+  });
+  const WITHOUT = { wonBy: 'ent-home' };
+  /** `n` points the browser scorer recorded, each naming no serving, behind the match's start. */
+  const behind = (n: number) =>
+    ledgerOf([start(), ...Array.from({ length: n }, () => rally({ wonBy: 'A' }))]);
+
+  // The reviewer's probe (rv/stalepick.mjs): the pick rally was made at 0–0, home having served first.
+  it('drops the pick when 1, 2, 3 or 4 co-scorer points landed since it was made at 0–0', () => {
+    for (const landed of [1, 2, 3, 4]) {
+      expect(tableTennisPayloadForSend(madeAt(0), behind(landed))).toEqual(WITHOUT);
+    }
+  });
+
+  it('keeps the pick when nothing landed since it was made', () => {
+    const pick = madeAt(0);
+    expect(tableTennisPayloadForSend(pick, behind(0))).toBe(pick.payload);
+    expect(tableTennisPayloadForSend(pick, [])).toBe(pick.payload);
+  });
+
+  it('drops the pick when a game score landed since: a set score moves the score as a point does', () => {
+    expect(tableTennisPayloadForSend(madeAt(0), ledgerOf([start(), summary(3, 2)]))).toEqual(
+      WITHOUT,
+    );
+    expect(tableTennisPayloadForSend(madeAt(0), ledgerOf([start(), wholeGame(11, 7)]))).toEqual(
+      WITHOUT,
+    );
+  });
+
+  it('counts a point and a game score alike, and nothing else a scorer records', () => {
+    const quiet = ledgerOf([
+      start(),
+      rally({ wonBy: 'H' }),
+      timeout('A'),
+      expedite(),
+      sanction('H', 'warning'),
+    ]);
+    expect(tableTennisPayloadForSend(madeAt(1), quiet)).toEqual(madeAt(1).payload);
+    const withSummary = ledgerOf([start(), rally({ wonBy: 'H' }), summary(2, 1)]);
+    expect(tableTennisPayloadForSend(madeAt(2), withSummary)).toEqual(madeAt(2).payload);
+  });
+
+  it('does not count a co-scorer’s point that was undone', () => {
+    const undone = ledgerOf([start(), rally({ wonBy: 'A' }), voiding(2)]);
+    const pick = madeAt(0);
+    expect(tableTennisPayloadForSend(pick, undone)).toBe(pick.payload);
+    const net = ledgerOf([start(), rally({ wonBy: 'A' }), rally({ wonBy: 'H' }), voiding(3)]);
+    expect(tableTennisPayloadForSend(madeAt(1), net)).toEqual(madeAt(1).payload);
+  });
+
+  it('drops a held answer when the score moved since it was made at k, and keeps it at k', () => {
+    const answered = madeAt(3);
+    expect(tableTennisPayloadForSend(answered, behind(3))).toBe(answered.payload);
+    expect(tableTennisPayloadForSend(answered, behind(4))).toEqual(WITHOUT);
+  });
+
+  // A tap of the phone's own that the server refused is no longer in the ledger: the score the stamp was made at is gone.
+  it('drops the stamp when the ledger holds fewer score events than the tap was made at', () => {
+    expect(tableTennisPayloadForSend(madeAt(2), behind(1))).toEqual(WITHOUT);
+  });
+
+  it('keeps the rest of the tap when it drops serving', () => {
+    const attributed = {
+      ...queuedOf('k', rally({ wonBy: 'H', serving: 'A', returns: 5 })),
+      base: 0,
+    };
+    expect(tableTennisPayloadForSend(attributed, behind(2))).toEqual({
+      wonBy: 'ent-home',
+      returns: 5,
+    });
+  });
+
+  // After an interruption: a send may have reached the server, which then holds the tap under its key as first sent.
+  it('a retried tap keeps its payload, whatever the count', () => {
+    const sent = { ...madeAt(0), attempts: 1 };
+    expect(tableTennisPayloadForSend(sent, behind(3))).toBe(sent.payload);
+  });
+
+  it('still drops the stamp when a standing rally carries one, whatever the count', () => {
+    const anchored = ledgerOf([start(), rally({ wonBy: 'A', serving: 'H' })]);
+    expect(tableTennisPayloadForSend(madeAt(1), anchored)).toEqual(WITHOUT);
+  });
+
+  // A tap read back from a queue file written before `base` existed: only the rule that needs no count applies.
+  it('judges a tap with no base by the old rule alone', () => {
+    const old = queuedOf('k-old', rally({ wonBy: 'H', serving: 'A' }));
+    expect(old).not.toHaveProperty('base');
+    expect(tableTennisPayloadForSend(old, behind(3))).toBe(old.payload);
+    const anchored = ledgerOf([start(), rally({ wonBy: 'A', serving: 'H' })]);
+    expect(tableTennisPayloadForSend(old, anchored)).toEqual(WITHOUT);
+  });
+
+  it('changes no tap that names no serving, a base or not', () => {
+    const plain = { ...queuedOf('k', rally({ wonBy: 'H' })), base: 0 };
+    expect(tableTennisPayloadForSend(plain, behind(3))).toBe(plain.payload);
   });
 });

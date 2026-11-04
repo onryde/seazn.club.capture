@@ -109,6 +109,7 @@ describe('foldTableTennis: before the start', () => {
       expedite: 'off',
       deuce: false,
       records: { timeouts: true, sanctions: true, expedite: true },
+      scoreEvents: 0,
       lastTap: null,
       undoable: false,
     } satisfies TableTennisDisplay);
@@ -818,6 +819,52 @@ describe('foldTableTennis: the last tap, and Undo', () => {
     const point = { kind: 'rally', side: 'first', won: 'none', game: 1 } as const;
     expect(undoneTap(point)).toEqual(point);
     expect(undoneTap({ kind: 'expedite' })).toEqual({ kind: 'expedite' });
+  });
+});
+
+// Fix round 1: a `serving` stamp is valid only at the score it was made at, so the display counts the score events in the
+// scorer's view (the ledger and this phone's legal queued taps): each standing point and each standing game score. The
+// tap's `base` is this count (`tableTennisEventFor`), and its send compares it with the ledger's.
+describe('foldTableTennis: the count of score events', () => {
+  it('counts each standing point, the start and the first point included', () => {
+    expect(display(played('HAH')).scoreEvents).toBe(3);
+    expect(display(GAME_ONE_11_7).scoreEvents).toBe(18);
+  });
+
+  it('counts a game score alike, partial or whole, and across games', () => {
+    expect(display([start(), summary(3, 2)]).scoreEvents).toBe(1);
+    expect(display([start(), wholeGame(11, 7), rally({ wonBy: 'H' })]).scoreEvents).toBe(2);
+    expect(display(DECIDED_3_0).scoreEvents).toBe(33);
+  });
+
+  it('counts nothing a scorer records but a point and a game score', () => {
+    const quiet = [start(), timeout('H'), expedite(), sanction('A', 'warning', 'p-chen')];
+    expect(display(quiet).scoreEvents).toBe(0);
+  });
+
+  it('does not count a point that was undone, nor the undo itself', () => {
+    expect(
+      display([start(), rally({ wonBy: 'H' }), rally({ wonBy: 'A' }), voiding(3)]).scoreEvents,
+    ).toBe(1);
+  });
+
+  it('counts this phone’s legal queued taps on top of the ledger', () => {
+    const ledger = [start(), rally({ wonBy: 'H', serving: 'H' })];
+    const queued = [queuedOf('k1', rally({ wonBy: 'A' })), queuedOf('k2', summary(2, 1))];
+    expect(display(ledger, { queued }).scoreEvents).toBe(3);
+  });
+
+  it('counts a queued undo as the point it takes back', () => {
+    const ledger = [start(), rally({ wonBy: 'H', serving: 'H' })];
+    expect(display(ledger, { queued: [queuedOf('k1', voiding(2))] }).scoreEvents).toBe(0);
+  });
+
+  // A tap the match no longer takes is not in the view the scorer had.
+  it('does not count a queued tap the match refuses', () => {
+    const ledger = played('HA');
+    const refused = queuedOf('k1', rally({ wonBy: 'A', returns: 13 }));
+    expect(folded(ledger, { queued: [refused] }).legalQueued).toEqual([]);
+    expect(display(ledger, { queued: [refused] }).scoreEvents).toBe(2);
   });
 });
 

@@ -30,6 +30,7 @@ import {
 import { ledgerRows } from '@/domain/scoring/setBasedLedgerHistory';
 import { sideOfEntrant, type SetBasedNames } from '@/domain/scoring/setBasedSides';
 import { tableTennisRefusalOf } from '@/domain/scoring/tableTennisEngine';
+import { scoreEventsIn } from '@/domain/scoring/tableTennisEvents';
 import { tableTennisHistory } from '@/domain/scoring/tableTennisHistory';
 import { doneOf } from '@/domain/scoring/tableTennisLedgerHistory';
 import type {
@@ -148,6 +149,7 @@ function displayOf(folding: SetBasedFolding<TableTennisDone>): TableTennisDispla
     rules: rulesOf(match),
     phase: phaseOf(state, board.game, lastRallyGame(stream.envelopes, folded.facts, RALLY)),
     expedite: expediteOf(match, state),
+    scoreEvents: scoreEventsIn(stream.envelopes),
     deuce: R.deuceNote(state, match.rawCfg) !== null,
     records: recordsOf(match),
     lastTap: lastTapOf(stream.envelopes, folding.recorded, undoneTap),

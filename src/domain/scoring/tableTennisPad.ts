@@ -176,6 +176,13 @@ export type TableTennisDisplay = {
    */
   readonly anchorNeeded: boolean;
   readonly expedite: TableTennisExpedite;
+  /**
+   * The score events standing in the scorer's view: the ledger's points and game scores no void takes back, and this
+   * phone's legal queued taps on top. A `serving` stamp is valid only at the score it was made at, so a tap that names one
+   * is queued with this count as its `base` and its first send drops the stamp if the ledger's count is another
+   * (`tableTennisEventFor`, `tableTennisPayloadForSend`). Timeouts, cards and Expedite are not score events.
+   */
+  readonly scoreEvents: number;
   /** Level in the endgame, where a side needs two clear: from the target less one (10–10; hardbat 20–20). */
   readonly deuce: boolean;
   readonly records: TableTennisRecords;

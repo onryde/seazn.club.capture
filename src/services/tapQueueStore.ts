@@ -528,7 +528,7 @@ function encodeQueue(queue: MatchQueue): string {
     fixtureId: queue.fixtureId,
     label: queue.label,
     pending: queue.pending.map(
-      ({ key, type, payload, rulesVersion, createdAt, attempts, voidsKey }): QueuedEvent => ({
+      ({ key, type, payload, rulesVersion, createdAt, attempts, voidsKey, base }): QueuedEvent => ({
         key,
         type,
         payload,
@@ -536,6 +536,7 @@ function encodeQueue(queue: MatchQueue): string {
         createdAt,
         attempts,
         ...(voidsKey === undefined ? {} : { voidsKey }),
+        ...(base === undefined ? {} : { base }),
       }),
     ),
     ownEventIds: queue.ownEventIds,
@@ -587,7 +588,17 @@ function readTap(raw: unknown): QueuedEvent | undefined {
   const attempts = readWhole(raw.attempts, 0);
   if (key === undefined || type === undefined || createdAt === undefined) return undefined;
   if (rulesVersion === undefined || attempts === undefined) return undefined;
-  const tap: QueuedEvent = { key, type, payload: raw.payload, rulesVersion, createdAt, attempts };
+  // A score count that is not a whole number reads as absent: the tap is the scorer's, and is kept without it.
+  const base = readWhole(raw.base, 0);
+  const tap: QueuedEvent = {
+    key,
+    type,
+    payload: raw.payload,
+    rulesVersion,
+    createdAt,
+    attempts,
+    ...(base === undefined ? {} : { base }),
+  };
   if (!('voidsKey' in raw)) return tap;
   const voidsKey = readText(raw.voidsKey);
   return voidsKey === undefined ? undefined : { ...tap, voidsKey };

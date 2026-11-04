@@ -258,7 +258,13 @@ function prefixFacts(
   return target && foldOf(events, engine, envelopes.slice(0, at + 1))?.facts.get(target.id);
 }
 
-/** The start's first server: the one the first standing rally names; before any rally, this phone's pick if shown. */
+const FIRST_GAME = 1;
+
+/**
+ * The start's first server: the one the first standing rally names, if that rally is game 1's; before any rally, this
+ * phone's pick if shown. A rally names the server of its own game, so when game 1 was entered whole by Set score the first
+ * standing rally is game 2's, and its server is the other side's first server, not the match's: nobody is named.
+ */
 function startServerOf(
   events: SetBasedEvents,
   names: SetBasedNames,
@@ -270,5 +276,6 @@ function startServerOf(
     (envelope) => envelope.type === events.rally && facts.has(envelope.id),
   );
   if (first === undefined) return picked;
+  if (facts.get(first.id)?.game !== FIRST_GAME) return null;
   return isRecord(first.payload) ? sideOfEntrant(names, first.payload.serving) : null;
 }

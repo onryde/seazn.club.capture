@@ -15,6 +15,7 @@ import {
   queuedOf,
   rally,
   start,
+  summary,
   timeout,
   voiding,
 } from '../../../test/tableTennisLedger';
@@ -145,6 +146,30 @@ describe('standing', () => {
 
   it('counts a void as the event it is, not as a rally', () => {
     expect(standing(ledger, 'core.void').map((event) => event.seq)).toEqual([5]);
+  });
+
+  // Fix round 1: table tennis counts a point and a game score alike, so it asks for both types at once.
+  it('lists the events of any of several types, in ledger order', () => {
+    const scored = ledgerOf([
+      start(),
+      rally({ wonBy: 'H' }),
+      summary(3, 2),
+      timeout('A'),
+      rally({ wonBy: 'A' }),
+    ]);
+    expect(standing(scored, RALLY, 'tabletennis.game.summary').map((event) => event.seq)).toEqual([
+      2, 3, 5,
+    ]);
+  });
+
+  // The fold counts the engine's envelopes, which name a void's target in `voids` and have none when they void nothing.
+  it('reads an engine envelope as it reads a ledger event', () => {
+    const envelopes = [
+      { id: 'e1', type: RALLY },
+      { id: 'e2', type: RALLY },
+      { id: 'e3', type: 'core.void', voids: 'e1' },
+    ];
+    expect(standing(envelopes, RALLY).map((event) => event.id)).toEqual(['e2']);
   });
 });
 

@@ -7,6 +7,7 @@ import {
   rallyPayload,
   sanctionPayload,
   standing,
+  type VoidableEvent,
 } from '@/domain/scoring/setBasedEvents';
 import { seatsOf, soleOf, type Seats } from '@/domain/scoring/setBasedSides';
 import type { PadSide } from '@/domain/scoring/padView';
@@ -28,7 +29,16 @@ export type TableTennisEventContext = {
 };
 
 const RALLY = 'tabletennis.rally';
+const SUMMARY = 'tabletennis.game.summary';
 const R = tabletennisPadRules;
+
+/**
+ * The score events standing in `events`, the ledger's or the fold's stream: the points and the game scores no void takes
+ * back. The one count the display (`TableTennisDisplay.scoreEvents`) and a send's check (`tableTennisPayloadForSend`)
+ * share, so a tap's `base` and the ledger's count are always the same measure.
+ */
+export const scoreEventsIn = (events: readonly VoidableEvent[]): number =>
+  standing(events, RALLY, SUMMARY).length;
 
 /** The engine's name for each half: the top side is home. */
 const ENGINE_SIDE = { first: 'home', second: 'away' } as const;
@@ -56,7 +66,7 @@ export function tableTennisEventFor(
     }
     case 'setScore':
       return {
-        type: 'tabletennis.game.summary',
+        type: SUMMARY,
         payload: { home: tap.first, away: tap.second, partial: true },
       };
   }
@@ -67,6 +77,8 @@ export function tableTennisEventFor(
  * from Who is serving? (`tap.serving`), else this phone's Start pick while it is the server shown. The engine's own
  * belief is never stamped, as the web's pad leaves it off the ordinary tap (tabletennis.tsx `buildHalf`): the engine
  * checks a rally's `serving` against that belief, and a pad that filled it in would make the check agree with itself.
+ * A stamp is valid only at the score it was made at, so a rally that names one carries `base`, the display's count of
+ * score events (`scoreEvents`), for its first send to judge whether the score has moved.
  */
 function rallyEvent(
   seats: Seats,
@@ -75,7 +87,10 @@ function rallyEvent(
 ): SportEvent {
   const serving = tap.serving ?? (display.serverPicked ? display.server : null);
   const server = servingPerson(seats, display);
-  return { type: RALLY, payload: rallyPayload(seats, tap.side, { serving, server }) };
+  const payload = rallyPayload(seats, tap.side, { serving, server });
+  return serving === null
+    ? { type: RALLY, payload }
+    : { type: RALLY, payload, base: display.scoreEvents };
 }
 
 /**
@@ -103,18 +118,29 @@ function returnsEvent(seats: Seats, side: PadSide, display: TableTennisDisplay):
 }
 
 /**
- * The payload to send for a queued tap (the controller's ruling, 2026-11-03, after badminton's): a rally holding the
- * answer to Who is serving? (or the Start pick) goes without `serving` at its first send only if a rally that carries
- * one already stands in the server's ledger. The engine takes the first `serving` as the anchor and ignores a later one
- * (its drift check names the disagreement), so a second would only blur the first. Unlike badminton, rallies that carry
- * none do not make it stale: table tennis's rotation never recovers a lost anchor from them, so this answer is its only
- * one (design §4.1). An undone rally does not count as played. The rest is `payloadForFirstSend`'s.
+ * The payload to send for a queued tap (the controller's rulings, 2026-11-03 and, fix round 1, 2026-11-04): a rally
+ * holding the answer to Who is serving? (or the Start pick) goes without `serving` at its first send when
+ *
+ *  - the score has moved since it was made: the ledger's count of score events is not the tap's `base`. The engine's
+ *    fixed-turns rotation takes any `serving` as an anchor and works back from the turn parity, so a stamp made at 0–0
+ *    that lands after 2 or 3 co-scorer points makes it name the wrong next server for the whole match; or
+ *  - a rally that carries `serving` already stands: the engine takes the first as the anchor and ignores a later one
+ *    (its drift check names the disagreement), so a second would only blur the first.
+ *
+ * Unlike badminton, a rally that carries none does not make the stamp stale by itself (a lost anchor is never recovered
+ * from later rallies, design §4.1), only a moved score does. A tap with no `base` (a queue file from before it existed)
+ * has only the second rule. An undone point does not count as played. The rest is `payloadForFirstSend`'s.
  */
 export function tableTennisPayloadForSend(
   queued: QueuedEvent,
   ledger: readonly LedgerEvent[],
 ): unknown {
-  return payloadForFirstSend(queued, () => standing(ledger, RALLY).some(namesServing));
+  return payloadForFirstSend(
+    queued,
+    () =>
+      (queued.base !== undefined && scoreEventsIn(ledger) !== queued.base) ||
+      standing(ledger, RALLY).some(namesServing),
+  );
 }
 
 const namesServing = ({ payload }: LedgerEvent) => isRecord(payload) && 'serving' in payload;

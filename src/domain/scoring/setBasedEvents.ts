@@ -2,7 +2,7 @@ import { isRecord } from '@/domain/credentials/wire';
 import type { PadSide } from '@/domain/scoring/padView';
 import type { QueuedEvent } from '@/domain/scoring/queue';
 import { soleOf, type Seats } from '@/domain/scoring/setBasedSides';
-import type { BootstrapSide, LedgerEvent } from '@/domain/scoring/wire';
+import type { BootstrapSide } from '@/domain/scoring/wire';
 
 /**
  * What the set-based sports (badminton, table tennis) do the same way when a pad tap becomes the event the server
@@ -53,10 +53,22 @@ export function sanctionPayload(
   return member === undefined ? null : { by, level, person: member.personId };
 }
 
-/** The ledger's events of `type` that no other ledger event voids (an undone point does not count as played). */
-export function standing(ledger: readonly LedgerEvent[], type: string): readonly LedgerEvent[] {
-  const voided = new Set(ledger.flatMap((event) => (event.voids === null ? [] : [event.voids])));
-  return ledger.filter((event) => event.type === type && !voided.has(event.id));
+/** An event a void can take back: the server's ledger event, and the engine's envelope the fold makes of it, alike. */
+export type VoidableEvent = {
+  readonly id: string;
+  readonly type: string;
+  readonly voids?: string | null;
+};
+
+/** The events of any of `types` that no other event voids (an undone point does not count as played), in order. */
+export function standing<E extends VoidableEvent>(
+  events: readonly E[],
+  ...types: readonly string[]
+): readonly E[] {
+  const voided = new Set(
+    events.flatMap((event) => (typeof event.voids === 'string' ? [event.voids] : [])),
+  );
+  return events.filter((event) => types.includes(event.type) && !voided.has(event.id));
 }
 
 /**

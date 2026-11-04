@@ -330,6 +330,37 @@ describe.each(CASES)('foldSetBased ($name)', (sportCase) => {
       folded([begin()], { kit });
       expect(seen).toEqual(['second', 'second', null]);
     });
+
+    // Fix round 1: a rally names the server of ITS game. When game 1 was entered whole by Set score, the first standing
+    // rally is game 2's, and its server is the other side's first server, not the match's: name nobody.
+    it('hands the start no server when game 1 was entered by a set score: the first rally is game 2’s', () => {
+      const seen: (string | null)[] = [];
+      const kit: SetBasedKit<string> = {
+        ...kitOf(),
+        doneOf: (envelope, _facts, _names, startServer) => {
+          if (envelope.type === 'core.start') seen.push(startServer);
+          return envelope.type;
+        },
+      };
+      const gameOne: Spec = { type: SUMMARY, payload: { home: sportCase.gameTo, away: 3 } };
+      folded([begin(), gameOne, point('H', 'H')], { kit });
+      folded([begin(), gameOne, point('H', 'H')], { kit, toss: 'second' });
+      expect(seen).toEqual([null, null]);
+    });
+
+    it('still hands the start the server a game 1 rally names, once the set score for game 1 was undone', () => {
+      const seen: (string | null)[] = [];
+      const kit: SetBasedKit<string> = {
+        ...kitOf(),
+        doneOf: (envelope, _facts, _names, startServer) => {
+          if (envelope.type === 'core.start') seen.push(startServer);
+          return envelope.type;
+        },
+      };
+      const gameOne: Spec = { type: SUMMARY, payload: { home: sportCase.gameTo, away: 3 } };
+      folded([begin(), gameOne, undo(2), point('H', 'A')], { kit });
+      expect(seen).toEqual(['second']);
+    });
   });
 
   describe('the serve', () => {

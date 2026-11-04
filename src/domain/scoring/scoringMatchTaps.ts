@@ -33,7 +33,7 @@ type UndoEvent = Extract<MatchEvent, { kind: 'undo' }>;
 /** A new tap in the queue, made now under the rules the phone holds. */
 const queuedOf = (
   state: MatchState,
-  make: { type: string; payload: unknown },
+  make: { type: string; payload: unknown; base?: number },
   key: string,
   at: string,
 ): QueuedEvent => ({
@@ -43,6 +43,7 @@ const queuedOf = (
   rulesVersion: state.sync.rulesVersion,
   createdAt: at,
   attempts: 0,
+  ...(make.base === undefined ? {} : { base: make.base }),
 });
 
 const withTap = <S extends SportTypes>(state: MatchState<S>, tap: QueuedEvent): MatchState<S> => ({

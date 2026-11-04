@@ -42,6 +42,7 @@ const pre: TableTennisDisplay = {
   expedite: 'offered',
   deuce: false,
   records: { timeouts: true, sanctions: true, expedite: true },
+  scoreEvents: 0,
   lastTap: null,
   undoable: false,
 };
@@ -50,6 +51,7 @@ const pre: TableTennisDisplay = {
 const live: TableTennisDisplay = {
   ...pre,
   points: { first: 6, second: 9 },
+  scoreEvents: 15,
   phase: 'live',
   server: 'second',
   serveNumber: 2,
