@@ -1405,7 +1405,7 @@ describe('onAnswer: refused (the whole queue)', () => {
     [401, 'UNAUTHENTICATED', 'LINK_INVALID'],
     [402, 'PAYMENT_REQUIRED', 'payment'],
     [403, 'FORBIDDEN', 'forbidden'],
-    [403, 'RESULT_CARRIED_FORWARD', 'finalized'],
+    [403, 'RESULT_CARRIED_FORWARD', 'carriedForward'],
     [404, 'NOT_FOUND', 'gone'],
   ] as const)(
     '%i %s: the queue is dead (%s), the taps kept, nothing more is sent',
@@ -1453,14 +1453,20 @@ describe('onAnswer: refused (the whole queue)', () => {
     expect(answer(stateOf(), A, refusal('FORBIDDEN', 403)).state.queue.dead).toBe('forbidden');
   });
 
-  it('a void’s 403 that is the carried-forward result still closes the queue: the match is finalized', () => {
+  // Task 8d (device check, 2026-11-04): the Undo of a decided match whose result the web has carried forward is refused
+  // 403 RESULT_CARRIED_FORWARD (usecases/scoring.ts, before it looks at the void). The match is not finalized: nobody
+  // locked it. The queue dies with its own word, every tap kept, and the Undo is not sent again.
+  it('a void’s 403 that is the carried-forward result still closes the queue, with its own word, never finalized', () => {
     const sent = tap('key-v', { type: 'core.void', payload: { event_id: 'ev-2' } });
     const step = answer(
       stateOf({ queue: queueOf([sent, B]), inFlight: 'key-v' }),
       sent,
       refusal('RESULT_CARRIED_FORWARD', 403),
     );
-    expect(step.state.queue.dead).toBe('finalized');
+    expect(step.state.queue.dead).toBe('carriedForward');
+    expect(step.state.queue.pending).toEqual([sent, B]);
+    expect(step.effects).toEqual([{ kind: 'persist' }]);
+    expect(nextSend({ ...step.state, status: 'idle' }, NOW)).toBeNull();
   });
 
   it('a 422 with a 403’s word is still one tap: the status decides first', () => {
@@ -1840,7 +1846,7 @@ describe('onReadFailed', () => {
     [401, 'UNAUTHENTICATED', 'LINK_INVALID'],
     [402, 'PAYMENT_REQUIRED', 'payment'],
     [403, 'FORBIDDEN', 'forbidden'],
-    [403, 'RESULT_CARRIED_FORWARD', 'finalized'],
+    [403, 'RESULT_CARRIED_FORWARD', 'carriedForward'],
     [404, 'NOT_FOUND', 'gone'],
   ] as const)('a read refused %i %s closes the queue (%s)', (status, code, word) => {
     const step = onReadFailed(restingOf(), { kind: 'refused', status, code }, NOW);

@@ -90,9 +90,17 @@ export type FakeServerControls = {
   finalize(): void;
   /**
    * Every new tap is refused 403 with this word, as the web does for `FORBIDDEN` (an organiser-only event, a finalized
-   * fixture's undo) and `RESULT_CARRIED_FORWARD`; null lifts it. A replayed key is still answered.
+   * fixture's undo); null lifts it. A replayed key is still answered. A carried-forward result is `carryForward`'s.
    */
   forbid(code: string | null): void;
+  /**
+   * The settled result has moved the competition on (a feed filled, the stage complete: `carried-forward.ts`); false
+   * puts it back, as the web judges it live. While on, a decided, forfeited or abandoned match refuses every new tap 403
+   * `RESULT_CARRIED_FORWARD` (a replayed key is still answered) and its bootstrap is the View-only screen with the
+   * reason `carried_forward`, the status unchanged. A match still in play, and a finalized one (the lock, 422), are
+   * not touched.
+   */
+  carryForward(on: boolean): void;
   /** The next call, of any kind, is the door's 429 and waits this long; the call after it is answered as before. */
   rateLimit(retryAfterMs: number): void;
 };
@@ -105,6 +113,9 @@ export const OTHER_SCORER_LINK_ID = 'fake-other-scorer';
 const OFFLINE: Failure = { kind: 'offline' };
 const REVOKED: Failure = { kind: 'linkDead', code: 'LINK_REVOKED' };
 const NOT_FOUND: Failure = { kind: 'refused', status: 404, code: 'NOT_FOUND' };
+const CARRIED_FORWARD: Failure = { kind: 'refused', status: 403, code: 'RESULT_CARRIED_FORWARD' };
+/** `SETTLED_FIXTURE_STATUSES` (web fixture-status.ts): ended, not locked. */
+const SETTLED_OPEN: ReadonlySet<string> = new Set(['decided', 'forfeited', 'abandoned']);
 /** Events are stamped from here, a second apart, so a ledger is the same on every run. */
 const FIRST_EVENT_MS = Date.parse('2026-11-01T10:00:00.000Z');
 
@@ -125,6 +136,7 @@ type Server = {
   dropNext: boolean;
   finalized: boolean;
   forbidden: string | null;
+  carried: boolean;
   limitMs: number | null;
   /** Where an event's `recordedAt` comes from, in epoch ms; null: a second apart from `FIRST_EVENT_MS`. */
   readonly stamp: (() => number) | null;
@@ -162,6 +174,7 @@ export function createFakeScoringPort(
     dropNext: false,
     finalized: false,
     forbidden: null,
+    carried: false,
     limitMs: null,
     stamp: options.stamp ?? null,
   };
@@ -226,6 +239,9 @@ function controls(server: Server): FakeServerControls {
     forbid: (code) => {
       server.forbidden = code;
     },
+    carryForward: (on) => {
+      server.carried = on;
+    },
     rateLimit: (retryAfterMs) => {
       server.limitMs = retryAfterMs;
     },
@@ -270,8 +286,13 @@ function judged(server: Server, fixtureId: string, body: AppendBody): AppendAnsw
  */
 function locked(server: Server): Failure | null {
   if (server.forbidden !== null) return { kind: 'refused', status: 403, code: server.forbidden };
+  if (carriedForward(server)) return CARRIED_FORWARD;
   return server.finalized ? { kind: 'refused', status: 422, code: 'ALREADY_DECIDED' } : null;
 }
+
+/** `resultCarriedForward`: only a settled, open fixture can have been (a live tap never pays for the query). */
+const carriedForward = (server: Server): boolean =>
+  server.carried && SETTLED_OPEN.has(statusOf(server));
 
 /** The epoch (the key is not consumed), the rules version (before the seq), then the seq. */
 function preflight(server: Server, body: AppendBody): Failure | null {
@@ -349,13 +370,18 @@ function bootstrapOf(server: Server): Bootstrap {
     cfg: server.rawCfg,
     rulesVersion: server.rulesVersion,
     epochRequired: server.epochRequired,
-    screen: seed.screen,
-    viewOnlyReason: seed.viewOnlyReason ?? null,
+    ...screenOf(server),
     context: seed.context,
     sides: seed.sides,
     lastSeq: tip,
     status: statusOf(server),
   };
+}
+
+/** The View-only screen a carried-forward result gets (`scanScreen`), else the seed's own screen and reason. */
+function screenOf(server: Server): Pick<Bootstrap, 'screen' | 'viewOnlyReason'> {
+  if (carriedForward(server)) return { screen: 'viewOnly', viewOnlyReason: 'carried_forward' };
+  return { screen: server.seed.screen, viewOnlyReason: server.seed.viewOnlyReason ?? null };
 }
 
 /** `fixtures.status` as the web derives it from the ledger (`fixtureStatusFromFold`): the first rule that matches. */

@@ -501,16 +501,16 @@ function wentOffline(state: SyncState, sent: QueuedEvent, now: number): SyncStep
 
 /**
  * Which refusals close the whole queue, not one tap (the web's `statusCode` and `scoring.ts`): a 401 is a link the door
- * does not take, 402 an account that must pay, 403 a result carried forward (the match is finalized) or a write this
- * link may not make, 404 a match that is gone. Everything else the engine says (400, 422, 409) is about one tap, and
- * so is a bare 403 answering a void or a forfeit (`ONE_TAP_403`: the link may not make that one write, the queue's
- * other taps are still its own). `tapType` is the refused tap's, or null for a read.
+ * does not take, 402 an account that must pay, 403 a result carried forward (its own word, `carriedForward`: nobody
+ * finalized it) or a write this link may not make, 404 a match that is gone. Everything else the engine says (400, 422,
+ * 409) is about one tap, and so is a bare 403 answering a void or a forfeit (`ONE_TAP_403`: the link may not make that
+ * one write, the queue's other taps are still its own). `tapType` is the refused tap's, or null for a read.
  */
 function closes(status: number, code: string, tapType: string | null): QueueDead | null {
   if (status === 401) return 'LINK_INVALID';
   if (status === 402) return 'payment';
   if (status === 403) {
-    if (code === RESULT_CARRIED_FORWARD) return 'finalized';
+    if (code === RESULT_CARRIED_FORWARD) return 'carriedForward';
     return tapType !== null && ONE_TAP_403.has(tapType) ? null : 'forbidden';
   }
   return status === 404 ? 'gone' : null;

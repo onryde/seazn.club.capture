@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { step } from '@/domain/scoring/scoringMatch';
+import { deadOf } from '@/domain/scoring/scoringMatchState';
 import { viewOf } from '@/domain/scoring/scoringMatchView';
 import {
   PHONE_LINK,
@@ -90,6 +91,7 @@ describe('the pad and its card', () => {
     ['a forbidden write', { dead: 'forbidden' as const }, { kind: 'linkInvalid' }],
     ['a finalized match', { dead: 'finalized' as const }, { kind: 'viewOnly' }],
     ['a cancelled match', { dead: 'cancelled' as const }, { kind: 'viewOnly' }],
+    ['a result carried forward', { dead: 'carriedForward' as const }, { kind: 'carriedForward' }],
   ])('%s is a card over the pad, its halves not tapping', (_name, { dead }, card) => {
     const { view } = padOf(ready({ queue: queueOf({ dead }) }));
     expect(view.card).toEqual(card);
@@ -100,6 +102,49 @@ describe('the pad and its card', () => {
     expect(padOf(ready({ bootstrap: { ...SINGLES, screen: 'viewOnly' } })).view.card).toEqual({
       kind: 'viewOnly',
     });
+  });
+
+  // Task 8d. The web's View-only screen names why (scan-screen.ts `ViewOnlyReason`); only the carried-forward one is its
+  // own card. The others, and a screen that names no reason, are what they were: the view-only card.
+  const VIEW_ONLY = (viewOnlyReason: string | null, status = 'decided') => ({
+    ...SINGLES,
+    screen: 'viewOnly' as const,
+    viewOnlyReason,
+    status,
+  });
+
+  it('the server’s view-only screen for a carried-forward result is its own card, with no taps', () => {
+    const { view } = padOf(ready({ bootstrap: VIEW_ONLY('carried_forward') }));
+    expect(view.card).toEqual({ kind: 'carriedForward' });
+    expect(view.halves.map((half) => half.tappable)).toEqual([false, false]);
+  });
+
+  it.each([
+    ['finalized', 'finalized'],
+    ['cancelled', 'cancelled'],
+    ['no_opponent', 'scheduled'],
+    [null, 'decided'],
+  ] as const)('the server’s view-only screen for %s stays the view-only card', (reason, status) => {
+    expect(padOf(ready({ bootstrap: VIEW_ONLY(reason, status) })).view.card).toEqual({
+      kind: 'viewOnly',
+    });
+  });
+
+  // The web's table puts finalized before carried forward (scanScreen), and a queue closed as finalized stays so.
+  it('a queue closed as finalized is the view-only card, whatever the stale bootstrap says', () => {
+    const state = ready({
+      bootstrap: VIEW_ONLY('carried_forward'),
+      queue: queueOf({ dead: 'finalized' }),
+    });
+    expect(padOf(state).view.card).toEqual({ kind: 'viewOnly' });
+  });
+
+  it('a queue closed as carried forward is that card on the pad, and outranks the update card', () => {
+    const state = ready({
+      bootstrap: { ...SINGLES, epochRequired: 3 },
+      queue: queueOf({ dead: 'carriedForward' }),
+    });
+    expect(padOf(state).view.card).toEqual({ kind: 'carriedForward' });
   });
 
   it.each(['divisionNotStarted', 'waiting'] as const)(
@@ -150,6 +195,20 @@ describe('the pad and its card', () => {
   it('a decided match is the recorded result’s card, from the fold', () => {
     const decided = [start(), ...Array.from({ length: 42 }, () => rally('H'))];
     expect(padOf(ready({}, decided)).view.card).toEqual({ kind: 'resultRecorded', undoLeft: null });
+  });
+
+  // The bootstrap names the reason but does not close the queue: the web judges "carried forward" live and answers a
+  // keyed retry of a write it already holds (scoring.ts), so a tap the phone still has waiting is sent and the server
+  // says whether it stands. Only a 403 RESULT_CARRIED_FORWARD closes the queue.
+  it('a bootstrap that says carried forward changes the card, not the queue: its taps are kept to go, nothing is dead', () => {
+    const state = step(
+      opened(tapped([queuedOf('k1', rally('H'))])),
+      { kind: 'bootstrapRead', bootstrap: VIEW_ONLY('carried_forward') },
+      NOW,
+    ).state;
+    expect(deadOf(state)).toBeNull();
+    expect(state.sync.queue.pending).toHaveLength(1);
+    expect(padOf(state).view.card).toEqual({ kind: 'carriedForward' });
   });
 
   it('a closure a read brought, with nothing queued, is a card though the queue is not dead', () => {

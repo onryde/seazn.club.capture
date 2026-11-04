@@ -168,12 +168,29 @@ describe('save and load', () => {
       'gone',
       'payment',
       'cancelled',
+      'carriedForward',
     ] as const;
     for (const dead of words) {
       const { store } = storeOver();
       await store.save(queue({ dead }));
       expect((await store.load(FIXTURE))?.dead).toBe(dead);
     }
+  });
+
+  // Task 8d. The word a cold start reads is the file's own spelling, so it is written out here, not taken from the
+  // store: a file saved with `carriedForward` reads it back, and a file an earlier build wrote for the same refusal
+  // (it said `finalized`) still reads as it said, never as the new word.
+  it.each([
+    ['carriedForward', 'carriedForward'],
+    ['finalized', 'finalized'],
+  ] as const)('reads a file that says dead %s as %s', async (written, read) => {
+    const files = createMemoryQueueFiles();
+    files.files.set(nameOf(FIXTURE), text({ v: 1, ...queue(), dead: written }));
+    const { store, unreadable } = storeOver(files);
+    const back = await store.load(FIXTURE);
+    expect(back).toEqual(queue({ dead: read }));
+    expect(back?.pending).toHaveLength(2);
+    expect(unreadable()).toHaveLength(0);
   });
 
   it('round-trips an empty queue: nothing pending is still a match held', async () => {

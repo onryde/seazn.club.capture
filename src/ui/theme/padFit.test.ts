@@ -1161,6 +1161,78 @@ describe('the recorded result card at 320 and 360 in four languages (owner, 2026
 });
 
 /**
+ * The carried-forward result's card (Task 8d, device check 2026-11-04), on the pad at 320 and 360 in four languages: the
+ * title and the sentence. Like the recorded result's it stands above the halves, which give way, so it has no line limit
+ * of its own: what can fail is a word wider than its room, and a card so tall the halves lose theirs. The room is the
+ * card's text: the column less the card's padding (space.md a side) and its edge.
+ */
+describe('the carried-forward card at 320 and 360 in four languages (Task 8d)', () => {
+  const geist400 = loadFont('geist-400');
+  const titleWidth = (text: string) =>
+    barlow700.width(text.toUpperCase(), typeScale.panelTitle.fontSize) +
+    typeScale.panelTitle.letterSpacing * [...text].length;
+  const bodyWidth = (text: string) => geist400.width(text, typeScale.body.fontSize);
+  const room = (width: number) => column(width) - 2 * space.md - layout.padSideBar;
+  const said = (dictionary: Dictionary, name: 'title' | 'body') => {
+    const text = dictionary[`scoring.card.carriedForward.${name}`] ?? '';
+    expect(text).not.toBe('');
+    return text;
+  };
+  /** The lines of the title and the sentence in each language at each width, written into one table below. */
+  const linesAt = (name: 'title' | 'body', measure: (text: string) => number) =>
+    LANGUAGES.map(([, dictionary]) =>
+      WIDTHS.map((width) => linesOf(said(dictionary, name), room(width), measure)),
+    );
+
+  it.each(LANGUAGES)(
+    '%s: no word wider than its room at 320 or 360, so nothing is broken',
+    (_lang, dictionary: Dictionary) => {
+      for (const width of WIDTHS) {
+        for (const word of words(said(dictionary, 'title')))
+          expect(titleWidth(word)).toBeLessThanOrEqual(room(width));
+        for (const word of words(said(dictionary, 'body')))
+          expect(bodyWidth(word)).toBeLessThanOrEqual(room(width));
+      }
+    },
+  );
+
+  // en, es, fr, nl; each at 320 then 360. Written out from a run, as the other cards' are. The French title, the web's
+  // own "pris en compte", is the one that needs a second line, at 320 only.
+  it('is one line of title (French: two at 320) and three of sentence, in each language at 320 and 360', () => {
+    expect(linesAt('title', titleWidth)).toEqual([
+      [1, 1],
+      [1, 1],
+      [2, 1],
+      [1, 1],
+    ]);
+    expect(linesAt('body', bodyWidth)).toEqual([
+      [3, 3],
+      [3, 3],
+      [3, 3],
+      [3, 3],
+    ]);
+  });
+
+  // The tallest the card is: padding, the title (24 a line), a gap, the sentence (22 a line). The recorded result's
+  // card, with Undo open, is 160, and the halves already give that room.
+  it('is 154 tall at most, within the 160 the recorded result’s card takes with Undo open', () => {
+    expect([typeScale.panelTitle.lineHeight, typeScale.body.lineHeight]).toEqual([24, 22]);
+    const tallest = (rows: readonly (readonly number[])[]) => Math.max(...rows.flat());
+    const chrome = 2 * space.md + space.sm;
+    const tall =
+      chrome +
+      tallest(linesAt('title', titleWidth)) * typeScale.panelTitle.lineHeight +
+      tallest(linesAt('body', bodyWidth)) * typeScale.body.lineHeight;
+    expect(tall).toBe(154);
+    expect(tall).toBeLessThanOrEqual(160);
+  });
+
+  it('has 252 and 292 for its text', () => {
+    expect(WIDTHS.map(room)).toEqual([252, 292]);
+  });
+});
+
+/**
  * Table tennis (plan S2-2 Task 8; the controller's ruling 3): every string the table tennis pad draws, at 320 and 360 in
  * four languages, singles and doubles. The rooms are written out from the tokens and the screens' styles as above; the
  * copy is read from the dictionaries. A string that does not fit is shortened in the dictionary, never set smaller.

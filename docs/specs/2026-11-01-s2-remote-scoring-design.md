@@ -312,8 +312,11 @@ design surface.
       `scoring.dropped` line in the record, never silent;
   - any other refusal (4xx) is read by what it says (`closes` and `refused` in `sync.ts`). A 401 (a link
     the door does not take), a 402 (an account that must pay), a 404 (the match is gone) and a 403 (the
-    result is carried forward, the match is finalized, or this link may not make the write) close the
-    whole queue (`QueueDead`): every tap is kept, nothing more is sent, and the pad says so. The one 403
+    result is carried forward, or this link may not make the write) close the whole queue
+    (`QueueDead`): every tap is kept, nothing more is sent, and the pad says so. A carried-forward result
+    is its own word, `carriedForward`, and its own card ("Result carried forward"), not the finalized
+    match's: nobody finalized it (Task 8d, 2026-11-04; the bootstrap names it too, as the View-only
+    reason `carried_forward`, which changes the card and leaves the queue to the 403). The one 403
     that is about a single tap is a bare one answering a void or a forfeit (the link may not make that
     one write): that tap alone is refused, as below. A 422 `ALREADY_DECIDED` holds its tap while the
     bootstrap's status is read: a finalized or cancelled match closes the queue, any other status refuses

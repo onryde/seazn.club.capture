@@ -257,6 +257,21 @@ marker, as the rest of S2's copy.
 | Undo closes in {seconds} s                                                       | Deshacer se cierra en {seconds} s                                                                | Annuler se ferme dans {seconds} s                                                         | Ongedaan maken sluit over {seconds} s                                                          | `undoCountdown`. `{seconds}` counts 45 down to 1, in tabular figures.                                                                |
 | The organiser finalises it. Ask them to correct any mistake.                     | El organizador lo finaliza. Pídele que corrija cualquier error.                                  | L'organisateur le finalise. Demandez-lui de corriger toute erreur.                        | De organisator maakt het definitief. Vraag de organisator om een eventuele fout te corrigeren. | `bodyClosed`. Also the card of a result the other scorer made, which never offers Undo. Replaces "Use Undo" (`resultRecorded.body`). |
 
+### The carried-forward card (S2-2 Task 8d, 2026-11-04)
+
+A decided match whose result the web has carried forward (it moved the competition on) refuses this link every write, and
+the pad's card says so: `scoring.card.carriedForward.*`. It replaces the view-only card's "result finalised" for this
+case, since nobody finalised it. The body is the web pad's own refusal (`scorepad.refusal.carriedForward`) without its
+"Not recorded" lead, in each language's register (es tú, fr vous, nl je). The title is the web's scan-page wording
+(`device.scan.viewOnly.carried`: es "cuenta para el siguiente partido", fr "pris en compte", nl "doorgeschoven") made a
+heading. fr avoids _reporté_, which is _postponed_ on a fixture list. The sentence is held to three lines and the title to one
+(French at 320 dp: two) in `padFit.test.ts`. Committed without a `_review` marker, as the rest of S2's copy.
+
+| English                                                                            | Español                                                                                | Français                                                                                  | Nederlands                                                                                   | Note                     |
+| ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | ------------------------ |
+| Result carried forward                                                             | Resultado ya trasladado                                                                | Résultat déjà pris en compte                                                              | Uitslag al doorgeschoven                                                                     | `title`.                 |
+| This result has already moved the competition on. Ask the organiser to correct it. | Este resultado ya ha hecho avanzar la competición. Pide al organizador que lo corrija. | Ce résultat a déjà fait avancer la compétition. Demandez à l'organisateur de le corriger. | Deze uitslag heeft de competitie al verder gezet. Vraag de organisator om het te corrigeren. | `body`. The web's words. |
+
 ### The match's own screens (S2-1 Task 11, 2026-11-02)
 
 What the scoring route shows when it is not the pad (design §4, §8): one card per state, the same in every sport.

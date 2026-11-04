@@ -47,6 +47,34 @@ describe('finishOf', () => {
     expect(finishOf(cold(GAME_ONE, { queue }))).toEqual({ score: '21–15' });
   });
 
+  // Task 8d. A result the web has carried forward is a decided one, so Home says Finished for it as for a finalized
+  // match: the queue file's word (the 403 left it), or the bootstrap's View-only reason, which the boot cache keeps.
+  it('is finished when the queue file says the result was carried forward, with the games over', () => {
+    const queue = queueOf({ dead: 'carriedForward' });
+    expect(finishOf(cold(GAME_ONE, { queue }))).toEqual({ score: '21–15' });
+  });
+
+  it('is finished when the bootstrap says the result was carried forward, whatever the ledger folds to', () => {
+    const carried = {
+      ...SINGLES,
+      screen: 'viewOnly' as const,
+      viewOnlyReason: 'carried_forward',
+      status: 'decided',
+    };
+    expect(finishOf(cold(GAME_ONE, { bootstrap: carried }))).toEqual({ score: '21–15' });
+    expect(finishOf(cold([start()], { bootstrap: carried }))).toEqual({ score: '' });
+  });
+
+  it('is not finished by a view-only screen for another reason (no opponent), which decides nothing', () => {
+    const noOpponent = {
+      ...SINGLES,
+      screen: 'viewOnly' as const,
+      viewOnlyReason: 'no_opponent',
+      status: 'scheduled',
+    };
+    expect(finishOf(cold(GAME_ONE, { bootstrap: noOpponent }))).toBeNull();
+  });
+
   it('is not finished when it was cancelled: nothing was decided, and there is no score to show', () => {
     const cancelled = { ...SINGLES, status: 'cancelled' };
     expect(finishOf(cold(GAME_ONE, { bootstrap: cancelled }))).toBeNull();

@@ -74,6 +74,7 @@ const CARDS: readonly PadStateCard[] = [
   { kind: 'notStarted' },
   { kind: 'resultRecorded', undoLeft: 45 },
   { kind: 'viewOnly' },
+  { kind: 'carriedForward' },
   { kind: 'linkInvalid' },
   { kind: 'updateNeeded', unsent: 3 },
 ];
@@ -86,6 +87,7 @@ describe('cardPlacement', () => {
       ['notStarted', 'instead'],
       ['resultRecorded', 'withScore'],
       ['viewOnly', 'withScore'],
+      ['carriedForward', 'withScore'],
       ['linkInvalid', 'instead'],
       ['updateNeeded', 'forControls'],
     ]);
@@ -101,6 +103,7 @@ describe('matchKnown', () => {
       ['notStarted', true],
       ['resultRecorded', true],
       ['viewOnly', true],
+      ['carriedForward', true],
       ['linkInvalid', false],
       ['updateNeeded', true],
     ]);
@@ -118,6 +121,7 @@ describe('holdsScreen', () => {
       ['notStarted', true],
       ['resultRecorded', true],
       ['viewOnly', false],
+      ['carriedForward', false],
       ['linkInvalid', false],
       ['updateNeeded', false],
     ]);
@@ -138,6 +142,7 @@ describe('hasUndoCell', () => {
       ['notStarted', true],
       ['resultRecorded', true],
       ['viewOnly', true],
+      ['carriedForward', true],
       ['linkInvalid', true],
       ['updateNeeded', true],
     ]);
@@ -169,6 +174,14 @@ describe('withCard', () => {
 
   it('keeps the last tap but offers no Undo on a view-only pad', () => {
     expect(withCard(live, { kind: 'viewOnly' }).lastTap).toEqual({
+      text: { key: 'k.last' },
+      undo: false,
+    });
+  });
+
+  // Task 8d: the result has moved the competition on and the server refuses an Undo, so the pad offers none.
+  it('keeps the last tap but offers no Undo under a carried-forward result', () => {
+    expect(withCard(live, { kind: 'carriedForward' }).lastTap).toEqual({
       text: { key: 'k.last' },
       undo: false,
     });

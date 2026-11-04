@@ -362,6 +362,8 @@
   "scoring.card.resultRecorded.undoCountdown": "Deshacer se cierra en {seconds} s",
   "scoring.card.viewOnly.title": "Solo lectura",
   "scoring.card.viewOnly.body": "Partido terminado: resultado cerrado. Pide al organizador que lo corrija.",
+  "scoring.card.carriedForward.title": "Resultado ya trasladado",
+  "scoring.card.carriedForward.body": "Este resultado ya ha hecho avanzar la competición. Pide al organizador que lo corrija.",
   "scoring.card.linkInvalid.title": "Enlace no válido",
   "scoring.card.linkInvalid.body": "Este enlace de anotación no es válido. Pide al organizador un enlace nuevo.",
   "scoring.card.updateNeeded.body": "Seazn necesita una actualización para seguir anotando este partido.",

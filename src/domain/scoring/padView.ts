@@ -209,6 +209,11 @@ export type PadStateCard =
    */
   | { readonly kind: 'resultRecorded'; readonly undoLeft: number | null }
   | { readonly kind: 'viewOnly' }
+  /**
+   * A decided match whose result the web has carried forward (it moved the competition on, so it refuses this link a
+   * write; Task 8d). Not `viewOnly`: nobody finalized it, and the card must not say they did.
+   */
+  | { readonly kind: 'carriedForward' }
   | { readonly kind: 'linkInvalid' }
   | { readonly kind: 'updateNeeded'; readonly unsent: number };
 
@@ -296,16 +301,22 @@ export function hasUndoCell(card: PadStateCard | null): boolean {
 /**
  * Whether the pad keeps the phone's screen on under this card (owner ruling 9, the screen stays on while the pad shows;
  * applied by the controller on 2026-11-02): on the pad and under the two cards the scorer is still waiting on (the match
- * not open yet, a recorded result). Off under the three that need a person to act or end the scorer's part, which have
- * nothing left to wait for: the organiser's lock (view only), a dead link, and an app to update (as the full-screen
- * `outdated` state).
+ * not open yet, a recorded result). Off under the four that need a person to act or end the scorer's part, which have
+ * nothing left to wait for: the organiser's lock (view only), a result carried forward (the organiser's to correct), a
+ * dead link, and an app to update (as the full-screen `outdated` state).
  *
  * A recorded result holds the screen after its Undo window has closed too (the controller's ruling, 2026-11-03): the
  * organiser may finalise the result while the scorer watches the card, so the 45 s of Undo are not what the screen is
  * held for.
  */
 export function holdsScreen(card: PadStateCard | null): boolean {
-  return card?.kind !== 'viewOnly' && card?.kind !== 'linkInvalid' && card?.kind !== 'updateNeeded';
+  const kind = card?.kind;
+  return (
+    kind !== 'viewOnly' &&
+    kind !== 'carriedForward' &&
+    kind !== 'linkInvalid' &&
+    kind !== 'updateNeeded'
+  );
 }
 
 /**

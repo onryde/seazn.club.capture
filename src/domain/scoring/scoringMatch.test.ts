@@ -641,7 +641,7 @@ describe('reading the ledger', () => {
     [
       'a result carried forward',
       { kind: 'refused', status: 403, code: 'RESULT_CARRIED_FORWARD' },
-      'finalized',
+      'carriedForward',
     ],
   ] as const)('%s closes the match even with nothing queued', (_name, failure, dead) => {
     const state = ready();

@@ -57,11 +57,16 @@ export async function leaveHistory(
   fakes: Pick<FakePorts, 'tapQueue'>,
   fixtureId: string,
   specs: readonly Spec[],
-  over: { status?: string } = {},
+  over: { status?: string; viewOnlyReason?: string } = {},
 ): Promise<void> {
   await fakes.tapQueue.saveLedger(fixtureId, ledgerOf(specs));
+  // A reason is the web's View-only screen (scan-screen.ts): `carried_forward`, `no_opponent`, ...
+  const viewOnly =
+    over.viewOnlyReason === undefined
+      ? {}
+      : { screen: 'viewOnly' as const, viewOnlyReason: over.viewOnlyReason };
   await fakes.tapQueue.saveBoot(fixtureId, {
-    bootstrap: { ...SINGLES, fixtureId, status: over.status ?? 'in_play' },
+    bootstrap: { ...SINGLES, fixtureId, status: over.status ?? 'in_play', ...viewOnly },
     toss: null,
   });
 }

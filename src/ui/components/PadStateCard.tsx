@@ -17,14 +17,19 @@ const COPY: Readonly<
 > = {
   notStarted: { title: 'scoring.card.notStarted.title', body: 'scoring.card.notStarted.body' },
   viewOnly: { title: 'scoring.card.viewOnly.title', body: 'scoring.card.viewOnly.body' },
+  carriedForward: {
+    title: 'scoring.card.carriedForward.title',
+    body: 'scoring.card.carriedForward.body',
+  },
   linkInvalid: { title: 'scoring.card.linkInvalid.title', body: 'scoring.card.linkInvalid.body' },
 };
 
 /**
- * Why the pad takes no tap, on a card: not started, a recorded result, view only, a dead link. The edge says which
- * kind: caution orange when something is wrong (a dead link), lime for a recorded result, lilac when there is only
- * nothing to do yet. Said politely when it appears. What the caller gives it stands between the title and the sentence:
- * Not started's Match details (owner, 2026-11-01). A recorded result is `RecordedResult`.
+ * Why the pad takes no tap, on a card: not started, a recorded result, view only, a result carried forward, a dead link.
+ * The edge says which kind: caution orange when something is wrong (a dead link), lime for a recorded result, lilac
+ * when there is only nothing to do yet (view only and a carried-forward result are the organiser's to correct). Said
+ * politely when it appears. What the caller gives it stands between the title and the sentence: Not started's Match
+ * details (owner, 2026-11-01). A recorded result is `RecordedResult`.
  */
 export const PadStateCard = memo(function PadStateCard({
   card,
@@ -82,5 +87,6 @@ const EDGE: Readonly<Record<TitledCard['kind'], Edge>> = {
   notStarted: 'quiet',
   resultRecorded: 'lime',
   viewOnly: 'quiet',
+  carriedForward: 'quiet',
   linkInvalid: 'caution',
 };

@@ -43,6 +43,18 @@ export type Bootstrap = {
   readonly status: string;
 };
 
+/** The web's View-only reason for a result that has moved the competition on (`scan-screen.ts` `ViewOnlyReason`). */
+const VIEW_ONLY_CARRIED_FORWARD = 'carried_forward';
+
+/**
+ * Whether the bootstrap's View-only screen is there because the result was carried forward: the same live fact the
+ * web's 403 RESULT_CARRIED_FORWARD refuses writes on (`carried-forward.ts`, one predicate for the scan page and the
+ * door). Its status stays `decided` (or forfeited, abandoned): nobody finalized it, and the other reasons (finalized,
+ * cancelled, no opponent) are not this one.
+ */
+export const carriedForwardBy = (bootstrap: Pick<Bootstrap, 'viewOnlyReason'>): boolean =>
+  bootstrap.viewOnlyReason === VIEW_ONLY_CARRIED_FORWARD;
+
 export type LedgerEvent = {
   readonly id: string;
   readonly seq: number;

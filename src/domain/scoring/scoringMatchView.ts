@@ -26,6 +26,7 @@ import type {
   SportTypes,
   Unfoldable,
 } from '@/domain/scoring/scoringSport';
+import { carriedForwardBy } from '@/domain/scoring/wire';
 
 /**
  * What the screen shows of a match (plan S2-1 Task 9), read off its state: the pad, or one of the states that take its
@@ -65,7 +66,11 @@ export type MatchPad<S extends SportTypes = SportTypes> = {
 type Folded<S extends SportTypes> = Extract<SportFold<S>, { kind: 'folded' }>;
 
 /** The words that mean the match is closed to this phone because of the match, not because of the link. */
-const MATCH_CLOSED: ReadonlySet<QueueDead> = new Set<QueueDead>(['finalized', 'cancelled']);
+const MATCH_CLOSED: ReadonlySet<QueueDead> = new Set<QueueDead>([
+  'finalized',
+  'cancelled',
+  'carriedForward',
+]);
 
 /** The screens the server gives that are a card in place of the pad. */
 const NOT_STARTED_SCREENS: ReadonlySet<string> = new Set(['divisionNotStarted', 'waiting']);
@@ -163,13 +168,22 @@ function syncOf(state: MatchState): PadSync {
 
 /**
  * The card over the pad, in the order of what matters most: a link the door does not take; a match closed to this phone
- * (finalized or cancelled, or the server's own view-only screen); an app too old; a match not yet on the schedule.
- * A decided match is the sport's own card (badminton's: result recorded), which none of these replaces unless one applies.
+ * (finalized or cancelled, a result carried forward, or the server's own view-only screen); an app too old; a match not
+ * yet on the schedule. A decided match is the sport's own card (badminton's: result recorded), which none of these
+ * replaces unless one applies.
+ *
+ * A result carried forward has its own card, from the queue's word (the 403) or from the bootstrap's reason; the web's
+ * table puts finalized and cancelled first (`scanScreen`), so a queue closed on one of those keeps the view-only card.
  */
 function cardOf(state: MatchState): PadStateCard | null {
   const dead = deadOf(state);
-  const screen = state.bootstrap?.screen ?? '';
+  const { bootstrap } = state;
+  const screen = bootstrap?.screen ?? '';
   if (dead !== null && !MATCH_CLOSED.has(dead)) return { kind: 'linkInvalid' };
+  if (dead === 'carriedForward') return { kind: 'carriedForward' };
+  if (dead === null && bootstrap !== null && carriedForwardBy(bootstrap)) {
+    return { kind: 'carriedForward' };
+  }
   if (dead !== null || screen === 'viewOnly') return { kind: 'viewOnly' };
   if (isOutdated(state)) return { kind: 'updateNeeded', unsent: state.sync.queue.pending.length };
   return NOT_STARTED_SCREENS.has(screen) ? { kind: 'notStarted' } : null;

@@ -11,7 +11,7 @@ describe('closedBy', () => {
   it.each([
     [401, 'UNAUTHORIZED', 'LINK_INVALID'],
     [402, 'PAYMENT_REQUIRED', 'payment'],
-    [403, 'RESULT_CARRIED_FORWARD', 'finalized'],
+    [403, 'RESULT_CARRIED_FORWARD', 'carriedForward'],
     [403, 'FORBIDDEN', 'forbidden'],
     [404, 'NOT_FOUND', 'gone'],
   ] as const)('names a %s %s refusal %s', (status, code, word) => {

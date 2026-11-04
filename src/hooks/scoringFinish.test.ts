@@ -37,6 +37,35 @@ describe('readFinish', () => {
     await expect(readFinish(fakes.ports, FAKE_MATCH)).resolves.toEqual({ score: '21–15' });
   });
 
+  // Task 8d. The web carries a decided result forward and refuses this link any more writes: the match is over, and the
+  // phone's files say it two ways, the queue file's word (the 403 left it) and the bootstrap's View-only reason.
+  it('reads a result the web carried forward from the bootstrap the files kept, with the games it had', async () => {
+    const fakes = createFakePorts();
+    await leave(fakes, queueHolding(FAKE_MATCH, 0));
+    await leaveHistory(fakes, FAKE_MATCH, GAME_ONE_21_15, {
+      status: 'decided',
+      viewOnlyReason: 'carried_forward',
+    });
+    await expect(readFinish(fakes.ports, FAKE_MATCH)).resolves.toEqual({ score: '21–15' });
+  });
+
+  it('reads a carried-forward word the queue file kept, though the cached bootstrap is from before it', async () => {
+    const fakes = createFakePorts();
+    await leave(fakes, queueHolding(FAKE_MATCH, 0, { dead: 'carriedForward' }));
+    await leaveHistory(fakes, FAKE_MATCH, GAME_ONE_21_15);
+    await expect(readFinish(fakes.ports, FAKE_MATCH)).resolves.toEqual({ score: '21–15' });
+  });
+
+  it('is null for a view-only match whose reason is not a result: one side has no opponent', async () => {
+    const fakes = createFakePorts();
+    await leave(fakes, queueHolding(FAKE_MATCH, 0));
+    await leaveHistory(fakes, FAKE_MATCH, GAME_ONE_21_15, {
+      status: 'scheduled',
+      viewOnlyReason: 'no_opponent',
+    });
+    await expect(readFinish(fakes.ports, FAKE_MATCH)).resolves.toBeNull();
+  });
+
   it('is null for a match still in play', async () => {
     const fakes = createFakePorts();
     await leave(fakes, queueHolding(FAKE_MATCH, 0));

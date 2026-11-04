@@ -40,9 +40,10 @@ export type QueuedEvent = {
 
 /**
  * Why a queue can send no more, and nothing else discards a tap: the link is gone (the three codes the door answers 401
- * with), the match is finalized (the organiser locked it, or RESULT_CARRIED_FORWARD) or cancelled (the bootstrap's
- * status says either), this link may not write it (another 403), the match is gone (404) or the account behind it
- * needs paying (402). A tap the engine refuses is
+ * with), the match is finalized (the organiser locked it) or cancelled (the bootstrap's status says either), its result
+ * is carried forward (the web answers 403 RESULT_CARRIED_FORWARD: the result has already moved the competition on, and
+ * nobody locked anything, so it is not `finalized`), this link may not write it (another 403), the match is gone (404)
+ * or the account behind it needs paying (402). A tap the engine refuses is
  * refused alone, one tap, and the queue goes on (`sync.ts`).
  */
 export type QueueDead =
@@ -53,7 +54,8 @@ export type QueueDead =
   | 'forbidden'
   | 'gone'
   | 'payment'
-  | 'cancelled';
+  | 'cancelled'
+  | 'carriedForward';
 
 export const QUEUE_DEAD_WORDS: readonly QueueDead[] = [
   'LINK_INVALID',
@@ -64,11 +66,13 @@ export const QUEUE_DEAD_WORDS: readonly QueueDead[] = [
   'gone',
   'payment',
   'cancelled',
+  'carriedForward',
 ];
 
 /**
  * The queue is dead because its LINK is: a fresh link for the same match makes it sendable again. The other words
- * (finalized, forbidden, gone, payment, cancelled) are about the match or the writer, and no new link changes them.
+ * (finalized, forbidden, gone, payment, cancelled, carriedForward) are about the match or the writer, and no new link
+ * changes them.
  */
 export function isLinkDead(dead: QueueDead | null): boolean {
   return dead === 'LINK_INVALID' || dead === 'LINK_REVOKED' || dead === 'LINK_EXPIRED';

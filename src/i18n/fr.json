@@ -362,6 +362,8 @@
   "scoring.card.resultRecorded.undoCountdown": "Annuler se ferme dans {seconds} s",
   "scoring.card.viewOnly.title": "Lecture seule",
   "scoring.card.viewOnly.body": "Match terminé\u00a0: résultat validé. Demandez à l'organisateur de le corriger.",
+  "scoring.card.carriedForward.title": "Résultat déjà pris en compte",
+  "scoring.card.carriedForward.body": "Ce résultat a déjà fait avancer la compétition. Demandez à l'organisateur de le corriger.",
   "scoring.card.linkInvalid.title": "Lien non valide",
   "scoring.card.linkInvalid.body": "Ce lien de score n'est pas valide. Demandez un nouveau lien à l'organisateur.",
   "scoring.card.updateNeeded.body": "Seazn doit être mis à jour pour continuer à tenir le score de ce match.",

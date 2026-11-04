@@ -108,6 +108,24 @@ describe('a finished match on Home', () => {
     expect(within(card()).getByText('Finished · 21–15')).toBeTruthy();
   });
 
+  // Task 8d (device check, 2026-11-04): a decided match whose result the web carried forward is Finished on Home too,
+  // with the games it had; it is not finalized, and the card does not say so.
+  it('says Finished with the games for a result the web carried forward, and offers Close', async () => {
+    await homeWith(
+      async (fakes) => {
+        await leave(fakes, queueHolding(FAKE_MATCH, 0));
+        await leaveHistory(fakes, FAKE_MATCH, GAME_ONE_21_15, {
+          status: 'decided',
+          viewOnlyReason: 'carried_forward',
+        });
+      },
+      { kvSeed: inMatch() },
+    );
+    expect(within(card()).getByText('Finished · 21–15')).toBeTruthy();
+    expect(closeButton()).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+  });
+
   it('needs no queue file: another scorer may have taken the match to its end', async () => {
     await homeWith(
       async (fakes) => {
