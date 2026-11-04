@@ -209,11 +209,34 @@ describe('tableTennisEventFor: a rally', () => {
     });
   });
 
-  it('a held serving wins over a pick that is still showing', () => {
+  // Task 7 fix round 1 (I2): an answer is read only where the pad needs one (`anchorNeeded`). A pick standing, or a server the
+  // engine names, means the answer is stale or was never asked for, and the domain does not stamp it (the hook's own
+  // guard is a second door, not the only one).
+  it('a held serving is ignored while a pick stands: the pick is what served', () => {
     expect(eventFor(point('first', 'first'), PICKED)).toStrictEqual({
       type: RALLY,
-      payload: { wonBy: 'ent-home', serving: 'ent-home' },
+      payload: { wonBy: 'ent-home', serving: 'ent-away' },
       base: 0,
+    });
+  });
+
+  it('a held serving is ignored when the engine names the server: nothing is sent as serving', () => {
+    // Doubles: the held answer says the home side served; the engine names the away side's server.
+    const doubles = eventFor(point('second', 'first'), {
+      ...LIVE,
+      server: 'second',
+      serverPersonId: 'p-wong',
+      scoreEvents: 7,
+    });
+    expect(doubles).toStrictEqual({
+      type: RALLY,
+      payload: { wonBy: 'ent-away', server: 'p-wong' },
+    });
+    // Singles: the same, and the rally carries no base to judge a stamp it does not have.
+    const singles = eventFor(point('first', 'second'), SINGLES_LIVE, SINGLES);
+    expect(singles).toStrictEqual({
+      type: RALLY,
+      payload: { wonBy: 'ent-home', server: 'p-sharma', scorer: 'p-sharma' },
     });
   });
 

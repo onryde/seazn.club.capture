@@ -14,30 +14,37 @@ import type { PadSide } from '@/domain/scoring/padView';
  *   carry it (a second `serving` would only blur the first at the engine);
  * - it goes when the engine names a server (`anchorNeeded` turns false), whatever named it, and is not back if the
  *   anchor is lost again: an answer made at one score is not an answer for another;
+ * - it is tied to the score it was made at: `put` records the display's count of score events, and the answer goes the
+ *   moment that count differs (another scorer's point that names no `serving` leaves the pad needing an answer, but a
+ *   `serving` carried to the next rally would anchor the engine at the wrong score; a void or a refetch moves it too);
  * - `clear` is for the taps that move the score or take one back: Undo and Set score.
  *
- * `anchorNeeded` is the display's (`TableTennisDisplay.anchorNeeded`).
+ * `anchorNeeded` and `scoreEvents` are the display's (`TableTennisDisplay.anchorNeeded`, `.scoreEvents`).
  */
-export function useHeldServing(anchorNeeded: boolean) {
+export function useHeldServing(anchorNeeded: boolean, scoreEvents: number) {
   const [side, setSide] = useState<PadSide | null>(null);
   // The side a tap reads at once, which a redraw may not have caught up with.
   const latest = useRef<PadSide | null>(null);
+  // The count of score events the answer was made at.
+  const madeAt = useRef(scoreEvents);
   const clear = useCallback(() => {
     latest.current = null;
     setSide(null);
   }, []);
-  // In the commit that shows the engine naming a server, before any tap can read the answer it no longer needs.
+  // In the commit that shows the engine naming a server, or the score moved, before any tap can read an answer that no
+  // longer holds.
   useLayoutEffect(() => {
-    if (!anchorNeeded) clear();
-  }, [anchorNeeded, clear]);
+    if (!anchorNeeded || madeAt.current !== scoreEvents) clear();
+  }, [anchorNeeded, scoreEvents, clear]);
   const put = useCallback(
     (answer: PadSide): boolean => {
       if (!anchorNeeded) return false;
       latest.current = answer;
+      madeAt.current = scoreEvents;
       setSide(answer);
       return true;
     },
-    [anchorNeeded],
+    [anchorNeeded, scoreEvents],
   );
   const carry = useCallback(
     (send: (serving: PadSide | null) => PadOutcome): PadOutcome => {

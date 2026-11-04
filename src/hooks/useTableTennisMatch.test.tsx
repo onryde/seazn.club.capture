@@ -303,6 +303,26 @@ describe('More', () => {
     });
   });
 
+  // Fix round 1 (M2): another scorer started Expedite while More was open; choosing it now is a second start.
+  it('Expedite chosen after another scorer started it closes the sheet and queues nothing', async () => {
+    const fakes = await rig();
+    const view = await started(fakes);
+    act_(view, (actions) => actions.tapHalf('first'));
+    await flush();
+    await wait();
+    await press(view, 'more');
+    expect(pad(view).sheet?.kind).toBe('more');
+    fakes.scoring.addOtherScorerEvent('tabletennis.expedite.start', {});
+    fakes.realtime.ping();
+    await flush();
+    act_(view, (actions) => actions.choose('expedite'));
+    await flush();
+    await wait();
+    expect(pad(view).sheet).toBeNull();
+    const starts = (await typesOf(fakes)).filter((type) => type === 'tabletennis.expedite.start');
+    expect(starts).toHaveLength(1);
+  });
+
   it('Back closes the sheet and falls through with none open', async () => {
     const fakes = await rig();
     const view = await started(fakes);
@@ -480,6 +500,61 @@ describe('Who is serving? (ruling 51): the answer is held, and the next point ca
     expect(pad(view).view.lastTap?.text).toMatchObject({ key: 'scoring.tabletennis.held' });
   });
 
+  // Fix round 1 (I1): the answer is about the score it was made at. A point from another scorer that names no `serving`
+  // leaves the pad needing an answer, but the score has moved: carried on, the engine would anchor at the wrong score.
+  it('is dropped when another scorer scores without naming a server: the score has moved, and the tool asks again', async () => {
+    const { fakes, view } = await unanchored();
+    await answer(view, 'second');
+    expect(pad(view).view.lastTap?.text).toMatchObject({ key: 'scoring.tabletennis.held' });
+    fakes.scoring.addOtherScorerEvent('tabletennis.rally', { wonBy: HOME_ENTRANT });
+    fakes.realtime.ping();
+    await flush();
+    expect(toolIds(pad(view).view)).toContain('serving');
+    expect(pad(view).view.lastTap?.text).not.toMatchObject({ key: 'scoring.tabletennis.held' });
+    fakes.scoring.goOffline(true);
+    act_(view, (actions) => actions.tapHalf('second'));
+    await flush();
+    expect(rallies(fakes, TABLE_TENNIS_UNANCHORED_SEED)).toEqual([
+      { wonBy: AWAY_ENTRANT, serving: null },
+    ]);
+  });
+
+  it('an answer made after that move is held at the new score and rides the next point', async () => {
+    const { fakes, view } = await unanchored();
+    await answer(view, 'second');
+    fakes.scoring.addOtherScorerEvent('tabletennis.rally', { wonBy: HOME_ENTRANT });
+    fakes.realtime.ping();
+    await flush();
+    await answer(view, 'first');
+    expect(pad(view).view.lastTap?.text).toMatchObject({ vars: { side: 'A. Sharma' } });
+    fakes.scoring.goOffline(true);
+    act_(view, (actions) => actions.tapHalf('second'));
+    await flush();
+    expect(rallies(fakes, TABLE_TENNIS_UNANCHORED_SEED)).toEqual([
+      { wonBy: AWAY_ENTRANT, serving: HOME_ENTRANT },
+    ]);
+  });
+
+  // The four questions, a second call: the answer's sheet button leaves the screen with the tap, so a half under it takes
+  // the second touch of a double tap. It counts once, and the answer still waits for the point that is meant.
+  it('a half tapped on the heels of the answer counts once, and the answer still waits', async () => {
+    const { fakes, view } = await unanchored();
+    fakes.scoring.goOffline(true);
+    await press(view, 'serving');
+    act_(view, (actions) => actions.choose('second'));
+    act_(view, (actions) => actions.tapHalf('first'));
+    await flush();
+    expect(pad(view).line).toEqual({ kind: 'note', key: 'scoring.pad.countedOnce' });
+    expect(rallies(fakes, TABLE_TENNIS_UNANCHORED_SEED)).toEqual([]);
+    expect(pad(view).view.lastTap?.text).toMatchObject({ key: 'scoring.tabletennis.held' });
+    await wait();
+    act_(view, (actions) => actions.tapHalf('first'));
+    await flush();
+    expect(rallies(fakes, TABLE_TENNIS_UNANCHORED_SEED)).toEqual([
+      { wonBy: HOME_ENTRANT, serving: AWAY_ENTRANT },
+    ]);
+  });
+
   it('is cleared when another scorer anchors the match, and not back if the anchor is lost again', async () => {
     const { fakes, view } = await unanchored();
     await answer(view, 'second');
@@ -507,21 +582,30 @@ describe('Who is serving? (ruling 51): the answer is held, and the next point ca
     ]);
   });
 
-  it('is never held when the engine already names a server: pickServing is refused', async () => {
+  it('is never held when the engine already names a server: the tool is not offered, and a stale press opens nothing', async () => {
     const fakes = await rig();
     const view = await started(fakes);
     act_(view, (actions) => actions.tapHalf('first'));
     await flush();
     await wait();
-    act_(view, (actions) => actions.pickServing('second'));
+    expect(toolIds(pad(view).view)).not.toContain('serving');
+    act_(view, (actions) => actions.tool('serving'));
+    expect(pad(view).sheet).toBeNull();
+    act_(view, (actions) => actions.choose('second'));
     await flush();
-    expect(pad(view).line).toEqual({ kind: 'refusal', key: 'scoring.refusal.notNow' });
+    expect(pad(view).line).toBeNull();
     expect(pad(view).view.lastTap?.text).not.toMatchObject({ key: 'scoring.tabletennis.held' });
+  });
+
+  it('has one door: the sheet’s choice, and no action to answer without it', async () => {
+    const { view } = await unanchored();
+    expect(Object.keys(pad(view).actions)).not.toContain('pickServing');
   });
 
   it('is in memory only: the pad opened again asks again and holds nothing', async () => {
     const { fakes, view } = await unanchored();
     await answer(view, 'second');
+    expect(pad(view).view.lastTap?.text).toMatchObject({ key: 'scoring.tabletennis.held' });
     view.unmount();
     const again = mount(fakes, TABLE_TENNIS_UNANCHORED_SEED);
     await flush();

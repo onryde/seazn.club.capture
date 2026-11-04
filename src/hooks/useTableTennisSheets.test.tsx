@@ -268,6 +268,39 @@ describe('More (design §5.3): its items record at once, or open Set score in it
     expect(result.current.view?.kind).toBe('more');
   });
 
+  // Task 7 fix round 1 (M2): an item is taken only if More still lists it at the moment of the choice. The sheet was
+  // drawn from the display before, and another scorer may have moved it since (a second Expedite, a game under way).
+  it('an item the display no longer lists closes the sheet and does nothing: Expedite chosen after it is in force', async () => {
+    const { result, rerender, calls, wait } = mount(LIVE);
+    act(() => result.current.actions.tool('more'));
+    await wait();
+    rerender({ snapshot: EXPEDITED });
+    expect(result.current.view?.kind).toBe('more');
+    act(() => result.current.actions.choose('expedite'));
+    expect(calls).toEqual([]);
+    expect(result.current.view).toBeNull();
+    expect(result.current.open).toBe(false);
+  });
+
+  it('Set score chosen after a game is under way opens nothing, and closes the sheet', async () => {
+    const { result, rerender, calls, wait } = mount(UNANCHORED);
+    act(() => result.current.actions.tool('more'));
+    await wait();
+    rerender({ snapshot: LIVE });
+    act(() => result.current.actions.choose('setScore'));
+    expect(calls).toEqual([]);
+    expect(result.current.view).toBeNull();
+  });
+
+  it('a timeout still listed is taken, with the display as it moved', async () => {
+    const { result, rerender, calls, wait } = mount(LIVE);
+    act(() => result.current.actions.tool('more'));
+    await wait();
+    rerender({ snapshot: EXPEDITED });
+    act(() => result.current.actions.choose('timeout.second'));
+    expect(calls).toEqual([['timeout', 'second']]);
+  });
+
   it('Set score takes More’s place: the game, the names, the points so far and the engine’s bound', async () => {
     const { result, wait } = mount(UNANCHORED);
     act(() => result.current.actions.tool('more'));
@@ -350,18 +383,23 @@ describe('Who is serving? (design §4.2, ruling 51): two sides, one answer', () 
     expect(result.current.view).toBeNull();
   });
 
-  it('pickServing is the same answer without the sheet’s choice', async () => {
+  // Task 7 fix round 1 (M4): the sheet's choice is the one door; there is no action to answer without it.
+  it('offers no way to answer but the sheet’s choice', () => {
+    const { result } = mount(UNANCHORED);
+    expect(Object.keys(result.current.actions)).not.toContain('pickServing');
+  });
+
+  it('a choice of a side with no sheet open does nothing', async () => {
     const { result, calls, wait } = mount(UNANCHORED);
     await wait();
-    act(() => result.current.actions.pickServing('first'));
-    expect(calls).toEqual([['serving', 'first']]);
+    act(() => result.current.actions.choose('first'));
+    expect(calls).toEqual([]);
   });
 
   it('takes no answer in the bounce window of the sheet appearing', () => {
     const { result, calls } = mount(UNANCHORED);
     act(() => result.current.actions.tool('serving'));
     act(() => result.current.actions.choose('first'));
-    act(() => result.current.actions.pickServing('first'));
     expect(calls).toEqual([]);
     expect(result.current.view?.kind).toBe('serving');
   });
@@ -386,10 +424,23 @@ describe('Who is serving? (design §4.2, ruling 51): two sides, one answer', () 
 });
 
 describe('the tools that open no sheet', () => {
-  it.each(['', 'returns.first', 'returns.second', 'undo', 'card.third', 'MORE'])(
-    'opens nothing for the id %j, and closes nothing that is open',
+  const NOBODYS = ['', 'returns.first', 'returns.second', 'undo', 'card.third', 'MORE'];
+
+  it.each(NOBODYS)('opens nothing for the id %j', (id) => {
+    const { result } = mount(LIVE);
+    act(() => result.current.actions.tool(id));
+    expect(result.current.view).toBeNull();
+    expect(result.current.open).toBe(false);
+  });
+
+  // A tool replaces the sheet, as badminton's does (`usePadSheets`): the id nobody offers takes the open one away. On the
+  // phone the dim covers the tools while a sheet is up, so this is the rule for a press that lands anyway.
+  it.each(NOBODYS)(
+    'takes the sheet that is open away for the id %j: a tool replaces the sheet',
     (id) => {
       const { result } = mount(LIVE);
+      act(() => result.current.actions.tool('more'));
+      expect(result.current.view?.kind).toBe('more');
       act(() => result.current.actions.tool(id));
       expect(result.current.view).toBeNull();
       expect(result.current.open).toBe(false);

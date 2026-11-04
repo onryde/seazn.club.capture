@@ -40,14 +40,15 @@ import type { MessageKey } from '@/i18n/messages';
  * for the serve), Set score's save, the Start screen, and the reconnect question's answers.
  */
 export type TableTennisPadActions = PadActions & {
-  /** A choice on the sheet open: a Card's level or player, a More item, or the side serving. */
+  /**
+   * A choice on the sheet open: a Card's level or player, a More item, or the side serving. The answer to Who is serving?
+   * (ruling 51) is given only here, on its sheet: held for the next point, which carries it.
+   */
   readonly choose: (id: string) => void;
   readonly saveScore: (first: string, second: string) => void;
   /** The Start screen (ruling 49): who serves first, picked; then Start match, a tap. */
   readonly pickServer: (side: PadSide) => void;
   readonly start: () => void;
-  /** The answer to Who is serving? (ruling 51): held for the next point, which carries it. What `choose` does on its sheet. */
-  readonly pickServing: (side: PadSide) => void;
   /** The reconnect question (owner ruling 43): Send my taps, Discard them (which asks again) and its confirm's Discard. */
   readonly sendTaps: () => void;
   readonly askDiscard: () => void;
@@ -77,7 +78,7 @@ function useTableTennisPad(
   const sender = useSender<TableTennisTypes>(ports, runner);
   const [flash, setFlash] = useState<HalfFlash>(null);
   const [cardNote, setCardNote] = useState<MessageKey | null>(null);
-  const held = useHeldServing(pad?.display.anchorNeeded ?? false);
+  const held = useHeldServing(pad?.display.anchorNeeded ?? false, pad?.display.scoreEvents ?? 0);
   const settle = useSettle(sender.say);
   const { carry, clear } = held;
   const driver = useMemo<PadTapDriver>(

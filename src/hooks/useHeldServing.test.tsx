@@ -7,10 +7,11 @@ import { useHeldServing } from '@/hooks/useHeldServing';
 // The answer to Who is serving? while it waits for the next point (plan S2-2 Task 7, the controller's rulings on the held
 // answer): it rides exactly one point, only while the pad needs it, and is gone when the engine names a server.
 
-function mount(anchorNeeded: boolean) {
-  return renderHook(({ needed }: { needed: boolean }) => useHeldServing(needed), {
-    initialProps: { needed: anchorNeeded },
-  });
+function mount(anchorNeeded: boolean, scoreEvents = 0) {
+  return renderHook(
+    ({ needed, events }: { needed: boolean; events: number }) => useHeldServing(needed, events),
+    { initialProps: { needed: anchorNeeded, events: scoreEvents } },
+  );
 }
 
 /** A point that sees what it was handed, and is taken (or refused). */
@@ -127,9 +128,9 @@ describe('the engine naming a server', () => {
   it('drops the answer, and it is not back when the anchor is lost again', () => {
     const { result, rerender } = mount(true);
     act(() => void result.current.put('second'));
-    rerender({ needed: false });
+    rerender({ needed: false, events: 0 });
     expect(result.current.side).toBeNull();
-    rerender({ needed: true });
+    rerender({ needed: true, events: 0 });
     expect(result.current.side).toBeNull();
     const sent = point();
     act(() => void result.current.carry(sent.send));
@@ -140,7 +141,7 @@ describe('the engine naming a server', () => {
     const { result, rerender } = mount(true);
     act(() => void result.current.put('first'));
     const send = vi.fn(() => TAKEN);
-    rerender({ needed: false });
+    rerender({ needed: false, events: 0 });
     act(() => void result.current.carry(send));
     expect(send).toHaveBeenCalledWith(null);
   });
@@ -148,7 +149,69 @@ describe('the engine naming a server', () => {
   it('does not clear a fresh answer when nothing changed: a redraw alone keeps it', () => {
     const { result, rerender } = mount(true);
     act(() => void result.current.put('first'));
-    rerender({ needed: true });
+    rerender({ needed: true, events: 0 });
+    expect(result.current.side).toBe('first');
+  });
+});
+
+// Task 7 fix round 1 (I1): the answer is about the score it was made at. A rally that names no `serving` from another scorer
+// leaves the pad needing an answer, but the score has moved: carried to the next rally it would be taken as an anchor at
+// the wrong score.
+describe('the score moving', () => {
+  it('drops the answer when the count of score events changes, and it is not back when the count returns', () => {
+    const { result, rerender } = mount(true, 3);
+    act(() => void result.current.put('second'));
+    rerender({ needed: true, events: 4 });
+    expect(result.current.side).toBeNull();
+    rerender({ needed: true, events: 3 });
+    expect(result.current.side).toBeNull();
+    const sent = point();
+    act(() => void result.current.carry(sent.send));
+    expect(sent.seen).toEqual([null]);
+  });
+
+  it('is felt by a point tapped in the commit that shows the new count', () => {
+    const { result, rerender } = mount(true, 3);
+    act(() => void result.current.put('first'));
+    rerender({ needed: true, events: 4 });
+    const send = vi.fn(() => TAKEN);
+    act(() => void result.current.carry(send));
+    expect(send).toHaveBeenCalledWith(null);
+  });
+
+  it('records the count at the moment of the answer, not at mount', () => {
+    const { result, rerender } = mount(true, 1);
+    rerender({ needed: true, events: 2 });
+    act(() => void result.current.put('first'));
+    rerender({ needed: true, events: 2 });
+    expect(result.current.side).toBe('first');
+    rerender({ needed: true, events: 3 });
+    expect(result.current.side).toBeNull();
+  });
+
+  it('an answer made after the count moved is dropped when it falls back to where the pad opened (a void)', () => {
+    const { result, rerender } = mount(true, 1);
+    rerender({ needed: true, events: 2 });
+    act(() => void result.current.put('first'));
+    rerender({ needed: true, events: 1 });
+    expect(result.current.side).toBeNull();
+  });
+
+  it('a new answer after the move is held at the new count', () => {
+    const { result, rerender } = mount(true, 3);
+    act(() => void result.current.put('first'));
+    rerender({ needed: true, events: 4 });
+    act(() => void result.current.put('second'));
+    expect(result.current.side).toBe('second');
+    const sent = point();
+    act(() => void result.current.carry(sent.send));
+    expect(sent.seen).toEqual(['second']);
+  });
+
+  it('a redraw with the same count keeps the answer', () => {
+    const { result, rerender } = mount(true, 3);
+    act(() => void result.current.put('first'));
+    rerender({ needed: true, events: 3 });
     expect(result.current.side).toBe('first');
   });
 });

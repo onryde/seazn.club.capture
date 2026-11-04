@@ -73,6 +73,15 @@ export function tableTennisEventFor(
 }
 
 /**
+ * The answer to Who is serving? that a rally may carry: only where the pad needs one (`anchorNeeded`). With a pick
+ * standing, or a server the engine names, the answer is stale or was never asked for (plan S2-2 Task 7, fix round 1): it
+ * is dropped here, whatever the caller held, so the engine is never handed a `serving` it would take as an anchor at a
+ * score it was not made at.
+ */
+const answered = (serving: PadSide | null, display: TableTennisDisplay): PadSide | null =>
+  display.anchorNeeded ? serving : null;
+
+/**
  * A rally won by `tap.side`. It names `serving`, the side that served, only when the scorer said so: the answer held
  * from Who is serving? (`tap.serving`), else this phone's Start pick while it is the server shown. The engine's own
  * belief is never stamped, as the web's pad leaves it off the ordinary tap (tabletennis.tsx `buildHalf`): the engine
@@ -85,7 +94,7 @@ function rallyEvent(
   tap: Extract<TableTennisTap, { readonly kind: 'rally' }>,
   display: TableTennisDisplay,
 ): SportEvent {
-  const serving = tap.serving ?? (display.serverPicked ? display.server : null);
+  const serving = answered(tap.serving, display) ?? (display.serverPicked ? display.server : null);
   const server = servingPerson(seats, display);
   const payload = rallyPayload(seats, tap.side, { serving, server });
   return serving === null

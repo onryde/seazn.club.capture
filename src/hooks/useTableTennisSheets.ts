@@ -140,12 +140,6 @@ export function useTableTennisSheets(
   // it to do: no sheet stays open behind it.
   if (sheet !== null && staleSheet(sheet, snapshot)) setSheet(null);
   const saveScore = useSaveScore(pad, record, refuseScore, cancel, justShown);
-  const pickServing = useCallback(
-    (side: PadSide) => {
-      if (!justShown()) serve(side);
-    },
-    [justShown, serve],
-  );
   // Discard asks again before it deletes: quiet in the bounce window of the question appearing (`justShown`).
   const askDiscard = useCallback(() => {
     if (!justShown()) setSheet(DISCARD);
@@ -156,13 +150,12 @@ export function useTableTennisSheets(
       details,
       history,
       choose,
-      pickServing,
       cancel,
       dismiss,
       saveScore,
       askDiscard,
     }),
-    [tool, details, history, choose, pickServing, cancel, dismiss, saveScore, askDiscard],
+    [tool, details, history, choose, cancel, dismiss, saveScore, askDiscard],
   );
   return { open: sheet !== null, cancel, actions, view, justShown };
 }
@@ -193,7 +186,7 @@ function useChoose(
       if (sheet === null || display === null || justShown()) return;
       if (sheet.kind === 'card')
         return chooseOnCard(sheet.step, id, display, setSheet, record, pad);
-      if (sheet.kind === 'more') return chooseOnMore(id, setSheet, record, pad);
+      if (sheet.kind === 'more') return chooseOnMore(id, display, setSheet, record, pad);
       const side = sideOf(id);
       if (sheet.kind === 'serving' && side !== null) serve(side);
     },
@@ -215,15 +208,21 @@ function chooseOnCard(
   record('sanction', () => pad.card(move.card));
 }
 
-/** The More sheet's item: a timeout or Expedite recorded at once, Set score opening its own sheet in More's place. */
+/**
+ * The More sheet's item: a timeout or Expedite recorded at once, Set score opening its own sheet in More's place. An item
+ * is taken only while More still lists it for the display as it is now (fix round 1): the sheet was drawn before, and
+ * another scorer may have started Expedite or a game since. Then the sheet closes and nothing is made.
+ */
 function chooseOnMore(
   id: string,
+  display: TableTennisDisplay,
   setSheet: SetSheet,
   record: Recording,
   pad: TableTennisSheetDriver,
 ): void {
   const item = MORE_ITEMS.find((each) => each === id);
   if (item === undefined) return;
+  if (!tableTennisMoreItems(display).includes(item)) return setSheet(null);
   if (item === 'setScore') return setSheet({ kind: 'setScore' });
   setSheet(null);
   if (item === 'expedite') record('expedite', () => pad.expedite());
