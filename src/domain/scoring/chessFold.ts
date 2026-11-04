@@ -1,4 +1,10 @@
-import { EngineError, foldMatch, type EventEnvelope } from '@seazn/engine/core';
+import {
+  deciderPending,
+  EngineError,
+  foldMatchWithStoppage,
+  type EventEnvelope,
+  type FoldedOutcomeFacts,
+} from '@seazn/engine/core';
 import { boardgame, type BoardgameState } from '@seazn/engine/sports/boardgame';
 import { chessRefusalOf, readChessCfg, type ChessEngineMatch } from '@/domain/scoring/chessEngine';
 import { chessHistory } from '@/domain/scoring/chessHistory';
@@ -17,28 +23,26 @@ import {
 import type { MatchContext } from '@/domain/scoring/matchContext';
 import type { SportFold, SportFoldInput, Unfoldable } from '@/domain/scoring/scoringSport';
 import { lastTapOf } from '@/domain/scoring/setBasedBoard';
+import { lineupOf, queuedEventId } from '@/domain/scoring/setBasedEngine';
+import { streamOf, voidedIn, voidsAgain, type SetBasedStream } from '@/domain/scoring/setBasedFold';
+import { ledgerRows, type Recorded } from '@/domain/scoring/setBasedLedgerHistory';
 import {
-  envelopeOf,
-  lineupOf,
-  queuedEnvelopeOf,
-  queuedEventId,
-} from '@/domain/scoring/setBasedEngine';
-import { voidedIn, voidsAgain } from '@/domain/scoring/setBasedFold';
-import {
-  ledgerRows,
-  type LedgerEntry,
-  type Recorded,
-} from '@/domain/scoring/setBasedLedgerHistory';
-import { namesOf, seatsOf, sideNames, type SetBasedNames } from '@/domain/scoring/setBasedSides';
+  namesOf,
+  seatsOf,
+  sideNames,
+  type Seats,
+  type SetBasedNames,
+  type SetBasedSide,
+} from '@/domain/scoring/setBasedSides';
 import { undoTarget, type UndoTarget } from '@/domain/scoring/undoTarget';
-import { matchContextOf, type Bootstrap } from '@/domain/scoring/wire';
+import { matchContextOf, type Bootstrap, type BootstrapSide } from '@/domain/scoring/wire';
 
 /**
  * A chess game on the pad (spec §4 to §6; plan S2-3 Task 1): the server's ledger with this phone's queued taps on top,
  * folded through the engine's boardgame module, as the pad draws it. The engine decides every fact (the phase, the colours,
  * the outcome); this only reads them off. Chess is not set-based, so the set-based fold (`foldSetBased`, whose module type
- * and facts are the set-based family's) is not used; what is generic of it is: the envelopes, the void reading and
- * History's rows. The stream the server would hold is built here, as `foldSetBased` builds its own, in the same few lines.
+ * and facts are the set-based family's) is not used; what is generic of it is: the stream the server would hold
+ * (`streamOf`), the void reading and History's rows.
  *
  * Each queued tap is judged as the server would judge its append on the ledger and the legal taps before it. An illegal
  * tap is skipped, never shown, and the ones behind it are judged without it (`legalQueued`, which sync's `revalidate` takes).
@@ -46,20 +50,14 @@ import { matchContextOf, type Bootstrap } from '@/domain/scoring/wire';
 
 type ChessMatch = {
   readonly engine: ChessEngineMatch;
+  readonly seats: Seats;
   readonly names: SetBasedNames;
   readonly context: MatchContext;
 };
 
-/** The ledger and the legal queued taps, as one stream in the order the server would hold them. */
-type ChessStream = {
-  readonly envelopes: readonly EventEnvelope[];
-  readonly entries: readonly LedgerEntry[];
-  /** The queued taps' keys the game still takes, in order. */
-  readonly legal: readonly string[];
-};
-
 type ChessFolded = {
-  readonly state: BoardgameState;
+  /** What the engine's `outcomeOf` reads of a fold: the state and the organiser's settlement, if one stands. */
+  readonly facts: FoldedOutcomeFacts<BoardgameState>;
   /** The `boardgame.result` that stands, by envelope id, or null. */
   readonly resultId: string | null;
 };
@@ -67,7 +65,9 @@ type ChessFolded = {
 export function foldChess(input: SportFoldInput): SportFold<ChessTypes> {
   const match = matchOf(input.bootstrap);
   if (typeof match === 'string') return { kind: 'unfoldable', reason: match };
-  const stream = streamOf(match, input);
+  const stream = streamOf(match.engine.fixtureId, input, (before, next) =>
+    mayAppend(match.engine, before, next),
+  );
   const folded = foldOf(match.engine, stream.envelopes);
   if (folded === null) return { kind: 'unfoldable', reason: 'ledger' };
   const recorded = recordedOf(match.names, stream.envelopes);
@@ -94,33 +94,11 @@ function matchOf(bootstrap: Bootstrap): ChessMatch | Unfoldable {
   const lineups = { home: lineupOf(seats.first), away: lineupOf(seats.second) };
   return {
     engine: { fixtureId: bootstrap.fixtureId, cfg, lineups },
+    seats,
     names: namesOf(seats),
     context,
   };
 }
-
-function streamOf(match: ChessMatch, input: SportFoldInput): ChessStream {
-  const { fixtureId } = match.engine;
-  const own = new Set(input.ownEventIds);
-  const envelopes = input.ledger.map((event) => envelopeOf(fixtureId, event));
-  const entries: LedgerEntry[] = envelopes.map((envelope) => ({
-    envelope,
-    own: own.has(envelope.id),
-    sending: false,
-  }));
-  const legal: string[] = [];
-  for (const tap of input.queued) {
-    const envelope = queuedEnvelopeOf(fixtureId, tap, nextSeq(envelopes));
-    if (!mayAppend(match.engine, envelopes, envelope)) continue;
-    envelopes.push(envelope);
-    entries.push({ envelope, own: true, sending: true });
-    legal.push(tap.key);
-  }
-  return { envelopes, entries, legal };
-}
-
-const nextSeq = (envelopes: readonly EventEnvelope[]) =>
-  (envelopes[envelopes.length - 1]?.seq ?? 0) + 1;
 
 /** Whether the server would append `next` after `before`: the web's refusal of an undo twice, then the engine's. */
 const mayAppend = (
@@ -137,12 +115,18 @@ const mayAppend = (
 function foldOf(engine: ChessEngineMatch, envelopes: readonly EventEnvelope[]): ChessFolded | null {
   let resultId: string | null = null;
   try {
-    const state = foldMatch(boardgame, engine.cfg, engine.lineups, envelopes, {
-      onFolded: (_state, event) => {
-        if (event.type === 'boardgame.result') resultId = event.id;
+    const { state, settlement, expunged, levelWithdrawal } = foldMatchWithStoppage(
+      boardgame,
+      engine.cfg,
+      engine.lineups,
+      envelopes,
+      {
+        onFolded: (_state, event) => {
+          if (event.type === 'boardgame.result') resultId = event.id;
+        },
       },
-    });
-    return { state, resultId };
+    );
+    return { facts: { state, settlement, expunged, levelWithdrawal }, resultId };
   } catch (error) {
     if (EngineError.is(error)) return null;
     throw error;
@@ -169,32 +153,52 @@ function recordedOf(
 function displayOf(
   match: ChessMatch,
   input: SportFoldInput,
-  stream: ChessStream,
+  stream: SetBasedStream,
   folded: ChessFolded,
   recorded: ReadonlyMap<string, Recorded<ChessDone>>,
 ): ChessDisplay {
-  const { state, resultId } = folded;
+  const { resultId } = folded;
+  const { state } = folded.facts;
   // The switch says whether the pad offers colours; a pairing recorded before it was turned off is a fact the pad ignores.
   const colour = match.engine.cfg.colors ? state.colorOfHome : null;
   const own = stream.entries.some((entry) => entry.envelope.id === resultId && entry.own);
   return {
-    phase: phaseOf(state),
+    phase: phaseOf(folded.facts),
     colorOfHome: colour,
     names: {
-      first: sideNames(match.names.sides.first),
-      second: sideNames(match.names.sides.second),
+      first: seatName(match.seats.first, match.names.sides.first),
+      second: seatName(match.seats.second, match.names.sides.second),
     },
-    result: resultOf(state, colour, own),
+    result: resultOf(folded.facts, colour, own),
     context: match.context,
     lastTap: lastTapOf(stream.envelopes, recorded, (did) => tapOfDone(did, colour)),
     undoable: undoesResult(undoTargetOf(input, stream), resultId),
   };
 }
 
-/** The engine's phase as the pad's: an abandoned game takes no more events, as a locked one. */
-function phaseOf(state: BoardgameState): ChessPhase {
-  return state.phase === 'pre' ? 'notStarted' : state.phase === 'abandoned' ? 'final' : state.phase;
+/**
+ * The name a seat shows: an individual by the player as the organiser typed it, a team or a pair by its entrant's name
+ * (spec §10), which is no member's.
+ */
+function seatName(seat: BootstrapSide, players: SetBasedSide): string {
+  return seat.kind === 'individual' ? sideNames(players) : seat.name;
 }
+
+/**
+ * The engine's phase as the pad's: an abandoned game takes no more events, as a locked one. A drawn bracket game the
+ * organiser has settled is done: the module's state stays in `tiebreak` after a settle (the settlement lives beside it), so
+ * only the engine's own `deciderPending` says the tie-break is still owed.
+ */
+function phaseOf(facts: FoldedOutcomeFacts<BoardgameState>): ChessPhase {
+  const { state } = facts;
+  if (state.phase === 'pre') return 'notStarted';
+  if (state.phase === 'abandoned') return 'final';
+  return settledTiebreak(facts) ? 'done' : state.phase;
+}
+
+/** The game went level to a tie-break and the organiser has since settled it, so none is owed. */
+const settledTiebreak = (facts: FoldedOutcomeFacts<BoardgameState>): boolean =>
+  facts.state.phase === 'tiebreak' && !deciderPending(boardgame, facts);
 
 /**
  * The result that stands, from the engine's outcome. A win or an award names its winner's entrant, read by the seat it
@@ -202,17 +206,21 @@ function phaseOf(state: BoardgameState): ChessPhase {
  * advances and never rewrites the game), so it is a draw. A double walkover, or no outcome, is none.
  */
 function resultOf(
-  state: BoardgameState,
+  facts: FoldedOutcomeFacts<BoardgameState>,
   colour: ChessColour | null,
   own: boolean,
 ): ChessResult | null {
-  const outcome = outcomeOf(state, colour);
-  return outcome === null ? null : { outcome, method: methodOf(state.method), own };
+  const outcome = outcomeOf(facts, colour);
+  return outcome === null ? null : { outcome, method: methodOf(facts.state.method), own };
 }
 
-function outcomeOf(state: BoardgameState, colour: ChessColour | null): ChessOutcome | null {
+function outcomeOf(
+  facts: FoldedOutcomeFacts<BoardgameState>,
+  colour: ChessColour | null,
+): ChessOutcome | null {
+  const { state } = facts;
   const decided = state.outcome;
-  if (decided === null) return null;
+  if (decided === null) return settledTiebreak(facts) ? 'draw' : null;
   if (decided.kind === 'draw' || state.tiebreak !== undefined) return 'draw';
   if (decided.kind !== 'win' && decided.kind !== 'award') return null;
   return outcomeOfSeat(decided.winner === state.entrants.home ? 'first' : 'second', colour);
@@ -223,7 +231,7 @@ function outcomeOf(state: BoardgameState, colour: ChessColour | null): ChessOutc
 // ---------------------------------------------------------------------------------------------------------------
 
 /** What the one Undo would take back: this phone's latest standing event, the legal queued taps included. */
-function undoTargetOf(input: SportFoldInput, stream: ChessStream): UndoTarget {
+function undoTargetOf(input: SportFoldInput, stream: SetBasedStream): UndoTarget {
   const legalTaps = input.queued.filter((tap) => stream.legal.includes(tap.key));
   return undoTarget(input.ledger, legalTaps, input.ownEventIds, () => true);
 }

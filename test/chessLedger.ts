@@ -25,6 +25,25 @@ function seat(entrantId: string, personId: string, fullName: string): BootstrapS
   };
 }
 
+/**
+ * A team or pair entrant: its name is the organiser's (a club, a pairing), which is not any member's, and `members` are the
+ * people who play for it.
+ */
+export function groupSide(
+  entrantId: string,
+  name: string,
+  kind: 'team' | 'pair',
+  members: readonly { readonly personId: string; readonly fullName: string }[],
+): BootstrapSide {
+  return {
+    entrantId,
+    name,
+    kind,
+    members,
+    lineup: members.map(({ personId }) => ({ personId, pairOrder: null })),
+  };
+}
+
 export const GAME: Bootstrap = {
   fixtureId: 'fx-chess-1',
   linkId: PHONE_LINK,
@@ -96,6 +115,15 @@ export const forfeit = (by: Seat): Spec => ({
 export const tiebreak = (winner: Seat): Spec => ({
   type: 'boardgame.tiebreak',
   payload: { rung: 'rapid', winner: entrant(winner) },
+});
+
+/** The organiser's settle of a level game (a drawn bracket game's lots, say): the seat that advances. */
+export const settle = (
+  winner: Seat,
+  method: 'lot' | 'higher_seed' | 'organiser' = 'lot',
+): Spec => ({
+  type: 'core.settle',
+  payload: { winner: entrant(winner), method },
 });
 
 /** The organiser locks the result. */

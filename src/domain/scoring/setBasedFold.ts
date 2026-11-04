@@ -110,7 +110,9 @@ export function foldSetBased<D>(
 ): SetBasedFolding<D> | Unfoldable {
   const match = matchOf(kit, input.bootstrap);
   if (typeof match === 'string') return match;
-  const stream = streamOf(kit, match, input);
+  const stream = streamOf(match.engine.fixtureId, input, (before, next) =>
+    kit.mayAppend(match, before, next),
+  );
   const folded = foldOf(kit, match.engine, stream.envelopes);
   if (folded === null) return 'ledger';
   const legalTaps = input.queued.filter((tap) => stream.legal.includes(tap.key));
@@ -142,13 +144,18 @@ function matchOf<D>(kit: SetBasedKit<D>, bootstrap: Bootstrap): SetBasedMatch | 
   };
 }
 
-function streamOf<D>(
-  kit: SetBasedKit<D>,
-  match: SetBasedMatch,
+/**
+ * The stream the server would hold: the ledger, then each queued tap `mayAppend` says the server would take after the
+ * events before it (an illegal tap is skipped and the ones behind it are judged without it). Any one-against-one sport's,
+ * set-based or not: the sport gives its own judge of one append.
+ */
+export function streamOf(
+  fixtureId: string,
   input: SportFoldInput,
+  mayAppend: (before: readonly EventEnvelope[], next: EventEnvelope) => boolean,
 ): SetBasedStream {
   const own = new Set(input.ownEventIds);
-  const envelopes = input.ledger.map((event) => envelopeOf(match.engine.fixtureId, event));
+  const envelopes = input.ledger.map((event) => envelopeOf(fixtureId, event));
   const entries: LedgerEntry[] = envelopes.map((envelope) => ({
     envelope,
     own: own.has(envelope.id),
@@ -156,8 +163,8 @@ function streamOf<D>(
   }));
   const legal: string[] = [];
   for (const tap of input.queued) {
-    const envelope = queuedEnvelopeOf(match.engine.fixtureId, tap, nextSeq(envelopes));
-    if (!kit.mayAppend(match, envelopes, envelope)) continue;
+    const envelope = queuedEnvelopeOf(fixtureId, tap, nextSeq(envelopes));
+    if (!mayAppend(envelopes, envelope)) continue;
     envelopes.push(envelope);
     entries.push({ envelope, own: true, sending: true });
     legal.push(tap.key);

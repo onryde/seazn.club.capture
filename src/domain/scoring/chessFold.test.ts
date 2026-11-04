@@ -10,10 +10,12 @@ import {
   eventId,
   finalize,
   forfeit,
+  groupSide,
   ledgerOf,
   pairing,
   queuedOf,
   result,
+  settle,
   start,
   tiebreak,
   voiding,
@@ -181,6 +183,41 @@ describe('foldChess: a drawn game in a bracket stage', () => {
   });
 });
 
+describe('foldChess: a game the organiser settles', () => {
+  it('a settled drawn bracket game is done, not waiting: the organiser has recorded the decision', () => {
+    const display = displayOf([start(), result(null, 'agreement'), settle('H')], {
+      bootstrap: BRACKET,
+    });
+    expect(display.phase).toBe('done');
+  });
+
+  it('is still a draw on the board: the settle decides who advances and never rewrites the game', () => {
+    const display = displayOf([start(), result(null, 'agreement'), settle('A')], {
+      bootstrap: BRACKET,
+      own: [1, 2],
+    });
+    expect(display.result).toEqual({ outcome: 'draw', method: 'agreement', own: true });
+  });
+
+  it('waits for the organiser again once a void takes the settle back', () => {
+    const display = displayOf([start(), result(null), settle('H'), voiding(3)], {
+      bootstrap: BRACKET,
+    });
+    expect(display.phase).toBe('tiebreak');
+    expect(display.result).toBeNull();
+  });
+
+  it('leaves a settled level game that was no tie-break a done draw', () => {
+    const display = displayOf([start(), result(null), settle('H')]);
+    expect(display.phase).toBe('done');
+    expect(display.result).toEqual({ outcome: 'draw', method: null, own: false });
+  });
+
+  it('is not waiting for a tie-break the settle came before: a bracket game still level keeps waiting', () => {
+    expect(displayOf([start(), result(null)], { bootstrap: BRACKET }).phase).toBe('tiebreak');
+  });
+});
+
 describe('foldChess: what the organiser decides', () => {
   it('a walkover is done, and the player who turned up is the result’s winner, with no method', () => {
     const display = displayOf([forfeit('A')]);
@@ -265,6 +302,52 @@ describe('foldChess: Undo is offered only for a result this phone can still take
   it('is on for a result still queued', () => {
     const queued = [queuedOf('tap-1', result('H'))];
     expect(displayOf([start()], { own: [1], queued }).undoable).toBe(true);
+  });
+});
+
+describe('foldChess: the names of a team or a pair', () => {
+  const MEMBERS = [
+    { personId: 'p-sharma', fullName: 'A. Sharma' },
+    { personId: 'p-rao', fullName: 'B. Rao' },
+  ] as const;
+  const withSides = (home: Bootstrap['sides']['home']): Bootstrap => ({
+    ...GAME,
+    sides: { ...GAME.sides, home },
+  });
+
+  it('shows a team by the entrant’s name, not by its members', () => {
+    const bootstrap = withSides(groupSide('ent-home', 'Bishops Chess Club', 'team', MEMBERS));
+    expect(displayOf([], { bootstrap }).names).toEqual({
+      first: 'Bishops Chess Club',
+      second: 'L. Chen',
+    });
+  });
+
+  it('shows a pair by the entrant’s name too', () => {
+    const bootstrap = withSides(groupSide('ent-home', 'Sharma / Rao', 'pair', MEMBERS));
+    expect(displayOf([], { bootstrap }).names.first).toBe('Sharma / Rao');
+  });
+
+  it('shows an individual by the player’s name as the organiser typed it, whatever the entrant is called', () => {
+    const named = {
+      ...GAME.sides.home,
+      entrantId: 'ent-home',
+      name: 'Seed 1',
+      kind: 'individual',
+      members: [{ personId: 'p-sharma', fullName: 'A. Sharma' }],
+      lineup: [{ personId: 'p-sharma', pairOrder: null }],
+    };
+    expect(displayOf([], { bootstrap: withSides(named) }).names.first).toBe('A. Sharma');
+  });
+
+  it('says a team’s result by the entrant’s name too', () => {
+    const bootstrap = withSides(groupSide('ent-home', 'Bishops Chess Club', 'team', MEMBERS));
+    const folded = foldOf([start(), result('H', 'resign')], { bootstrap });
+    if (folded.kind !== 'folded') throw new Error('did not fold');
+    expect(folded.history[0]?.rows[0]?.said).toEqual({
+      key: 'scoring.chess.last.wonBy',
+      vars: { name: 'Bishops Chess Club', how: { key: 'scoring.chess.method.resign' } },
+    });
   });
 });
 
