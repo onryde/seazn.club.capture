@@ -107,7 +107,7 @@ const NO_COLOUR_LITERALS = [
  * to case, so one spelling holds both; `SPORT_OWN_FILES` below needs both). Tests are free to.
  */
 const SPORT_MODULES = {
-  group: ['**/*badminton*', '**/*tableTennis*', '**/usePadSheets'],
+  group: ['**/*badminton*', '**/*tableTennis*', '**/*chess*', '**/usePadSheets'],
   message:
     'A generic scoring file names no sport (owner, 2026-11-02: pad per sport): ask the match’s sport (`ScoringSport`).',
 };
@@ -149,6 +149,8 @@ const SPORT_OWN_FILES = [
   '**/*Badminton*',
   '**/*tableTennis*',
   '**/*TableTennis*',
+  '**/*chess*',
+  '**/*Chess*',
   'src/hooks/usePadSheets.ts',
   'src/domain/scoring/sports.ts',
 ];
