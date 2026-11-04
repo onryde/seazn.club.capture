@@ -89,7 +89,7 @@ export function cardSheet(step: CardStep, sides: Sides): CardSheet {
   switch (step.step) {
     case 'level':
       return levelSheet<CardKey>(
-        { key: 'scoring.tabletennis.tool.card' },
+        { key: 'scoring.tabletennis.sheet.card' },
         sides[step.side],
         LEVELS.map((level) => ({ id: level, label: cardWord(level), tone: 'standard' })),
       );

@@ -118,7 +118,7 @@ async function started(seed: FakeMatchSeed = TABLE_TENNIS_SINGLES_SEED) {
 describe('Card', () => {
   it('a singles side’s card is one step: the level, recorded for the side’s one player, and the sheet leaves with it', async () => {
     const app = await started();
-    await press(app, `${en['scoring.tabletennis.tool.card']}, L. Chen`);
+    await press(app, `${en['scoring.tabletennis.sheet.card']}, L. Chen`);
     // The level step names the side as the body and offers the two cards the engine lists, nothing else.
     const sheet = screen.getByTestId('step-sheet');
     expect(buttons(sheet)).toEqual([
@@ -143,7 +143,7 @@ describe('Card', () => {
 
   it('a pair is asked which player, after the level, and the card names that player', async () => {
     const app = await started(TABLE_TENNIS_DOUBLES_SEED);
-    await press(app, `${en['scoring.tabletennis.tool.card']}, A. Sharma / R. Iyer`);
+    await press(app, `${en['scoring.tabletennis.sheet.card']}, A. Sharma / R. Iyer`);
     await press(app, en['scoring.tabletennis.card.penalty']);
     const sheet = screen.getByTestId('step-sheet');
     expect(within(sheet).getByText(en['scoring.sanction.who'])).toBeTruthy();
@@ -163,7 +163,7 @@ describe('Card', () => {
 
   it('Cancel closes the sheet and records nothing', async () => {
     const app = await started();
-    await press(app, `${en['scoring.tabletennis.tool.card']}, A. Sharma`);
+    await press(app, `${en['scoring.tabletennis.sheet.card']}, A. Sharma`);
     await press(app, en['scoring.sheet.cancel']);
     expect(screen.queryByTestId('step-sheet')).toBeNull();
     expect((await events(app, TABLE_TENNIS_SINGLES_SEED)).map((event) => event.type)).toEqual([
@@ -176,8 +176,8 @@ describe('Who is serving? (ruling 51)', () => {
   it('is in the row of a match another scorer started without a server, and Card, Card, Who is serving?, More are four cells', async () => {
     await open(TABLE_TENNIS_UNANCHORED_SEED);
     expect(tools()).toEqual([
-      `${en['scoring.tabletennis.tool.card']}, A. Sharma`,
-      `${en['scoring.tabletennis.tool.card']}, L. Chen`,
+      `${en['scoring.tabletennis.sheet.card']}, A. Sharma`,
+      `${en['scoring.tabletennis.sheet.card']}, L. Chen`,
       en['scoring.tabletennis.tool.serving'],
       en['scoring.tabletennis.tool.more'],
     ]);
@@ -192,7 +192,8 @@ describe('Who is serving? (ruling 51)', () => {
     app.setNow(TEST_NOW);
     await press(app, en['scoring.tabletennis.tool.serving']);
     const sheet = screen.getByTestId('step-sheet');
-    expect(within(sheet).getByText(en['scoring.tabletennis.tool.serving'])).toBeTruthy();
+    // Ruling 51's words in full, where the cell says them shortened.
+    expect(within(sheet).getByText(en['scoring.tabletennis.sheet.serving'])).toBeTruthy();
     expect(buttons(sheet)).toEqual(['A. Sharma', 'L. Chen', en['scoring.sheet.cancel']]);
     await press(app, 'L. Chen');
     expect(screen.queryByTestId('step-sheet')).toBeNull();
@@ -334,8 +335,10 @@ describe('the sheets cover the pad', () => {
   it('History lists the match’s taps in table tennis’s words, a card and a timeout among them', async () => {
     const app = await started();
     await rally(app, 'first');
-    await press(app, `${en['scoring.tabletennis.tool.card']}, A. Sharma`);
+    await press(app, `${en['scoring.tabletennis.sheet.card']}, A. Sharma`);
     await press(app, en['scoring.tabletennis.card.warning']);
+    await press(app, en['scoring.tabletennis.tool.more']);
+    await press(app, fill(en['scoring.tabletennis.more.timeout'], { side: 'L. Chen' }));
     await press(app, en['scoring.history.title']);
     const said = within(screen.getByTestId('history'))
       .getAllByTestId('history-said')
@@ -347,6 +350,7 @@ describe('the sheets cover the pad', () => {
       }),
     );
     expect(said).toContain(fill(en['scoring.tabletennis.last.rally'], { side: 'A. Sharma' }));
+    expect(said).toContain(fill(en['scoring.tabletennis.last.timeout'], { side: 'L. Chen' }));
     // Close is the way back, and the pad is whole again.
     await press(app, en['panel.close']);
     expect(screen.queryByTestId('history')).toBeNull();

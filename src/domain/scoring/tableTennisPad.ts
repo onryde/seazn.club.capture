@@ -227,6 +227,8 @@ export type TableTennisPadKey =
   | 'scoring.tabletennis.tool.returns'
   | 'scoring.tabletennis.tool.serving'
   | 'scoring.tabletennis.tool.more'
+  | 'scoring.tabletennis.sheet.card'
+  | 'scoring.tabletennis.sheet.serving'
   | 'scoring.tabletennis.more.timeout'
   | 'scoring.tabletennis.more.expedite'
   | 'scoring.tabletennis.more.setScore'
@@ -378,6 +380,12 @@ const RETURNS = 'returns.';
 const SERVING = 'serving';
 const MORE = 'more';
 
+/**
+ * The Who is serving? sheet's title: ruling 51's words in full, where its cell says them shortened to fit four to a row
+ * (Task 8 fix round 1; the controller's sheet-title ruling). The sheet itself is the hook's (`useTableTennisSheets`).
+ */
+export const tableTennisServingTitle: Text = { key: 'scoring.tabletennis.sheet.serving' };
+
 function tools(display: TableTennisDisplay): readonly Tool[] {
   if (!started(display)) return [];
   return [...cards(display), ...serveTool(display), ...moreTool(display)];
@@ -389,6 +397,8 @@ function cards(display: TableTennisDisplay): readonly Tool[] {
   const card = (side: PadSide): Tool => ({
     id: `card.${side}`,
     label: { key: 'scoring.tabletennis.tool.card' },
+    // The cell is shortened to fit four to a row (es "Tarj."); a screen reader hears the sheet's full word.
+    said: { key: 'scoring.tabletennis.sheet.card' },
     detail: sideNames(display.sides[side]),
     kind: 'destructive',
     enabled: true,

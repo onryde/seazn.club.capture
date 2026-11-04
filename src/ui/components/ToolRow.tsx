@@ -48,10 +48,12 @@ const ToolButton = memo(function ToolButton({
   const words = usePadText();
   const press = useCallback(() => onTool(tool.id), [onTool, tool.id]);
   const label = words(tool.label);
+  // A label shortened to fit is not what a screen reader says: `said` is the full word.
+  const spoken = tool.said === undefined ? label : words(tool.said);
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={tool.detail === null ? label : `${label}, ${tool.detail}`}
+      accessibilityLabel={tool.detail === null ? spoken : `${spoken}, ${tool.detail}`}
       disabled={!tool.enabled}
       onPress={press}
       style={tool.enabled ? CELL[tool.kind] : OFF}

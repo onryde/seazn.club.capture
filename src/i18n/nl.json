@@ -498,6 +498,8 @@
   "scoring.tabletennis.tool.returns": "{returns} slagen",
   "scoring.tabletennis.tool.serving": "Wiens serve?",
   "scoring.tabletennis.tool.more": "Meer",
+  "scoring.tabletennis.sheet.card": "Kaart",
+  "scoring.tabletennis.sheet.serving": "Wie serveert?",
   "scoring.tabletennis.more.timeout": "Time-out · {side}",
   "scoring.tabletennis.more.expedite": "Versnelling",
   "scoring.tabletennis.more.setScore": "Stand invoeren",

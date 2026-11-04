@@ -1277,6 +1277,133 @@ describe('table tennis: a half at 320 and 360 in four languages', () => {
     expect(over(320)).toEqual(['5,6', '5,6', '5,6', '5,6']);
     expect(over(360)).toEqual(['6', '6', '6', '6']);
   });
+
+  // The hint line is what is left of the row after the boxes and, on the serving half of a pair, the server's line and a
+  // dot (`HalfFoot`): cut with an ellipsis, then hidden. (`scoring.tabletennis.hint`, "Tap to award the point", is the
+  // half's accessibility hint: it is not drawn, so there is nothing of it to fit.)
+  const hintLine = (dictionary: Dictionary, side: string) =>
+    fill(said(dictionary, `${TT}.hintLine`), { side });
+  /** The room the hint has beside `n` finished games' boxes and, if `server`, the widest server line with its dot. */
+  const hintRoom = (width: number, dictionary: Dictionary, n: number, server: boolean) => {
+    const line = Math.max(
+      ...['A. Sharma', 'R. Iyer', 'L. Chen', 'M. Wong'].map((p) => serverLine(dictionary, p)),
+    );
+    const kept = (n === 0 ? 0 : boxes(n)) + (server ? (n === 0 ? 0 : dot) + line : 0);
+    return inner(width) - kept - (kept === 0 ? 0 : space.sm);
+  };
+  /** The sample sides whose hint is cut at all (wider than its room). */
+  const cutSides = (n: number, server: boolean) =>
+    WIDTHS.flatMap((width) =>
+      LANGUAGES.flatMap(([lang, dictionary]) =>
+        NAMES.filter(
+          (side) => unitWidth(hintLine(dictionary, side)) > hintRoom(width, dictionary, n, server),
+        ).map((side) => `${width} ${lang} ${side}`),
+      ),
+    );
+  const firstWord = (dictionary: Dictionary) =>
+    hintLine(dictionary, 'A. Sharma').split(' ')[0] ?? '';
+
+  // Game 1 of a match played by singles, or the half not serving in a pair: the row is the hint alone, whole.
+  it('holds every hint line whole in game 1 with no server line, at 320 and 360, in four languages', () => {
+    expect(cutSides(0, false)).toEqual([]);
+  });
+
+  // The hint gives way (ellipsis, then hidden) before the boxes and the server's line, which are never cut: its first
+  // word and the ellipsis stay beside up to four boxes (best of 5 in play) with no server line.
+  it.each(LANGUAGES)(
+    '%s: with no server line the hint keeps its first word and an ellipsis beside up to four boxes, at 320 and 360',
+    (_lang, dictionary: Dictionary) => {
+      expect(firstWord(dictionary)).not.toBe('');
+      for (const width of WIDTHS)
+        for (const n of [1, 2, 3, 4])
+          expect(unitWidth(`${firstWord(dictionary)}…`), `${width} ${n}`).toBeLessThanOrEqual(
+            hintRoom(width, dictionary, n, false),
+          );
+    },
+  );
+
+  it.each(LANGUAGES)(
+    '%s: beside a pair’s server line the hint keeps its first word and an ellipsis up to two boxes, at 320 and 360',
+    (_lang, dictionary: Dictionary) => {
+      for (const width of WIDTHS)
+        for (const n of [0, 1, 2])
+          expect(unitWidth(`${firstWord(dictionary)}…`), `${width} ${n}`).toBeLessThanOrEqual(
+            hintRoom(width, dictionary, n, true),
+          );
+    },
+  );
+
+  // Three finished games, the dot and the pair's server line fill the half at 320 (220 of 252 dp): the hint is hidden in
+  // all four languages, and a shorter hint cannot bring it back. At 360 its first word and an ellipsis are kept.
+  it('hides the hint beside a pair’s server line from three finished games at 320, in every language, not at 360', () => {
+    const keeps = (width: number, n: number) =>
+      LANGUAGES.map(
+        ([, dictionary]) =>
+          unitWidth(`${firstWord(dictionary)}…`) <= hintRoom(width, dictionary, n, true),
+      );
+    expect(keeps(320, 3)).toEqual([false, false, false, false]);
+    expect(keeps(360, 3)).toEqual([true, true, true, true]);
+  });
+});
+
+describe('table tennis: History’s rows at 320 and 360 in four languages', () => {
+  // As badminton's (above): a row's sentence takes the column less the right column, in at most `padHistoryLines`. The
+  // sentences are the last-tap line's own (`last.*`), with doubles names, a card, game 3, a score and 13 shots.
+  const room = (width: number) => column(width) - space.sm - layout.padHistorySide;
+  const sentences = (dictionary: Dictionary) => {
+    const vars = {
+      side: 'A. Sharma / R. Iyer',
+      person: 'A. Sharma',
+      level: said(dictionary, `${TT}.card.penalty`),
+      game: '3',
+      score: '31–29',
+      returns: '13',
+      point: fill(said(dictionary, `${TT}.last.rally`), { side: 'A. Sharma / R. Iyer' }),
+    };
+    return Object.keys(dictionary)
+      .filter((key) => key.startsWith(`${TT}.last.`))
+      .map((key) => ({ key: key.slice(TT.length + 1), text: fill(said(dictionary, key), vars) }));
+  };
+  const cut = (width: number) =>
+    LANGUAGES.flatMap(([lang, dictionary]) =>
+      sentences(dictionary)
+        .filter(({ text }) => linesOf(text, room(width), controlWidth) > layout.padHistoryLines)
+        .map(({ key }) => `${lang} ${key}`),
+    );
+
+  it('reads ten sentences in each language (anti-vacuity)', () => {
+    for (const [, dictionary] of LANGUAGES) expect(sentences(dictionary)).toHaveLength(10);
+  });
+
+  it('holds every sentence in the two lines of a row at 360 and at 320, in four languages', () => {
+    expect(layout.padHistoryLines).toBe(2);
+    expect(cut(360)).toEqual([]);
+    expect(cut(320)).toEqual([]);
+  });
+
+  it('needs the second line at 320 in every language (anti-vacuity)', () => {
+    const two = LANGUAGES.filter(([, dictionary]) =>
+      sentences(dictionary).some(({ text }) => linesOf(text, room(320), controlWidth) === 2),
+    ).map(([lang]) => lang);
+    expect(two).toEqual(['en', 'es', 'fr', 'nl']);
+  });
+});
+
+describe('table tennis: a History heading at 320 and 360 in four languages', () => {
+  const headingWidth = (text: string) =>
+    barlow700.width(text.toUpperCase(), typeScale.state.fontSize) +
+    typeScale.state.letterSpacing * [...text].length;
+
+  it.each(LANGUAGES)(
+    '%s: "Game 7" on one line in the cover’s column, no word broken',
+    (_lang, dictionary: Dictionary) => {
+      const heading = fill(said(dictionary, `${TT}.gameHeading`), { game: '7' });
+      for (const width of WIDTHS) {
+        expect(linesOf(heading, column(width), headingWidth)).toBe(1);
+        expect(wordsFit(heading, column(width), headingWidth)).toBe(true);
+      }
+    },
+  );
 });
 
 describe('table tennis: the strip at 320 and 360 in four languages', () => {
@@ -1420,17 +1547,18 @@ describe('table tennis: the sheets at 320 and 360 in four languages', () => {
   it.each(LANGUAGES)(
     '%s: each sheet’s title, no word wider than the sheet',
     (_lang, dictionary: Dictionary) => {
+      // The titles are the full words (the controller's sheet-title ruling), not the cells' shortened ones.
       for (const key of [
-        `${TT}.tool.card`,
+        `${TT}.sheet.card`,
         `${TT}.tool.more`,
-        `${TT}.tool.serving`,
+        `${TT}.sheet.serving`,
         'scoring.sanction.who',
       ])
-        for (const width of WIDTHS)
-          expect(
-            wordsFit(said(dictionary, key), sheet(width), titleWidth),
-            `${key} @${width}`,
-          ).toBe(true);
+        for (const width of WIDTHS) {
+          const title = said(dictionary, key);
+          expect(wordsFit(title, sheet(width), titleWidth), `${key} @${width}`).toBe(true);
+          expect(linesOf(title, sheet(width), titleWidth), `${key} @${width}`).toBe(1);
+        }
     },
   );
 

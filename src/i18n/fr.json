@@ -498,6 +498,8 @@
   "scoring.tabletennis.tool.returns": "{returns} coups",
   "scoring.tabletennis.tool.serving": "Qui sert\u00a0?",
   "scoring.tabletennis.tool.more": "Plus",
+  "scoring.tabletennis.sheet.card": "Carton",
+  "scoring.tabletennis.sheet.serving": "Qui sert\u00a0?",
   "scoring.tabletennis.more.timeout": "Temps mort · {side}",
   "scoring.tabletennis.more.expedite": "Système accéléré",
   "scoring.tabletennis.more.setScore": "Saisir le score",

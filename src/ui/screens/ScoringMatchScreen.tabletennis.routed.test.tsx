@@ -72,6 +72,11 @@ const tools = () =>
   within(screen.getByTestId('tool-row'))
     .getAllByRole('button')
     .map((button) => button.getAttribute('aria-label'));
+/** What the cells draw, left to right: the label and the side beneath it. */
+const drawn = () =>
+  within(screen.getByTestId('tool-row'))
+    .getAllByRole('button')
+    .map((button) => button.textContent);
 const sheet = () => screen.queryByTestId('step-sheet');
 const fill = (text: string, vars: Record<string, string | number>) =>
   Object.entries(vars).reduce(
@@ -160,8 +165,8 @@ describe('a table tennis match from the scan to the pad', () => {
   it('draws the Card for each side and More, and neither 13 returns nor Who is serving?', async () => {
     await started();
     expect(tools()).toEqual([
-      `${en['scoring.tabletennis.tool.card']}, A. Sharma`,
-      `${en['scoring.tabletennis.tool.card']}, L. Chen`,
+      `${en['scoring.tabletennis.sheet.card']}, A. Sharma`,
+      `${en['scoring.tabletennis.sheet.card']}, L. Chen`,
       en['scoring.tabletennis.tool.more'],
     ]);
   });
@@ -238,8 +243,8 @@ describe('More', () => {
     expect(plate('second')).toBeNull();
     const returns = `${fill(en['scoring.tabletennis.tool.returns'], { returns: 13 })}, L. Chen`;
     expect(tools()).toEqual([
-      `${en['scoring.tabletennis.tool.card']}, A. Sharma`,
-      `${en['scoring.tabletennis.tool.card']}, L. Chen`,
+      `${en['scoring.tabletennis.sheet.card']}, A. Sharma`,
+      `${en['scoring.tabletennis.sheet.card']}, L. Chen`,
       returns,
       en['scoring.tabletennis.tool.more'],
     ]);
@@ -308,18 +313,30 @@ describe('in four languages', () => {
       expect(screen.getByTestId('strip-game').textContent).toBe(
         fill(words['scoring.tabletennis.gameOf'], { game: 1, bestOf: 5 }),
       );
+      // A screen reader hears the Card's full word; the cell draws the shortened one (es "Tarj.", fr "Carte"), and the
+      // sheet it opens is titled with the full word.
       expect(tools()).toEqual([
-        `${words['scoring.tabletennis.tool.card']}, A. Sharma`,
-        `${words['scoring.tabletennis.tool.card']}, L. Chen`,
+        `${words['scoring.tabletennis.sheet.card']}, A. Sharma`,
+        `${words['scoring.tabletennis.sheet.card']}, L. Chen`,
         words['scoring.tabletennis.tool.more'],
       ]);
+      expect(drawn().slice(0, 2)).toEqual([
+        `${words['scoring.tabletennis.tool.card']}A. Sharma`,
+        `${words['scoring.tabletennis.tool.card']}L. Chen`,
+      ]);
+      await tool(app, `${words['scoring.tabletennis.sheet.card']}, A. Sharma`);
+      expect(
+        within(screen.getByTestId('step-sheet')).getByText(words['scoring.tabletennis.sheet.card']),
+      ).toBeTruthy();
+      await choose(app, words['scoring.sheet.cancel']);
+      expect(sheet()).toBeNull();
       await rally(app, 'first');
       await tool(app, words['scoring.tabletennis.tool.more']);
       await choose(app, words['scoring.tabletennis.more.expedite']);
       expect(stripNote()).toBe(words['scoring.tabletennis.note.expedite']);
       expect(tools()).toEqual([
-        `${words['scoring.tabletennis.tool.card']}, A. Sharma`,
-        `${words['scoring.tabletennis.tool.card']}, L. Chen`,
+        `${words['scoring.tabletennis.sheet.card']}, A. Sharma`,
+        `${words['scoring.tabletennis.sheet.card']}, L. Chen`,
         `${fill(words['scoring.tabletennis.tool.returns'], { returns: 13 })}, L. Chen`,
         words['scoring.tabletennis.tool.more'],
       ]);
@@ -368,5 +385,19 @@ describe('the four questions', () => {
     await flush(500);
     expect(score('first')).toBe('1');
     expect(screen.queryByTestId('pad-content')).toBeTruthy();
+    // Nothing closes a sheet on a return to the foreground: More is still open over the pad, with its choices, and the
+    // scorer's way out (Cancel) still closes it.
+    expect(
+      within(screen.getByTestId('step-sheet')).getByText(en['scoring.tabletennis.tool.more']),
+    ).toBeTruthy();
+    expect(screen.getByTestId('pad-content').getAttribute('aria-hidden')).toBe('true');
+    expect(
+      screen.getByRole('button', {
+        name: fill(en['scoring.tabletennis.more.timeout'], { side: 'A. Sharma' }),
+      }),
+    ).toBeTruthy();
+    await choose(app, en['scoring.sheet.cancel']);
+    expect(sheet()).toBeNull();
+    expect(screen.getByTestId('pad-content').getAttribute('aria-hidden')).not.toBe('true');
   });
 });

@@ -498,6 +498,8 @@
   "scoring.tabletennis.tool.returns": "{returns} golpes",
   "scoring.tabletennis.tool.serving": "¿Quién saca?",
   "scoring.tabletennis.tool.more": "Más",
+  "scoring.tabletennis.sheet.card": "Tarjeta",
+  "scoring.tabletennis.sheet.serving": "¿Quién saca?",
   "scoring.tabletennis.more.timeout": "Tiempo muerto · {side}",
   "scoring.tabletennis.more.expedite": "Sistema de aceleración",
   "scoring.tabletennis.more.setScore": "Fijar puntos",

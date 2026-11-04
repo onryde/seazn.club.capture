@@ -141,7 +141,7 @@ describe('Card (design §4.7): the level, then the player only of a pair', () =>
     act(() => result.current.actions.tool('card.second'));
     expect(result.current.view).toMatchObject({
       kind: 'card',
-      sheet: { title: { key: 'scoring.tabletennis.tool.card' }, body: 'L. Chen' },
+      sheet: { title: { key: 'scoring.tabletennis.sheet.card' }, body: 'L. Chen' },
     });
     expect(optionIds(result.current.view)).toEqual(['warning', 'penalty']);
   });
@@ -365,7 +365,7 @@ describe('Who is serving? (design §4.2, ruling 51): two sides, one answer', () 
     act(() => result.current.actions.tool('serving'));
     expect(result.current.view).toMatchObject({
       kind: 'serving',
-      sheet: { title: { key: 'scoring.tabletennis.tool.serving' }, body: null },
+      sheet: { title: { key: 'scoring.tabletennis.sheet.serving' }, body: null },
     });
     expect(optionsOf(result.current.view)).toEqual([
       { id: 'first', label: 'A. Sharma', tone: 'standard' },

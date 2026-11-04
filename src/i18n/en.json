@@ -498,6 +498,8 @@
   "scoring.tabletennis.tool.returns": "{returns} shots",
   "scoring.tabletennis.tool.serving": "Whose serve?",
   "scoring.tabletennis.tool.more": "More",
+  "scoring.tabletennis.sheet.card": "Card",
+  "scoring.tabletennis.sheet.serving": "Who is serving?",
   "scoring.tabletennis.more.timeout": "Timeout · {side}",
   "scoring.tabletennis.more.expedite": "Expedite",
   "scoring.tabletennis.more.setScore": "Set score",

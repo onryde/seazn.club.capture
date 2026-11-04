@@ -5,6 +5,7 @@ import {
   tableTennisMoreItems,
   tableTennisMoreOptions,
   tableTennisPad,
+  tableTennisServingTitle,
   withHeldServing,
   type TableTennisDisplay,
   type TableTennisLastTap,
@@ -379,6 +380,40 @@ describe('tableTennisPad: the strip', () => {
   });
 });
 
+// Task 8 fix round 1 (the controller's sheet-title ruling): the cells of a four-cell row are shortened to fit, but the sheets
+// they open say the full words, and a screen reader never hears an abbreviation. The copy is pinned here by hand, in all four
+// languages, apart from the cell's shortened `tool.*` copy, which padFit.test.ts measures.
+describe('tableTennisPad: the sheets say the full words the cells shorten', () => {
+  const full = {
+    en: { card: 'Card', serving: 'Who is serving?' },
+    es: { card: 'Tarjeta', serving: '¿Quién saca?' },
+    fr: { card: 'Carton', serving: 'Qui sert\u00a0?' },
+    nl: { card: 'Kaart', serving: 'Wie serveert?' },
+  } as const;
+
+  it.each(Object.entries({ en, es, fr, nl }))(
+    '%s: the Card sheet is titled with the full word and Who is serving? with ruling 51’s words',
+    (name, dictionary: Record<string, string>) => {
+      const words = full[name as keyof typeof full];
+      expect(dictionary['scoring.tabletennis.sheet.card']).toBe(words.card);
+      expect(dictionary['scoring.tabletennis.sheet.serving']).toBe(words.serving);
+    },
+  );
+
+  it('keeps the cells short where the sheets are not: the cell is not the sheet’s title in es and fr', () => {
+    expect([es, fr].map((d) => d['scoring.tabletennis.tool.card'])).toEqual(['Tarj.', 'Carte']);
+  });
+
+  it('gives a Card cell the full word to a screen reader, and no other cell a spoken name', () => {
+    const [first, second, serving, more] = tableTennisPad(unanchored).tools;
+    expect([first?.said, second?.said]).toEqual([
+      { key: 'scoring.tabletennis.sheet.card' },
+      { key: 'scoring.tabletennis.sheet.card' },
+    ]);
+    expect([serving?.said, more?.said]).toEqual([undefined, undefined]);
+  });
+});
+
 // Ruling 52 and design §5.3: one row, at most four cells. This is the acceptance table, a row at a time.
 describe('tableTennisPad: the tools', () => {
   describe('Card · {top}, Card · {bottom}: live, and the match records cards', () => {
@@ -387,6 +422,7 @@ describe('tableTennisPad: the tools', () => {
         {
           id: 'card.first',
           label: { key: 'scoring.tabletennis.tool.card' },
+          said: { key: 'scoring.tabletennis.sheet.card' },
           detail: 'A. Sharma',
           kind: 'destructive',
           enabled: true,
@@ -394,6 +430,7 @@ describe('tableTennisPad: the tools', () => {
         {
           id: 'card.second',
           label: { key: 'scoring.tabletennis.tool.card' },
+          said: { key: 'scoring.tabletennis.sheet.card' },
           detail: 'L. Chen',
           kind: 'destructive',
           enabled: true,
@@ -1000,6 +1037,7 @@ describe('tableTennisPad: its words', () => {
     ...keysIn(sweep),
     ...lastTaps.flatMap((lastTap) => keysIn(tableTennisPad({ ...live, lastTap }).lastTap)),
     ...keysIn(tableTennisMoreOptions(pre)),
+    ...keysIn(tableTennisServingTitle),
     ...keysIn(tableTennisPad({ ...pre, rules: { ...pre.rules, finalSetTo: 7 } }).details),
     ...keysIn(
       tableTennisPad({ ...pre, records: { timeouts: true, sanctions: true, expedite: true } })

@@ -92,7 +92,7 @@ describe('the card flow: level, then a pair’s player, then the card', () => {
 describe('cardSheet: what each step asks', () => {
   it('asks the level, naming the side, with two levels only: yellow then red', () => {
     expect(cardSheet(startCard('first'), sides)).toEqual({
-      title: { key: 'scoring.tabletennis.tool.card' },
+      title: { key: 'scoring.tabletennis.sheet.card' },
       body: 'A. Sharma / R. Iyer',
       options: [
         { id: 'warning', label: { key: 'scoring.tabletennis.card.warning' }, tone: 'standard' },
@@ -144,7 +144,7 @@ describe('the words: in every language, and as the umpire says them', () => {
   it('names a dictionary key, in all four languages, for every word the steps use', () => {
     const keys = sheets.flatMap(keysOf);
     expect(keys).toEqual([
-      'scoring.tabletennis.tool.card',
+      'scoring.tabletennis.sheet.card',
       'scoring.tabletennis.card.warning',
       'scoring.tabletennis.card.penalty',
       'scoring.sanction.who',

@@ -44,7 +44,7 @@ export const cardWord = (level: TableTennisSanctionLevel): Text => ({
 /**
  * What a tap did, in the last-tap line's words ("Point recorded — A. Sharma"): the line says it of the last tap, and
  * History (owner ruling 21) of every tap, in the one vocabulary. A 13 returns point says its point first, then the
- * returns: "Point recorded — game 1 to A. Sharma · 13 returns".
+ * returns: "Point recorded — game 1 to A. Sharma · 13 shots".
  */
 export function doneSaid(sides: TableTennisDisplay['sides'], tap: TableTennisDone): Text {
   const side = (of: PadSide) => sideNames(sides[of]);

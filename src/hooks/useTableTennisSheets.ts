@@ -22,6 +22,7 @@ import {
   tableTennisDetails,
   tableTennisMoreItems,
   tableTennisMoreOptions,
+  tableTennisServingTitle,
   type TableTennisDisplay,
   type TableTennisMoreItem,
   type TableTennisPadKey,
@@ -312,7 +313,7 @@ function moreSheet(display: TableTennisDisplay): StepFacts {
 /** The two sides as the Start screen's toss does, top first: the names as typed. */
 function servingSheet(display: TableTennisDisplay): StepFacts {
   return {
-    title: { key: 'scoring.tabletennis.tool.serving' },
+    title: tableTennisServingTitle,
     body: null,
     options: (['first', 'second'] as const).map((side) => ({
       id: side,

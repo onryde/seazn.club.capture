@@ -146,6 +146,11 @@ export type PadToolKind = 'primary' | 'standard' | 'destructive';
 export type PadTool<K extends string> = {
   readonly id: string;
   readonly label: PadText<K>;
+  /**
+   * What a screen reader hears in place of `label`, when the drawn label is shortened to fit the row (table tennis's
+   * four cells at 320 dp): the full word. None when the label is read as drawn.
+   */
+  readonly said?: PadText<K>;
   /** A second line as typed, never translated: the side a per-side tool acts on. */
   readonly detail: string | null;
   readonly kind: PadToolKind;

@@ -11,6 +11,13 @@ import { colour, layout } from '@/ui/theme/tokens';
 import { HomeScreen } from '@/ui/screens/HomeScreen';
 import { DECIDED_MATCH, GAME_ONE_21_15 } from '../../../test/badmintonLedger';
 import { createFakePorts, readRecord, type FakePorts } from '../../../test/fakePorts';
+import {
+  DECIDED_3_0,
+  GAME_ONE_11_7,
+  SINGLES as TABLE_TENNIS_SINGLES,
+  ledgerOf as tableTennisLedgerOf,
+  type Spec as TableTennisSpec,
+} from '../../../test/tableTennisLedger';
 import { pressIn, pressOut } from '../../../test/press';
 import { edgeOf, fillOf } from '../../../test/pressState';
 import { wrapperFor } from '../../../test/renderWithPorts';
@@ -428,6 +435,37 @@ describe('the words, in every language', () => {
       { kvSeed: inMatch(), deviceLanguages: ['nl'] },
     );
     expect(screen.getByText(`${nl['home.scoring.finished']} · ${SCORE}`)).toBeTruthy();
+  });
+});
+
+// Plan S2-2 Task 8 (review finding 3): Home reads a match it does not open, through the sport the saved link names
+// (`readFinish` -> `sport.resultLine`). A table tennis match is read with table tennis's fold and words, not badminton's.
+describe('a table tennis match on Home', () => {
+  /** A table tennis match left on the phone: its link naming the sport, its ledger and bootstrap as the pad left them. */
+  async function tableTennisOnDisk(fakes: FakePorts, specs: readonly TableTennisSpec[]) {
+    await leave(fakes, queueHolding(FAKE_MATCH, 0));
+    await fakes.kv.set(
+      linkKey(FAKE_MATCH),
+      JSON.stringify({ ...LINK_RECORD, sportKey: 'tabletennis' }),
+    );
+    await fakes.tapQueue.saveLedger(FAKE_MATCH, tableTennisLedgerOf(specs));
+    await fakes.tapQueue.saveBoot(FAKE_MATCH, {
+      bootstrap: { ...TABLE_TENNIS_SINGLES, fixtureId: FAKE_MATCH },
+      toss: null,
+    });
+  }
+
+  it('says Finished with every game over, in table tennis’s scores, and offers Close alone', async () => {
+    await homeWith((fakes) => tableTennisOnDisk(fakes, DECIDED_3_0), { kvSeed: inMatch() });
+    expect(within(card()).getByText('Finished · 11–0, 11–0, 11–0')).toBeTruthy();
+    expect(within(card()).queryByText('Continue Remote Scoring')).toBeNull();
+    expect(closeButton()).toBeTruthy();
+  });
+
+  it('says Continue for a match still in play, whatever games are over', async () => {
+    await homeWith((fakes) => tableTennisOnDisk(fakes, GAME_ONE_11_7), { kvSeed: inMatch() });
+    expect(within(card()).getByText('Continue Remote Scoring')).toBeTruthy();
+    expect(within(card()).queryByText(/^Finished/)).toBeNull();
   });
 });
 
