@@ -1,4 +1,5 @@
-import type { PadHistoryGroup, PadHistoryRow, PadSide, PadText } from '@/domain/scoring/padView';
+import type { PadHistoryGroup, PadSide, PadText } from '@/domain/scoring/padView';
+import { setBasedHistory, type SetBasedHistoryEntry } from '@/domain/scoring/setBasedHistory';
 import { scoreText, sideNames } from '@/domain/scoring/setBasedSides';
 import type {
   TableTennisDisplay,
@@ -15,47 +16,24 @@ type Text = PadText<TableTennisPadKey>;
  * it is this phone's tap still on its way to the server (design §6.4). An entry Undo took back keeps what it did when it
  * was recorded.
  */
-export type TableTennisHistoryEntry = {
-  readonly did: TableTennisDone;
-  readonly game: number;
-  readonly after: Readonly<Record<PadSide, number>>;
-  readonly own: boolean;
-  readonly undone: boolean;
-  readonly sending: boolean;
-};
+export type TableTennisHistoryEntry = SetBasedHistoryEntry<TableTennisDone>;
 
 /**
  * History (owner ruling 21, 2026-10-31; view only), the same shape as badminton's: the entries grouped by the game they
  * were recorded in, the latest game first, each game's newest entry first, an entry Undo took back in its place. A point
  * (a 13 returns point included) gives the score after it, top first; a card, a timeout, Expedite and a set score (its
- * sentence says the score) give none. Nothing recorded, no group.
+ * sentence says the score) give none. Nothing recorded, no group. The grouping is the set-based sports'
+ * (`setBasedHistory`); the words are table tennis's.
  */
 export function tableTennisHistory(
   entries: readonly TableTennisHistoryEntry[],
   sides: TableTennisDisplay['sides'],
 ): readonly PadHistoryGroup<TableTennisPadKey>[] {
-  const games = [...new Set(entries.map((entry) => entry.game))].sort((a, b) => b - a);
-  return games.map((game) => ({
-    heading: { key: 'scoring.tabletennis.gameHeading', vars: { game } },
-    rows: entries
-      .filter((entry) => entry.game === game)
-      .reverse()
-      .map((entry) => historyRow(entry, sides)),
-  }));
-}
-
-function historyRow(
-  entry: TableTennisHistoryEntry,
-  sides: TableTennisDisplay['sides'],
-): PadHistoryRow<TableTennisPadKey> {
-  const scored = entry.did.kind === 'rally' || entry.did.kind === 'returns';
-  return {
-    said: doneSaid(sides, entry.did),
-    score: scored ? scoreText(entry.after) : null,
-    by: entry.own ? 'thisPhone' : 'otherScorer',
-    undone: entry.undone,
-    sending: entry.sending,
-  };
+  return setBasedHistory<TableTennisDone, TableTennisPadKey>(entries, {
+    heading: (game) => ({ key: 'scoring.tabletennis.gameHeading', vars: { game } }),
+    said: (did) => doneSaid(sides, did),
+    scored: (did) => did.kind === 'rally' || did.kind === 'returns',
+  });
 }
 
 /** A card level's word: the umpire's yellow (`warning`) and red (`penalty`). */

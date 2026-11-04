@@ -1,4 +1,5 @@
-import type { EventEnvelope, LineupPair } from '@seazn/engine/core';
+import { EngineError, foldMatch, type EventEnvelope, type LineupPair } from '@seazn/engine/core';
+import type { SetBasedCfg, SetBasedModule } from '@seazn/engine/sports/setbased';
 import type { QueuedEvent } from '@/domain/scoring/queue';
 import { voidTargetOf, type BootstrapSide, type LedgerEvent } from '@/domain/scoring/wire';
 
@@ -8,6 +9,43 @@ import { voidTargetOf, type BootstrapSide, type LedgerEvent } from '@/domain/sco
  * sport's own engine file (`badmintonEngine`) adds only what is the sport's, and the phone and its fake server fold
  * through the same copy.
  */
+
+/** What the engine needs to fold a match: its id (every envelope names it), its config and its two lineups. */
+export type SetBasedEngineMatch = {
+  readonly fixtureId: string;
+  readonly cfg: SetBasedCfg;
+  readonly lineups: LineupPair;
+};
+
+/**
+ * The engine's word against the last of `events`, judged as the server judges an append (`strictFromSeq` at its seq,
+ * everything before it replayed), or null when the engine takes it. Anything but the engine's own refusal is thrown.
+ * `module` is the sport's engine module (`badminton`, `tabletennis`): the sport's own engine file passes it.
+ */
+export function setBasedRefusalOf(
+  module: SetBasedModule,
+  match: SetBasedEngineMatch,
+  events: readonly EventEnvelope[],
+): string | null {
+  const last = events[events.length - 1];
+  if (last === undefined) return null;
+  try {
+    foldMatch(module, match.cfg, match.lineups, events, { strictFromSeq: last.seq });
+    return null;
+  } catch (error) {
+    if (EngineError.is(error)) return error.code;
+    throw error;
+  }
+}
+
+/** The match's config through the sport's schema, or null for one it refuses (the schema's refusal is all a throw can be). */
+export function setBasedCfgOf(module: SetBasedModule, raw: unknown): SetBasedCfg | null {
+  try {
+    return module.configSchema.parse(raw);
+  } catch {
+    return null;
+  }
+}
 
 /**
  * A side's lineup for the engine. The web's browser pad builds each slot from the row's own `slot` and `order_no`

@@ -11,6 +11,8 @@ import {
   lineupOf,
   queuedEnvelopeOf,
   queuedEventId,
+  setBasedCfgOf,
+  setBasedRefusalOf,
 } from '@/domain/scoring/setBasedEngine';
 import type { BootstrapSide } from '@/domain/scoring/wire';
 import {
@@ -152,4 +154,68 @@ describe('setBasedEngine envelopes', () => {
     expect(envelope).toMatchObject({ id: queuedEventId('k-undo'), seq: 3, voids: eventId(2) });
     expect(queuedEnvelopeOf('fx-1', queuedOf('k', rally('A')), 3)).not.toHaveProperty('voids');
   });
+});
+
+// The engine's judgement of one new event, and the config read through a sport's schema (lifted from the two sports'
+// engine files, plan S2-2 fix round 1): the module is the caller's, so the same events are judged by the sport's own rules.
+describe('setBasedRefusalOf', () => {
+  const cfgFor = (module: typeof badminton) => setBasedCfgOf(module, {});
+  const matchOf = (module: typeof badminton) => {
+    const cfg = cfgFor(module);
+    if (cfg === null) throw new Error('the default config did not parse');
+    return {
+      fixtureId: 'fx-1',
+      cfg,
+      lineups: {
+        home: {
+          entrantId: HOME,
+          slots: [{ personId: 'p-sharma', slot: 'starting' as const, orderNo: 1 }],
+        },
+        away: {
+          entrantId: AWAY,
+          slots: [{ personId: 'p-chen', slot: 'starting' as const, orderNo: 1 }],
+        },
+      },
+    };
+  };
+  const envelopes = (...events: ReturnType<typeof ledgerOf>) =>
+    events.map((event) => envelopeOf('fx-1', event));
+
+  it.each([
+    ['badminton', badminton],
+    ['tabletennis', tabletennis],
+  ])(
+    'refuses nothing in an empty stream, and a point before the start with the engine’s word (%s)',
+    (_, module) => {
+      expect(setBasedRefusalOf(module, matchOf(module), [])).toBeNull();
+      const type = `${module.key}.rally`;
+      const orphan = { ...ledgerOf([rally('H')])[0]!, type, payload: { wonBy: HOME } };
+      expect(setBasedRefusalOf(module, matchOf(module), envelopes(orphan))).toBe('WRONG_PHASE');
+    },
+  );
+
+  it('judges the last event strictly with everything before it replayed, by the module it is given', () => {
+    const [begin, point] = ledgerOf([start(), rally('H', 'H')]);
+    const mine = { ...point!, type: 'badminton.rally', payload: { wonBy: HOME, serving: HOME } };
+    const stream = envelopes(begin!, mine);
+    expect(setBasedRefusalOf(badminton, matchOf(badminton), stream)).toBeNull();
+    // Table tennis has no event of that name: its engine refuses what badminton's takes.
+    expect(setBasedRefusalOf(tabletennis, matchOf(tabletennis), stream)).not.toBeNull();
+  });
+});
+
+describe('setBasedCfgOf', () => {
+  it('fills what the organiser left out from the sport’s own schema', () => {
+    expect(setBasedCfgOf(badminton, {})).toMatchObject({ bestOf: 3, setTo: 21 });
+    expect(setBasedCfgOf(tabletennis, {})).toMatchObject({ bestOf: 5, setTo: 11 });
+  });
+
+  // An empty and a garbled input: the schema's refusal is all a throw can be, and it reads as null.
+  it.each([['garbled'], [{ bestOf: 'many' }], [null]])(
+    'is null for a config the schema refuses (%j)',
+    (raw) => {
+      expect(setBasedCfgOf(badminton, raw)).toBeNull();
+      expect(setBasedCfgOf(tabletennis, raw)).toBeNull();
+    },
+  );
 });

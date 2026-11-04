@@ -1,5 +1,5 @@
 import type { PadSide } from '@/domain/scoring/padView';
-import type { Bootstrap, BootstrapSide } from '@/domain/scoring/wire';
+import type { Bootstrap, BootstrapMember, BootstrapSide } from '@/domain/scoring/wire';
 
 /**
  * How the set-based sports (badminton, table tennis) read a match's sides, which is the same word for word (plan S2-2
@@ -33,3 +33,33 @@ export function sideNames(side: SetBasedSide): string {
 /** A score, top first, an en dash between ("7–3"): numbers are not translated (docs/i18n-glossary.md, Typography). */
 export const scoreText = ({ first, second }: { readonly first: number; readonly second: number }) =>
   `${first}–${second}`;
+
+/** The sides as a ledger fold names them: the entrant ids top first, the players as typed, and who plays for each. */
+export type SetBasedNames = {
+  readonly entrants: Readonly<Record<PadSide, string>>;
+  readonly sides: Readonly<Record<PadSide, SetBasedSide>>;
+  readonly members: Readonly<Record<PadSide, readonly BootstrapMember[]>>;
+};
+
+export function namesOf(seats: Seats): SetBasedNames {
+  const players = (seat: BootstrapSide): SetBasedSide => ({
+    players: seat.members.length === 0 ? [seat.name] : seat.members.map((one) => one.fullName),
+  });
+  return {
+    entrants: { first: seats.first.entrantId, second: seats.second.entrantId },
+    sides: { first: players(seats.first), second: players(seats.second) },
+    members: { first: seats.first.members, second: seats.second.members },
+  };
+}
+
+/** The half an entrant id is, or null for an id that is neither side's. */
+export function sideOfEntrant(names: SetBasedNames, entrantId: unknown): PadSide | null {
+  if (entrantId === names.entrants.first) return 'first';
+  return entrantId === names.entrants.second ? 'second' : null;
+}
+
+/** A named person's name as typed; with none named (or one the side does not list), the side's names. */
+export function personName(names: SetBasedNames, side: PadSide, personId: unknown): string {
+  const member = names.members[side].find((one) => one.personId === personId);
+  return member?.fullName ?? sideNames(names.sides[side]);
+}

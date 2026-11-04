@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { scoreText, seatsOf, sideNames, soleOf } from '@/domain/scoring/setBasedSides';
+import {
+  namesOf,
+  personName,
+  scoreText,
+  seatsOf,
+  sideNames,
+  sideOfEntrant,
+  soleOf,
+} from '@/domain/scoring/setBasedSides';
 import type { Bootstrap } from '@/domain/scoring/wire';
 import { AWAY, DOUBLES, HOME, SINGLES } from '../../../test/badmintonLedger';
 
@@ -55,5 +63,54 @@ describe('scoreText', () => {
     expect(scoreText({ first: 7, second: 3 })).toBe('7–3');
     expect(scoreText({ first: 0, second: 0 })).toBe('0–0');
     expect(scoreText({ first: 11, second: 13 })).toBe('11–13');
+  });
+});
+
+// The names a ledger fold reads a side by (lifted from badminton's ledger history, plan S2-2 fix round 1): the entrant
+// ids top first, the players as typed, and who plays for each.
+describe('namesOf', () => {
+  it('names a singles side by its one member and a pair by both, as typed, with the entrant ids top first', () => {
+    const names = namesOf(seatsOf(DOUBLES)!);
+    expect(names.entrants).toEqual({ first: HOME, second: AWAY });
+    expect(names.sides.first.players).toEqual(['A. Sharma', 'R. Iyer']);
+    expect(names.sides.second.players).toEqual(['L. Chen', 'M. Wong']);
+    expect(names.members.first.map((one) => one.personId)).toEqual(['p-sharma', 'p-iyer']);
+    expect(namesOf(seatsOf(SINGLES)!).sides.first.players).toEqual(['A. Sharma']);
+  });
+
+  // An empty input: a side the endpoint sends with no members is named by the side's own name.
+  it('falls back to the side’s own name for a side that lists no member', () => {
+    const seats = seatsOf(SINGLES)!;
+    const bare = namesOf({ ...seats, first: { ...seats.first, members: [], name: 'Spring FC' } });
+    expect(bare.sides.first.players).toEqual(['Spring FC']);
+    expect(bare.members.first).toEqual([]);
+  });
+});
+
+describe('sideOfEntrant', () => {
+  const names = namesOf(seatsOf(SINGLES)!);
+
+  it('is the half an entrant id sits in, and none for a stranger or no id', () => {
+    expect(sideOfEntrant(names, HOME)).toBe('first');
+    expect(sideOfEntrant(names, AWAY)).toBe('second');
+    expect(sideOfEntrant(names, 'ent-stranger')).toBeNull();
+    expect(sideOfEntrant(names, undefined)).toBeNull();
+    expect(sideOfEntrant(names, 42)).toBeNull();
+  });
+});
+
+describe('personName', () => {
+  const names = namesOf(seatsOf(DOUBLES)!);
+
+  it('is the listed member’s name as typed', () => {
+    expect(personName(names, 'first', 'p-iyer')).toBe('R. Iyer');
+    expect(personName(names, 'second', 'p-chen')).toBe('L. Chen');
+  });
+
+  // The person is named by the side that lists them: a member of the other side is nobody here.
+  it('is the side’s names when none is named, or the one named is not on that side', () => {
+    expect(personName(names, 'first', null)).toBe('A. Sharma / R. Iyer');
+    expect(personName(names, 'first', undefined)).toBe('A. Sharma / R. Iyer');
+    expect(personName(names, 'first', 'p-chen')).toBe('A. Sharma / R. Iyer');
   });
 });

@@ -5,7 +5,8 @@ import { translatePad } from '@/i18n/padText';
 import { createTranslator } from '@/i18n/translate';
 import type { PadHistoryGroup } from '@/domain/scoring/padView';
 import { foldTableTennis } from '@/domain/scoring/tableTennisFold';
-import { doneOf, namesOf } from '@/domain/scoring/tableTennisLedgerHistory';
+import { namesOf } from '@/domain/scoring/setBasedSides';
+import { doneOf } from '@/domain/scoring/tableTennisLedgerHistory';
 import {
   doneSaid,
   tableTennisHistory,
@@ -382,7 +383,12 @@ describe('doneOf: an event the pad has no words for', () => {
     },
     second: { entrantId: 'ent-away', name: 'L. Chen', kind: 'individual', members: [], lineup: [] },
   });
-  const facts = { game: 1, after: { first: 0, second: 0 }, won: 'none' } as const;
+  const facts = {
+    game: 1,
+    after: { first: 0, second: 0 },
+    won: 'none',
+    sanctionedPerson: null,
+  } as const;
   const envelope = (type: string, payload: unknown) => ({
     id: 'e',
     fixtureId: 'fx',

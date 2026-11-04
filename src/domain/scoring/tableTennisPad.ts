@@ -1,5 +1,6 @@
 import type { MatchContext } from '@/domain/scoring/matchContext';
 import type { PadSide } from '@/domain/scoring/padView';
+import type { SetBasedGame, SetBasedPhase } from '@/domain/scoring/setBasedBoard';
 import type { SetBasedSide } from '@/domain/scoring/setBasedSides';
 
 /**
@@ -75,16 +76,13 @@ export type TableTennisDone = Exclude<TableTennisLastTap, { readonly kind: 'undo
 export type TableTennisUndoneTap = Exclude<TableTennisDone, { readonly kind: 'start' }>;
 
 /** A game over: each side's points when it ended, and the side that won it. */
-export type TableTennisGame = {
-  readonly points: Readonly<Record<PadSide, number>>;
-  readonly winner: PadSide;
-};
+export type TableTennisGame = SetBasedGame;
 
 /**
  * Not started (the Start screen: who serves first is not yet picked); started, before the match's first point; a game
  * under way; a game won and the next not yet started; the match over. Badminton's values, in a type of its own.
  */
-export type TableTennisPhase = 'notStarted' | 'pre' | 'live' | 'betweenGames' | 'decided';
+export type TableTennisPhase = SetBasedPhase;
 
 /** The match's rules, read through the engine from its config (`tabletennisPadRules`): never a number of ours. */
 export type TableTennisRules = {

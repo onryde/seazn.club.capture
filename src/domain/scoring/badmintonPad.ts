@@ -21,6 +21,7 @@ import {
   type PadTool,
   type PadView,
 } from '@/domain/scoring/padView';
+import type { SetBasedPhase } from '@/domain/scoring/setBasedBoard';
 import { scoreText, sideNames, type SetBasedSide } from '@/domain/scoring/setBasedSides';
 
 /** The web's four sanction levels (`sanction.*`), lightest first. */
@@ -90,7 +91,7 @@ export type BadmintonGame =
  * Not started (the Start screen: who serves first is not yet picked); started, before the match's first rally; a game
  * under way; a game won and the next not yet started; the match over.
  */
-export type BadmintonPhase = 'notStarted' | 'pre' | 'live' | 'betweenGames' | 'decided';
+export type BadmintonPhase = SetBasedPhase;
 
 /**
  * A badminton match as the pad shows it. Whoever keeps the score (the engine in S2; the preview's fake today) decides
