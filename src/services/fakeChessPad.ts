@@ -48,3 +48,19 @@ export function chessSeed(
     ...over,
   };
 }
+
+/**
+ * A knockout game: the stage plays a tie-break after a drawn game (`cfg.tiebreak`), and `rungs` is the list the stage names,
+ * in its order, or none to name none (every rung is played). An empty list is the organiser's "no tie-break games": a drawn
+ * game is held for them. The fake judges it with the engine, so the refusals a test meets are the web's.
+ */
+export function bracketChessSeed(
+  rungs?: readonly string[],
+  over: Partial<Omit<FakeMatchSeed, 'sides' | 'sport'>> = {},
+): FakeMatchSeed {
+  const cfg = chessCfg({
+    tiebreak: true,
+    ...(rungs === undefined ? {} : { tiebreakRungs: rungs }),
+  });
+  return chessSeed({ cfg, ...over });
+}

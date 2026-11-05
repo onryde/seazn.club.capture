@@ -1,4 +1,4 @@
-import { doneSaid, undoneSaid } from '@/domain/scoring/chessHistory';
+import { advancesSaid, doneSaid, undoneSaid } from '@/domain/scoring/chessHistory';
 import {
   methodsOf,
   seatOfOutcome,
@@ -84,9 +84,9 @@ export const chessTakesResult = (display: ChessDisplay): boolean => display.phas
 
 /**
  * The pad for a chess game: the first player on top, the second below, each with a colour plate and, once a result
- * stands, a point under the name; Draw and Swap colours while the game is live; one note in the strip (the tie-break
- * waits for the organiser); a recorded result is the card over the players. Before the game starts, the Start screen's
- * question in the halves' place. `sync` is the transport's word, not the game's.
+ * stands, a point under the name; Draw and Swap colours while the game is live, or the one Tie-break tool while a drawn
+ * knockout game waits for its tie-break; one note in the strip; a recorded result is the card over the players. Before the
+ * game starts, the Start screen's question in the halves' place. `sync` is the transport's word, not the game's.
  */
 export function chessPad(display: ChessDisplay, sync: PadSync = SYNCED): PadView<ChessPadKey> {
   const halves = [half(display, 'first'), half(display, 'second')] as const;
@@ -220,12 +220,16 @@ function strip(display: ChessDisplay): readonly PadStripItem<ChessPadKey>[] {
 
 /**
  * Before the result: a forfeit is the organiser's to record, which the pad cannot (the web refuses it from a device link).
- * While a drawn bracket game waits: the tie-break is the organiser's too. Once a result stands: who won it, in words, since
- * an organiser's walkover leaves the last-tap line without a name; the header's result line reads White's score first.
- * A game over with no result says nothing here: its card does.
+ * While a drawn knockout game waits for its tie-break: nothing, since the Tie-break tool is the call (S2-3b). A drawn game
+ * the stage plays no tie-break for: the organiser's to decide, said. A tie-break that decided it: who advances and by which
+ * rung. Once a result stands: who won it, in words, since an organiser's walkover leaves the last-tap line without a name;
+ * the header's result line reads White's score first. A game over with no result says nothing here: its card does.
  */
 function noteOf(display: ChessDisplay): PadText<ChessPadKey> | null {
-  if (display.phase === 'tiebreak') return { key: 'scoring.chess.waiting.tiebreak' };
+  const { pending, held, decided } = display.tiebreak;
+  if (pending) return null;
+  if (held) return { key: 'scoring.chess.waiting.tiebreak' };
+  if (decided !== null) return advancesSaid(display.names[decided.advances], decided.rung);
   if (display.result !== null) return resultSaid(display, display.result);
   return chessDecided(display) ? null : { key: 'scoring.chess.forfeit' };
 }
@@ -255,12 +259,24 @@ const PLAIN = { detail: null, kind: 'standard', enabled: true } as const;
 
 const DRAW = 'draw';
 const SWAP = 'swap';
+const TIEBREAK = 'tiebreak';
+
+/** The one call while a tie-break is owed: the lime plate, since nothing else on the pad can be done (the sheet asks which). */
+const TIEBREAK_TOOL: Tool = {
+  id: TIEBREAK,
+  label: { key: 'scoring.chess.tiebreak.tool' },
+  detail: null,
+  kind: 'primary',
+  enabled: true,
+};
 
 /**
  * Draw, and Swap colours when the division plays with colours, while the game is live. A draw is a result like the
- * players' halves (the sheet asks How); a swap is the arbiter's pairing card, offered only while the game is live.
+ * players' halves (the sheet asks How); a swap is the arbiter's pairing card, offered only while the game is live. While a
+ * drawn knockout game waits for its tie-break, the Tie-break tool alone, in their place (the web hides them too).
  */
 function tools(display: ChessDisplay): readonly Tool[] {
+  if (display.tiebreak.pending) return [TIEBREAK_TOOL];
   if (!chessTakesResult(display)) return [];
   const draw: Tool = { id: DRAW, label: { key: 'scoring.chess.tool.draw' }, ...PLAIN };
   const swap: Tool = { id: SWAP, label: { key: 'scoring.chess.tool.swap' }, ...PLAIN };

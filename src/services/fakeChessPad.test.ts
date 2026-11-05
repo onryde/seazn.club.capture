@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AppendBody, Bootstrap, LedgerEvent } from '@/domain/scoring/wire';
-import { AWAY_ENTRANT, HOME_ENTRANT, chessSeed } from '@/services/fakeChessPad';
+import { AWAY_ENTRANT, HOME_ENTRANT, bracketChessSeed, chessSeed } from '@/services/fakeChessPad';
 import { createFakeScoringPort } from '@/services/fakeScoringPort';
 import type { ScoringLink } from '@/services/scoringPort';
 import { FAKE_SCORING_SECRET } from '../../test/fakeScoringLinkPort';
@@ -170,5 +170,123 @@ describe('the fake judges a chess game with the boardgame engine, as the web doe
       kind: 'ok',
       bootstrap: { status: 'finalized' },
     });
+  });
+});
+
+// A knockout game for the tie-break (S2-3b): the fake judges it with the engine, so the phone's tests meet the refusals the web
+// gives (`boardgame.js:284-290, 395-421`; the kernel's decider guard, `core/events.js:615`).
+describe('the bracket seed: a drawn knockout game and its tie-break', () => {
+  const FIXTURE = chessSeed().fixtureId;
+  const DRAWN = [
+    { type: 'core.start', payload: {} },
+    { type: 'boardgame.result', payload: { winner: null, method: 'agreement' } },
+  ];
+
+  it('is the chess seed with the stage’s tie-break on: its cfg lists the rungs it was given, or none', async () => {
+    const all = await createFakeScoringPort(bracketChessSeed()).bootstrap(LINK);
+    expect(all).toMatchObject({ kind: 'ok', bootstrap: { cfg: { tiebreak: true } } });
+    const listed = await createFakeScoringPort(bracketChessSeed(['blitz'])).bootstrap(LINK);
+    expect(listed).toMatchObject({
+      kind: 'ok',
+      bootstrap: { cfg: { tiebreak: true, tiebreakRungs: ['blitz'] }, sportKey: 'boardgame' },
+    });
+    expect((all as { bootstrap: Bootstrap }).bootstrap.cfg).not.toHaveProperty('tiebreakRungs');
+  });
+
+  it('refuses a tie-break before the game is drawn, with the engine’s word', async () => {
+    const port = createFakeScoringPort(bracketChessSeed());
+    await port.append(LINK, FIXTURE, body(0, 'core.start'));
+    expect(
+      await port.append(
+        LINK,
+        FIXTURE,
+        body(1, 'boardgame.tiebreak', { rung: 'rapid', winner: HOME_ENTRANT }),
+      ),
+    ).toMatchObject({ kind: 'refused', status: 422, code: 'TIEBREAK_NOT_APPLICABLE' });
+  });
+
+  it('takes a rapid tie-break on the drawn game, then refuses a second: one ends the match', async () => {
+    const port = createFakeScoringPort(bracketChessSeed(undefined, { events: DRAWN }));
+    expect(
+      await port.append(
+        LINK,
+        FIXTURE,
+        body(2, 'boardgame.tiebreak', { rung: 'rapid', winner: AWAY_ENTRANT, score: '2–0' }),
+      ),
+    ).toMatchObject({ kind: 'accepted', seq: 3 });
+    expect(await port.bootstrap(LINK)).toMatchObject({
+      kind: 'ok',
+      bootstrap: { status: 'decided' },
+    });
+    expect(
+      await port.append(
+        LINK,
+        FIXTURE,
+        body(3, 'boardgame.tiebreak', { rung: 'blitz', winner: HOME_ENTRANT }),
+      ),
+    ).toMatchObject({ kind: 'refused', status: 422, code: 'TIEBREAK_NOT_APPLICABLE' });
+  });
+
+  it('takes an Armageddon that names Black and the result, and refuses one that names a winner', async () => {
+    const port = createFakeScoringPort(bracketChessSeed(undefined, { events: DRAWN }));
+    const named = await port.append(
+      LINK,
+      FIXTURE,
+      body(2, 'boardgame.tiebreak', {
+        rung: 'armageddon',
+        black: HOME_ENTRANT,
+        winner: HOME_ENTRANT,
+      }),
+    );
+    expect(named).toMatchObject({ kind: 'refused', status: 422 });
+    expect(
+      await port.append(
+        LINK,
+        FIXTURE,
+        body(2, 'boardgame.tiebreak', { rung: 'armageddon', black: HOME_ENTRANT, result: 'draw' }),
+      ),
+    ).toMatchObject({ kind: 'accepted', seq: 3 });
+  });
+
+  it('refuses an Armageddon that names no Black, and a rung the stage does not list', async () => {
+    const port = createFakeScoringPort(bracketChessSeed(['rapid'], { events: DRAWN }));
+    expect(
+      await port.append(
+        LINK,
+        FIXTURE,
+        body(2, 'boardgame.tiebreak', { rung: 'armageddon', black: HOME_ENTRANT, result: 'draw' }),
+      ),
+    ).toMatchObject({ kind: 'refused', status: 422, code: 'TIEBREAK_NOT_APPLICABLE' });
+    const open = createFakeScoringPort(bracketChessSeed(undefined, { events: DRAWN }));
+    expect(
+      await open.append(
+        LINK,
+        FIXTURE,
+        body(2, 'boardgame.tiebreak', { rung: 'armageddon', result: 'draw' }),
+      ),
+    ).toMatchObject({ kind: 'refused', status: 422, code: 'TIEBREAK_COLOUR_REQUIRED' });
+  });
+
+  it('refuses every tie-break where the stage lists none: the drawn game is held for the organiser', async () => {
+    const port = createFakeScoringPort(bracketChessSeed([], { events: DRAWN }));
+    expect(
+      await port.append(
+        LINK,
+        FIXTURE,
+        body(2, 'boardgame.tiebreak', { rung: 'rapid', winner: HOME_ENTRANT }),
+      ),
+    ).toMatchObject({ kind: 'refused', status: 422, code: 'TIEBREAK_NOT_APPLICABLE' });
+  });
+
+  it('lets the organiser settle a pending tie-break by lot, which a test plays with addOtherScorerEvent', async () => {
+    const port = createFakeScoringPort(bracketChessSeed(undefined, { events: DRAWN }));
+    port.addOtherScorerEvent('core.settle', { winner: HOME_ENTRANT, method: 'lot' });
+    expect(
+      await port.append(
+        LINK,
+        FIXTURE,
+        body(3, 'boardgame.tiebreak', { rung: 'rapid', winner: AWAY_ENTRANT }),
+      ),
+    ).toMatchObject({ kind: 'refused', status: 422, code: 'TIEBREAK_NOT_APPLICABLE' });
   });
 });

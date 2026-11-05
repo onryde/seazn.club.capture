@@ -2,10 +2,16 @@ import {
   deciderPending,
   EngineError,
   foldMatchWithStoppage,
+  outcomeOf as engineOutcomeOf,
   type EventEnvelope,
   type FoldedOutcomeFacts,
 } from '@seazn/engine/core';
-import { boardgame, type BoardgameState } from '@seazn/engine/sports/boardgame';
+import {
+  boardgame,
+  effectiveRungs,
+  type BoardgameCfg,
+  type BoardgameState,
+} from '@seazn/engine/sports/boardgame';
 import { chessRefusalOf, readChessCfg, type ChessEngineMatch } from '@/domain/scoring/chessEngine';
 import { chessHistory } from '@/domain/scoring/chessHistory';
 import { CHESS_FACTS, doneOf, tapOfDone } from '@/domain/scoring/chessLedgerHistory';
@@ -18,6 +24,7 @@ import {
   type ChessOutcome,
   type ChessPhase,
   type ChessResult,
+  type ChessTiebreakState,
   type ChessTypes,
 } from '@/domain/scoring/chessTypes';
 import type { MatchContext } from '@/domain/scoring/matchContext';
@@ -58,8 +65,11 @@ type ChessMatch = {
 type ChessFolded = {
   /** What the engine's `outcomeOf` reads of a fold: the state and the organiser's settlement, if one stands. */
   readonly facts: FoldedOutcomeFacts<BoardgameState>;
-  /** The `boardgame.result` that stands, by envelope id, or null. */
-  readonly resultId: string | null;
+  /**
+   * The event that decided the game as the pad's Undo reads it, by envelope id, or null: the `boardgame.result` that stands,
+   * or the `boardgame.tiebreak` after it (a tie-break ends the match, and it is the later of the two).
+   */
+  readonly decidingId: string | null;
 };
 
 export function foldChess(input: SportFoldInput): SportFold<ChessTypes> {
@@ -111,9 +121,11 @@ const mayAppend = (
 // The fold, and what it says of each event
 // ---------------------------------------------------------------------------------------------------------------
 
+const TIEBREAK_EVENT = 'boardgame.tiebreak';
+
 /** The read path's tolerant fold; null for a stream the engine will not replay. */
 function foldOf(engine: ChessEngineMatch, envelopes: readonly EventEnvelope[]): ChessFolded | null {
-  let resultId: string | null = null;
+  let decidingId: string | null = null;
   try {
     const { state, settlement, expunged, levelWithdrawal } = foldMatchWithStoppage(
       boardgame,
@@ -122,11 +134,13 @@ function foldOf(engine: ChessEngineMatch, envelopes: readonly EventEnvelope[]): 
       envelopes,
       {
         onFolded: (_state, event) => {
-          if (event.type === 'boardgame.result') resultId = event.id;
+          if (event.type === 'boardgame.result' || event.type === TIEBREAK_EVENT) {
+            decidingId = event.id;
+          }
         },
       },
     );
-    return { facts: { state, settlement, expunged, levelWithdrawal }, resultId };
+    return { facts: { state, settlement, expunged, levelWithdrawal }, decidingId };
   } catch (error) {
     if (EngineError.is(error)) return null;
     throw error;
@@ -157,7 +171,7 @@ function displayOf(
   folded: ChessFolded,
   recorded: ReadonlyMap<string, Recorded<ChessDone>>,
 ): ChessDisplay {
-  const { resultId } = folded;
+  const { decidingId } = folded;
   const { state } = folded.facts;
   // The switch says whether the pad offers colours; a pairing recorded before it was turned off is a fact the pad ignores.
   const colour = match.engine.cfg.colors ? state.colorOfHome : null;
@@ -171,7 +185,8 @@ function displayOf(
     result: resultOf(folded.facts, colour),
     context: match.context,
     lastTap: lastTapOf(stream.envelopes, recorded, tapOfDone),
-    undoable: undoesResult(undoTargetOf(input, stream), resultId),
+    undoable: undoesResult(undoTargetOf(input, stream), decidingId),
+    tiebreak: tiebreakOf(match.engine.cfg, folded.facts),
   };
 }
 
@@ -225,6 +240,39 @@ function outcomeOf(
 }
 
 // ---------------------------------------------------------------------------------------------------------------
+// The tie-break
+// ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * Where a drawn knockout game stands. The rungs are the stage's own list, in its order (`effectiveRungs`: all three when it
+ * names none), and only for a knockout stage (`cfg.tiebreak`). A tie-break is owed while the engine says a decider is
+ * pending (`deciderPending`, never the module phase alone: a settle leaves the phase as it was). A stage that lists no rung
+ * folds the drawn game level and done, so it is held (for the organiser) while the outcome is still that draw.
+ */
+function tiebreakOf(
+  cfg: BoardgameCfg,
+  facts: FoldedOutcomeFacts<BoardgameState>,
+): ChessTiebreakState {
+  const rungs = cfg.tiebreak === true ? effectiveRungs(cfg) : [];
+  return {
+    rungs,
+    pending: deciderPending(boardgame, facts),
+    held:
+      cfg.tiebreak === true &&
+      rungs.length === 0 &&
+      engineOutcomeOf(boardgame, facts)?.kind === 'draw',
+    decided: decidedTiebreak(facts.state),
+  };
+}
+
+/** The tie-break that ended the game, with the seat it sent through: the engine's win by `tiebreak_<rung>`. */
+function decidedTiebreak(state: BoardgameState): ChessTiebreakState['decided'] {
+  const rung = state.tiebreak?.rung;
+  if (rung === undefined || state.outcome?.kind !== 'win') return null;
+  return { rung, advances: state.outcome.winner === state.entrants.home ? 'first' : 'second' };
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 // Undo
 // ---------------------------------------------------------------------------------------------------------------
 
@@ -234,15 +282,18 @@ function undoTargetOf(input: SportFoldInput, stream: SetBasedStream): UndoTarget
   return undoTarget(input.ledger, legalTaps, input.ownEventIds, () => true);
 }
 
-/** Whether `target` is the result that stands: this phone recorded it and nothing has been recorded since. */
-function undoesResult(target: UndoTarget, resultId: string | null): boolean {
+/**
+ * Whether `target` is the event that decided the game: this phone recorded the result (or the tie-break after it) and nothing
+ * has been recorded since.
+ */
+function undoesResult(target: UndoTarget, decidingId: string | null): boolean {
   switch (target.kind) {
     case 'blocked':
       return false;
     case 'ledger':
-      return target.eventId === resultId;
+      return target.eventId === decidingId;
     case 'queued':
     case 'awaitAnswer':
-      return queuedEventId(target.key) === resultId;
+      return queuedEventId(target.key) === decidingId;
   }
 }

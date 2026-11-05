@@ -7,8 +7,8 @@ import {
   chessResultLine,
   chessTakesResult,
 } from '@/domain/scoring/chessPad';
-import type { ChessDisplay } from '@/domain/scoring/chessTypes';
-import { chessDisplay } from '../../../test/chessLedger';
+import type { ChessDisplay, ChessLastTap } from '@/domain/scoring/chessTypes';
+import { NO_TIEBREAK, chessDisplay, pendingTiebreak } from '../../../test/chessLedger';
 
 // The Chess pad (spec §4, rulings 57 to 61; plan S2-3 Task 1): the two players are the halves, a tap on one records a
 // result for that player; Draw and Swap colours are the tools; the tie-break's waiting line is the strip's note. Every
@@ -231,24 +231,218 @@ describe('chessPad: before the start', () => {
   });
 });
 
-describe('chessPad: the tie-break', () => {
+describe('chessPad: a tie-break is owed', () => {
+  const DRAWN_TAP: ChessLastTap = { kind: 'result', winner: null, method: 'agreement' };
+  const owed = (rungs?: Parameters<typeof pendingTiebreak>[0]) =>
+    chessPad(
+      chessDisplay({
+        phase: 'tiebreak',
+        tiebreak: pendingTiebreak(rungs),
+        lastTap: DRAWN_TAP,
+        undoable: true,
+      }),
+    );
+
+  // The web's pad hides the result buttons while a tie-break is owed and shows the tie-break panel instead (S2-3b §3).
+  it('offers one Tie-break tool in place of Draw and Swap colours, and no result', () => {
+    const view = owed();
+    expect(view.tools).toEqual([
+      {
+        id: 'tiebreak',
+        label: { key: 'scoring.chess.tiebreak.tool' },
+        detail: null,
+        kind: 'primary',
+        enabled: true,
+      },
+    ]);
+    expect(view.halves.map((half) => half.tappable)).toEqual([false, false]);
+  });
+
+  it('offers the same tool for a stage that lists one rung, two or three: the sheet chooses', () => {
+    for (const rungs of [
+      ['blitz'],
+      ['armageddon', 'rapid'],
+      ['rapid', 'blitz', 'armageddon'],
+    ] as const) {
+      expect(
+        owed(rungs).tools.map((tool) => tool.id),
+        rungs.join(),
+      ).toEqual(['tiebreak']);
+    }
+  });
+
+  it('says nothing in the strip: the tool replaces the waiting line', () => {
+    expect(owed().strip).toEqual([{ slot: 'note', text: null }]);
+  });
+
+  it('shows no card, and still lets this phone take its own draw back', () => {
+    const view = owed();
+    expect(view.card).toBeNull();
+    expect(view.lastTap?.undo).toBe(true);
+  });
+
+  it('offers the tool only while a tie-break is owed: not live, drawn in a table, decided or locked', () => {
+    for (const phase of ['notStarted', 'live', 'done', 'final'] as const) {
+      const tools = chessPad(chessDisplay({ phase })).tools.map((tool) => tool.id);
+      expect(tools, phase).not.toContain('tiebreak');
+    }
+  });
+
+  it('keeps Draw and Swap colours while the game is live, in a bracket stage too', () => {
+    const live = chessPad(
+      chessDisplay({ phase: 'live', tiebreak: { ...NO_TIEBREAK, rungs: ['rapid'] } }),
+    );
+    expect(live.tools.map((tool) => tool.id)).toEqual(['draw', 'swap']);
+  });
+});
+
+// A stage that lists no rung plays no tie-break game: the drawn game is held for the organiser (ruling 79). The engine folds
+// it as a done draw, so the S2-3 line says who is to act, and no tool is offered.
+describe('chessPad: a drawn game the organiser holds', () => {
   const view = chessPad(
     chessDisplay({
-      phase: 'tiebreak',
+      phase: 'done',
+      result: { outcome: 'draw', method: 'agreement' },
       lastTap: { kind: 'result', winner: null, method: 'agreement' },
       undoable: true,
+      tiebreak: { ...NO_TIEBREAK, held: true },
     }),
   );
 
-  it('says the organiser records it, in the strip’s note, and offers no result', () => {
+  it('says the organiser decides, in the strip’s note, and offers no tool', () => {
     expect(view.strip).toEqual([{ slot: 'note', text: { key: 'scoring.chess.waiting.tiebreak' } }]);
-    expect(view.halves.map((half) => half.tappable)).toEqual([false, false]);
     expect(view.tools).toEqual([]);
-    expect(view.card).toBeNull();
   });
 
-  it('still lets this phone take its own draw back', () => {
+  it('still shows the recorded draw as the result, with the card and the Undo', () => {
+    expect(view.tally.shown).toBe('½');
+    expect(view.card).toEqual({ kind: 'resultRecorded', undoLeft: null });
     expect(view.lastTap?.undo).toBe(true);
+  });
+});
+
+describe('chessPad: a tie-break decided it', () => {
+  const decided = (rung: 'rapid' | 'blitz' | 'armageddon', advances: 'first' | 'second') =>
+    chessPad(
+      chessDisplay({
+        phase: 'done',
+        result: { outcome: 'draw', method: 'agreement' },
+        tiebreak: {
+          ...NO_TIEBREAK,
+          rungs: ['rapid', 'blitz', 'armageddon'],
+          decided: { rung, advances },
+        },
+      }),
+    );
+
+  it('names the player who advances and the rung in the strip, in the line’s own words', () => {
+    expect(decided('rapid', 'second').strip).toEqual([
+      {
+        slot: 'note',
+        text: {
+          key: 'scoring.chess.tiebreak.advances',
+          vars: { name: CHEN, how: { key: 'scoring.chess.tiebreak.rung.rapid' } },
+        },
+      },
+    ]);
+    expect(decided('blitz', 'first').strip[0]?.text).toEqual({
+      key: 'scoring.chess.tiebreak.advances',
+      vars: { name: SHARMA, how: { key: 'scoring.chess.tiebreak.rung.blitz' } },
+    });
+    expect(decided('armageddon', 'second').strip[0]?.text).toEqual({
+      key: 'scoring.chess.tiebreak.advances',
+      vars: { name: CHEN, how: { key: 'scoring.chess.tiebreak.rung.armageddon' } },
+    });
+  });
+
+  it('keeps the header level: the game was drawn, the tie-break only says who goes through', () => {
+    const view = decided('rapid', 'second');
+    expect(view.tally.shown).toBe('½');
+    expect(view.halves.map((half) => half.value)).toEqual(['½', '½']);
+    expect(view.card).toEqual({ kind: 'resultRecorded', undoLeft: null });
+    expect(view.tools).toEqual([]);
+  });
+
+  // Home's card line is numbers and punctuation (`ScoringSport.resultLine`, never translated): the game's score stays the
+  // game's, "½–½", and the words of who advances are the pad's.
+  it('leaves Home’s card line at the game’s score', () => {
+    const display = chessDisplay({
+      phase: 'done',
+      result: { outcome: 'draw', method: null },
+      tiebreak: { ...NO_TIEBREAK, decided: { rung: 'rapid', advances: 'first' } },
+    });
+    expect(chessCardLine(display)).toBe('½–½');
+  });
+
+  it('says a settle by lot, which leaves no decided tie-break, as the drawn game', () => {
+    const view = chessPad(
+      chessDisplay({
+        phase: 'done',
+        result: { outcome: 'draw', method: null },
+        tiebreak: NO_TIEBREAK,
+      }),
+    );
+    expect(view.strip).toEqual([{ slot: 'note', text: { key: 'scoring.chess.last.drawn' } }]);
+  });
+});
+
+describe('chessPad: the last tap names a tie-break', () => {
+  const lastTapOf = (lastTap: ChessLastTap, over: Partial<ChessDisplay> = {}) =>
+    chessPad(
+      chessDisplay({
+        phase: 'done',
+        result: { outcome: 'draw', method: 'agreement' },
+        lastTap,
+        undoable: true,
+        ...over,
+      }),
+    ).lastTap;
+  const advances = (name: string, rung: string) => ({
+    key: 'scoring.chess.tiebreak.advances',
+    vars: { name, how: { key: `scoring.chess.tiebreak.rung.${rung}` } },
+  });
+
+  it('says who advances and by which rung, for a rapid or blitz winner’s seat', () => {
+    expect(lastTapOf({ kind: 'tiebreak', rung: 'rapid', winner: 'second', score: null })).toEqual({
+      text: advances(CHEN, 'rapid'),
+      undo: true,
+    });
+    expect(
+      lastTapOf({ kind: 'tiebreak', rung: 'blitz', winner: 'first', score: '2–0' })?.text,
+    ).toEqual(advances(SHARMA, 'blitz'));
+  });
+
+  // BG-KO-2: White won, the other advances; Black won or a drawn Armageddon, Black advances. The line names the player.
+  it.each([
+    ['first', 'white', CHEN],
+    ['first', 'black', SHARMA],
+    ['first', 'draw', SHARMA],
+    ['second', 'white', SHARMA],
+    ['second', 'black', CHEN],
+    ['second', 'draw', CHEN],
+  ] as const)(
+    'says the player who advances from an Armageddon with %s on Black, result %s: %s',
+    (black, outcome, name) => {
+      const tap = { kind: 'tiebreak', rung: 'armageddon', black, result: outcome } as const;
+      expect(lastTapOf(tap)?.text).toEqual(advances(name, 'armageddon'));
+    },
+  );
+
+  it('says it the same whoever holds White', () => {
+    const tap = { kind: 'tiebreak', rung: 'armageddon', black: 'first', result: 'white' } as const;
+    for (const colorOfHome of ['W', 'B', null] as const) {
+      expect(lastTapOf(tap, { colorOfHome })?.text, `${colorOfHome}`).toEqual(
+        advances(CHEN, 'armageddon'),
+      );
+    }
+  });
+
+  it('says an undone tie-break as the tap, and offers no second Undo', () => {
+    const tap = { kind: 'tiebreak', rung: 'rapid', winner: 'first', score: null } as const;
+    expect(lastTapOf({ kind: 'undone', tap })).toEqual({
+      text: { key: 'scoring.chess.last.undone', vars: { what: advances(SHARMA, 'rapid') } },
+      undo: false,
+    });
   });
 });
 

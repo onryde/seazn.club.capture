@@ -1,4 +1,9 @@
-import { DECISIVE_METHODS, DRAWN_METHODS } from '@seazn/engine/sports/boardgame';
+import {
+  ARMAGEDDON_RESULTS,
+  DECISIVE_METHODS,
+  DRAWN_METHODS,
+  type TiebreakRung,
+} from '@seazn/engine/sports/boardgame';
 import type { MatchContext } from '@/domain/scoring/matchContext';
 import type { PadSide } from '@/domain/scoring/padView';
 
@@ -26,6 +31,26 @@ export type ChessMethod = (typeof DECISIVE_METHODS)[number] | (typeof DRAWN_METH
 export const methodsOf = (winner: PadSide | null): readonly ChessMethod[] =>
   winner === null ? DRAWN_METHODS : DECISIVE_METHODS;
 
+/**
+ * The rungs of a drawn knockout game's tie-break, the engine's own list: rapid, blitz and Armageddon. Lots are not a rung: a
+ * drawing of lots is the organiser's settle, and the pad never sends one.
+ */
+export type ChessRung = TiebreakRung;
+
+/**
+ * How an Armageddon ended, from White's side. The scorer never names its winner: White won sends the other entrant through,
+ * Black won or a draw sends Black (BG-KO-2), and the engine works that out.
+ */
+export type ChessArmageddonResult = (typeof ARMAGEDDON_RESULTS)[number];
+
+/**
+ * The mini-match scores the web's pad offers for a rapid or blitz tie-break, besides none: the wire takes whole points with an
+ * optional half either side of an en dash (`CHESS_SCORE`).
+ */
+export const CHESS_TIEBREAK_SCORES = ['2–0', '1½–½'] as const;
+
+export type ChessTiebreakScore = (typeof CHESS_TIEBREAK_SCORES)[number];
+
 /** The engine's colour of the home side: White or Black. */
 export type ChessColour = 'W' | 'B';
 
@@ -41,7 +66,27 @@ export type ChessTap =
       readonly winner: PadSide | null;
       readonly method: ChessMethod | null;
     }
-  | { readonly kind: 'swap' };
+  | { readonly kind: 'swap' }
+  | ChessTiebreakTap;
+
+/**
+ * The tie-break of a drawn knockout game, as the scorer chooses it, by SEAT like a result (a pairing from another scorer
+ * must not change the player recorded). A rapid or blitz one names the seat that won and the score, or none; an Armageddon
+ * names the seat that had Black and how it ended, and never a winner.
+ */
+export type ChessTiebreakTap =
+  | {
+      readonly kind: 'tiebreak';
+      readonly rung: Exclude<ChessRung, 'armageddon'>;
+      readonly winner: PadSide;
+      readonly score: ChessTiebreakScore | null;
+    }
+  | {
+      readonly kind: 'tiebreak';
+      readonly rung: 'armageddon';
+      readonly black: PadSide;
+      readonly result: ChessArmageddonResult;
+    };
 
 /**
  * What an event did, as the last-tap line and History say it. A result names the winner by the seat they sit in (the
@@ -54,14 +99,15 @@ export type ChessDone =
       readonly kind: 'result';
       readonly winner: PadSide | null;
       readonly method: ChessMethod | null;
-    };
+    }
+  | ChessTiebreakTap;
 
 /** What the last tap did, or the tap Undo took back. */
 export type ChessLastTap = ChessDone | { readonly kind: 'undone'; readonly tap: ChessTap };
 
 /**
- * Not started; live; a drawn bracket game waiting for the organiser's tie-break; a result recorded; the result locked by
- * the organiser (or the game abandoned: nothing more can be recorded either way).
+ * Not started; live; a drawn bracket game waiting for its tie-break; a result recorded (a tie-break included); the result
+ * locked by the organiser (or the game abandoned: nothing more can be recorded either way).
  */
 export type ChessPhase = 'notStarted' | 'live' | 'tiebreak' | 'done' | 'final';
 
@@ -73,6 +119,25 @@ export type ChessPhase = 'notStarted' | 'live' | 'tiebreak' | 'done' | 'final';
 export type ChessResult = {
   readonly outcome: ChessOutcome;
   readonly method: ChessMethod | null;
+};
+
+/**
+ * Where a drawn knockout game stands on its tie-break. A game is a knockout game when the stage has `cfg.tiebreak`; its
+ * `rungs` are then the stage's own list in the stage's order (all three when it names none, none when it names an empty
+ * list). The listed rungs are a menu: the engine has no "next rung", and one tie-break ends the match.
+ */
+export type ChessTiebreakState = {
+  /** The rungs the stage plays, in its order; none outside a knockout stage and where the stage plays no tie-break game. */
+  readonly rungs: readonly ChessRung[];
+  /** A drawn game waits for a tie-break this phone may record (the engine's `deciderPending`). */
+  readonly pending: boolean;
+  /**
+   * A drawn knockout game whose stage lists no rung: the server holds it level for the organiser (the engine folds it a done
+   * draw), and nothing the pad records decides it.
+   */
+  readonly held: boolean;
+  /** The tie-break that decided it: its rung and the seat that advances. The game itself stays a draw. */
+  readonly decided: { readonly rung: ChessRung; readonly advances: PadSide } | null;
 };
 
 /** A chess game as the pad shows it, folded from the ledger and this phone's queued taps. */
@@ -89,6 +154,7 @@ export type ChessDisplay = {
   readonly lastTap: ChessLastTap | null;
   /** This phone's Undo would take the result back: it recorded it and nothing has been recorded since. */
   readonly undoable: boolean;
+  readonly tiebreak: ChessTiebreakState;
 };
 
 /**
@@ -103,6 +169,9 @@ export type ChessPadKey =
   | 'scoring.chess.tool.swap'
   | 'scoring.chess.start.ask'
   | 'scoring.chess.waiting.tiebreak'
+  | 'scoring.chess.tiebreak.tool'
+  | 'scoring.chess.tiebreak.advances'
+  | `scoring.chess.tiebreak.rung.${ChessRung}`
   | 'scoring.chess.forfeit'
   | 'scoring.chess.tallySaid'
   | 'scoring.chess.tallyNone'
@@ -150,6 +219,15 @@ export const outcomeOfSeat = (seat: PadSide, colorOfHome: ChessColour | null): '
 
 /** The other seat. */
 export const otherSeat = (seat: PadSide): PadSide => OTHER_SEAT[seat];
+
+/**
+ * The seat a tie-break sends through. A rapid or blitz one is the winner the scorer named. An Armageddon is worked out as the
+ * engine works it out (BG-KO-2): White won, the other seat advances; Black won, or the game was drawn, Black does.
+ */
+export function advancerOf(choice: ChessTiebreakTap): PadSide {
+  if (choice.rung !== 'armageddon') return choice.winner;
+  return choice.result === 'white' ? OTHER_SEAT[choice.black] : choice.black;
+}
 
 const ALL_METHODS: readonly string[] = [...DECISIVE_METHODS, ...DRAWN_METHODS];
 

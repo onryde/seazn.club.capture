@@ -12,6 +12,7 @@ import {
   BRACKET,
   GAME,
   NO_COLOURS,
+  armageddon,
   chessDisplay,
   eventId,
   finalize,
@@ -19,6 +20,7 @@ import {
   pairing,
   result,
   start,
+  tiebreakRung,
   voiding,
   type Spec,
 } from '../../../test/chessLedger';
@@ -83,6 +85,15 @@ describe('chessSport: the game’s state', () => {
     expect(chessSport.decided(displayOf([start(), result('H'), finalize()]))).toBe(true);
   });
 
+  it('is decided once a tie-break ends a drawn bracket game, and not while one is owed', () => {
+    const drawn = [start(), result(null)];
+    expect(chessSport.decided(displayOf(drawn, BRACKET))).toBe(false);
+    expect(chessSport.decided(displayOf([...drawn, tiebreakRung('blitz', 'A')], BRACKET))).toBe(
+      true,
+    );
+    expect(chessSport.decided(displayOf([...drawn, armageddon('H', 'draw')], BRACKET))).toBe(true);
+  });
+
   it('never waits on an ending: chess has none', () => {
     for (const specs of [[], [start()], [start(), result('H')]]) {
       expect(chessSport.awaitingEnding(displayOf(specs))).toBe(false);
@@ -105,6 +116,13 @@ describe('chessSport: the game’s state', () => {
     ['a draw with Black at home', [start(), pairing('A'), result(null)], GAME, '½–½'],
     ['no colours, the first side wins', [start(), result('H')], NO_COLOURS, '1–0'],
     ['no colours, the second side wins', [start(), result('A')], NO_COLOURS, '0–1'],
+    // The game was drawn; the tie-break only says who goes through, and the words of that are the pad's, not the card's.
+    [
+      'a drawn bracket game a tie-break decided',
+      [start(), result(null), tiebreakRung('rapid', 'A')],
+      BRACKET,
+      '½–½',
+    ],
   ] as const)(
     'says the first side’s score first on Home’s card: %s',
     (_name, specs, game, line) => {
@@ -135,6 +153,17 @@ describe('chessSport: a tap', () => {
       type: 'core.start',
       payload: {},
     });
+  });
+
+  it('builds a tie-break from the display of the drawn bracket game it folded', () => {
+    const display = displayOf([start(), result(null)], BRACKET);
+    const tap: ChessTap = { kind: 'tiebreak', rung: 'armageddon', black: 'second', result: 'draw' };
+    expect(chessSport.eventFor(tap, { bootstrap: BRACKET, display })).toEqual({
+      type: 'boardgame.tiebreak',
+      payload: { rung: 'armageddon', black: 'ent-away', result: 'draw' },
+    });
+    expect(chessSport.tossOf(tap)).toBeNull();
+    expect(chessSport.refusalFor(tap)).toBe('notNow');
   });
 
   it('sends a queued payload as it is', () => {
@@ -187,6 +216,24 @@ describe('chessSport: Undo’s line', () => {
     expect(chessSport.undoneOf(display)).toEqual({ kind: 'result', winner: 'first', method: null });
     const plain = displayOf([start(), result('H')], GAME, [1, 2]);
     expect(chessSport.undoneOf(plain)).toEqual({ kind: 'result', winner: 'first', method: null });
+  });
+
+  it('names a tie-break Undo takes back as the tap that made it, by its seats', () => {
+    const drawn = [start(), result(null, 'agreement')];
+    const rapid = displayOf([...drawn, tiebreakRung('rapid', 'A', '2–0')], BRACKET, [1, 2, 3]);
+    expect(chessSport.undoneOf(rapid)).toEqual({
+      kind: 'tiebreak',
+      rung: 'rapid',
+      winner: 'second',
+      score: '2–0',
+    });
+    const arma = displayOf([...drawn, armageddon('H', 'white')], BRACKET, [1, 2, 3]);
+    expect(chessSport.undoneOf(arma)).toEqual({
+      kind: 'tiebreak',
+      rung: 'armageddon',
+      black: 'first',
+      result: 'white',
+    });
   });
 
   it('is nothing once an Undo is already the last tap', () => {

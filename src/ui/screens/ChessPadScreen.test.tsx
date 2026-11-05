@@ -499,13 +499,26 @@ describe('a game another scorer ended while the sheet is open', () => {
 });
 
 describe('the organiser’s part', () => {
-  it('a drawn bracket game waits for the tie-break: no result button, and the line says why', async () => {
+  it('a drawn bracket game waits for the tie-break: no result button, and the Tie-break tool replaces the line', async () => {
     const seed = chessSeed({ events: [START, DRAW], cfg: chessCfg({ tiebreak: true }) });
     await open(seed);
-    expect(strip()).toBe(en['scoring.chess.waiting.tiebreak']);
+    expect(strip()).toBe('');
+    expect(screen.getByRole('button', { name: en['scoring.chess.tiebreak.tool'] })).toBeTruthy();
     expect(screen.queryByRole('radio')).toBeNull();
     expect(half('first').getAttribute('aria-disabled')).toBe('true');
     expect(half('second').getAttribute('aria-disabled')).toBe('true');
+    expect(screen.queryAllByRole('button', { name: en['scoring.chess.tool.draw'] })).toEqual([]);
+  });
+
+  // A stage that lists no rung plays no tie-break game: the engine folds the drawn game done, so the line stands (the
+  // organiser decides) and there is no tool.
+  it('a drawn bracket game whose stage lists no rung is held: the line says so, and there is no tool', async () => {
+    const cfg = chessCfg({ tiebreak: true, tiebreakRungs: [] });
+    await open(chessSeed({ events: [START, DRAW], cfg }));
+    expect(strip()).toBe(en['scoring.chess.waiting.tiebreak']);
+    expect(screen.queryAllByRole('button', { name: en['scoring.chess.tiebreak.tool'] })).toEqual(
+      [],
+    );
     expect(screen.queryAllByRole('button', { name: en['scoring.chess.tool.draw'] })).toEqual([]);
   });
 

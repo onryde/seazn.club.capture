@@ -344,7 +344,7 @@ describe('a result, through the sheet that asks How', () => {
 });
 
 describe('a bracket stage', () => {
-  it('a drawn game waits for the organiser’s tie-break: the strip says so, and no result can be recorded', async () => {
+  it('a drawn game waits for its tie-break: the Tie-break tool replaces the line, and no result can be recorded', async () => {
     const seed = chessSeed({ cfg: chessCfg({ tiebreak: true }) });
     const app = await live(seed);
     expect(strip()).toBe(en['scoring.chess.forfeit']);
@@ -353,7 +353,8 @@ describe('a bracket stage', () => {
       type: 'boardgame.result',
       payload: { winner: null },
     });
-    expect(strip()).toBe(en['scoring.chess.waiting.tiebreak']);
+    expect(strip()).toBe('');
+    expect(screen.getByRole('button', { name: en['scoring.chess.tiebreak.tool'] })).toBeTruthy();
     expect(half('first').getAttribute('aria-disabled')).toBe('true');
     expect(half('second').getAttribute('aria-disabled')).toBe('true');
     expect(screen.queryAllByRole('button', { name: en['scoring.chess.tool.draw'] })).toEqual([]);

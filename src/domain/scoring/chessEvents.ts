@@ -4,7 +4,9 @@ import {
   otherSeat,
   whiteSeatOf,
   type ChessColour,
+  type ChessRung,
   type ChessTap,
+  type ChessTiebreakTap,
   type ChessTypes,
 } from '@/domain/scoring/chessTypes';
 import type { QueuedEvent } from '@/domain/scoring/queue';
@@ -16,7 +18,8 @@ import type { LedgerEvent } from '@/domain/scoring/wire';
  * whether the event is legal now (`foldChess`'s `legalQueued`); this decides only what the tap is, and refuses (null) a
  * tap that names what the game does not have: an empty seat, a method that contradicts the outcome, a colour swap with no
  * colours. The pad ends no game by force: it never writes `core.forfeit`, `core.settle` or `core.abandon` (a device link
- * gets 403 for them), nor a `boardgame.result` with a forfeit method (the web refuses it on write).
+ * gets 403 for them), nor a `boardgame.result` with a forfeit method (the web refuses it on write). A tie-break is the
+ * scorer's job (BG-KO-1), and the pad sends one only for a rung its stage lists.
  */
 export function chessEventFor(
   tap: ChessTap,
@@ -31,7 +34,31 @@ export function chessEventFor(
       return resultEvent(seats, tap);
     case 'swap':
       return swapEvent(seats, display.colorOfHome);
+    case 'tiebreak':
+      return tiebreakEvent(seats, tap, display.tiebreak.rungs);
   }
+}
+
+const TIEBREAK_TYPE = 'boardgame.tiebreak';
+
+/**
+ * A tie-break names the entrant of the seat the tap named, whoever holds White. Rapid and blitz name the winner and the
+ * score, when one was said; an Armageddon names Black and the result and no winner (BG-KO-2: the engine works out who
+ * advances, so a draw can never advance White). A rung the stage does not list is not played (BG-KO-3): no event.
+ */
+function tiebreakEvent(
+  seats: Seats,
+  tap: ChessTiebreakTap,
+  listed: readonly ChessRung[],
+): SportEvent | null {
+  if (!listed.includes(tap.rung)) return null;
+  if (tap.rung === 'armageddon') {
+    const black = seats[tap.black].entrantId;
+    return { type: TIEBREAK_TYPE, payload: { rung: tap.rung, black, result: tap.result } };
+  }
+  const winner = seats[tap.winner].entrantId;
+  const score = tap.score === null ? {} : { score: tap.score };
+  return { type: TIEBREAK_TYPE, payload: { rung: tap.rung, winner, ...score } };
 }
 
 /**

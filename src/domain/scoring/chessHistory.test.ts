@@ -48,6 +48,31 @@ describe('doneSaid: what an event did, in the pad’s words', () => {
     });
   });
 
+  it('says who advances and by which rung, by name: the winner’s seat for a rapid or blitz tie-break', () => {
+    expect(
+      doneSaid(NAMES, { kind: 'tiebreak', rung: 'rapid', winner: 'second', score: null }),
+    ).toEqual({
+      key: 'scoring.chess.tiebreak.advances',
+      vars: { name: 'L. Chen', how: { key: 'scoring.chess.tiebreak.rung.rapid' } },
+    });
+    expect(
+      doneSaid(NAMES, { kind: 'tiebreak', rung: 'blitz', winner: 'first', score: '1½–½' }),
+    ).toEqual({
+      key: 'scoring.chess.tiebreak.advances',
+      vars: { name: 'A. Sharma', how: { key: 'scoring.chess.tiebreak.rung.blitz' } },
+    });
+  });
+
+  it('says the player an Armageddon sends through: Black unless White won it', () => {
+    const arma = (black: 'first' | 'second', result: 'white' | 'black' | 'draw') =>
+      doneSaid(NAMES, { kind: 'tiebreak', rung: 'armageddon', black, result }).vars;
+    const how = { key: 'scoring.chess.tiebreak.rung.armageddon' };
+    expect(arma('first', 'white')).toEqual({ name: 'L. Chen', how });
+    expect(arma('first', 'black')).toEqual({ name: 'A. Sharma', how });
+    expect(arma('first', 'draw')).toEqual({ name: 'A. Sharma', how });
+    expect(arma('second', 'draw')).toEqual({ name: 'L. Chen', how });
+  });
+
   it('has a method word for each of the engine’s eleven, under its own name', () => {
     const methods = [
       'checkmate',
@@ -96,6 +121,16 @@ describe('undoneSaid: an Undo as the tap it took back', () => {
     },
   );
 
+  it('says an undone tie-break as the player it sent through', () => {
+    const tap = { kind: 'tiebreak', rung: 'rapid', winner: 'first', score: null } as const;
+    expect(undoneSaid(NAMES, tap).vars).toEqual({
+      what: {
+        key: 'scoring.chess.tiebreak.advances',
+        vars: { name: 'A. Sharma', how: { key: 'scoring.chess.tiebreak.rung.rapid' } },
+      },
+    });
+  });
+
   it('says an undone swap and start in their own words', () => {
     expect(undoneSaid(NAMES, { kind: 'swap' }).vars).toEqual({
       what: { key: 'scoring.chess.last.swap' },
@@ -132,6 +167,23 @@ describe('chessHistory: the game’s sheet', () => {
   it('shows no score on a row: chess has no points to count', () => {
     const rows = chessHistory([entry({ kind: 'start' })], NAMES)[0]?.rows ?? [];
     expect(rows.map((row) => row.score)).toEqual([null]);
+  });
+
+  it('lists a tie-break as the last thing done, with the player it sent through', () => {
+    const rows =
+      chessHistory(
+        [
+          entry({ kind: 'start' }),
+          entry({ kind: 'result', winner: null, method: 'agreement' }),
+          entry({ kind: 'tiebreak', rung: 'armageddon', black: 'second', result: 'draw' }),
+        ],
+        NAMES,
+      )[0]?.rows ?? [];
+    expect(rows.map((row) => row.said.key)).toEqual([
+      'scoring.chess.tiebreak.advances',
+      'scoring.chess.last.drawnBy',
+      'scoring.chess.last.start',
+    ]);
   });
 
   it('keeps an entry Undo took back in its place, struck', () => {

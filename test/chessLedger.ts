@@ -1,5 +1,5 @@
 import { foldEpochOf } from '@seazn/engine/sport';
-import type { ChessDisplay } from '@/domain/scoring/chessTypes';
+import type { ChessDisplay, ChessTiebreakState } from '@/domain/scoring/chessTypes';
 import type { QueuedEvent } from '@/domain/scoring/queue';
 import type { Bootstrap, BootstrapSide, LedgerEvent } from '@/domain/scoring/wire';
 
@@ -71,8 +71,15 @@ export const GAME: Bootstrap = {
 /** The same game with its config set (a bracket stage's tie-break, or a division that plays without colours). */
 export const withCfg = (bootstrap: Bootstrap, cfg: unknown): Bootstrap => ({ ...bootstrap, cfg });
 
-/** A bracket stage: a drawn game waits for a tie-break (`cfg.tiebreak`). */
+/** A bracket stage: a drawn game waits for a tie-break (`cfg.tiebreak`), and the stage lists no rungs, so every rung is played. */
 export const BRACKET: Bootstrap = withCfg(GAME, { tiebreak: true });
+
+/**
+ * A bracket stage that lists its tie-break rungs, in the order the stage plays them (the bootstrap's cfg is the stage's
+ * resolved one). An empty list is the organiser's "no tie-break games": a drawn game folds level and is held for them.
+ */
+export const bracketWith = (rungs: readonly string[]): Bootstrap =>
+  withCfg(GAME, { tiebreak: true, tiebreakRungs: rungs });
 
 /** A division that plays without colours. */
 export const NO_COLOURS: Bootstrap = withCfg(GAME, { colors: false });
@@ -111,10 +118,26 @@ export const forfeit = (by: Seat): Spec => ({
   payload: { by: entrant(by), reason: 'walkover' },
 });
 
-/** The organiser's rapid tie-break after a drawn bracket game: the seat that advances. */
+/** A rapid tie-break after a drawn bracket game, with no score: the seat that advances. */
 export const tiebreak = (winner: Seat): Spec => ({
   type: 'boardgame.tiebreak',
   payload: { rung: 'rapid', winner: entrant(winner) },
+});
+
+/** A rapid or blitz tie-break as the web's ledger holds it: the seat that advances, and the mini-match score if one was said. */
+export const tiebreakRung = (rung: 'rapid' | 'blitz', winner: Seat, score?: string): Spec => ({
+  type: 'boardgame.tiebreak',
+  payload: {
+    rung,
+    winner: entrant(winner),
+    ...(score === undefined ? {} : { score }),
+  },
+});
+
+/** An Armageddon: who had Black and how it ended from White's side. The winner is never named (BG-KO-2). */
+export const armageddon = (black: Seat, outcome: 'white' | 'black' | 'draw'): Spec => ({
+  type: 'boardgame.tiebreak',
+  payload: { rung: 'armageddon', black: entrant(black), result: outcome },
 });
 
 /** The organiser's settle of a level game (a drawn bracket game's lots, say): the seat that advances. */
@@ -167,6 +190,19 @@ export function queuedOf(key: string, spec: Spec): QueuedEvent {
   };
 }
 
+/** No tie-break anywhere: not a bracket stage (nothing listed), nothing owed, nothing held, nothing decided. */
+export const NO_TIEBREAK: ChessTiebreakState = {
+  rungs: [],
+  pending: false,
+  held: false,
+  decided: null,
+};
+
+/** A drawn bracket game waiting for the scorer's tie-break, the stage listing `rungs` (all three unless said). */
+export const pendingTiebreak = (
+  rungs: ChessTiebreakState['rungs'] = ['rapid', 'blitz', 'armageddon'],
+): ChessTiebreakState => ({ rungs, pending: true, held: false, decided: null });
+
 /**
  * A chess display written by hand, for the tests of what is built from one (the events a tap makes, the pad): a live game,
  * home holding White, nothing recorded. `over` says what a test changes.
@@ -179,5 +215,6 @@ export const chessDisplay = (over: Partial<ChessDisplay> = {}): ChessDisplay => 
   context: { ...GAME.context, sides: ['A. Sharma', 'L. Chen'] },
   lastTap: null,
   undoable: false,
+  tiebreak: NO_TIEBREAK,
   ...over,
 });

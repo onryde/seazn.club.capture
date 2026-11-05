@@ -8,6 +8,7 @@ import {
   HOME,
   chessDisplay,
   ledgerOf,
+  pendingTiebreak,
   queuedOf,
   result,
   start,
@@ -152,6 +153,115 @@ describe('chessEventFor: swapping colours', () => {
 
   it('is nothing in a division without colours: there is no colour to swap', () => {
     expect(eventFor({ kind: 'swap' }, NO_COLOURS)).toBeNull();
+  });
+});
+
+// The tie-break of a drawn knockout game (S2-3b; the engine's `boardgame.tiebreak`, `boardgame.js:189-209`). Both payloads are
+// STRICT: a rapid or blitz one is {rung, winner, score?} (the winner an entrant, the score an en-dash shape); an Armageddon
+// is {rung, black, result} and names no winner, so there is no way to record a draw that advances White. The tap names SEATS.
+describe('chessEventFor: a tie-break', () => {
+  const PENDING = chessDisplay({
+    phase: 'tiebreak',
+    tiebreak: pendingTiebreak(['rapid', 'blitz', 'armageddon']),
+  });
+  const PENDING_FLIPPED = { ...PENDING, colorOfHome: 'B' } as const;
+  const tiebreakEvent = (tap: ChessTap, display = PENDING) => eventFor(tap, display);
+  const decided = (rung: 'rapid' | 'blitz', winner: PadSide, score: '2–0' | '1½–½' | null) =>
+    ({ kind: 'tiebreak', rung, winner, score }) as const;
+  const armageddon = (black: PadSide, outcome: 'white' | 'black' | 'draw') =>
+    ({ kind: 'tiebreak', rung: 'armageddon', black, result: outcome }) as const;
+
+  it('records a rapid tie-break as the winner’s entrant, with no score key when none was said', () => {
+    expect(tiebreakEvent(decided('rapid', 'first', null))).toEqual({
+      type: 'boardgame.tiebreak',
+      payload: { rung: 'rapid', winner: HOME },
+    });
+    expect(tiebreakEvent(decided('rapid', 'second', null))).toEqual({
+      type: 'boardgame.tiebreak',
+      payload: { rung: 'rapid', winner: AWAY },
+    });
+    const payload = tiebreakEvent(decided('rapid', 'first', null))?.payload as object;
+    expect(Object.keys(payload)).toEqual(['rung', 'winner']);
+  });
+
+  it('records a blitz tie-break the same way, and carries the score the scorer chose, en dash and all', () => {
+    expect(tiebreakEvent(decided('blitz', 'second', '2–0'))).toEqual({
+      type: 'boardgame.tiebreak',
+      payload: { rung: 'blitz', winner: AWAY, score: '2–0' },
+    });
+    expect(tiebreakEvent(decided('blitz', 'first', '1½–½'))?.payload).toEqual({
+      rung: 'blitz',
+      winner: HOME,
+      score: '1½–½',
+    });
+  });
+
+  it('records an Armageddon as Black’s entrant and the result from White’s side, with no winner', () => {
+    expect(tiebreakEvent(armageddon('first', 'white'))).toEqual({
+      type: 'boardgame.tiebreak',
+      payload: { rung: 'armageddon', black: HOME, result: 'white' },
+    });
+    expect(tiebreakEvent(armageddon('second', 'draw'))).toEqual({
+      type: 'boardgame.tiebreak',
+      payload: { rung: 'armageddon', black: AWAY, result: 'draw' },
+    });
+    expect(tiebreakEvent(armageddon('second', 'black'))?.payload).toEqual({
+      rung: 'armageddon',
+      black: AWAY,
+      result: 'black',
+    });
+  });
+
+  it('never names a winner for an Armageddon, whatever the result: the engine decides who advances', () => {
+    for (const black of ['first', 'second'] as const) {
+      for (const outcome of ['white', 'black', 'draw'] as const) {
+        const payload = tiebreakEvent(armageddon(black, outcome))?.payload as object;
+        expect(Object.keys(payload).sort(), `${black} ${outcome}`).toEqual([
+          'black',
+          'result',
+          'rung',
+        ]);
+      }
+    }
+  });
+
+  it('names the entrant of the seat chosen, not of the colour: the same event whoever holds White', () => {
+    for (const tap of [decided('rapid', 'first', null), armageddon('second', 'draw')]) {
+      expect(tiebreakEvent(tap, PENDING_FLIPPED)).toEqual(tiebreakEvent(tap, PENDING));
+    }
+  });
+
+  it('builds the event on a stage that lists only that rung, and nothing for a rung it does not list', () => {
+    const only = (...rungs: ('rapid' | 'blitz' | 'armageddon')[]) =>
+      chessDisplay({ phase: 'tiebreak', tiebreak: pendingTiebreak(rungs) });
+    expect(tiebreakEvent(decided('blitz', 'first', null), only('blitz'))).not.toBeNull();
+    expect(tiebreakEvent(decided('rapid', 'first', null), only('blitz', 'armageddon'))).toBeNull();
+    expect(tiebreakEvent(armageddon('first', 'draw'), only('rapid', 'blitz'))).toBeNull();
+    expect(tiebreakEvent(armageddon('first', 'draw'), only('armageddon'))).not.toBeNull();
+  });
+
+  it('builds nothing where the stage lists no rung', () => {
+    expect(tiebreakEvent(decided('rapid', 'first', null), chessDisplay())).toBeNull();
+    expect(tiebreakEvent(armageddon('first', 'white'), chessDisplay())).toBeNull();
+  });
+
+  it('builds nothing while a seat has no entrant', () => {
+    const bye = { ...GAME, sides: { home: GAME.sides.home, away: null } };
+    for (const tap of [decided('rapid', 'first', null), armageddon('first', 'white')]) {
+      expect(chessEventFor(tap, { bootstrap: bye, display: PENDING })).toBeNull();
+    }
+  });
+
+  it('is sent as it was queued: a tie-break names its entrants and stamps nothing a later ledger could make stale', () => {
+    const queued = queuedOf('tap-1', {
+      type: 'boardgame.tiebreak',
+      payload: { rung: 'armageddon', black: AWAY, result: 'draw' },
+    });
+    expect(chessPayloadForSend(queued, ledgerOf([start()]), false)).toEqual({
+      rung: 'armageddon',
+      black: AWAY,
+      result: 'draw',
+    });
   });
 });
 

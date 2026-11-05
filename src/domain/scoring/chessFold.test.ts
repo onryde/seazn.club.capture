@@ -4,9 +4,12 @@ import type { QueuedEvent } from '@/domain/scoring/queue';
 import type { SportFoldInput } from '@/domain/scoring/scoringSport';
 import type { Bootstrap } from '@/domain/scoring/wire';
 import {
+  AWAY,
   BRACKET,
   GAME,
   NO_COLOURS,
+  armageddon,
+  bracketWith,
   eventId,
   finalize,
   forfeit,
@@ -18,6 +21,7 @@ import {
   settle,
   start,
   tiebreak,
+  tiebreakRung,
   voiding,
   withCfg,
   type Spec,
@@ -67,6 +71,7 @@ describe('foldChess: the phase', () => {
       },
       lastTap: null,
       undoable: false,
+      tiebreak: { rungs: [], pending: false, held: false, decided: null },
     });
   });
 
@@ -213,6 +218,352 @@ describe('foldChess: a game the organiser settles', () => {
 
   it('is not waiting for a tie-break the settle came before: a bracket game still level keeps waiting', () => {
     expect(displayOf([start(), result(null)], { bootstrap: BRACKET }).phase).toBe('tiebreak');
+  });
+});
+
+// The tie-break of a drawn knockout game (S2-3b; ruling 63; design §1, §3). The engine's own rules, folded for real:
+// a drawn game in a bracket stage (`cfg.tiebreak`) waits in phase `tiebreak` when the stage lists a rung (BG-KO-3), and
+// one tie-break event ends it (`boardgame.js:189-209, 284-290, 395-421`). The listed rungs are a menu in the stage's order.
+describe('foldChess: the tie-break menu', () => {
+  const DRAWN = [start(), result(null, 'agreement')];
+
+  it('lists no rung outside a bracket stage, drawn or not', () => {
+    expect(displayOf([start()]).tiebreak.rungs).toEqual([]);
+    expect(displayOf(DRAWN).tiebreak.rungs).toEqual([]);
+  });
+
+  it('lists all three rungs, in the engine’s order, for a bracket stage that names none', () => {
+    expect(displayOf([start()], { bootstrap: BRACKET }).tiebreak.rungs).toEqual([
+      'rapid',
+      'blitz',
+      'armageddon',
+    ]);
+  });
+
+  it('lists the stage’s rungs in the stage’s order, never sorted', () => {
+    const stage = bracketWith(['armageddon', 'rapid']);
+    expect(displayOf([start()], { bootstrap: stage }).tiebreak.rungs).toEqual([
+      'armageddon',
+      'rapid',
+    ]);
+    expect(displayOf([start()], { bootstrap: bracketWith(['blitz']) }).tiebreak.rungs).toEqual([
+      'blitz',
+    ]);
+  });
+
+  it('lists none for a stage whose list is empty: no tie-break games are played', () => {
+    expect(displayOf([start()], { bootstrap: bracketWith([]) }).tiebreak.rungs).toEqual([]);
+  });
+
+  it('lists none when the cfg names rungs but the stage has no tie-break', () => {
+    const stage = withCfg(GAME, { tiebreak: false, tiebreakRungs: ['rapid'] });
+    expect(displayOf(DRAWN, { bootstrap: stage }).tiebreak.rungs).toEqual([]);
+  });
+});
+
+describe('foldChess: a tie-break is owed (pending)', () => {
+  const DRAWN = [start(), result(null, 'agreement')];
+
+  it('is owed for a drawn bracket game whose stage lists a rung', () => {
+    for (const stage of [BRACKET, bracketWith(['blitz']), bracketWith(['armageddon', 'rapid'])]) {
+      const display = displayOf(DRAWN, { bootstrap: stage });
+      expect(display.phase).toBe('tiebreak');
+      expect(display.tiebreak.pending).toBe(true);
+      expect(display.tiebreak.held).toBe(false);
+      expect(display.tiebreak.decided).toBeNull();
+    }
+  });
+
+  it('is not owed before the game is drawn: not started, live, or won', () => {
+    for (const specs of [[], [start()], [start(), result('H', 'checkmate')]]) {
+      expect(displayOf(specs, { bootstrap: BRACKET }).tiebreak.pending).toBe(false);
+    }
+  });
+
+  it('is not owed outside a bracket stage: a drawn game is simply drawn', () => {
+    const display = displayOf(DRAWN);
+    expect(display.phase).toBe('done');
+    expect(display.tiebreak.pending).toBe(false);
+  });
+
+  it('is not owed once the organiser has settled it by lot: lots are the organiser’s', () => {
+    const display = displayOf([...DRAWN, settle('A')], { bootstrap: BRACKET });
+    expect(display.tiebreak.pending).toBe(false);
+    expect(display.tiebreak.decided).toBeNull();
+  });
+
+  it('is not owed after a forfeit of the drawn game', () => {
+    const display = displayOf([...DRAWN, forfeit('A')], { bootstrap: BRACKET });
+    expect(display.tiebreak.pending).toBe(false);
+    expect(display.tiebreak.decided).toBeNull();
+  });
+
+  it('is owed again when a void takes the settle back, and when a void takes the tie-break back', () => {
+    const settled = [...DRAWN, settle('H'), voiding(3)];
+    expect(displayOf(settled, { bootstrap: BRACKET }).tiebreak.pending).toBe(true);
+    const decided = [...DRAWN, tiebreak('H'), voiding(3)];
+    expect(displayOf(decided, { bootstrap: BRACKET }).tiebreak.pending).toBe(true);
+  });
+
+  it('is owed to this phone when its own drawn result is only queued', () => {
+    const queued = [queuedOf('tap-1', result(null))];
+    const display = displayOf([start()], { bootstrap: BRACKET, own: [1], queued });
+    expect(display.tiebreak.pending).toBe(true);
+  });
+});
+
+describe('foldChess: a stage that lists no rung holds the drawn game', () => {
+  const STAGE = bracketWith([]);
+
+  it('is not owed: the game is a done draw, with no tie-break to record', () => {
+    const display = displayOf([start(), result(null, 'agreement')], { bootstrap: STAGE });
+    expect(display.phase).toBe('done');
+    expect(display.result).toEqual({ outcome: 'draw', method: 'agreement' });
+    expect(display.tiebreak).toEqual({ rungs: [], pending: false, held: true, decided: null });
+  });
+
+  it('is held only while the organiser has not decided: a settle, a withdrawal and a void each end it', () => {
+    const drawn = [start(), result(null)];
+    const withdrew: Spec = {
+      type: 'core.forfeit',
+      payload: { by: AWAY, reason: 'withdrew' },
+    };
+    expect(displayOf([...drawn, settle('A')], { bootstrap: STAGE }).tiebreak.held).toBe(false);
+    expect(displayOf([...drawn, withdrew], { bootstrap: STAGE }).tiebreak.held).toBe(false);
+    expect(displayOf([...drawn, voiding(2)], { bootstrap: STAGE }).tiebreak.held).toBe(false);
+  });
+
+  it('is not held when the game was won, nor outside a bracket stage', () => {
+    expect(displayOf([start(), result('H')], { bootstrap: STAGE }).tiebreak.held).toBe(false);
+    const table = withCfg(GAME, { tiebreakRungs: [] });
+    expect(displayOf([start(), result(null)], { bootstrap: table }).tiebreak.held).toBe(false);
+  });
+
+  it('is not held while a tie-break is owed: the tile is the call, not the organiser', () => {
+    const display = displayOf([start(), result(null)], { bootstrap: BRACKET });
+    expect(display.tiebreak.held).toBe(false);
+  });
+});
+
+describe('foldChess: a tie-break decides who advances', () => {
+  const DRAWN = [start(), result(null, 'agreement')];
+  const decidedBy = (spec: Spec, stage: Bootstrap = BRACKET) =>
+    displayOf([...DRAWN, spec], { bootstrap: stage });
+
+  it('a rapid or blitz tie-break ends the game: done, the winner’s seat advances, the game stays a draw', () => {
+    const rapid = decidedBy(tiebreakRung('rapid', 'A'));
+    expect(rapid.phase).toBe('done');
+    expect(rapid.result).toEqual({ outcome: 'draw', method: 'agreement' });
+    expect(rapid.tiebreak).toMatchObject({
+      pending: false,
+      decided: { rung: 'rapid', advances: 'second' },
+    });
+    const blitz = decidedBy(tiebreakRung('blitz', 'H', '2–0'));
+    expect(blitz.tiebreak.decided).toEqual({ rung: 'blitz', advances: 'first' });
+  });
+
+  it('the score changes nothing of who advances', () => {
+    for (const score of [undefined, '2–0', '1½–½']) {
+      expect(decidedBy(tiebreakRung('rapid', 'A', score)).tiebreak.decided).toEqual({
+        rung: 'rapid',
+        advances: 'second',
+      });
+    }
+  });
+
+  // BG-KO-2: the scorer names Black and the result; the engine decides who advances. White's win sends the other through;
+  // Black's win and a drawn Armageddon send Black.
+  it.each([
+    ['H', 'white', 'second'],
+    ['H', 'black', 'first'],
+    ['H', 'draw', 'first'],
+    ['A', 'white', 'first'],
+    ['A', 'black', 'second'],
+    ['A', 'draw', 'second'],
+  ] as const)(
+    'an Armageddon with %s on Black, result %s: the %s seat advances',
+    (black, outcome, advances) => {
+      const display = decidedBy(armageddon(black, outcome));
+      expect(display.phase).toBe('done');
+      expect(display.result?.outcome).toBe('draw');
+      expect(display.tiebreak.decided).toEqual({ rung: 'armageddon', advances });
+    },
+  );
+
+  it('names the seat that advances whoever holds White, since a pairing is the arbiter’s and a seat is the player’s', () => {
+    const specs = [start(), pairing('A'), result(null), tiebreakRung('rapid', 'H')];
+    const display = displayOf(specs, { bootstrap: BRACKET });
+    expect(display.colorOfHome).toBe('B');
+    expect(display.tiebreak.decided).toEqual({ rung: 'rapid', advances: 'first' });
+  });
+
+  it('reads the player of a team or a pair by the seat it sits in', () => {
+    const display = decidedBy(armageddon('A', 'draw'));
+    expect(display.names).toEqual({ first: 'A. Sharma', second: 'L. Chen' });
+    expect(display.tiebreak.decided?.advances).toBe('second');
+  });
+
+  it('a stage that lists only blitz takes a blitz tie-break', () => {
+    const display = decidedBy(tiebreakRung('blitz', 'A'), bracketWith(['blitz']));
+    expect(display.tiebreak.decided).toEqual({ rung: 'blitz', advances: 'second' });
+  });
+
+  it('has no decided tie-break while it is owed, or after a settle or a forfeit', () => {
+    expect(displayOf(DRAWN, { bootstrap: BRACKET }).tiebreak.decided).toBeNull();
+    expect(decidedBy(settle('A')).tiebreak.decided).toBeNull();
+    expect(decidedBy(forfeit('A')).tiebreak.decided).toBeNull();
+  });
+});
+
+describe('foldChess: a tie-break the engine refuses is not shown', () => {
+  const DRAWN = [start(), result(null, 'agreement')];
+  const legal = (specs: readonly Spec[], queued: readonly QueuedEvent[], over: Over = {}) => {
+    const folded = foldOf(specs, { ...over, queued });
+    if (folded.kind !== 'folded') throw new Error(`did not fold: ${folded.reason}`);
+    return folded;
+  };
+
+  it('refuses a second tie-break: one ends the match', () => {
+    const queued = [queuedOf('tap-2', tiebreakRung('blitz', 'H'))];
+    const folded = legal([...DRAWN, tiebreak('A')], queued, { bootstrap: BRACKET });
+    expect(folded.legalQueued).not.toContain('tap-2');
+    expect(folded.display.tiebreak.decided).toEqual({ rung: 'rapid', advances: 'second' });
+  });
+
+  it('takes a queued tie-break on a drawn bracket game, and shows it at once', () => {
+    const queued = [queuedOf('tap-3', armageddon('A', 'draw'))];
+    const folded = legal(DRAWN, queued, { bootstrap: BRACKET, own: [1, 2] });
+    expect(folded.legalQueued).toContain('tap-3');
+    expect(folded.display.phase).toBe('done');
+    expect(folded.display.tiebreak.decided).toEqual({ rung: 'armageddon', advances: 'second' });
+  });
+
+  it('refuses a rung the stage does not list: the list is authoritative (BG-KO-3)', () => {
+    const queued = [queuedOf('tap-1', armageddon('H', 'white'))];
+    const folded = legal(DRAWN, queued, { bootstrap: bracketWith(['rapid']) });
+    expect(folded.legalQueued).not.toContain('tap-1');
+    expect(folded.display.tiebreak.pending).toBe(true);
+  });
+
+  it('refuses a tie-break while the game is live, before the draw', () => {
+    const queued = [queuedOf('tap-1', tiebreak('H'))];
+    const folded = legal([start()], queued, { bootstrap: BRACKET });
+    expect(folded.legalQueued).not.toContain('tap-1');
+    expect(folded.display.phase).toBe('live');
+  });
+
+  it('refuses a tie-break in a stage with none to play', () => {
+    const queued = [queuedOf('tap-1', tiebreak('H'))];
+    const folded = legal(DRAWN, queued, { bootstrap: bracketWith([]) });
+    expect(folded.legalQueued).not.toContain('tap-1');
+  });
+
+  it('refuses a tie-break after the organiser settled the game', () => {
+    const queued = [queuedOf('tap-1', tiebreak('H'))];
+    const folded = legal([...DRAWN, settle('A')], queued, { bootstrap: BRACKET });
+    expect(folded.legalQueued).not.toContain('tap-1');
+    expect(folded.display.tiebreak.decided).toBeNull();
+  });
+
+  it('refuses a tie-break after the organiser locked the result', () => {
+    const queued = [queuedOf('tap-1', tiebreak('H'))];
+    const folded = legal([...DRAWN, settle('A'), finalize()], queued, { bootstrap: BRACKET });
+    expect(folded.legalQueued).not.toContain('tap-1');
+  });
+
+  it('refuses an Armageddon that names no Black: the colour is required (TIEBREAK_COLOUR_REQUIRED)', () => {
+    const noBlack: Spec = {
+      type: 'boardgame.tiebreak',
+      payload: { rung: 'armageddon', result: 'draw' },
+    };
+    const folded = legal(DRAWN, [queuedOf('tap-1', noBlack)], { bootstrap: BRACKET });
+    expect(folded.legalQueued).not.toContain('tap-1');
+  });
+});
+
+describe('foldChess: Undo of a tie-break', () => {
+  const DRAWN = [start(), result(null, 'agreement')];
+
+  it('is offered for this phone’s own tie-break with nothing after it', () => {
+    const display = displayOf([...DRAWN, tiebreak('A')], { bootstrap: BRACKET, own: [1, 2, 3] });
+    expect(display.undoable).toBe(true);
+  });
+
+  it('is offered for an own tie-break that is only queued', () => {
+    const queued = [queuedOf('tap-1', tiebreakRung('blitz', 'H', '2–0'))];
+    const display = displayOf(DRAWN, { bootstrap: BRACKET, own: [1, 2], queued });
+    expect(display.undoable).toBe(true);
+  });
+
+  it('is not offered for another scorer’s tie-break, even when this phone recorded the draw', () => {
+    const display = displayOf([...DRAWN, tiebreak('A')], { bootstrap: BRACKET, own: [1, 2] });
+    expect(display.undoable).toBe(false);
+  });
+
+  it('is not offered once the organiser has locked the result after it', () => {
+    const specs = [...DRAWN, tiebreak('A'), finalize()];
+    expect(displayOf(specs, { bootstrap: BRACKET, own: [1, 2, 3] }).undoable).toBe(false);
+  });
+
+  it('takes the tie-break back to the pending state, with the draw still this phone’s to undo', () => {
+    const specs = [...DRAWN, tiebreak('A'), voiding(3)];
+    const display = displayOf(specs, { bootstrap: BRACKET, own: [1, 2, 3, 4] });
+    expect(display.phase).toBe('tiebreak');
+    expect(display.tiebreak.pending).toBe(true);
+    expect(display.tiebreak.decided).toBeNull();
+    expect(display.undoable).toBe(true);
+  });
+
+  it('lets the scorer record a different tie-break after the void', () => {
+    const specs = [...DRAWN, tiebreakRung('rapid', 'A'), voiding(3), armageddon('H', 'white')];
+    const display = displayOf(specs, { bootstrap: BRACKET, own: [1, 2, 3, 4, 5] });
+    expect(display.tiebreak.decided).toEqual({ rung: 'armageddon', advances: 'second' });
+    expect(display.undoable).toBe(true);
+  });
+
+  it('leaves the draw’s own Undo to the draw while no tie-break stands, as before', () => {
+    const display = displayOf(DRAWN, { bootstrap: BRACKET, own: [1, 2] });
+    expect(display.undoable).toBe(true);
+    expect(display.phase).toBe('tiebreak');
+  });
+});
+
+describe('foldChess: the last tap names a tie-break by its seats', () => {
+  const DRAWN = [start(), result(null, 'agreement')];
+  const lastOf = (spec: Spec, stage: Bootstrap = BRACKET) =>
+    displayOf([...DRAWN, spec], { bootstrap: stage }).lastTap;
+
+  it('says a rapid or blitz tie-break with its winner’s seat and its score', () => {
+    expect(lastOf(tiebreakRung('rapid', 'A'))).toEqual({
+      kind: 'tiebreak',
+      rung: 'rapid',
+      winner: 'second',
+      score: null,
+    });
+    expect(lastOf(tiebreakRung('blitz', 'H', '1½–½'))).toEqual({
+      kind: 'tiebreak',
+      rung: 'blitz',
+      winner: 'first',
+      score: '1½–½',
+    });
+  });
+
+  it('says an Armageddon with its Black seat and its result, and never a winner', () => {
+    const last = lastOf(armageddon('A', 'draw'));
+    expect(last).toEqual({ kind: 'tiebreak', rung: 'armageddon', black: 'second', result: 'draw' });
+    expect(last).not.toHaveProperty('winner');
+  });
+
+  it('reads a score the pad does not offer as none: it is not spoken', () => {
+    expect(lastOf(tiebreakRung('rapid', 'H', '3–1'))).toMatchObject({ score: null });
+  });
+
+  it('says an undone tie-break as the tap that made it', () => {
+    const specs = [...DRAWN, tiebreakRung('blitz', 'A', '2–0'), voiding(3)];
+    expect(displayOf(specs, { bootstrap: BRACKET }).lastTap).toEqual({
+      kind: 'undone',
+      tap: { kind: 'tiebreak', rung: 'blitz', winner: 'second', score: '2–0' },
+    });
   });
 });
 

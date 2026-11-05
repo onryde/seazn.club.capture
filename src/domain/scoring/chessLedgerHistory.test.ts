@@ -63,9 +63,74 @@ describe('doneOf', () => {
 
   it('has no words for a winner who is neither side, nor for the organiser’s events', () => {
     expect(doneOf(envelope('boardgame.result', { winner: 'ent-stranger' }), NAMES)).toBeNull();
-    for (const type of ['core.forfeit', 'boardgame.tiebreak', 'core.finalize', 'core.void']) {
+    for (const type of ['core.forfeit', 'core.settle', 'core.finalize', 'core.void']) {
       expect(doneOf(envelope(type, {}), NAMES), type).toBeNull();
     }
+  });
+});
+
+// The tie-break (S2-3b): a rapid or blitz one is read by the seat its winner sits in, an Armageddon by the seat that had
+// Black and its result; both are the same words a tap of that choice makes.
+describe('doneOf: a tie-break', () => {
+  const read = (payload: unknown) => doneOf(envelope('boardgame.tiebreak', payload), NAMES);
+
+  it('reads a rapid or blitz tie-break by the seat of its winner, with its score or none', () => {
+    expect(read({ rung: 'rapid', winner: HOME })).toEqual({
+      kind: 'tiebreak',
+      rung: 'rapid',
+      winner: 'first',
+      score: null,
+    });
+    expect(read({ rung: 'blitz', winner: AWAY, score: '2–0' })).toEqual({
+      kind: 'tiebreak',
+      rung: 'blitz',
+      winner: 'second',
+      score: '2–0',
+    });
+    expect(read({ rung: 'rapid', winner: HOME, score: '1½–½' })).toMatchObject({ score: '1½–½' });
+  });
+
+  it('reads a score the pad does not offer as none: the line never speaks it', () => {
+    expect(read({ rung: 'rapid', winner: HOME, score: '3–1' })).toMatchObject({ score: null });
+  });
+
+  it('reads an Armageddon by the seat that had Black and the result, with no winner of its own', () => {
+    expect(read({ rung: 'armageddon', black: AWAY, result: 'draw' })).toEqual({
+      kind: 'tiebreak',
+      rung: 'armageddon',
+      black: 'second',
+      result: 'draw',
+    });
+    expect(read({ rung: 'armageddon', black: HOME, result: 'white' })).toEqual({
+      kind: 'tiebreak',
+      rung: 'armageddon',
+      black: 'first',
+      result: 'white',
+    });
+    expect(read({ rung: 'armageddon', black: HOME, result: 'black' })).toMatchObject({
+      result: 'black',
+    });
+  });
+
+  it('has no words for a tie-break that names nobody on this game, or that is not one', () => {
+    expect(read({})).toBeNull();
+    expect(read({ rung: 'rapid', winner: 'ent-stranger' })).toBeNull();
+    expect(read({ rung: 'rapid' })).toBeNull();
+    expect(read({ rung: 'armageddon', black: 'ent-stranger', result: 'draw' })).toBeNull();
+    expect(read({ rung: 'armageddon', result: 'draw' })).toBeNull();
+    expect(read({ rung: 'armageddon', black: HOME, result: 'unknown' })).toBeNull();
+    expect(read({ rung: 'armageddon', black: HOME })).toBeNull();
+    expect(read({ rung: 'lots', winner: HOME })).toBeNull();
+    expect(read(null)).toBeNull();
+  });
+
+  it('turns into the tap an Undo names, and back, naming the same seats', () => {
+    const rapid = { kind: 'tiebreak', rung: 'rapid', winner: 'second', score: '2–0' } as const;
+    const arma = { kind: 'tiebreak', rung: 'armageddon', black: 'first', result: 'draw' } as const;
+    expect(tapOfDone(rapid)).toEqual(rapid);
+    expect(tapOfDone(arma)).toEqual(arma);
+    expect(doneOfTap(rapid)).toEqual(rapid);
+    expect(doneOfTap(arma)).toEqual(arma);
   });
 });
 
