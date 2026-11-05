@@ -240,7 +240,10 @@ export type PadStateCard =
 
 /**
  * The match's tally of periods won, in the header (owner, 2026-11-01: "0:0 with lime light in place of preview"): shown
- * top side first, as the halves are ("1:0"), and said with the sides' names ("Games: A. Sharma 1, L. Chen 0").
+ * top side first, as the halves are ("1:0"), and said with the sides' names ("Games: A. Sharma 1, L. Chen 0"). Chess is
+ * the one exception to the order (plan S2-3, the Batch A review's ruling): its result is written as a scoresheet writes
+ * it, White's score first ("1–0", "0–1"), whichever seat holds White, so `shown` may read the second side first there;
+ * its `said` names each player with the point.
  */
 export type PadTally<K extends string> = {
   readonly shown: string;

@@ -103,6 +103,7 @@ export type ChessPadKey =
   | 'scoring.chess.tool.swap'
   | 'scoring.chess.start.ask'
   | 'scoring.chess.waiting.tiebreak'
+  | 'scoring.chess.forfeit'
   | 'scoring.chess.tallySaid'
   | 'scoring.chess.gameHeading'
   | 'scoring.chess.last.start'

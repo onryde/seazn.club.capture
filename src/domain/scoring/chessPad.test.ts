@@ -5,6 +5,7 @@ import {
   chessMethodsFor,
   chessPad,
   chessResultLine,
+  chessTakesResult,
 } from '@/domain/scoring/chessPad';
 import type { ChessDisplay } from '@/domain/scoring/chessTypes';
 import { chessDisplay } from '../../../test/chessLedger';
@@ -252,9 +253,88 @@ describe('chessPad: the tie-break', () => {
 });
 
 describe('chessPad: the strip', () => {
-  it('has its one slot empty while nothing waits, so the strip never shifts', () => {
-    expect(chessPad(chessDisplay()).strip).toEqual([{ slot: 'note', text: null }]);
-    expect(chessPad(OWN_WHITE_WIN).strip).toEqual([{ slot: 'note', text: null }]);
+  const note = (display: ChessDisplay) => chessPad(display).strip;
+
+  // Task 3, ruling 7: the pad says in one line that a forfeit is the organiser's. The web refuses one from a device link.
+  it('says a forfeit is the organiser’s to record, before the start and while the game is live', () => {
+    const says = [{ slot: 'note', text: { key: 'scoring.chess.forfeit' } }];
+    expect(note(chessDisplay())).toEqual(says);
+    expect(note(chessDisplay({ phase: 'notStarted' }))).toEqual(says);
+  });
+
+  // Task 3, ruling 7: an organiser's walkover leaves the last-tap line without a name, so the strip names who won,
+  // beside the result line in the header (which reads White's score first).
+  it('names the winner once a result stands, whoever holds White, and says a draw as a draw', () => {
+    const decided = (colorOfHome: 'W' | 'B', outcome: 'white' | 'draw' | 'black') =>
+      note(
+        chessDisplay({
+          phase: 'done',
+          colorOfHome,
+          result: { outcome, method: 'checkmate', own: false },
+        }),
+      );
+    const won = (name: string) => [
+      { slot: 'note', text: { key: 'scoring.chess.last.won', vars: { name } } },
+    ];
+    expect(decided('W', 'white')).toEqual(won(SHARMA));
+    expect(decided('W', 'black')).toEqual(won(CHEN));
+    expect(decided('B', 'white')).toEqual(won(CHEN));
+    expect(decided('B', 'black')).toEqual(won(SHARMA));
+    expect(decided('W', 'draw')).toEqual([
+      { slot: 'note', text: { key: 'scoring.chess.last.drawn' } },
+    ]);
+  });
+
+  it('names the winner after the organiser locks the result, and says nothing of a result that is none', () => {
+    expect(
+      note(
+        chessDisplay({ phase: 'final', result: { outcome: 'black', method: null, own: false } }),
+      ),
+    ).toEqual([{ slot: 'note', text: { key: 'scoring.chess.last.won', vars: { name: CHEN } } }]);
+    expect(note(chessDisplay({ phase: 'final', result: null }))).toEqual([
+      { slot: 'note', text: null },
+    ]);
+    expect(note(chessDisplay({ phase: 'done', result: null }))).toEqual([
+      { slot: 'note', text: null },
+    ]);
+  });
+});
+
+describe('chessPad: a game that ended with no result (the Batch A review, M2)', () => {
+  // An abandoned game, or a double walkover: the engine's phase says it is over and there is no outcome. The card must not
+  // claim a result was recorded, and must not claim the organiser finalised one either.
+  it.each(['done', 'final'] as const)(
+    'is not the recorded-result card when phase is %s',
+    (phase) => {
+      const view = chessPad(chessDisplay({ phase, result: null }));
+      expect(view.card).toEqual({ kind: 'cancelled' });
+      expect(view.halves.map((half) => half.tappable)).toEqual([false, false]);
+      expect(view.tools).toEqual([]);
+    },
+  );
+
+  it('keeps the recorded-result card for a game that has a result', () => {
+    expect(
+      chessPad(
+        chessDisplay({ phase: 'done', result: { outcome: 'draw', method: null, own: true } }),
+      ).card,
+    ).toEqual({ kind: 'resultRecorded', undoLeft: null });
+  });
+
+  it('shows no card while the game is live, not started or waiting for a tie-break', () => {
+    for (const phase of ['notStarted', 'live', 'tiebreak'] as const) {
+      expect(chessPad(chessDisplay({ phase, result: null })).card, phase).toBeNull();
+    }
+  });
+});
+
+describe('chessTakesResult', () => {
+  it('is true only while the game is live', () => {
+    const takes = (phase: ChessDisplay['phase']) => chessTakesResult(chessDisplay({ phase }));
+    expect(takes('live')).toBe(true);
+    for (const phase of ['notStarted', 'tiebreak', 'done', 'final'] as const) {
+      expect(takes(phase), phase).toBe(false);
+    }
   });
 });
 
@@ -352,9 +432,10 @@ describe('chessPad: the header and the rest of the view', () => {
 describe('chessResultLine: the pad’s own line, in chess notation', () => {
   const lineOf = (result: ChessDisplay['result']) => chessResultLine(chessDisplay({ result }));
 
-  it('is 1–0, ½–½ or 0–1, White’s score first, with an en dash', () => {
+  // A draw is a bare "½": "½–½" is 81 dp at the tally's size, wider than the header's room at 320 dp (chessFit.test.ts).
+  it('is 1–0, ½ or 0–1, White’s score first, with an en dash', () => {
     expect(lineOf({ outcome: 'white', method: null, own: false })).toBe('1–0');
-    expect(lineOf({ outcome: 'draw', method: null, own: false })).toBe('½–½');
+    expect(lineOf({ outcome: 'draw', method: null, own: false })).toBe('½');
     expect(lineOf({ outcome: 'black', method: null, own: false })).toBe('0–1');
   });
 

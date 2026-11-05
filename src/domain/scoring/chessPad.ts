@@ -7,6 +7,7 @@ import {
   type ChessMethod,
   type ChessOutcome,
   type ChessPadKey,
+  type ChessResult,
 } from '@/domain/scoring/chessTypes';
 import {
   withCard,
@@ -37,8 +38,13 @@ type Tool = PadTool<ChessPadKey>;
 
 const SYNCED: PadSync = { kind: 'synced' };
 
-/** The engine's own words for each outcome, as the game is written: White's score first. */
-const LINE: Readonly<Record<ChessOutcome, string>> = { white: '1–0', draw: '½–½', black: '0–1' };
+/**
+ * The header's line for each outcome, as the game is written: White's score first. A draw is a bare "½", not the
+ * scoresheet's "½–½": at the tally's size that is 81 dp, wider than the 72 the header's row leaves at 320 dp, and would push
+ * Match details and History off the screen (`chessFit.test.ts`). Each half says "½" under its name and the strip says
+ * "Drawn", so nothing is lost; Home's Finished card writes "½–½" (`chessCardLine`), which has the room.
+ */
+const LINE: Readonly<Record<ChessOutcome, string>> = { white: '1–0', draw: '½', black: '0–1' };
 
 /** A point under a name: a win, half for a draw, a loss. */
 const POINT = { win: '1', draw: '½', loss: '0' } as const;
@@ -74,7 +80,7 @@ export const chessDecided = (display: ChessDisplay): boolean =>
   display.phase === 'done' || display.phase === 'final';
 
 /** The pad takes a result while the game is live, and at no other time: the engine takes none before the start or after. */
-const takesResult = (display: ChessDisplay): boolean => display.phase === 'live';
+export const chessTakesResult = (display: ChessDisplay): boolean => display.phase === 'live';
 
 /**
  * The pad for a chess game: the first player on top, the second below, each with a colour plate and, once a result
@@ -95,10 +101,22 @@ export function chessPad(display: ChessDisplay, sync: PadSync = SYNCED): PadView
     tools: tools(display),
     card: null,
   };
-  return withCard(view, chessDecided(display) ? RESULT_RECORDED : null);
+  return withCard(view, cardOf(display));
 }
 
 const RESULT_RECORDED: PadStateCard = { kind: 'resultRecorded', undoLeft: null };
+
+/**
+ * An abandoned game, or a double walkover, is over with no result (the Batch A review's M2): the card that says nothing was
+ * decided is the cancelled match's, which claims neither a recorded result nor the organiser's lock.
+ */
+const NO_RESULT: PadStateCard = { kind: 'cancelled' };
+
+/** The card over the players: a recorded result, or a finished game with none; no card while the game can still change. */
+function cardOf(display: ChessDisplay): PadStateCard | null {
+  if (!chessDecided(display)) return null;
+  return display.result === null ? NO_RESULT : RESULT_RECORDED;
+}
 
 // ---------------------------------------------------------------------------------------------------------------
 // The halves
@@ -131,7 +149,7 @@ function half(display: ChessDisplay, seat: PadSide): PadHalf<ChessPadKey> {
     action: { key: `scoring.chess.result.${colour ?? 'plain'}`, vars: { name } },
     // What a screen reader is told a tap does; the colour is in the half's name, on its plate.
     hint: { key: 'scoring.chess.hint', vars: { name } },
-    tappable: takesResult(display),
+    tappable: chessTakesResult(display),
   };
 }
 
@@ -188,10 +206,27 @@ function start(display: ChessDisplay): PadStart<ChessPadKey> | null {
   };
 }
 
-/** One slot, the note: the tie-break waits for the organiser, who records it; else empty, so the strip never shifts. */
+/** One slot, the note, so the strip never shifts: what the pad says of the game now (`noteOf`), or nothing. */
 function strip(display: ChessDisplay): readonly PadStripItem<ChessPadKey>[] {
-  const waiting = display.phase === 'tiebreak';
-  return [{ slot: 'note', text: waiting ? { key: 'scoring.chess.waiting.tiebreak' } : null }];
+  return [{ slot: 'note', text: noteOf(display) }];
+}
+
+/**
+ * Before the result: a forfeit is the organiser's to record, which the pad cannot (the web refuses it from a device link).
+ * While a drawn bracket game waits: the tie-break is the organiser's too. Once a result stands: who won it, in words, since
+ * an organiser's walkover leaves the last-tap line without a name; the header's result line reads White's score first.
+ * A game over with no result says nothing here: its card does.
+ */
+function noteOf(display: ChessDisplay): PadText<ChessPadKey> | null {
+  if (display.phase === 'tiebreak') return { key: 'scoring.chess.waiting.tiebreak' };
+  if (display.result !== null) return resultSaid(display, display.result);
+  return chessDecided(display) ? null : { key: 'scoring.chess.forfeit' };
+}
+
+/** "A. Sharma won" or "Drawn", with no method: the last-tap line says how when it can. */
+function resultSaid(display: ChessDisplay, result: ChessResult): PadText<ChessPadKey> {
+  const winner = seatOfOutcome(result.outcome, display.colorOfHome);
+  return doneSaid(display.names, { kind: 'result', winner, method: null });
 }
 
 /** What the last tap did, and the one Undo while this phone can still take its own result back. */
@@ -219,7 +254,7 @@ const SWAP = 'swap';
  * players' halves (the sheet asks How); a swap is the arbiter's pairing card, recordable before or during the game.
  */
 function tools(display: ChessDisplay): readonly Tool[] {
-  if (!takesResult(display)) return [];
+  if (!chessTakesResult(display)) return [];
   const draw: Tool = { id: DRAW, label: { key: 'scoring.chess.tool.draw' }, ...PLAIN };
   const swap: Tool = { id: SWAP, label: { key: 'scoring.chess.tool.swap' }, ...PLAIN };
   return display.colorOfHome === null ? [draw] : [draw, swap];

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { sportFor } from '@/domain/scoring/sports';
 import { BadmintonMatchScreen } from '@/ui/screens/BadmintonMatchScreen';
+import { ChessMatchScreen } from '@/ui/screens/ChessMatchScreen';
 import { screenFor } from '@/ui/screens/scoringScreens';
 import { TableTennisMatchScreen } from '@/ui/screens/TableTennisMatchScreen';
 
@@ -16,14 +17,21 @@ describe('the sports screens table', () => {
     expect(screenFor('tabletennis')).not.toBe(screenFor('badminton'));
   });
 
+  // Chess's key is the engine's `boardgame`, shared with every generic one-against-one game (ruling 61).
+  it('chess is drawn by its own screen, under the engine’s key (plan S2-3 Task 3)', () => {
+    expect(screenFor('boardgame')).toBe(ChessMatchScreen);
+    expect(screenFor('boardgame')).not.toBe(screenFor('badminton'));
+    expect(screenFor('boardgame')).not.toBe(screenFor('tabletennis'));
+  });
+
   it('every sport the runtime scores has a screen: the table cannot fall behind the sports', () => {
-    for (const key of ['badminton', 'tabletennis']) {
+    for (const key of ['badminton', 'tabletennis', 'boardgame']) {
       expect(sportFor(key), key).not.toBeNull();
       expect(screenFor(key), key).not.toBeNull();
     }
   });
 
-  it.each(['tennis', '', 'Badminton', 'constructor', '__proto__'])(
+  it.each(['tennis', '', 'Badminton', 'chess', 'constructor', '__proto__'])(
     'has no screen for %j: a sport this build does not score, an inherited name included',
     (key) => {
       expect(screenFor(key)).toBeNull();
