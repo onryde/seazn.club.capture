@@ -1,21 +1,45 @@
 import { act, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { encodeSavedCode } from '@/domain/mode/savedCode';
 import { chessCfg } from '@/domain/scoring/chessEngine';
 import { scoringHubOf } from '@/hooks/scoringHub';
 import en from '@/i18n/en.json';
-import es from '@/i18n/es.json';
-import fr from '@/i18n/fr.json';
-import nl from '@/i18n/nl.json';
 import { AWAY_ENTRANT, HOME_ENTRANT, chessSeed } from '@/services/fakeChessPad';
-import type { FakeMatchSeed } from '@/services/fakeScoringPort';
-import { STORE_KEYS } from '@/services/modeStore';
+import {
+  DECISIVE,
+  DICTIONARIES,
+  DRAWN,
+  START,
+  aSecondOn,
+  choices,
+  fill,
+  half,
+  howSheet,
+  inMatch,
+  lastTap,
+  ledger,
+  live,
+  pick,
+  plain,
+  plate,
+  press,
+  record,
+  resetChessClock,
+  scanned,
+  startPressed,
+  strip,
+  tally,
+  tapHalf,
+  toolNames,
+  typesOf,
+  undoCell,
+  type Words,
+} from './chessRouted';
 import { TEST_NOW } from './fakePorts';
-import { LINK, RAW, linkKey } from './scoringHomeFixtures';
-import { backgroundAndBack, flush, launchApp, type LaunchedApp } from './routedApp';
+import { LINK, linkKey } from './scoringHomeFixtures';
+import { backgroundAndBack, flush, launchApp } from './routedApp';
 
 beforeEach(() => {
-  seconds = 0;
+  resetChessClock();
   vi.useFakeTimers();
 });
 afterEach(() => vi.useRealTimers());
@@ -26,143 +50,6 @@ afterEach(() => vi.useRealTimers());
 // (the plates' look, how the chips wrap at 320 dp, a screen reader reading the sheet, a press's feedback) is the device
 // check's: nothing here claims it. The four questions: a division without colours is covered in useChessMatch.test.tsx and
 // ChessPadScreen.test.tsx; orientation does not apply (Remote Scoring is portrait only).
-
-const DICTIONARIES = { en, es, fr, nl } as const;
-type Words = Readonly<Record<string, string>>;
-
-const START = { type: 'core.start', payload: {} } as const;
-
-/** A phone that scanned this match earlier: the code saved, the link kept with the sport the bootstrap named. */
-function inMatch(seed: FakeMatchSeed): Record<string, string> {
-  return {
-    [STORE_KEYS.active]: 'scoring',
-    [STORE_KEYS.code('scoring')]: encodeSavedCode({
-      mode: 'scoring',
-      raw: '',
-      slot: null,
-      savedAt: TEST_NOW,
-      expiresAt: null,
-      stream: null,
-      scoring: { fixtureId: seed.fixtureId, label: 'Board 4' },
-    }),
-    [linkKey(seed.fixtureId)]: JSON.stringify({ ...LINK, sportKey: 'boardgame' }),
-  };
-}
-
-let seconds = 0;
-/** The phone's clock a second on: the next tap is never in the bounce window of the last. */
-const aSecondOn = (app: LaunchedApp) => {
-  seconds += 1;
-  app.setNow(new Date(TEST_NOW.getTime() + seconds * 1000));
-};
-
-// A no-break space in a dictionary (French puts one before a colon, a question mark) is matched as a plain space by
-// getByText's normaliser, but `textContent` and an accessible name keep it: strings compared to either go through `plain`.
-const plain = (text: string) => text.replace(/ /g, ' ');
-const fill = (text: string, vars: Record<string, string | number>) =>
-  plain(
-    Object.entries(vars).reduce(
-      (out, [name, value]) => out.replace(`{${name}}`, String(value)),
-      text,
-    ),
-  );
-
-const half = (side: 'first' | 'second') => screen.getByTestId(`half-${side}`);
-const plate = (side: 'first' | 'second') => within(half(side)).queryByTestId('plate')?.textContent;
-const tally = () => screen.getByTestId('tally').textContent;
-const lastTap = () => screen.getByTestId('last-tap-sentence').textContent;
-const strip = () => screen.getByTestId('strip-note').textContent;
-const howSheet = () => screen.queryByTestId('how-sheet');
-const toolNames = () =>
-  within(screen.getByTestId('tool-row'))
-    .getAllByRole('button')
-    .map((button) => button.getAttribute('aria-label'));
-const choices = () => screen.getAllByRole('radio').map((choice) => choice.textContent);
-const undoCell = (words: Words = en) =>
-  screen.queryByRole('button', { name: words['scoring.pad.undo'] });
-
-/** The ledger the fake server holds for the match, whoever wrote it. */
-async function ledger(app: LaunchedApp, seed: FakeMatchSeed) {
-  const rows = await app.scoring.events(LINK, seed.fixtureId, 0);
-  if (!Array.isArray(rows))
-    throw new Error(`the fake server answered the ledger with ${JSON.stringify(rows)}`);
-  return rows;
-}
-const typesOf = async (app: LaunchedApp, seed: FakeMatchSeed) =>
-  (await ledger(app, seed)).map((event) => event.type);
-
-/** A button pressed a second after the last thing the scorer did, and the time its sheet needs before it takes a choice. */
-async function press(app: LaunchedApp, name: string): Promise<void> {
-  aSecondOn(app);
-  act(() => fireEvent.click(screen.getByRole('button', { name })));
-  await flush(400);
-}
-
-async function tapHalf(app: LaunchedApp, side: 'first' | 'second'): Promise<void> {
-  aSecondOn(app);
-  act(() => fireEvent.click(half(side)));
-  await flush(400);
-}
-
-async function pick(app: LaunchedApp, name: string): Promise<void> {
-  aSecondOn(app);
-  act(() => fireEvent.click(screen.getByRole('radio', { name })));
-  await flush(0);
-}
-
-/** The match scanned from Home, as the scorer scans it, and the Start screen it opens on. */
-async function scanned(seed: FakeMatchSeed = chessSeed()): Promise<LaunchedApp> {
-  const app = await launchApp({ scoringSeed: seed });
-  app.scanner.queue({ outcome: 'scanned', raw: RAW });
-  act(() => screen.getByRole('button', { name: /Remote Scoring/ }).click());
-  await flush(400);
-  return app;
-}
-
-/** Start match pressed once, a minute before the test's taps (it opens the bounce window for the next tap). */
-async function startPressed(app: LaunchedApp, words: Words = en): Promise<void> {
-  app.setNow(new Date(TEST_NOW.getTime() - 60_000));
-  act(() => fireEvent.click(screen.getByRole('button', { name: words['scoring.start.confirm'] })));
-  app.setNow(TEST_NOW);
-  await flush(200);
-}
-
-/** The match scanned and started: the live pad of a game nobody has played a move in. */
-async function live(seed: FakeMatchSeed = chessSeed()): Promise<LaunchedApp> {
-  const app = await scanned(seed);
-  await startPressed(app);
-  return app;
-}
-
-/** A result recorded through the sheet, as the scorer does it: a half (or Draw for null), a method if given, Record. */
-async function record(
-  app: LaunchedApp,
-  winner: 'first' | 'second' | null,
-  method?: string,
-  words: Words = en,
-): Promise<void> {
-  if (winner === null) await press(app, words['scoring.chess.tool.draw']!);
-  else await tapHalf(app, winner);
-  if (method !== undefined) await pick(app, method);
-  await press(app, words['scoring.chess.how.record']!);
-}
-
-const DECISIVE = [
-  'scoring.chess.method.checkmate',
-  'scoring.chess.method.resign',
-  'scoring.chess.method.time',
-  'scoring.chess.method.adjudication',
-  'scoring.chess.method.illegal_move',
-] as const;
-const DRAWN = [
-  'scoring.chess.method.agreement',
-  'scoring.chess.method.stalemate',
-  'scoring.chess.method.insufficient',
-  'scoring.chess.method.adjudication',
-  'scoring.chess.method.repetition',
-  'scoring.chess.method.fifty_move',
-  'scoring.chess.method.dead_position',
-] as const;
 
 describe('a chess game from the scan to the pad', () => {
   it('a scanned link opens the match check: both names with their colours, no serve to pick, Start match ready', async () => {
