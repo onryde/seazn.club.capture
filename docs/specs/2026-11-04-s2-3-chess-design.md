@@ -1,6 +1,8 @@
 # S2-3 — Remote Scoring, chess: design
 
-Status: **approved by the owner, 2026-11-04** ("approve"). Brainstormed in the session of 2026-11-04.
+Status: **approved by the owner, 2026-11-04** ("approve"). Brainstormed in the session of 2026-11-04. Amended after
+building (2026-11-05; the amendments are marked _as built_ and the rulings behind them are in
+`2026-11-05-s2-3-results.md`): the pad's layout, the result line, the seat-based tap and Undo's window.
 
 This design adds chess to Remote Scoring. It argues from the S2 design
 (`docs/specs/2026-11-01-s2-remote-scoring-design.md`, "the S2 design" below) and from S2-2
@@ -47,13 +49,14 @@ Anti-goals (a failure even if it works):
 
 ## 3. The owner's rulings (S2-3)
 
-| #   | Ruling                                                                                                                                                                                                                                                |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 57  | Chess records a result only, no clock and no moves ("just a result for now", 2026-11-04).                                                                                                                                                             |
-| 58  | One match is one game between two players, not a team match with boards ("A: one game", 2026-11-04).                                                                                                                                                  |
-| 59  | The pad asks _How_ with the methods the engine supports today ("we can ask How as it supports today", 2026-11-04). It is optional (the controller's reading, §10).                                                                                    |
-| 60  | The pad is option A of the mockup: three big result buttons, a sheet that asks How and holds Record, Swap colours as a small row under the names ("Ok" to the controller's recommendation, 2026-11-04).                                               |
-| 61  | The `boardgame` key is shared, and the phone cannot tell the game (§9). The owner chose "Treat boardgame as chess" (2026-11-04): the pad is titled Chess and offers the chess How words; no web change. A draughts or go fixture would show them too. |
+| #   | Ruling                                                                                                                                                                                                                                                                                              |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 57  | Chess records a result only, no clock and no moves ("just a result for now", 2026-11-04).                                                                                                                                                                                                           |
+| 58  | One match is one game between two players, not a team match with boards ("A: one game", 2026-11-04).                                                                                                                                                                                                |
+| 59  | The pad asks _How_ with the methods the engine supports today ("we can ask How as it supports today", 2026-11-04). It is optional (the controller's reading, §10).                                                                                                                                  |
+| 60  | The pad is option A of the mockup: three big result buttons, a sheet that asks How and holds Record, Swap colours as a small row under the names ("Ok" to the controller's recommendation, 2026-11-04).                                                                                             |
+| 61  | The `boardgame` key is shared, and the phone cannot tell the game (§9). The owner chose "Treat boardgame as chess" (2026-11-04): the pad offers the chess How words; no web change. (As built no pad carries a sport title, so no string says Chess.) A draughts or go fixture would show them too. |
+| 62  | Draw and Swap colours stay cells in the pad's bottom row, not three big result buttons and a Swap row under the names; the double-tap guard covers the mis-tap (owner, 2026-11-05, "Keep, amend spec"). _As built_ supersedes the layout of 60.                                                     |
 
 Asked and answered by the web, not ruled: a forfeit from the phone needs a web change (§7); the
 owner asked for none.
@@ -64,11 +67,15 @@ owner asked for none.
    shows the two names, each with a WHITE or BLACK chip.
 2. If nobody has started the match, Start match (`core.start {}`); the engine accepts a result only
    while the match is live. A match another scorer started opens on the pad (as in S2-2).
-3. The pad: the two names with their colour chips, a Swap colours row, and three buttons, _White won ·
-   {name}_, _Draw_, _Black won · {name}_.
+3. The pad: the two names with their colour plates and two halves, _White won · {name}_ and _Black won · {name}_;
+   _Draw_ and _Swap colours_ are 48 dp cells in the bottom row (ruling 62, _as built_; Swap is offered once the
+   game is live).
 4. Tapping a result opens the sheet, "How did {name} win?" or "How was it drawn?". The scorer taps one
    method or none, then Record. Nothing is sent before Record. Cancel closes the sheet.
-5. Recorded: the pad shows the result line (1–0, ½–½ or 0–1), "{name} won · {how}", and Undo.
+5. Recorded: the pad's header reads White-first, 1–0 or 0–1, and a bare ½ for a draw (the full ½–½ does not fit
+   72 dp at 320 dp); the strip names the winner and the method ("{name} won · {how}"); Undo stays for the
+   scorer's own result inside S2's 45 s window, unlimited while a tie-break waits, gone at finalize. Home's
+   card reads first-side-first (0–1 when the second name won; ½–½). _As built._
 
 Methods (the engine's own lists; the pad's words are in the dictionaries):
 
@@ -80,14 +87,14 @@ Methods (the engine's own lists; the pad's words are in the dictionaries):
 All events ride the generic append the other sports use (`POST /fixtures/{id}/events`, sport-agnostic;
 device-link bootstrap likewise). The sport key is `boardgame`, not `chess` (engine `sports/boardgame`).
 
-| Scorer does        | Event                                                         | Note                                                                              |
-| ------------------ | ------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| Start match        | `core.start {}`                                               | Required before a result.                                                         |
-| Record a white win | `boardgame.result {winner: <entrant holding White>, method?}` | White is home unless a pairing flipped it.                                        |
-| Record a black win | `boardgame.result {winner: <entrant holding Black>, method?}` |                                                                                   |
-| Record a draw      | `boardgame.result {winner: null, method?}`                    | A method must agree with the outcome (engine `RESULT_METHOD_CONTRADICTS_WINNER`). |
-| Swap colours       | `boardgame.pairing {white: <entrant>}`                        | The arbiter's pairing card; recordable before or during the game.                 |
-| Undo               | `core.void {event_id}`                                        | The link's own events only, before finalize (web `scoring.ts`).                   |
+| Scorer does        | Event                                                         | Note                                                                                                                                                                                |
+| ------------------ | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Start match        | `core.start {}`                                               | Required before a result.                                                                                                                                                           |
+| Record a white win | `boardgame.result {winner: <entrant holding White>, method?}` | White is home unless a pairing flipped it. The tap names a seat; the seat's entrant is read when the event is written, and a pairing landing closes an open How sheet (_as built_). |
+| Record a black win | `boardgame.result {winner: <entrant holding Black>, method?}` |                                                                                                                                                                                     |
+| Record a draw      | `boardgame.result {winner: null, method?}`                    | A method must agree with the outcome (engine `RESULT_METHOD_CONTRADICTS_WINNER`).                                                                                                   |
+| Swap colours       | `boardgame.pairing {white: <entrant>}`                        | The arbiter's pairing card; offered once the game is live (_as built_; the engine would take it earlier).                                                                           |
+| Undo               | `core.void {event_id}`                                        | The link's own events only, before finalize (web `scoring.ts`).                                                                                                                     |
 
 A `{}` result is refused by the engine; a `forfeit` or `double_forfeit` method is refused on write by
 the web. A correction after a wrong result is Undo and a new result: no event changes a method later.
@@ -138,7 +145,12 @@ Exit bar, on the phone, by the owner's hands where marked:
 - A draw in a bracket stage leaves the match in the engine's `tiebreak` phase. The controller proposes a
   line on the pad, "Waiting for the tie-break; the organiser records it", and no tie-break control.
 - A staging fixture with a chess (`boardgame`) division is needed for the device checks. The owner
-  creates it.
+  creates it. For exit item 7 its bracket stage must set `cfg.tiebreak: true` with rungs, or the engine never
+  enters `tiebreak` (engine `boardgame.js:288`).
+- The pairing probe moved to the device check (results doc), not before the plan. Web main shows the pairing
+  is not organiser-only (`organiser-only-events.ts`) and the fidelity gate is gone (`scoring.ts:522-526`), but
+  that is the web's code read, not a server answered. Read the phone right after the first Swap: a bare 403
+  makes `sync.ts:532-534` mark the whole queue forbidden.
 - **Settled by ruling 61:** the `boardgame` key is shared (the engine's module says chess, draughts, go, carrom
   and every generic 1-v-1 sport). Is the pad titled Chess and the How words chess-only, or is it a board-game
   result pad that shows How only for chess? The lookup found nowhere: the bootstrap descriptor carries only `sport_key`, and the engine's cfg has a
@@ -153,9 +165,12 @@ Exit bar, on the phone, by the owner's hands where marked:
 ## 10. The controller's calls, for the owner to correct
 
 - _How_ is optional: Record works with no method chosen.
-- Result line 1–0, ½–½, 0–1, written by the pad; the player's name beside it.
+- Result line 1–0, ½–½, 0–1, written by the pad (_as built_: White-first in the header, a bare ½ for a draw; the winner's
+  name on the strip; Home's card first-side-first).
 - The match check and Start screen show the colour chips as the pad does.
 - The tie-break waiting line (§9).
+- An abandoned game or a double walkover shows a no-result "cancelled" card (wording is the owner's to give);
+  the method chosen is logged as a short word when the result is queued, "none" when none was chosen.
 - Swap colours sends a pairing event only when the scorer swaps; nothing is sent when home keeps White.
 
 - Swap colours moves the WHITE and BLACK chips only; the names keep their places. It may be repeated

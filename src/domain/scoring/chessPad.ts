@@ -258,7 +258,7 @@ const SWAP = 'swap';
 
 /**
  * Draw, and Swap colours when the division plays with colours, while the game is live. A draw is a result like the
- * players' halves (the sheet asks How); a swap is the arbiter's pairing card, recordable before or during the game.
+ * players' halves (the sheet asks How); a swap is the arbiter's pairing card, offered only while the game is live.
  */
 function tools(display: ChessDisplay): readonly Tool[] {
   if (!chessTakesResult(display)) return [];

@@ -39,7 +39,7 @@ export type ChessPadActions = PadActions & {
   readonly record: () => void;
   /**
    * The How sheet's Cancel and its dim: quiet in the bounce window of the sheet appearing, since the second touch of a double
-   * tap on a half lands on one of them. `cancel` is Back's and History's close, with no such window.
+   * tap on a half lands on one of them. `cancel` is Back's, the background's and a dead link's close, with no such window.
    */
   readonly cancelSheet: () => void;
   readonly swap: () => void;
