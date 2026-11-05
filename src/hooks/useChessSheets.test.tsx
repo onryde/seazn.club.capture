@@ -54,12 +54,13 @@ function rig(initial: ChessSheetSnapshot | null = snapshot()) {
   const fakes = createFakePorts();
   const made = vi.fn((_winner: unknown, _method: unknown): PadOutcome => TAKEN);
   const record = vi.fn((_tap: string, make: () => PadOutcome) => make().ok);
+  const arm = vi.fn((_tap: string): void => undefined);
   const view = renderHook(
     ({ snap }: { snap: ChessSheetSnapshot | null }) =>
-      useChessSheets({ result: made }, snap, record),
+      useChessSheets({ result: made }, snap, record, arm),
     { wrapper: wrapperFor(fakes), initialProps: { snap: initial } },
   );
-  return { ...view, fakes, made, record };
+  return { ...view, fakes, made, record, arm };
 }
 
 type Rig = ReturnType<typeof rig>;
@@ -338,6 +339,34 @@ describe('Match details, History and the reconnect question', () => {
     settle(view.fakes);
     act(() => view.result.current.actions.dismiss());
     expect(view.result.current.view).toBeNull();
+  });
+
+  // A close leaves the screen with the touch, so it arms the bounce window (the second touch of a double tap lands on the
+  // pad under it), and it makes no tap of its own: a tap says something on the line, which a close must not wipe.
+  it('arms the bounce window when it closes, and makes no tap', () => {
+    const view = rig();
+    act(() => view.result.current.actions.details());
+    settle(view.fakes);
+    act(() => view.result.current.actions.dismiss());
+    expect(view.arm).toHaveBeenCalledTimes(1);
+    expect(view.record).not.toHaveBeenCalled();
+    expect(view.result.current.view).toBeNull();
+  });
+
+  it('arms nothing in the bounce window of the sheet appearing, where it closes nothing', () => {
+    const view = rig();
+    act(() => view.result.current.actions.details());
+    act(() => view.result.current.actions.dismiss());
+    expect(view.arm).not.toHaveBeenCalled();
+    expect(view.result.current.view?.kind).toBe('details');
+  });
+
+  it('arms nothing for Back, which is no touch on the pad', () => {
+    const view = rig();
+    act(() => view.result.current.actions.details());
+    settle(view.fakes);
+    act(() => view.result.current.cancel());
+    expect(view.arm).not.toHaveBeenCalled();
   });
 
   it('puts the question over the pad, and its confirm over that, quiet in the bounce window', () => {

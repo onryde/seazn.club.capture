@@ -17,6 +17,7 @@ import {
   type AskView,
   type Recording,
 } from '@/hooks/usePadSheetParts';
+import type { Arm } from '@/hooks/usePadTaps';
 import { usePorts } from '@/hooks/usePorts';
 
 /**
@@ -81,13 +82,15 @@ const CLOSE_TAP = 'close';
  * The sheet over the chess pad: a half or Draw shows How (`show`), a pick chooses a method or none, Record sends the result
  * and leaves, Cancel, the dim and Back close it with nothing sent. A pick or Record takes no tap in the bounce window of
  * the sheet appearing (`justShown`): the second touch of a double tap on a half lands on the sheet, on the same edge.
- * `record` is the bounce memory's (`useTaps`' `opening`): Record leaves the sheet with it, and so does every close by touch
- * (`dismiss`), so a double tap counts once and its second touch cannot reach the tool under the button.
+ * `record` is the bounce memory's (`useTaps`' `opening`): Record leaves the sheet with it, so a double tap counts once.
+ * `arm` is its `arm`: every close by touch (`dismiss`) opens the same window without making a tap, so the second touch
+ * cannot reach the tool under the button and the line is left as it was.
  */
 export function useChessSheets(
   pad: ChessSheetDriver,
   snapshot: ChessSheetSnapshot | null,
   record: Recording,
+  arm: Arm,
 ) {
   const [sheet, setSheet] = useState<Sheet>(null);
   const cancel = useCallback(() => setSheet(null), []);
@@ -96,7 +99,7 @@ export function useChessSheets(
   const show = useShow(snapshot, setSheet);
   // No match to put a sheet over, the question over it, or nothing left for it to do: no sheet stays open behind it.
   if (sheet !== null && staleSheet(sheet, snapshot)) setSheet(null);
-  const actions = useActions({ sheet, setSheet, snapshot, justShown, pad, record, cancel });
+  const actions = useActions({ sheet, setSheet, snapshot, justShown, pad, record, arm, cancel });
   return {
     open: sheet !== null,
     howOpen: sheet?.kind === 'how',
@@ -130,22 +133,23 @@ type Parts = {
   readonly justShown: () => boolean;
   readonly pad: ChessSheetDriver;
   readonly record: Recording;
+  readonly arm: Arm;
   readonly cancel: () => void;
 };
 
-function useActions({ sheet, setSheet, snapshot, justShown, pad, record, cancel }: Parts) {
+function useActions({ sheet, setSheet, snapshot, justShown, pad, record, arm, cancel }: Parts) {
   const details = useCallback(() => setSheet(DETAILS), [setSheet]);
   const history = useCallback(() => setSheet(HISTORY), [setSheet]);
-  // A sheet's own close (Cancel, the dim, Details' close, Keep, History's close) leaves the screen with its touch, so it is
-  // an opening tap (`useTaps`): the second touch of a double tap lands on what was under it, a half or a tool (Swap colours
-  // writes a pairing), and counts once with it. Back is not a touch on the pad: `cancel` stays out of the memory.
+  // A sheet's own close (Cancel, the dim, Details' close, Keep, History's close) leaves the screen with its touch, so it
+  // arms the bounce window of an opening tap (`useTaps`): the second touch of a double tap lands on what was under it, a
+  // half or a tool (Swap colours writes a pairing), and counts once with it. It is no tap, so it says nothing: an opening
+  // tap clears the line, and a refusal shown before the sheet covered the pad would be wiped unseen. Back is not a touch
+  // on the pad: `cancel` stays out of the memory.
   const dismiss = useCallback(() => {
     if (justShown()) return;
-    record(CLOSE_TAP, () => {
-      cancel();
-      return TAKEN;
-    });
-  }, [justShown, record, cancel]);
+    arm(CLOSE_TAP);
+    cancel();
+  }, [justShown, arm, cancel]);
   const { picked, justPicked } = usePickedAt();
   const pickMethod = useCallback(
     (method: ChessMethod | null) => {

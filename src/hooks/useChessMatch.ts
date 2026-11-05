@@ -103,7 +103,7 @@ function useChessPad(
   const settle = useSettle(sender.say);
   const driver = useChessDriver(sender, pad?.display.undoable ?? false);
   const taps = useTaps(driver, settle, sender.say, ignoreFlash);
-  const sheets = useSheets(ports, sender, taps.opening, pad);
+  const sheets = useSheets(ports, sender, taps, pad);
   const actions = useActions({ sender, runner, pad, taps, sheets, setCardNote });
   useBackCloses(sheets.open, sheets.cancel);
   useClosedInBackground(sheets.howOpen, sheets.cancel);
@@ -141,11 +141,12 @@ function modelOf(
 function useSheets(
   ports: Ports,
   sender: Sender,
-  opening: ReturnType<typeof useTaps>['opening'],
+  taps: ReturnType<typeof useTaps>,
   pad: PadFacts | null,
 ) {
   const { tap } = sender;
   const { logger } = ports;
+  const { opening, arm } = taps;
   const driver = useMemo<ChessSheetDriver>(
     () => ({
       result: (winner, method) => {
@@ -170,7 +171,7 @@ function useSheets(
           },
     [pad],
   );
-  const sheets = useChessSheets(driver, snapshot, opening);
+  const sheets = useChessSheets(driver, snapshot, opening, arm);
   useClosedByDeadLink(pad?.view, sheets.open, sheets.cancel);
   return sheets;
 }

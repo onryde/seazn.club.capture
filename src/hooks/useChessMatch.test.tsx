@@ -270,6 +270,28 @@ describe('choosing a result opens the How sheet and sends nothing', () => {
       expect(pad(view).line).toEqual({ kind: 'note', key: 'scoring.pad.countedOnce' });
     });
 
+    // The close must not wipe what the line said before the sheet covered the pad (AGENTS §13, an absent symptom).
+    it.each([
+      ['Match details', (actions: Pad['actions']) => actions.details()],
+      ['History', (actions: Pad['actions']) => actions.history()],
+    ])(
+      '%s: a refusal on the line before it opened is still there when it closes',
+      async (_name, open) => {
+        const { view } = await opened();
+        act_(view, (actions) => actions.undo());
+        await flush();
+        const refusal = pad(view).line;
+        expect(refusal).toEqual({ kind: 'refusal', key: 'scoring.refusal.nothingToUndo' });
+        await wait(300);
+        act_(view, open);
+        await wait(300);
+        act_(view, (actions) => actions.dismiss());
+        await flush();
+        expect(pad(view).sheet).toBeNull();
+        expect(pad(view).line).toEqual(refusal);
+      },
+    );
+
     it('nor does Draw 100 ms later open a sheet', async () => {
       const { view } = await opened();
       await openHow(view, 'first');

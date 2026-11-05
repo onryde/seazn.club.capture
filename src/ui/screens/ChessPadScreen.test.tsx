@@ -334,6 +334,33 @@ describe('the sheet that asks How', () => {
     },
   );
 
+  // What the line said before a sheet covered the pad is still there when the sheet closes: a close is no tap, and a tap
+  // clears the line. (A refusal or a note the scorer had not read would be wiped unseen.)
+  it.each([
+    ['Match details', en['scoring.details.title']],
+    ['History', en['scoring.history.title']],
+  ])(
+    'the note on the line before %s opened is still there after it closes',
+    async (_name, icon) => {
+      const app = await open();
+      aSecondOn(app);
+      // Two taps in one moment: Swap colours counts, and Draw on its heels is "Counted once".
+      act(() => {
+        fireEvent.click(screen.getByRole('button', { name: en['scoring.chess.tool.swap'] }));
+      });
+      act(() => {
+        fireEvent.click(screen.getByRole('button', { name: en['scoring.chess.tool.draw'] }));
+      });
+      await flush(400);
+      const note = () => screen.getByTestId('last-tap-note', { exact: true }).textContent;
+      expect(note()).toBe(en['scoring.pad.countedOnce']);
+      await press(app, icon);
+      await press(app, en['panel.close']);
+      expect(screen.queryByRole('button', { name: en['panel.close'] })).toBeNull();
+      expect(note()).toBe(en['scoring.pad.countedOnce']);
+    },
+  );
+
   it('Cancel, the dim and Back leave with nothing recorded', async () => {
     const app = await open();
     await tapHalf(app, 'first');
