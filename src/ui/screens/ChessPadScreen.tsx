@@ -10,6 +10,7 @@ import { HowSheet } from '@/ui/components/HowSheet';
 import { KeepScreenOn } from '@/ui/components/KeepScreenOn';
 import { PadContent } from '@/ui/components/PadContent';
 import { DiscardAsk, MatchDetailsView, MatchHistory } from '@/ui/components/PadSheets';
+import { ChessTiebreakView } from '@/ui/screens/ChessTiebreakView';
 import { colour } from '@/ui/theme/tokens';
 
 /**
@@ -17,8 +18,8 @@ import { colour } from '@/ui/theme/tokens';
  * `useChessMatch`. Its layout is the set-based sports' (`PadContent`): the top bar, the strip (the organiser's lines),
  * the two players as the halves, each with its colour's plate and what a tap records, the last-tap line with the one
  * Undo, and the tools (Draw and Swap colours). What is chess's here: that the screen is held on while the pad is
- * (`holdsScreen`), and its sheets: the one that asks How a game ended, Match details, History and the reconnect
- * question. Sheets and History cover the pad, which is hidden from a screen reader while they show.
+ * (`holdsScreen`), and its sheets: the one that asks How a game ended, the tie-break of a drawn knockout game (S2-3b),
+ * Match details, History and the reconnect question. Sheets and History cover the pad, which is hidden from a screen reader while they show.
  */
 export function ChessPadScreen({ model }: { readonly model: ChessPadModel }) {
   const { view, sheet, actions } = model;
@@ -45,6 +46,8 @@ const PadSheet = memo(function PadSheet({
   switch (sheet.kind) {
     case 'how':
       return <HowView sheet={sheet} view={view} actions={actions} />;
+    case 'tiebreak':
+      return <ChessTiebreakView sheet={sheet} halves={view.halves} actions={actions} />;
     case 'details':
       return <MatchDetailsView details={sheet.details} onClose={actions.dismiss} />;
     case 'history':

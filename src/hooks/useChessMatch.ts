@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { chessSport } from '@/domain/scoring/chessSport';
-import type { ChessMethod, ChessPadKey, ChessTypes } from '@/domain/scoring/chessTypes';
+import type {
+  ChessArmageddonResult,
+  ChessMethod,
+  ChessPadKey,
+  ChessRung,
+  ChessTiebreakScore,
+  ChessTypes,
+} from '@/domain/scoring/chessTypes';
 import { refusing, type PadOutcome } from '@/domain/scoring/padLine';
 import type { PadSide } from '@/domain/scoring/padView';
 import type { MatchPad } from '@/domain/scoring/scoringMatchView';
@@ -24,7 +31,8 @@ import type { MessageKey } from '@/i18n/messages';
  * A chess game on the pad screen (plan S2-3 Task 3): the generic match (`useScoringMatch`) with chess's pad hook, as
  * `useTableTennisMatch` is table tennis's. What is chess's here: the two halves and Draw open a sheet that asks How and
  * record nothing until Record (`useChessSheets`), Swap colours is one pairing, Undo is the result's alone, and there is
- * no serve to pick: Start match starts at once.
+ * no serve to pick: Start match starts at once. A drawn knockout game owes a tie-break (S2-3b): its Tie-break tile opens a
+ * sheet of its own that records nothing until Record either.
  */
 
 /**
@@ -42,6 +50,16 @@ export type ChessPadActions = PadActions & {
    * tap on a half lands on one of them. `cancel` is Back's, the background's and a dead link's close, with no such window.
    */
   readonly cancelSheet: () => void;
+  /**
+   * The tie-break sheet's steps (S2-3b): the rung, who won a rapid or blitz tie-break and its score (or none), who had Black in
+   * an Armageddon and how it ended, and Record, the only one that sends. A pick that is not for the step on screen does nothing.
+   */
+  readonly pickRung: (rung: ChessRung) => void;
+  readonly pickTiebreakWinner: (side: PadSide) => void;
+  readonly pickScore: (score: ChessTiebreakScore | null) => void;
+  readonly pickBlack: (side: PadSide) => void;
+  readonly pickArmageddonResult: (result: ChessArmageddonResult) => void;
+  readonly recordTiebreak: () => void;
   readonly swap: () => void;
   /** The Start screen: chess has no serve to pick (the kit draws no picker), so `pickServer` is the kit's unused button. */
   readonly pickServer: (side: PadSide) => void;
@@ -71,6 +89,12 @@ export const METHOD_EVENT = 'scoring.chess.method';
 
 /** What the record says when a result is recorded with no method. */
 const NO_METHOD = 'none';
+
+/**
+ * The session record's line for a tie-break recorded: the rung as a short word, never a name or an entrant (ruling 8). The
+ * field is `word`, as the method's: the allow-list (`scrub.ts`) passes it, and masks a key it has not been told of.
+ */
+export const TIEBREAK_EVENT = 'scoring.chess.tiebreak';
 
 /** Chess flashes no half: a result is not a point scored (the pad's halves have no flash to draw). */
 const ignoreFlash = (): void => undefined;
@@ -106,7 +130,7 @@ function useChessPad(
   const sheets = useSheets(ports, sender, taps, pad);
   const actions = useActions({ sender, runner, pad, taps, sheets, setCardNote });
   useBackCloses(sheets.open, sheets.cancel);
-  useClosedInBackground(sheets.howOpen, sheets.cancel);
+  useClosedInBackground(sheets.howOpen || sheets.tiebreakOpen, sheets.cancel);
   return useMemo(
     () => modelOf(pad, sheets.view, cardNote, actions),
     [pad, sheets.view, cardNote, actions],
@@ -155,6 +179,11 @@ function useSheets(
         if (outcome.ok) logger.info(METHOD_EVENT, { word: method ?? NO_METHOD });
         return outcome;
       },
+      tiebreak: (choice) => {
+        const outcome = tap(choice);
+        if (outcome.ok) logger.info(TIEBREAK_EVENT, { word: choice.rung });
+        return outcome;
+      },
     }),
     [tap, logger],
   );
@@ -176,7 +205,7 @@ function useSheets(
   return sheets;
 }
 
-/** The How sheet goes with the app to the background: a question left open on a locked phone is stale when it comes back. */
+/** The How and tie-break sheets go with the app to the background: a question left open on a locked phone is stale when it comes back. */
 function useClosedInBackground(open: boolean, cancel: () => void): void {
   const { foreground } = usePorts();
   useEffect(() => {
@@ -235,21 +264,23 @@ function useAsk({ sender, taps, sheets }: Parts) {
 /** The opening taps' names in the bounce memory: a repeat of one counts once, and so does any tap on the heels of it. */
 const CHOOSE_TAP = 'choose';
 const SWAP_TAP = 'swap';
+const TIEBREAK_TILE_TAP = 'tiebreakTile';
 
 /** The tool cells' ids, as the pad names them (`chessPad.ts`). */
 const DRAW_TOOL = 'draw';
 const SWAP_TOOL = 'swap';
+const TIEBREAK_TOOL = 'tiebreak';
 
 /**
  * What a tap on a half, Draw and Swap colours do. Each is an opening tap (`useTaps`): the second touch of a double tap
  * counts once, and so does any tap on the heels of a sheet's recording (the Batch A review's ruling 4). A half or Draw
- * opens the How sheet; Swap colours is one pairing. A tool needs no guard of `useGuardedTool`'s: both of its cells are
- * opening taps themselves, and the same memory refuses them.
+ * opens the How sheet; Swap colours is one pairing; the Tie-break tile opens the tie-break sheet. A tool needs no guard of
+ * `useGuardedTool`'s: each of its cells is an opening tap itself, and the same memory refuses them.
  */
 function usePicking({ sender, taps, sheets }: Parts) {
   const { tap } = sender;
   const { opening } = taps;
-  const { show } = sheets;
+  const { show, showTiebreak } = sheets;
   const choose = useCallback(
     (winner: PadSide | null) => void opening(CHOOSE_TAP, () => show(winner)),
     [opening, show],
@@ -258,12 +289,17 @@ function usePicking({ sender, taps, sheets }: Parts) {
     () => void opening(SWAP_TAP, () => tap({ kind: 'swap' })),
     [opening, tap],
   );
+  const tiebreak = useCallback(
+    () => void opening(TIEBREAK_TILE_TAP, showTiebreak),
+    [opening, showTiebreak],
+  );
   const tool = useCallback(
     (id: string) => {
       if (id === DRAW_TOOL) choose(null);
       else if (id === SWAP_TOOL) swap();
+      else if (id === TIEBREAK_TOOL) tiebreak();
     },
-    [choose, swap],
+    [choose, swap, tiebreak],
   );
   return useMemo(() => ({ choose, swap, tool, tapHalf: choose }), [choose, swap, tool]);
 }

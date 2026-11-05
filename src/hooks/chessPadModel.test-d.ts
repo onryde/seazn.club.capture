@@ -1,5 +1,12 @@
 import { describe, expectTypeOf, it } from 'vitest';
-import type { ChessMethod, ChessPadKey } from '@/domain/scoring/chessTypes';
+import type { TiebreakDraft, TiebreakStep } from '@/domain/scoring/chessTiebreakSheet';
+import type {
+  ChessArmageddonResult,
+  ChessMethod,
+  ChessPadKey,
+  ChessRung,
+  ChessTiebreakScore,
+} from '@/domain/scoring/chessTypes';
 import type { PadSide, PadView } from '@/domain/scoring/padView';
 import type { PadActions } from '@/hooks/padScreenModel';
 import type { ChessPadActions, ChessPadModel, useChessMatch } from '@/hooks/useChessMatch';
@@ -9,7 +16,7 @@ import type { MessageKey } from '@/i18n/messages';
 /**
  * Chess's pad (plan S2-3 Task 3) is the shared model plus its own buttons, typed, with no cast: the screen gets what the
  * match hook answers. The own list is copied here by hand, so a button moved between pads fails here. The How sheet
- * holds the SEAT that won (the Batch A review's ruling), never a colour.
+ * holds the SEAT that won (the Batch A review's ruling), never a colour; so does the tie-break sheet (S2-3b).
  */
 type ChessOwn =
   | 'start'
@@ -18,6 +25,12 @@ type ChessOwn =
   | 'pickMethod'
   | 'record'
   | 'cancelSheet'
+  | 'pickRung'
+  | 'pickTiebreakWinner'
+  | 'pickScore'
+  | 'pickBlack'
+  | 'pickArmageddonResult'
+  | 'recordTiebreak'
   | 'swap'
   | 'sendTaps'
   | 'askDiscard'
@@ -53,6 +66,32 @@ describe('chess’s pad', () => {
       readonly picked: ChessMethod | null;
       readonly methods: readonly ChessMethod[];
     }>();
+  });
+
+  it('picks a tie-break’s rung, winner, score, Black and result by seat and word, never by colour', () => {
+    type Actions = ChessPadModel['actions'];
+    expectTypeOf<Actions['pickRung']>().toEqualTypeOf<(rung: ChessRung) => void>();
+    expectTypeOf<Actions['pickTiebreakWinner']>().toEqualTypeOf<(side: PadSide) => void>();
+    expectTypeOf<Actions['pickScore']>().toEqualTypeOf<
+      (score: ChessTiebreakScore | null) => void
+    >();
+    expectTypeOf<Actions['pickBlack']>().toEqualTypeOf<(side: PadSide) => void>();
+    expectTypeOf<Actions['pickArmageddonResult']>().toEqualTypeOf<
+      (result: ChessArmageddonResult) => void
+    >();
+    expectTypeOf<Actions['recordTiebreak']>().toEqualTypeOf<() => void>();
+  });
+
+  it('holds the tie-break sheet’s choices as seats, rungs and words, and the seat that advances', () => {
+    expectTypeOf<Extract<ChessSheetView, { kind: 'tiebreak' }>>().toEqualTypeOf<{
+      readonly kind: 'tiebreak';
+      readonly step: TiebreakStep;
+      readonly rungs: readonly ChessRung[];
+      readonly draft: TiebreakDraft;
+      readonly advances: PadSide | null;
+    }>();
+    expectTypeOf<TiebreakDraft['winner']>().toEqualTypeOf<PadSide | null>();
+    expectTypeOf<TiebreakDraft['black']>().toEqualTypeOf<PadSide | null>();
   });
 
   it('is what the match hook answers, without a cast', () => {

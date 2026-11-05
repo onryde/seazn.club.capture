@@ -90,11 +90,23 @@ const named = new Set([
   ...historyKeys,
 ]);
 
-/** The sheet's own words: the screen draws them, the pad names none (the How sheet's title and its Record). */
+/**
+ * The sheets' own words: the screen draws them, the pad names none (the How sheet's title and its Record; the tie-break
+ * sheet's questions, its No score, its draw row and its lots hint).
+ */
 const SCREENS_OWN = [
   'scoring.chess.how.won',
   'scoring.chess.how.drawn',
   'scoring.chess.how.record',
+  'scoring.chess.tiebreak.rung.title',
+  'scoring.chess.tiebreak.winner.title',
+  'scoring.chess.tiebreak.score.title',
+  'scoring.chess.tiebreak.score.none',
+  'scoring.chess.tiebreak.black.title',
+  'scoring.chess.tiebreak.result.title',
+  'scoring.chess.tiebreak.result.draw',
+  'scoring.chess.tiebreak.confirm.title',
+  'scoring.chess.tiebreak.lotsHint',
 ] as const;
 
 describe('the chess pad: its words', () => {
@@ -111,6 +123,14 @@ describe('the chess pad: its words', () => {
     }
     expect(named.has('scoring.chess.tiebreak.tool')).toBe(true);
     expect(named.has('scoring.chess.tiebreak.advances')).toBe(true);
+  });
+
+  // Dutch "snelschaak" is rapid chess, so it cannot be the word for Blitz (the first draft used it): the two rungs are two words.
+  it('gives Dutch Blitz and Rapid two different words, and Blitz is not snelschaak', () => {
+    expect(nl['scoring.chess.tiebreak.rung.blitz']).toBe('Blitz');
+    expect(nl['scoring.chess.tiebreak.rung.blitz']).not.toBe(
+      nl['scoring.chess.tiebreak.rung.rapid'],
+    );
   });
 
   it.each([

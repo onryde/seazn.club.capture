@@ -4,9 +4,12 @@ import type {
   ChessDisplay,
   ChessMethod,
   ChessPadKey,
+  ChessRung,
+  ChessTiebreakState,
 } from '@/domain/scoring/chessTypes';
 import { isBounce } from '@/domain/scoring/bounce';
 import { chessMethodsFor, chessTakesResult } from '@/domain/scoring/chessPad';
+import { tiebreakStale, type TiebreakDraft } from '@/domain/scoring/chessTiebreakSheet';
 import { TAKEN, refusing, type PadOutcome } from '@/domain/scoring/padLine';
 import type { PadHistoryGroup, PadMatchDetails, PadSide } from '@/domain/scoring/padView';
 import {
@@ -19,16 +22,23 @@ import {
 } from '@/hooks/usePadSheetParts';
 import type { Arm } from '@/hooks/usePadTaps';
 import { usePorts } from '@/hooks/usePorts';
+import {
+  tiebreakView,
+  useShowTiebreak,
+  useTiebreakActions,
+  type ChessTiebreakDriver,
+  type TiebreakView,
+} from '@/hooks/useChessTiebreak';
 
 /**
  * The sheets over the chess pad (plan S2-3 Task 3; spec §4; the Batch A review's rulings): the How sheet, which asks how a
- * game was won or drawn and records nothing until Record, then Match details, History, and the reconnect question over them
- * all. Table tennis's twin is `useTableTennisSheets`; what the sports share (the bounce window of a sheet appearing, the
+ * game was won or drawn and records nothing until Record, the tie-break sheet of a drawn knockout game (S2-3b; its parts are
+ * `useChessTiebreak`), then Match details, History, and the reconnect question over them all. Table tennis's twin is `useTableTennisSheets`; what the sports share (the bounce window of a sheet appearing, the
  * question) is `usePadSheetParts`.
  */
 
 /** What Record asks the match to do, and what it came to at once. */
-export type ChessSheetDriver = {
+export type ChessSheetDriver = ChessTiebreakDriver & {
   /** The seat that won (null: a draw) and the method chosen, if one was. */
   readonly result: (winner: PadSide | null, method: ChessMethod | null) => PadOutcome;
 };
@@ -52,6 +62,7 @@ export type ChessSheetView =
       readonly picked: ChessMethod | null;
       readonly methods: readonly ChessMethod[];
     }
+  | TiebreakView
   | { readonly kind: 'details'; readonly details: PadMatchDetails<ChessPadKey> }
   | { readonly kind: 'history'; readonly groups: readonly PadHistoryGroup<ChessPadKey>[] }
   | AskView;
@@ -64,6 +75,8 @@ type Sheet =
       readonly picked: ChessMethod | null;
       readonly colour: ChessColour | null;
     }
+  /** The tie-break sheet holds seats and rungs only, never a colour, so no ledger move but its own staleness closes it. */
+  | { readonly kind: 'tiebreak'; readonly draft: TiebreakDraft }
   | { readonly kind: 'details' }
   | { readonly kind: 'history' }
   | { readonly kind: 'discard' }
@@ -97,18 +110,42 @@ export function useChessSheets(
   const view = useMemo(() => sheetView(sheet, snapshot), [sheet, snapshot]);
   const justShown = useJustShown(guardedStep(view));
   const show = useShow(snapshot, setSheet);
+  const setDraft = useCallback((draft: TiebreakDraft) => setSheet({ kind: 'tiebreak', draft }), []);
+  const showTiebreak = useShowTiebreak(tiebreakFacts(snapshot), setDraft);
   // No match to put a sheet over, the question over it, or nothing left for it to do: no sheet stays open behind it.
   if (sheet !== null && staleSheet(sheet, snapshot)) setSheet(null);
+  const picks = useTiebreakActions({
+    draft: sheet?.kind === 'tiebreak' ? sheet.draft : null,
+    rungs: snapshot?.display.tiebreak.rungs ?? NO_RUNGS,
+    setDraft,
+    close: cancel,
+    justShown,
+    pad,
+    record,
+  });
   const actions = useActions({ sheet, setSheet, snapshot, justShown, pad, record, arm, cancel });
   return {
     open: sheet !== null,
     howOpen: sheet?.kind === 'how',
+    tiebreakOpen: sheet?.kind === 'tiebreak',
     cancel,
     show,
-    actions,
+    showTiebreak,
+    actions: useMemo(() => ({ ...actions, ...picks }), [actions, picks]),
     view,
     justShown,
   };
+}
+
+const NO_RUNGS: readonly ChessRung[] = [];
+
+/**
+ * The tie-break state the sheet opens on, or none while there is no match under it or the reconnect question stands over the
+ * pad (nothing is recorded until it is answered): the sheet is then not now.
+ */
+function tiebreakFacts(snapshot: ChessSheetSnapshot | null): ChessTiebreakState | null {
+  if (snapshot === null || staleByAsk('tiebreak', snapshot)) return null;
+  return snapshot.display.tiebreak;
 }
 
 type SetSheet = (sheet: Sheet) => void;
@@ -192,20 +229,23 @@ function usePickedAt() {
 }
 
 /**
- * The step on screen a double tap can reach, by name: the How sheet, Match details (whose dim takes the second touch on its
- * icon), the question and its confirm. Not History: its one button is not under its icon.
+ * The step on screen a double tap can reach, by name: the How sheet, each step of the tie-break sheet (a pick moves it to the
+ * next, whose choices lie on the same edge), Match details (whose dim takes the second touch on its icon), the question and
+ * its confirm. Not History: its one button is not under its icon.
  */
 function guardedStep(view: ChessSheetView | null): string | null {
+  if (view?.kind === 'tiebreak') return `tiebreak.${view.step}`;
   return view === null || view.kind === 'history' ? null : view.kind;
 }
 
 /**
  * Whether an open sheet has no place now: the question's rules (`staleByAsk`), or what it was for is gone. The How sheet was
  * for a live game under the colours it was opened with: a result, a tie-break, the organiser's lock, an abandon, or a
- * pairing from anyone ends it.
+ * pairing from anyone ends it. The tie-break sheet was for a tie-break still owed, of a rung the stage still plays.
  */
 function staleSheet(sheet: NonNullable<Sheet>, snapshot: ChessSheetSnapshot | null): boolean {
   if (snapshot === null || staleByAsk(sheet.kind, snapshot)) return true;
+  if (sheet.kind === 'tiebreak') return tiebreakStale(sheet.draft, snapshot.display.tiebreak);
   if (sheet.kind !== 'how') return false;
   return !chessTakesResult(snapshot.display) || snapshot.display.colorOfHome !== sheet.colour;
 }
@@ -225,6 +265,8 @@ function sheetView(sheet: Sheet, snapshot: ChessSheetSnapshot | null): ChessShee
         picked: sheet.picked,
         methods: chessMethodsFor(sheet.winner),
       };
+    case 'tiebreak':
+      return tiebreakView(sheet.draft, snapshot.display.tiebreak);
     case 'details':
       return { kind: 'details', details: snapshot.details };
     case 'history':

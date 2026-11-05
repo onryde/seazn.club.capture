@@ -362,6 +362,30 @@ describe('a bracket stage', () => {
   });
 });
 
+describe('a bracket stage: the Tie-break tile', () => {
+  // Task 3 walks every rung; this one proves the tile is wired through the route: it opens the sheet and a Rapid tie-break
+  // reaches the ledger and the pad.
+  it('opens the sheet, and a Rapid tie-break sends L. Chen through', async () => {
+    const seed = chessSeed({ cfg: chessCfg({ tiebreak: true }) });
+    const app = await live(seed);
+    await record(app, null);
+    await press(app, en['scoring.chess.tiebreak.tool']);
+    expect(screen.getByTestId('tiebreak-sheet')).toBeTruthy();
+    expect(screen.getByText(en['scoring.chess.tiebreak.rung.title'])).toBeTruthy();
+    await press(app, en['scoring.chess.tiebreak.rung.rapid']);
+    await press(app, 'L. Chen');
+    await press(app, en['scoring.chess.how.record']);
+    expect(screen.queryByTestId('tiebreak-sheet')).toBeNull();
+    expect((await ledger(app, seed)).at(-1)).toMatchObject({
+      type: 'boardgame.tiebreak',
+      payload: { rung: 'rapid', winner: AWAY_ENTRANT },
+    });
+    expect(strip()).toBe('L. Chen advances · Rapid');
+    expect(tally()).toBe('½');
+    expect(undoCell()).toBeTruthy();
+  });
+});
+
 describe('a second scorer', () => {
   it('records first while the sheet is open: the sheet closes, the pad shows their result, and this scorer’s never goes', async () => {
     const app = await live();

@@ -1,11 +1,11 @@
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import type { ChessDisplay, ChessMethod } from '@/domain/scoring/chessTypes';
+import type { ChessDisplay, ChessMethod, ChessTiebreakTap } from '@/domain/scoring/chessTypes';
 import { TAKEN, type PadOutcome } from '@/domain/scoring/padLine';
 import type { PadAsk } from '@/domain/scoring/padView';
 import { useChessSheets, type ChessSheetSnapshot } from '@/hooks/useChessSheets';
 import { createFakePorts, type FakePorts } from '../../test/fakePorts';
-import { chessDisplay } from '../../test/chessLedger';
+import { chessDisplay, pendingTiebreak } from '../../test/chessLedger';
 import { wrapperFor } from '../../test/renderWithPorts';
 
 // The sheets over the chess pad (plan S2-3 Task 3; spec §4): the How sheet, which holds the SEAT that won and the method
@@ -53,14 +53,15 @@ const ASK: PadAsk = {
 function rig(initial: ChessSheetSnapshot | null = snapshot()) {
   const fakes = createFakePorts();
   const made = vi.fn((_winner: unknown, _method: unknown): PadOutcome => TAKEN);
+  const tiebreakMade = vi.fn((_tap: ChessTiebreakTap): PadOutcome => TAKEN);
   const record = vi.fn((_tap: string, make: () => PadOutcome) => make().ok);
   const arm = vi.fn((_tap: string): void => undefined);
   const view = renderHook(
     ({ snap }: { snap: ChessSheetSnapshot | null }) =>
-      useChessSheets({ result: made }, snap, record, arm),
+      useChessSheets({ result: made, tiebreak: tiebreakMade }, snap, record, arm),
     { wrapper: wrapperFor(fakes), initialProps: { snap: initial } },
   );
-  return { ...view, fakes, made, record, arm };
+  return { ...view, fakes, made, tiebreakMade, record, arm };
 }
 
 type Rig = ReturnType<typeof rig>;
@@ -403,5 +404,469 @@ describe('Match details, History and the reconnect question', () => {
   it('opens nothing over a dead link’s card', () => {
     const view = rig({ ...snapshot(), ask: ASK, card: { kind: 'linkInvalid' } });
     expect(view.result.current.view).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// The tie-break sheet (S2-3b Task 2; design §3). Steps: the rung (skipped for a stage that lists one), then who won and
+// the optional score (rapid, blitz) or who had Black and the result and the confirm (Armageddon). Nothing is sent before
+// Record. Every choice is a SEAT. Expected taps are the design's, written out.
+// ---------------------------------------------------------------------------------------------------------------
+
+const OWED = (rungs?: Parameters<typeof pendingTiebreak>[0]) =>
+  snapshot({ phase: 'tiebreak', tiebreak: pendingTiebreak(rungs) });
+
+const tie = (view: Rig) => {
+  const sheet = view.result.current.view;
+  return sheet?.kind === 'tiebreak' ? sheet : null;
+};
+
+/** The tie-break sheet open and its bounce window over. */
+function owed(rungs?: Parameters<typeof pendingTiebreak>[0], over: Partial<ChessDisplay> = {}) {
+  const view = rig({ ...OWED(rungs), display: { ...OWED(rungs).display, ...over } });
+  act(() => void view.result.current.showTiebreak());
+  settle(view.fakes);
+  return view;
+}
+
+/** One pick, then the time the next step needs before it takes a pick. */
+function then(view: Rig, make: (actions: Rig['result']['current']['actions']) => void) {
+  act(() => make(view.result.current.actions));
+  settle(view.fakes);
+}
+
+const BLANK = { rung: null, winner: null, score: null, black: null, result: null };
+
+describe('opening the tie-break sheet', () => {
+  it('opens on the rung with the stage’s rungs in its order, nothing chosen, and sends nothing', () => {
+    const view = rig(OWED(['blitz', 'rapid']));
+    act(() => void view.result.current.showTiebreak());
+    expect(tie(view)).toEqual({
+      kind: 'tiebreak',
+      step: 'rung',
+      rungs: ['blitz', 'rapid'],
+      draft: BLANK,
+      advances: null,
+    });
+    expect(view.result.current.open).toBe(true);
+    expect(view.result.current.tiebreakOpen).toBe(true);
+    expect(view.tiebreakMade).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['rapid', 'winner'],
+    ['blitz', 'winner'],
+    ['armageddon', 'black'],
+  ] as const)('skips the rung step for a stage that lists only %s', (rung, step) => {
+    const view = rig(OWED([rung]));
+    act(() => void view.result.current.showTiebreak());
+    expect(tie(view)).toMatchObject({ step, draft: { ...BLANK, rung } });
+  });
+
+  it('is no How sheet: a half or Draw is refused while the tie-break is owed', () => {
+    const view = rig(OWED());
+    let outcome: PadOutcome = TAKEN;
+    act(() => {
+      outcome = view.result.current.show('first');
+    });
+    expect(outcome).toEqual({ ok: false, refusal: 'notNow' });
+    expect(view.result.current.view).toBeNull();
+  });
+
+  it.each([
+    ['a live game', snapshot()],
+    [
+      'a game with a result',
+      snapshot({ phase: 'done', result: { outcome: 'draw', method: null } }),
+    ],
+    [
+      'a game held for the organiser (the stage lists no rung)',
+      snapshot({
+        phase: 'done',
+        tiebreak: { rungs: [], pending: false, held: true, decided: null },
+      }),
+    ],
+    [
+      'a tie-break already decided',
+      snapshot({
+        phase: 'done',
+        tiebreak: {
+          rungs: ['rapid'],
+          pending: false,
+          held: false,
+          decided: { rung: 'rapid', advances: 'first' },
+        },
+      }),
+    ],
+    ['a game not started', snapshot({ phase: 'notStarted' })],
+  ])('refuses on %s, and no sheet stands', (_name, snap) => {
+    const view = rig(snap);
+    let outcome: PadOutcome = TAKEN;
+    act(() => {
+      outcome = view.result.current.showTiebreak();
+    });
+    expect(outcome).toEqual({ ok: false, refusal: 'notNow' });
+    expect(view.result.current.view).toBeNull();
+    expect(view.result.current.tiebreakOpen).toBe(false);
+  });
+
+  it('refuses a tie-break owed with no rung listed: there is nothing to ask', () => {
+    const view = rig(OWED([]));
+    let outcome: PadOutcome = TAKEN;
+    act(() => {
+      outcome = view.result.current.showTiebreak();
+    });
+    expect(outcome).toEqual({ ok: false, refusal: 'notNow' });
+    expect(view.result.current.view).toBeNull();
+  });
+
+  it('shows nothing while the match is loading (no snapshot)', () => {
+    const view = rig(null);
+    act(() => void view.result.current.showTiebreak());
+    expect(view.result.current.view).toBeNull();
+  });
+
+  it('opens none while the reconnect question stands', () => {
+    const view = rig({ ...OWED(), ask: ASK });
+    let outcome: PadOutcome = TAKEN;
+    act(() => {
+      outcome = view.result.current.showTiebreak();
+    });
+    expect(outcome).toEqual({ ok: false, refusal: 'notNow' });
+    expect(view.result.current.view?.kind).toBe('ask');
+  });
+});
+
+describe('a rapid or blitz tie-break', () => {
+  it.each(['rapid', 'blitz'] as const)('%s: rung, the winner, no score, Record', (rung) => {
+    const view = owed();
+    then(view, (a) => a.pickRung(rung));
+    expect(tie(view)).toMatchObject({ step: 'winner', draft: { rung } });
+    then(view, (a) => a.pickTiebreakWinner('second'));
+    expect(tie(view)).toMatchObject({ step: 'score', advances: 'second' });
+    act(() => view.result.current.actions.recordTiebreak());
+    expect(view.tiebreakMade).toHaveBeenCalledTimes(1);
+    expect(view.tiebreakMade).toHaveBeenCalledWith({
+      kind: 'tiebreak',
+      rung,
+      winner: 'second',
+      score: null,
+    });
+    expect(view.result.current.view).toBeNull();
+  });
+
+  it.each(['2–0', '1½–½'] as const)('records the score %s', (score) => {
+    const view = owed();
+    then(view, (a) => a.pickRung('rapid'));
+    then(view, (a) => a.pickTiebreakWinner('first'));
+    then(view, (a) => a.pickScore(score));
+    expect(tie(view)?.draft.score).toBe(score);
+    act(() => view.result.current.actions.recordTiebreak());
+    expect(view.tiebreakMade).toHaveBeenCalledWith({
+      kind: 'tiebreak',
+      rung: 'rapid',
+      winner: 'first',
+      score,
+    });
+  });
+
+  it('No score after a score is no score', () => {
+    const view = owed(['blitz']);
+    then(view, (a) => a.pickTiebreakWinner('first'));
+    then(view, (a) => a.pickScore('2–0'));
+    then(view, (a) => a.pickScore(null));
+    act(() => view.result.current.actions.recordTiebreak());
+    expect(view.tiebreakMade).toHaveBeenCalledWith(expect.objectContaining({ score: null }));
+  });
+
+  it('a stage that lists one rung goes straight to the winner', () => {
+    const view = owed(['blitz']);
+    then(view, (a) => a.pickTiebreakWinner('second'));
+    act(() => view.result.current.actions.recordTiebreak());
+    expect(view.tiebreakMade).toHaveBeenCalledWith({
+      kind: 'tiebreak',
+      rung: 'blitz',
+      winner: 'second',
+      score: null,
+    });
+  });
+
+  // The seat is what is held, so the same pick names the same player whoever holds White, and with no colours at all.
+  it.each(['W', 'B', null] as const)(
+    'names the seat the same way whoever holds White (%s)',
+    (colorOfHome) => {
+      const view = owed(['rapid'], { colorOfHome });
+      then(view, (a) => a.pickTiebreakWinner('first'));
+      act(() => view.result.current.actions.recordTiebreak());
+      expect(view.tiebreakMade).toHaveBeenCalledWith(expect.objectContaining({ winner: 'first' }));
+    },
+  );
+
+  it('takes no Record before the score step: the rung and the winner are not a tie-break yet', () => {
+    const view = owed();
+    act(() => view.result.current.actions.recordTiebreak());
+    then(view, (a) => a.pickRung('rapid'));
+    act(() => view.result.current.actions.recordTiebreak());
+    expect(view.tiebreakMade).not.toHaveBeenCalled();
+    expect(tie(view)).not.toBeNull();
+  });
+
+  it('takes a pick for another step as nothing: Black or a result on the winner step', () => {
+    const view = owed();
+    then(view, (a) => a.pickRung('rapid'));
+    then(view, (a) => a.pickBlack('first'));
+    then(view, (a) => a.pickArmageddonResult('draw'));
+    then(view, (a) => a.pickScore('2–0'));
+    expect(tie(view)).toMatchObject({
+      step: 'winner',
+      draft: { rung: 'rapid', black: null, result: null, score: null },
+    });
+  });
+
+  it('takes no rung the stage does not list', () => {
+    const view = owed(['rapid', 'blitz']);
+    then(view, (a) => a.pickRung('armageddon'));
+    expect(tie(view)?.step).toBe('rung');
+  });
+});
+
+describe('an Armageddon', () => {
+  it.each(['white', 'black', 'draw'] as const)(
+    'records Black and the result %s, and never a winner',
+    (result) => {
+      const view = owed();
+      then(view, (a) => a.pickRung('armageddon'));
+      expect(tie(view)?.step).toBe('black');
+      then(view, (a) => a.pickBlack('second'));
+      expect(tie(view)?.step).toBe('result');
+      then(view, (a) => a.pickArmageddonResult(result));
+      // White won sends the other seat through; Black won and a draw send Black (BG-KO-2).
+      expect(tie(view)).toMatchObject({
+        step: 'confirm',
+        advances: result === 'white' ? 'first' : 'second',
+      });
+      act(() => view.result.current.actions.recordTiebreak());
+      expect(view.tiebreakMade).toHaveBeenCalledTimes(1);
+      expect(view.tiebreakMade).toHaveBeenCalledWith({
+        kind: 'tiebreak',
+        rung: 'armageddon',
+        black: 'second',
+        result,
+      });
+      expect(view.result.current.view).toBeNull();
+    },
+  );
+
+  // A division that plays without colours has no White or Black in the main game, and the Armageddon still asks who had Black.
+  it('asks who had Black in a division that plays without colours', () => {
+    const view = owed(undefined, { colorOfHome: null });
+    then(view, (a) => a.pickRung('armageddon'));
+    expect(tie(view)?.step).toBe('black');
+    then(view, (a) => a.pickBlack('first'));
+    then(view, (a) => a.pickArmageddonResult('black'));
+    act(() => view.result.current.actions.recordTiebreak());
+    expect(view.tiebreakMade).toHaveBeenCalledWith({
+      kind: 'tiebreak',
+      rung: 'armageddon',
+      black: 'first',
+      result: 'black',
+    });
+  });
+
+  it('a stage that lists only Armageddon opens on Black', () => {
+    const view = owed(['armageddon']);
+    expect(tie(view)?.step).toBe('black');
+  });
+
+  it('takes no Record before the confirm', () => {
+    const view = owed();
+    then(view, (a) => a.pickRung('armageddon'));
+    then(view, (a) => a.pickBlack('first'));
+    act(() => view.result.current.actions.recordTiebreak());
+    expect(view.tiebreakMade).not.toHaveBeenCalled();
+  });
+});
+
+describe('the tie-break sheet and the bounce memory', () => {
+  it('records through it under one name of its own', () => {
+    const view = owed(['rapid']);
+    then(view, (a) => a.pickTiebreakWinner('first'));
+    act(() => view.result.current.actions.recordTiebreak());
+    expect(view.record).toHaveBeenCalledTimes(1);
+    expect(view.record.mock.calls[0]?.[0]).toBe('tiebreak');
+  });
+
+  // The second touch of a double tap on the Tie-break tile lands on the sheet's first choice, on the same edge.
+  it('takes no pick in the bounce window of the sheet appearing, and takes it after', () => {
+    const view = rig(OWED());
+    act(() => void view.result.current.showTiebreak());
+    act(() => view.result.current.actions.pickRung('rapid'));
+    expect(tie(view)?.step).toBe('rung');
+    settle(view.fakes);
+    act(() => view.result.current.actions.pickRung('rapid'));
+    expect(tie(view)?.step).toBe('winner');
+  });
+
+  // The second touch of a double tap on a row lands on the next step, where the same edge holds another choice.
+  it('takes no pick on the heels of the pick that moved it to the next step', () => {
+    const view = owed();
+    act(() => view.result.current.actions.pickRung('armageddon'));
+    act(() => view.result.current.actions.pickBlack('first'));
+    expect(tie(view)).toMatchObject({ step: 'black', draft: { black: null } });
+    settle(view.fakes);
+    act(() => view.result.current.actions.pickBlack('first'));
+    expect(tie(view)?.step).toBe('result');
+    act(() => view.result.current.actions.pickArmageddonResult('draw'));
+    expect(tie(view)?.step).toBe('result');
+  });
+
+  it('takes no winner, score or Record on the heels of the step that asks for it', () => {
+    const view = owed();
+    act(() => view.result.current.actions.pickRung('rapid'));
+    act(() => view.result.current.actions.pickTiebreakWinner('first'));
+    expect(tie(view)?.step).toBe('winner');
+    settle(view.fakes);
+    act(() => view.result.current.actions.pickTiebreakWinner('first'));
+    expect(tie(view)?.step).toBe('score');
+    act(() => view.result.current.actions.recordTiebreak());
+    act(() => view.result.current.actions.pickScore('2–0'));
+    expect(view.tiebreakMade).not.toHaveBeenCalled();
+    expect(tie(view)?.draft.score).toBeNull();
+    settle(view.fakes);
+    act(() => view.result.current.actions.recordTiebreak());
+    expect(view.tiebreakMade).toHaveBeenCalledTimes(1);
+  });
+
+  it('takes no Record in the window of the confirm appearing', () => {
+    const view = owed(['armageddon']);
+    then(view, (a) => a.pickBlack('first'));
+    act(() => view.result.current.actions.pickArmageddonResult('white'));
+    act(() => view.result.current.actions.recordTiebreak());
+    expect(view.tiebreakMade).not.toHaveBeenCalled();
+    settle(view.fakes);
+    act(() => view.result.current.actions.recordTiebreak());
+    expect(view.tiebreakMade).toHaveBeenCalledTimes(1);
+  });
+
+  it('records nothing with no sheet open, and no pick lands on a closed one', () => {
+    const view = rig(OWED());
+    act(() => {
+      view.result.current.actions.recordTiebreak();
+      view.result.current.actions.pickRung('rapid');
+      view.result.current.actions.pickTiebreakWinner('first');
+    });
+    expect(view.tiebreakMade).not.toHaveBeenCalled();
+    expect(view.result.current.view).toBeNull();
+  });
+
+  it('Cancel closes it with nothing sent, and nothing chosen survives into the next sheet', () => {
+    const view = owed();
+    then(view, (a) => a.pickRung('rapid'));
+    then(view, (a) => a.pickTiebreakWinner('first'));
+    act(() => view.result.current.cancel());
+    expect(view.result.current.view).toBeNull();
+    expect(view.tiebreakMade).not.toHaveBeenCalled();
+    act(() => void view.result.current.showTiebreak());
+    expect(tie(view)).toMatchObject({ step: 'rung', draft: BLANK });
+  });
+
+  it('a dismiss closes it, arms the bounce window, and not in the window of appearing', () => {
+    const view = rig(OWED());
+    act(() => void view.result.current.showTiebreak());
+    act(() => view.result.current.actions.dismiss());
+    expect(tie(view)).not.toBeNull();
+    expect(view.arm).not.toHaveBeenCalled();
+    settle(view.fakes);
+    act(() => view.result.current.actions.dismiss());
+    expect(view.result.current.view).toBeNull();
+    expect(view.arm).toHaveBeenCalledTimes(1);
+    expect(view.tiebreakMade).not.toHaveBeenCalled();
+  });
+});
+
+describe('the tie-break sheet closes when the ledger moves under it', () => {
+  const closes = (
+    before: Parameters<typeof owed>[0],
+    after: Snap,
+    step: 'rung' | 'blitz' = 'rung',
+  ) => {
+    const view = owed(before);
+    if (step === 'blitz') then(view, (a) => a.pickRung('blitz'));
+    expect(tie(view)).not.toBeNull();
+    view.rerender({ snap: after });
+    return view.result.current.view === null;
+  };
+  type Snap = ChessSheetSnapshot;
+  const resolved = (extra: Partial<ChessDisplay> = {}): Snap =>
+    snapshot({
+      phase: 'done',
+      tiebreak: {
+        rungs: ['rapid'],
+        pending: false,
+        held: false,
+        decided: { rung: 'rapid', advances: 'second' },
+      },
+      ...extra,
+    });
+
+  it('closes when another scorer recorded the tie-break, on any step', () => {
+    expect(closes(undefined, resolved())).toBe(true);
+    expect(closes(undefined, resolved(), 'blitz')).toBe(true);
+  });
+
+  it('closes when the organiser settled the game or locked it, or the draw was voided', () => {
+    expect(
+      closes(undefined, snapshot({ phase: 'done', result: { outcome: 'draw', method: null } })),
+    ).toBe(true);
+    expect(closes(undefined, snapshot({ phase: 'final' }))).toBe(true);
+    expect(closes(undefined, snapshot())).toBe(true);
+  });
+
+  it('closes when the rung chosen is no longer one the stage lists, and not before one is chosen', () => {
+    expect(closes(undefined, OWED(['rapid', 'armageddon']), 'blitz')).toBe(true);
+    expect(closes(undefined, OWED(['rapid', 'armageddon']))).toBe(false);
+  });
+
+  it('closes when the stage lists no rung any more', () => {
+    expect(closes(undefined, OWED([]))).toBe(true);
+  });
+
+  it('stays open, with its choices, for a ledger move that changes nothing it was for', () => {
+    const view = owed();
+    then(view, (a) => a.pickRung('rapid'));
+    then(view, (a) => a.pickTiebreakWinner('first'));
+    view.rerender({
+      snap: {
+        ...OWED(),
+        display: { ...OWED().display, lastTap: { kind: 'start' }, undoable: true },
+      },
+    });
+    expect(tie(view)).toMatchObject({ step: 'score', draft: { rung: 'rapid', winner: 'first' } });
+  });
+
+  // The sheet holds seats, not colours: a pairing from another scorer changes nothing the scorer chose (and the How sheet
+  // closes for one, where a player holds a colour).
+  it('stays open when the colours change, either way', () => {
+    const view = owed(undefined, { colorOfHome: 'W' });
+    then(view, (a) => a.pickRung('armageddon'));
+    then(view, (a) => a.pickBlack('first'));
+    view.rerender({ snap: { ...OWED(), display: { ...OWED().display, colorOfHome: 'B' } } });
+    expect(tie(view)).toMatchObject({ step: 'result', draft: { black: 'first' } });
+  });
+
+  it('closes when the match is gone (no snapshot)', () => {
+    const view = owed();
+    view.rerender({ snap: null });
+    expect(view.result.current.view).toBeNull();
+    expect(view.result.current.open).toBe(false);
+  });
+
+  it('closes under the reconnect question, which stands over every sheet', () => {
+    const view = owed();
+    view.rerender({ snap: { ...OWED(), ask: ASK } });
+    expect(view.result.current.view?.kind).toBe('ask');
+    view.rerender({ snap: OWED() });
+    expect(view.result.current.view).toBeNull();
+    expect(view.result.current.tiebreakOpen).toBe(false);
   });
 });

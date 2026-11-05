@@ -43,8 +43,11 @@ on 2026-11-05 why a phone, which is Remote Scoring, could not do what the web's 
   again. After finalize, or once the winner seat is filled in the next round, the web refuses (carried forward) and the
   pad says so with the existing "Result carried forward" card.
 - **Name of the result line.** After a tie-break the pad's header stays level (the web's summary does too) and the strip
-  names the advancing player and the rung ("{name} advances · Rapid"). The Home card reads the same.
-- **Log.** The rung chosen is logged as one short word (`scoring.chess.tiebreak {rung}`), never a name.
+  names the advancing player and the rung ("{name} advances · Rapid"). The Home card stays "½–½" (Task 1 review, 2026-11-05):
+  its result line (`chessCardLine`) writes the game's own result, which a tie-break leaves a draw, and the advances words
+  appear in the strip, the last-tap line and History.
+- **Log.** The rung chosen is logged as one short word, `scoring.chess.tiebreak {word}`: the session record's scrub
+  allow-list has no `rung` field and would drop it (Task 2), and never a name.
 - **Text** under `scoring.chess.tiebreak.*` in en, es, fr, nl; the web's English words are reused (listed in §1's source).
   es, fr and nl are unreviewed drafts until the owner reads them, as for S2-3.
 

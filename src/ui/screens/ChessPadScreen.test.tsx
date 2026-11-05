@@ -515,6 +515,8 @@ describe('the organiser’s part', () => {
   it('a drawn bracket game whose stage lists no rung is held: the line says so, and there is no tool', async () => {
     const cfg = chessCfg({ tiebreak: true, tiebreakRungs: [] });
     await open(chessSeed({ events: [START, DRAW], cfg }));
+    // The words are the design's (§3): it was never the organiser's tie-break to wait for, only the organiser.
+    expect(strip()).toBe('Waiting for the organiser');
     expect(strip()).toBe(en['scoring.chess.waiting.tiebreak']);
     expect(screen.queryAllByRole('button', { name: en['scoring.chess.tiebreak.tool'] })).toEqual(
       [],
@@ -621,3 +623,349 @@ describe.each(LANGUAGES)('%s', (language, words: Readonly<Record<string, string>
     expect(screen.getByRole('button', { name: words['scoring.chess.how.record']! })).toBeTruthy();
   });
 });
+
+// ---------------------------------------------------------------------------------------------------------------
+// The tie-break sheet (S2-3b Task 2; design §3), on the fake server with the engine judging every event. What jsdom
+// cannot see (the lime fill of a picked chip, how the rows and chips wrap at 320 dp, a screen reader reading the sheet, a
+// press's feedback) is the device check's; the fit of the words is `chessFit.test.ts`'s.
+// ---------------------------------------------------------------------------------------------------------------
+
+/** A drawn game in a knockout stage that lists `rungs` (all three when none are named). */
+const drawnWith = (rungs?: readonly string[], over: Partial<ReturnType<typeof chessCfg>> = {}) =>
+  chessSeed({
+    events: [START, DRAW],
+    cfg: chessCfg({
+      tiebreak: true,
+      ...(rungs === undefined ? {} : { tiebreakRungs: rungs }),
+      ...over,
+    }),
+  });
+
+const tieSheet = () => screen.queryByTestId('tiebreak-sheet');
+/** What the open sheet offers as rows or chips, and its other buttons, in order. */
+const tieButtons = () =>
+  within(screen.getByTestId('tiebreak-sheet'))
+    .getAllByRole('button')
+    .map((button) => button.textContent);
+const tieChips = () =>
+  within(screen.getByTestId('tiebreak-sheet'))
+    .getAllByRole('radio')
+    .map((chip) => [chip.textContent, chip.getAttribute('aria-checked')]);
+
+describe('the Tie-break tile and the rung step', () => {
+  it('opens the sheet on the rung: the stage’s rungs in its order, the lots line, Cancel; nothing is sent', async () => {
+    const seed = drawnWith(['armageddon', 'rapid', 'blitz']);
+    const app = await open(seed);
+    await press(app, en['scoring.chess.tiebreak.tool']);
+    expect(screen.getByText(en['scoring.chess.tiebreak.rung.title'])).toBeTruthy();
+    expect(tieButtons()).toEqual([
+      en['scoring.chess.tiebreak.rung.armageddon'],
+      en['scoring.chess.tiebreak.rung.rapid'],
+      en['scoring.chess.tiebreak.rung.blitz'],
+      en['scoring.sheet.cancel'],
+    ]);
+    // The words of the design: lots are the organiser's, never a rung (BG-KO-1, ruling 73).
+    expect(screen.getByText('Decided by lot? Ask the organiser to settle the match.')).toBeTruthy();
+    expect(await typesOf(app, seed)).toEqual(['core.start', 'boardgame.result']);
+  });
+
+  it('shows no Record on the rung step, and covers the pad from a screen reader', async () => {
+    const app = await open(drawnWith());
+    await press(app, en['scoring.chess.tiebreak.tool']);
+    expect(screen.queryByRole('button', { name: en['scoring.chess.how.record'] })).toBeNull();
+    expect(screen.getByTestId('pad-content').getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('a stage that lists one rung opens on that rung’s first step, with no rung question', async () => {
+    const app = await open(drawnWith(['rapid']));
+    await press(app, en['scoring.chess.tiebreak.tool']);
+    expect(screen.queryByText(en['scoring.chess.tiebreak.rung.title'])).toBeNull();
+    expect(screen.getByText(en['scoring.chess.tiebreak.winner.title'])).toBeTruthy();
+  });
+
+  it('Cancel and the dim close it, send nothing, and the tile is still there', async () => {
+    const seed = drawnWith();
+    const app = await open(seed);
+    await press(app, en['scoring.chess.tiebreak.tool']);
+    await press(app, en['scoring.sheet.cancel']);
+    expect(tieSheet()).toBeNull();
+    await press(app, en['scoring.chess.tiebreak.tool']);
+    aSecondOn(app);
+    act(() => fireEvent.click(screen.getByTestId('tiebreak-dim')));
+    await flush(400);
+    expect(tieSheet()).toBeNull();
+    expect(screen.getByRole('button', { name: en['scoring.chess.tiebreak.tool'] })).toBeTruthy();
+    expect(await typesOf(app, seed)).toEqual(['core.start', 'boardgame.result']);
+  });
+
+  it('a double tap on the tile opens it once: the second touch does not pick the first rung', async () => {
+    const seed = drawnWith();
+    const app = await open(seed);
+    aSecondOn(app);
+    const tile = screen.getByRole('button', { name: en['scoring.chess.tiebreak.tool'] });
+    act(() => {
+      fireEvent.click(tile);
+      fireEvent.click(tile);
+    });
+    await flush(400);
+    expect(screen.getByText(en['scoring.chess.tiebreak.rung.title'])).toBeTruthy();
+    expect(tieButtons()).toContain(en['scoring.chess.tiebreak.rung.rapid']);
+  });
+});
+
+describe('recording a rapid or blitz tie-break on the sheet', () => {
+  it('Rapid, L. Chen, 2–0: the winner rows name both players, the score step names who advances, Record sends one event', async () => {
+    const seed = drawnWith();
+    const app = await open(seed);
+    await press(app, en['scoring.chess.tiebreak.tool']);
+    await press(app, en['scoring.chess.tiebreak.rung.rapid']);
+    expect(screen.getByText(en['scoring.chess.tiebreak.winner.title'])).toBeTruthy();
+    expect(tieButtons()).toEqual(['A. Sharma', 'L. Chen', en['scoring.sheet.cancel']]);
+    await press(app, 'L. Chen');
+    expect(screen.getByText(en['scoring.chess.tiebreak.score.title'])).toBeTruthy();
+    expect(screen.getByText('L. Chen advances · Rapid')).toBeTruthy();
+    // No score is the default, and the picked chip says so to a screen reader.
+    expect(tieChips()).toEqual([
+      [en['scoring.chess.tiebreak.score.none'], 'true'],
+      ['2–0', 'false'],
+      ['1½–½', 'false'],
+    ]);
+    await pick(app, '2–0');
+    expect(tieChips().map(([, checked]) => checked)).toEqual(['false', 'true', 'false']);
+    expect(await typesOf(app, seed)).toEqual(['core.start', 'boardgame.result']);
+    await press(app, en['scoring.chess.how.record']);
+    expect(tieSheet()).toBeNull();
+    expect(await typesOf(app, seed)).toEqual([
+      'core.start',
+      'boardgame.result',
+      'boardgame.tiebreak',
+    ]);
+    expect((await events(app, seed)).at(-1)?.payload).toEqual({
+      rung: 'rapid',
+      winner: AWAY_ENTRANT,
+      score: '2–0',
+    });
+  });
+
+  it('Blitz with no score sends none; the header stays level and the strip and last-tap line say who advances', async () => {
+    const seed = drawnWith();
+    const app = await open(seed);
+    await press(app, en['scoring.chess.tiebreak.tool']);
+    await press(app, en['scoring.chess.tiebreak.rung.blitz']);
+    await press(app, 'A. Sharma');
+    await press(app, en['scoring.chess.how.record']);
+    expect((await events(app, seed)).at(-1)?.payload).toEqual({
+      rung: 'blitz',
+      winner: HOME_ENTRANT,
+    });
+    expect(tally()).toBe('½');
+    expect(strip()).toBe('A. Sharma advances · Blitz');
+    expect(lastTap()).toBe('A. Sharma advances · Blitz');
+    expect(screen.getByRole('button', { name: en['scoring.pad.undo'] })).toBeTruthy();
+  });
+
+  it('No score after a score is no score', async () => {
+    const seed = drawnWith(['blitz']);
+    const app = await open(seed);
+    await press(app, en['scoring.chess.tiebreak.tool']);
+    await press(app, 'A. Sharma');
+    await pick(app, '1½–½');
+    await pick(app, en['scoring.chess.tiebreak.score.none']);
+    await press(app, en['scoring.chess.how.record']);
+    expect((await events(app, seed)).at(-1)?.payload).toEqual({
+      rung: 'blitz',
+      winner: HOME_ENTRANT,
+    });
+  });
+
+  it('Undo takes the tie-break back and the tile is owed again; a different tie-break then records', async () => {
+    const seed = drawnWith();
+    const app = await open(seed);
+    await press(app, en['scoring.chess.tiebreak.tool']);
+    await press(app, en['scoring.chess.tiebreak.rung.rapid']);
+    await press(app, 'A. Sharma');
+    await press(app, en['scoring.chess.how.record']);
+    await press(app, en['scoring.pad.undo']);
+    expect(await typesOf(app, seed)).toEqual([
+      'core.start',
+      'boardgame.result',
+      'boardgame.tiebreak',
+      'core.void',
+    ]);
+    expect(screen.getByRole('button', { name: en['scoring.chess.tiebreak.tool'] })).toBeTruthy();
+    await press(app, en['scoring.chess.tiebreak.tool']);
+    await press(app, en['scoring.chess.tiebreak.rung.armageddon']);
+    await press(app, 'L. Chen');
+    await press(app, en['scoring.chess.tiebreak.result.draw']);
+    await press(app, en['scoring.chess.how.record']);
+    expect((await events(app, seed)).at(-1)?.payload).toEqual({
+      rung: 'armageddon',
+      black: AWAY_ENTRANT,
+      result: 'draw',
+    });
+    expect(lastTap()).toBe('L. Chen advances · Armageddon');
+  });
+});
+
+describe('recording an Armageddon on the sheet', () => {
+  it('asks who had Black, then the result with the players named by colour, then the confirm naming who advances', async () => {
+    const seed = drawnWith();
+    const app = await open(seed);
+    await press(app, en['scoring.chess.tiebreak.tool']);
+    await press(app, en['scoring.chess.tiebreak.rung.armageddon']);
+    expect(screen.getByText(en['scoring.chess.tiebreak.black.title'])).toBeTruthy();
+    expect(tieButtons()).toEqual(['A. Sharma', 'L. Chen', en['scoring.sheet.cancel']]);
+    await press(app, 'A. Sharma');
+    // A. Sharma had Black, so L. Chen had White: "White won" names L. Chen, whatever the main game's colours were.
+    expect(screen.getByText(en['scoring.chess.tiebreak.result.title'])).toBeTruthy();
+    expect(tieButtons()).toEqual([
+      fill(en['scoring.chess.result.white'], { name: 'L. Chen' }),
+      fill(en['scoring.chess.result.black'], { name: 'A. Sharma' }),
+      'Drawn — Black advances',
+      en['scoring.sheet.cancel'],
+    ]);
+    await press(app, fill(en['scoring.chess.result.white'], { name: 'L. Chen' }));
+    expect(screen.getByText('Confirm the result')).toBeTruthy();
+    // White won, and White is L. Chen: the player who did not have Black goes through (BG-KO-2).
+    expect(screen.getByText('L. Chen advances · Armageddon')).toBeTruthy();
+    expect(await typesOf(app, seed)).toEqual(['core.start', 'boardgame.result']);
+    await press(app, en['scoring.chess.how.record']);
+    expect((await events(app, seed)).at(-1)?.payload).toEqual({
+      rung: 'armageddon',
+      black: HOME_ENTRANT,
+      result: 'white',
+    });
+    expect(strip()).toBe('L. Chen advances · Armageddon');
+  });
+
+  it.each([
+    ['black', 'Black won · A. Sharma', 'A. Sharma advances · Armageddon'],
+    ['draw', 'Drawn — Black advances', 'A. Sharma advances · Armageddon'],
+  ] as const)('result %s: the confirm says Black advances', async (result, label, advances) => {
+    const seed = drawnWith(['armageddon']);
+    const app = await open(seed);
+    await press(app, en['scoring.chess.tiebreak.tool']);
+    await press(app, 'A. Sharma');
+    await press(app, label);
+    expect(screen.getByText(advances)).toBeTruthy();
+    await press(app, en['scoring.chess.how.record']);
+    expect((await events(app, seed)).at(-1)?.payload).toEqual({
+      rung: 'armageddon',
+      black: HOME_ENTRANT,
+      result,
+    });
+  });
+
+  // The tie-break has a colour of its own, so a division that plays without colours is asked who had Black all the same.
+  it('asks who had Black in a division that plays without colours', async () => {
+    const seed = drawnWith(['armageddon'], { colors: false });
+    const app = await open(seed);
+    expect(plate('first')).toBeUndefined();
+    await press(app, en['scoring.chess.tiebreak.tool']);
+    expect(screen.getByText(en['scoring.chess.tiebreak.black.title'])).toBeTruthy();
+    await press(app, 'L. Chen');
+    await press(app, 'Drawn — Black advances');
+    await press(app, en['scoring.chess.how.record']);
+    expect((await events(app, seed)).at(-1)?.payload).toEqual({
+      rung: 'armageddon',
+      black: AWAY_ENTRANT,
+      result: 'draw',
+    });
+  });
+});
+
+describe('the sheet and a second scorer', () => {
+  it('another scorer’s tie-break closes the sheet and the pad shows theirs', async () => {
+    const seed = drawnWith();
+    const app = await open(seed);
+    await press(app, en['scoring.chess.tiebreak.tool']);
+    await press(app, en['scoring.chess.tiebreak.rung.rapid']);
+    app.scoring.addOtherScorerEvent('boardgame.tiebreak', { rung: 'blitz', winner: AWAY_ENTRANT });
+    app.realtime.ping();
+    await flush(400);
+    expect(tieSheet()).toBeNull();
+    expect(lastTap()).toBe('L. Chen advances · Blitz');
+    expect(screen.queryByRole('button', { name: en['scoring.chess.tiebreak.tool'] })).toBeNull();
+  });
+
+  it('the app going to the background closes it', async () => {
+    const app = await open(drawnWith());
+    await press(app, en['scoring.chess.tiebreak.tool']);
+    await backgroundAndBack(app);
+    await flush(400);
+    expect(tieSheet()).toBeNull();
+  });
+});
+
+const TIEBREAK_LANGUAGES = [
+  ['es', es],
+  ['fr', fr],
+  ['nl', nl],
+] as const;
+
+describe.each(TIEBREAK_LANGUAGES)(
+  'the tie-break sheet in %s',
+  (language, words: Readonly<Record<string, string>>) => {
+    const w = (key: string) => plain(words[key]!);
+
+    it('says the tile, the rung step, its rungs and the lots line from its dictionary', async () => {
+      const app = await open(drawnWith(), { deviceLanguages: [language] });
+      expect(toolNames()).toEqual([words['scoring.chess.tiebreak.tool']]);
+      await press(app, w('scoring.chess.tiebreak.tool'));
+      expect(screen.getByText(w('scoring.chess.tiebreak.rung.title'))).toBeTruthy();
+      expect(tieButtons()).toEqual([
+        w('scoring.chess.tiebreak.rung.rapid'),
+        w('scoring.chess.tiebreak.rung.blitz'),
+        w('scoring.chess.tiebreak.rung.armageddon'),
+        w('scoring.sheet.cancel'),
+      ]);
+      expect(screen.getByText(w('scoring.chess.tiebreak.lotsHint'))).toBeTruthy();
+    });
+
+    it('says the score step, its chips and who advances from its dictionary', async () => {
+      const app = await open(drawnWith(['blitz']), { deviceLanguages: [language] });
+      await press(app, w('scoring.chess.tiebreak.tool'));
+      expect(screen.getByText(w('scoring.chess.tiebreak.winner.title'))).toBeTruthy();
+      await press(app, 'L. Chen');
+      expect(screen.getByText(w('scoring.chess.tiebreak.score.title'))).toBeTruthy();
+      expect(
+        screen.getByText(
+          fill(words['scoring.chess.tiebreak.advances']!, {
+            name: 'L. Chen',
+            how: words['scoring.chess.tiebreak.rung.blitz']!,
+          }),
+        ),
+      ).toBeTruthy();
+      expect(tieChips().map(([label]) => label)).toEqual([
+        w('scoring.chess.tiebreak.score.none'),
+        '2–0',
+        '1½–½',
+      ]);
+      expect(screen.getByRole('button', { name: w('scoring.chess.how.record') })).toBeTruthy();
+    });
+
+    it('says the Armageddon’s steps from its dictionary', async () => {
+      const app = await open(drawnWith(['armageddon']), { deviceLanguages: [language] });
+      await press(app, w('scoring.chess.tiebreak.tool'));
+      expect(screen.getByText(w('scoring.chess.tiebreak.black.title'))).toBeTruthy();
+      await press(app, 'A. Sharma');
+      expect(screen.getByText(w('scoring.chess.tiebreak.result.title'))).toBeTruthy();
+      expect(tieButtons()).toEqual([
+        fill(words['scoring.chess.result.white']!, { name: 'L. Chen' }),
+        fill(words['scoring.chess.result.black']!, { name: 'A. Sharma' }),
+        w('scoring.chess.tiebreak.result.draw'),
+        w('scoring.sheet.cancel'),
+      ]);
+      await press(app, w('scoring.chess.tiebreak.result.draw'));
+      expect(screen.getByText(w('scoring.chess.tiebreak.confirm.title'))).toBeTruthy();
+    });
+
+    it('says the held game’s line from its dictionary, with no tile', async () => {
+      await open(drawnWith([]), { deviceLanguages: [language] });
+      expect(strip()).toBe(w('scoring.chess.waiting.tiebreak'));
+      expect(screen.queryAllByRole('button', { name: w('scoring.chess.tiebreak.tool') })).toEqual(
+        [],
+      );
+    });
+  },
+);

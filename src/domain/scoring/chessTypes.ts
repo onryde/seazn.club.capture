@@ -43,6 +43,9 @@ export type ChessRung = TiebreakRung;
  */
 export type ChessArmageddonResult = (typeof ARMAGEDDON_RESULTS)[number];
 
+/** The engine's three results of an Armageddon, in its order: the sheet lists these and no others. */
+export const CHESS_ARMAGEDDON_RESULTS: readonly ChessArmageddonResult[] = ARMAGEDDON_RESULTS;
+
 /**
  * The mini-match scores the web's pad offers for a rapid or blitz tie-break, besides none: the wire takes whole points with an
  * optional half either side of an en dash (`CHESS_SCORE`).

@@ -61,8 +61,11 @@ export const HowSheet = memo(function HowSheet({
   );
 });
 
-/** The ways a game could have ended, as chips that wrap to the sheet's width; one is picked, or none. */
-const HowOptions = memo(function HowOptions({
+/**
+ * The ways a game could have ended, as chips that wrap to the sheet's width; one is picked, or none. The tie-break sheet's
+ * score step draws its choices with it too (`TieBreakSheet`).
+ */
+export const HowOptions = memo(function HowOptions({
   options,
   picked,
   onPick,

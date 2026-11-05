@@ -2,7 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { chessCfg } from '@/domain/scoring/chessEngine';
 import { useChessMatch } from '@/hooks/useChessMatch';
-import { AWAY_ENTRANT, HOME_ENTRANT, chessSeed } from '@/services/fakeChessPad';
+import { AWAY_ENTRANT, HOME_ENTRANT, bracketChessSeed, chessSeed } from '@/services/fakeChessPad';
 import type { FakeMatchSeed } from '@/services/fakeScoringPort';
 import { saveScoringLink } from '@/services/scoringLinkStore';
 import { FAKE_SCORING_SECRET } from '../../test/fakeScoringLinkPort';
@@ -789,6 +789,490 @@ describe('the session record', () => {
     act_(view, (actions) => actions.pickMethod('resign'));
     act_(view, (actions) => actions.record());
     await flush();
+    const everything = JSON.stringify(readRecord(fakes.record));
+    for (const private_ of ['Sharma', 'Chen', FAKE_SCORING_SECRET, HOME_ENTRANT, AWAY_ENTRANT]) {
+      expect(everything).not.toContain(private_);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// The tie-break of a drawn knockout game (S2-3b Task 2; design §3): the Tie-break tile opens the sheet, Record sends one
+// `boardgame.tiebreak` judged by the real engine on the fake server, and Undo takes it back. Expected payloads and
+// advancers are the engine's (BG-KO-1, BG-KO-2), written out.
+// ---------------------------------------------------------------------------------------------------------------
+
+const DRAWN_RESULT = { type: 'boardgame.result', payload: { winner: null } } as const;
+/** A bracket stage that lists every rung, the game drawn and waiting. */
+const DRAWN = bracketChessSeed(undefined, { events: [START, DRAWN_RESULT] });
+
+const tiebreakSheet = (view: Match) => {
+  const { sheet } = pad(view);
+  return sheet?.kind === 'tiebreak' ? sheet : null;
+};
+
+/** The Tie-break tile pressed, and the wait that takes the sheet's bounce window away. */
+async function openTiebreak(view: Match) {
+  act_(view, (actions) => actions.tool('tiebreak'));
+  await wait(300);
+}
+
+/** One step of the sheet taken, and the wait before the next. */
+async function step(view: Match, make: (actions: Pad['actions']) => void) {
+  act_(view, make);
+  await wait(300);
+}
+
+/** A rapid or blitz tie-break recorded through the sheet, as the scorer does it. */
+async function recordTimed(
+  view: Match,
+  rung: 'rapid' | 'blitz',
+  winner: 'first' | 'second',
+  score: '2–0' | '1½–½' | null = null,
+) {
+  await openTiebreak(view);
+  await step(view, (a) => a.pickRung(rung));
+  await step(view, (a) => a.pickTiebreakWinner(winner));
+  if (score !== null) await step(view, (a) => a.pickScore(score));
+  act_(view, (a) => a.recordTiebreak());
+  await flush();
+}
+
+describe('the Tie-break tile', () => {
+  it('is the pad’s one tool while the tie-break is owed, and opens the sheet on the rung', async () => {
+    const { fakes, view } = await opened(DRAWN);
+    expect(pad(view).view.tools.map((tool) => tool.id)).toEqual(['tiebreak']);
+    act_(view, (actions) => actions.tool('tiebreak'));
+    expect(tiebreakSheet(view)).toMatchObject({
+      kind: 'tiebreak',
+      step: 'rung',
+      rungs: ['rapid', 'blitz', 'armageddon'],
+    });
+    await flush();
+    expect(await typesOf(fakes, DRAWN)).toEqual(['core.start', 'boardgame.result']);
+  });
+
+  it('a double tap opens it once, and the line says counted once', async () => {
+    const { view } = await opened(DRAWN);
+    act(() => {
+      pad(view).actions.tool('tiebreak');
+      pad(view).actions.tool('tiebreak');
+    });
+    expect(tiebreakSheet(view)?.step).toBe('rung');
+    expect(pad(view).line).toEqual({ kind: 'note', key: 'scoring.pad.countedOnce' });
+  });
+
+  it('opens nothing for a stage that lists no rung, where the game is held for the organiser', async () => {
+    const held = bracketChessSeed([], { events: [START, DRAWN_RESULT] });
+    const { view } = await opened(held);
+    expect(pad(view).view.tools).toEqual([]);
+    act_(view, (actions) => actions.tool('tiebreak'));
+    expect(pad(view).sheet).toBeNull();
+  });
+
+  it('opens nothing while the game is live (no tie-break is owed)', async () => {
+    const { view } = await opened(bracketChessSeed(undefined, { events: [START] }));
+    act_(view, (actions) => actions.tool('tiebreak'));
+    expect(pad(view).sheet).toBeNull();
+  });
+
+  it('opens straight on the winner for a stage that lists one rung', async () => {
+    const one = bracketChessSeed(['blitz'], { events: [START, DRAWN_RESULT] });
+    const { view } = await opened(one);
+    await openTiebreak(view);
+    expect(tiebreakSheet(view)).toMatchObject({ step: 'winner', draft: { rung: 'blitz' } });
+  });
+});
+
+describe('recording a rapid or blitz tie-break', () => {
+  it('Rapid with a score: one boardgame.tiebreak naming the winner’s entrant, and the winner advances', async () => {
+    const { fakes, view } = await opened(DRAWN);
+    await recordTimed(view, 'rapid', 'second', '1½–½');
+    expect(await typesOf(fakes, DRAWN)).toEqual([
+      'core.start',
+      'boardgame.result',
+      'boardgame.tiebreak',
+    ]);
+    expect((await lastEvent(fakes, DRAWN))?.payload).toEqual({
+      rung: 'rapid',
+      winner: AWAY_ENTRANT,
+      score: '1½–½',
+    });
+    expect(pad(view).sheet).toBeNull();
+    expect(pad(view).view.strip).toEqual([
+      {
+        slot: 'note',
+        text: {
+          key: 'scoring.chess.tiebreak.advances',
+          vars: { name: 'L. Chen', how: { key: 'scoring.chess.tiebreak.rung.rapid' } },
+        },
+      },
+    ]);
+  });
+
+  it('Blitz with no score: the payload has no score at all', async () => {
+    const { fakes, view } = await opened(DRAWN);
+    await recordTimed(view, 'blitz', 'first');
+    expect((await lastEvent(fakes, DRAWN))?.payload).toEqual({
+      rung: 'blitz',
+      winner: HOME_ENTRANT,
+    });
+  });
+
+  it('keeps the game a draw: the header stays level, and the last-tap line names who advances, with Undo', async () => {
+    const { view } = await opened(DRAWN);
+    await recordTimed(view, 'rapid', 'first', '2–0');
+    expect(pad(view).view.tally.shown).toBe('½');
+    expect(pad(view).view.lastTap).toEqual({
+      text: {
+        key: 'scoring.chess.tiebreak.advances',
+        vars: { name: 'A. Sharma', how: { key: 'scoring.chess.tiebreak.rung.rapid' } },
+      },
+      undo: true,
+    });
+    expect(pad(view).view.tools).toEqual([]);
+  });
+
+  it('a stage that lists one rung records it with two picks', async () => {
+    const one = bracketChessSeed(['rapid'], { events: [START, DRAWN_RESULT] });
+    const { fakes, view } = await opened(one);
+    await openTiebreak(view);
+    await step(view, (a) => a.pickTiebreakWinner('second'));
+    act_(view, (a) => a.recordTiebreak());
+    await flush();
+    expect((await lastEvent(fakes, one))?.payload).toEqual({ rung: 'rapid', winner: AWAY_ENTRANT });
+  });
+
+  it('sends nothing before Record, on any step', async () => {
+    const { fakes, view } = await opened(DRAWN);
+    await openTiebreak(view);
+    await step(view, (a) => a.pickRung('rapid'));
+    await step(view, (a) => a.pickTiebreakWinner('first'));
+    await step(view, (a) => a.pickScore('2–0'));
+    await flush();
+    expect(await typesOf(fakes, DRAWN)).toEqual(['core.start', 'boardgame.result']);
+  });
+
+  it('two Records in a row queue one event, and the line says counted once', async () => {
+    const { fakes, view } = await opened(DRAWN);
+    await openTiebreak(view);
+    await step(view, (a) => a.pickRung('blitz'));
+    await step(view, (a) => a.pickTiebreakWinner('first'));
+    act(() => {
+      pad(view).actions.recordTiebreak();
+      pad(view).actions.recordTiebreak();
+    });
+    await flush();
+    expect(await typesOf(fakes, DRAWN)).toEqual([
+      'core.start',
+      'boardgame.result',
+      'boardgame.tiebreak',
+    ]);
+    expect(pad(view).line).toEqual({ kind: 'note', key: 'scoring.pad.countedOnce' });
+  });
+
+  it('a Record on the heels of the winner pick is the second touch of a double tap and sends nothing', async () => {
+    const { fakes, view } = await opened(DRAWN);
+    await openTiebreak(view);
+    await step(view, (a) => a.pickRung('rapid'));
+    act(() => {
+      pad(view).actions.pickTiebreakWinner('first');
+      pad(view).actions.recordTiebreak();
+    });
+    await flush();
+    expect(await typesOf(fakes, DRAWN)).toEqual(['core.start', 'boardgame.result']);
+    expect(tiebreakSheet(view)?.step).toBe('score');
+  });
+});
+
+describe('recording an Armageddon', () => {
+  /** Black is the second seat (L. Chen); White is A. Sharma. */
+  it.each([
+    ['white', HOME_ENTRANT, 'A. Sharma'],
+    ['black', AWAY_ENTRANT, 'L. Chen'],
+    ['draw', AWAY_ENTRANT, 'L. Chen'],
+  ] as const)(
+    'Black is L. Chen and the result is %s: the payload names Black and the result, never a winner, and the engine advances the right player',
+    async (result, _advancer, name) => {
+      const { fakes, view } = await opened(DRAWN);
+      await openTiebreak(view);
+      await step(view, (a) => a.pickRung('armageddon'));
+      await step(view, (a) => a.pickBlack('second'));
+      await step(view, (a) => a.pickArmageddonResult(result));
+      expect(tiebreakSheet(view)?.step).toBe('confirm');
+      act_(view, (a) => a.recordTiebreak());
+      await flush();
+      expect((await lastEvent(fakes, DRAWN))?.payload).toEqual({
+        rung: 'armageddon',
+        black: AWAY_ENTRANT,
+        result,
+      });
+      expect(pad(view).view.lastTap?.text).toEqual({
+        key: 'scoring.chess.tiebreak.advances',
+        vars: { name, how: { key: 'scoring.chess.tiebreak.rung.armageddon' } },
+      });
+    },
+  );
+
+  // The tie-break has a colour of its own, so a division that plays without colours is asked who had Black all the same.
+  it('asks who had Black in a division that plays without colours, and records it', async () => {
+    const colourless = bracketChessSeed(undefined, {
+      events: [START, DRAWN_RESULT],
+      cfg: chessCfg({ tiebreak: true, colors: false }),
+    });
+    const { fakes, view } = await opened(colourless);
+    expect(pad(view).view.halves.map((half) => half.plate)).toEqual([null, null]);
+    await openTiebreak(view);
+    await step(view, (a) => a.pickRung('armageddon'));
+    expect(tiebreakSheet(view)?.step).toBe('black');
+    await step(view, (a) => a.pickBlack('first'));
+    await step(view, (a) => a.pickArmageddonResult('draw'));
+    act_(view, (a) => a.recordTiebreak());
+    await flush();
+    expect((await lastEvent(fakes, colourless))?.payload).toEqual({
+      rung: 'armageddon',
+      black: HOME_ENTRANT,
+      result: 'draw',
+    });
+    expect(pad(view).view.lastTap?.text).toMatchObject({ vars: { name: 'A. Sharma' } });
+  });
+});
+
+describe('the tie-break sheet is closed by anything that changes what it was for', () => {
+  it('Cancel and the dim send nothing and leave the tile', async () => {
+    const { fakes, view } = await opened(DRAWN);
+    await openTiebreak(view);
+    await step(view, (a) => a.pickRung('rapid'));
+    act_(view, (actions) => actions.cancelSheet());
+    await flush();
+    expect(pad(view).sheet).toBeNull();
+    expect(pad(view).view.tools.map((tool) => tool.id)).toEqual(['tiebreak']);
+    expect(await typesOf(fakes, DRAWN)).toEqual(['core.start', 'boardgame.result']);
+  });
+
+  it('Back (the phone’s) closes it and records nothing', async () => {
+    const { fakes, view } = await opened(DRAWN);
+    await openTiebreak(view);
+    let handled = false;
+    act(() => {
+      handled = fakes.back.press();
+    });
+    expect(handled).toBe(true);
+    expect(pad(view).sheet).toBeNull();
+    expect(await typesOf(fakes, DRAWN)).toEqual(['core.start', 'boardgame.result']);
+  });
+
+  it('the app going to the background closes it, and listens only while it is open', async () => {
+    const { fakes, view } = await opened(DRAWN);
+    const resting = fakes.foreground.leaveListeners();
+    await openTiebreak(view);
+    expect(fakes.foreground.leaveListeners()).toBe(resting + 1);
+    act(() => fakes.foreground.leave());
+    expect(pad(view).sheet).toBeNull();
+    act(() => fakes.foreground.fire());
+    await flush();
+    expect(pad(view).sheet).toBeNull();
+    expect(fakes.foreground.leaveListeners()).toBe(resting);
+    expect(await typesOf(fakes, DRAWN)).toEqual(['core.start', 'boardgame.result']);
+  });
+
+  it('another scorer’s tie-break lands first: the sheet closes and the pad shows theirs, with no Undo', async () => {
+    const { fakes, view } = await opened(DRAWN);
+    await openTiebreak(view);
+    await step(view, (a) => a.pickRung('rapid'));
+    fakes.scoring.addOtherScorerEvent('boardgame.tiebreak', {
+      rung: 'blitz',
+      winner: AWAY_ENTRANT,
+    });
+    fakes.realtime.ping();
+    await flush();
+    expect(pad(view).sheet).toBeNull();
+    expect(pad(view).view.lastTap).toMatchObject({
+      text: { vars: { name: 'L. Chen', how: { key: 'scoring.chess.tiebreak.rung.blitz' } } },
+      undo: false,
+    });
+    expect(pad(view).view.tools).toEqual([]);
+  });
+
+  it('the organiser settling the game closes it', async () => {
+    const { fakes, view } = await opened(DRAWN);
+    await openTiebreak(view);
+    fakes.scoring.addOtherScorerEvent('core.settle', { winner: HOME_ENTRANT, method: 'lot' });
+    fakes.realtime.ping();
+    await flush();
+    expect(pad(view).sheet).toBeNull();
+    expect(pad(view).view.tools).toEqual([]);
+  });
+
+  // A tile pressed for a tie-break that is gone says so on the line and sends nothing.
+  it('a Record held from before the ledger moved does nothing', async () => {
+    const { fakes, view } = await opened(DRAWN);
+    await openTiebreak(view);
+    await step(view, (a) => a.pickRung('rapid'));
+    await step(view, (a) => a.pickTiebreakWinner('first'));
+    const stale = pad(view).actions.recordTiebreak;
+    fakes.scoring.addOtherScorerEvent('boardgame.tiebreak', {
+      rung: 'rapid',
+      winner: AWAY_ENTRANT,
+    });
+    fakes.realtime.ping();
+    await flush();
+    await wait();
+    act(() => stale());
+    await flush();
+    expect(await typesOf(fakes, DRAWN)).toEqual([
+      'core.start',
+      'boardgame.result',
+      'boardgame.tiebreak',
+    ]);
+  });
+});
+
+describe('Undo of the tie-break', () => {
+  it('voids this phone’s own tie-break, and the tile is owed again; a different one then records', async () => {
+    const { fakes, view } = await opened(DRAWN);
+    await recordTimed(view, 'rapid', 'first');
+    await wait();
+    act_(view, (actions) => actions.undo());
+    await flush();
+    expect(await typesOf(fakes, DRAWN)).toEqual([
+      'core.start',
+      'boardgame.result',
+      'boardgame.tiebreak',
+      'core.void',
+    ]);
+    expect(pad(view).view.tools.map((tool) => tool.id)).toEqual(['tiebreak']);
+    expect(pad(view).view.lastTap?.text).toMatchObject({ key: 'scoring.chess.last.undone' });
+    await wait();
+    await recordTimed(view, 'blitz', 'second', '2–0');
+    expect((await lastEvent(fakes, DRAWN))?.payload).toEqual({
+      rung: 'blitz',
+      winner: AWAY_ENTRANT,
+      score: '2–0',
+    });
+    expect(pad(view).view.lastTap?.text).toMatchObject({ vars: { name: 'L. Chen' } });
+  });
+
+  it('two Undos in a row void it once', async () => {
+    const { fakes, view } = await opened(DRAWN);
+    await recordTimed(view, 'rapid', 'first');
+    await wait();
+    act(() => {
+      pad(view).actions.undo();
+      pad(view).actions.undo();
+    });
+    await flush();
+    expect(await typesOf(fakes, DRAWN)).toEqual([
+      'core.start',
+      'boardgame.result',
+      'boardgame.tiebreak',
+      'core.void',
+    ]);
+  });
+
+  it('does not take back a tie-break another scorer recorded', async () => {
+    const { fakes, view } = await opened(DRAWN);
+    fakes.scoring.addOtherScorerEvent('boardgame.tiebreak', {
+      rung: 'rapid',
+      winner: AWAY_ENTRANT,
+    });
+    fakes.realtime.ping();
+    await flush();
+    await wait();
+    act_(view, (actions) => actions.undo());
+    await flush();
+    expect(await typesOf(fakes, DRAWN)).toEqual([
+      'core.start',
+      'boardgame.result',
+      'boardgame.tiebreak',
+    ]);
+  });
+
+  it('closes 45 s after the tie-break, as it does for a result', async () => {
+    const { fakes, view } = await opened(DRAWN);
+    await recordTimed(view, 'rapid', 'first');
+    expect(pad(view).view.card).toMatchObject({
+      kind: 'resultRecorded',
+      undoLeft: expect.any(Number),
+    });
+    await wait(46_000);
+    expect(pad(view).view.card).toEqual({ kind: 'resultRecorded', undoLeft: null });
+    expect(pad(view).view.lastTap?.undo).toBe(false);
+    act_(view, (actions) => actions.undo());
+    await flush();
+    expect(await typesOf(fakes, DRAWN)).toEqual([
+      'core.start',
+      'boardgame.result',
+      'boardgame.tiebreak',
+    ]);
+  });
+});
+
+describe('the session record of a tie-break', () => {
+  const EVENT = 'scoring.chess.tiebreak';
+
+  it.each(['rapid', 'blitz'] as const)(
+    'says the rung %s as one short word when it is recorded',
+    async (rung) => {
+      const { fakes, view } = await opened(DRAWN);
+      await recordTimed(view, rung, 'first');
+      expect(lines(fakes, EVENT).map((line) => line.fields)).toEqual([{ word: rung }]);
+    },
+  );
+
+  it('says armageddon for an Armageddon', async () => {
+    const { fakes, view } = await opened(DRAWN);
+    await openTiebreak(view);
+    await step(view, (a) => a.pickRung('armageddon'));
+    await step(view, (a) => a.pickBlack('first'));
+    await step(view, (a) => a.pickArmageddonResult('white'));
+    act_(view, (a) => a.recordTiebreak());
+    await flush();
+    expect(lines(fakes, EVENT).map((line) => line.fields)).toEqual([{ word: 'armageddon' }]);
+  });
+
+  it('says nothing for a sheet cancelled, and once for a double tap on Record', async () => {
+    const { fakes, view } = await opened(DRAWN);
+    await openTiebreak(view);
+    act_(view, (actions) => actions.cancelSheet());
+    await wait();
+    expect(lines(fakes, EVENT)).toEqual([]);
+    await openTiebreak(view);
+    await step(view, (a) => a.pickRung('rapid'));
+    await step(view, (a) => a.pickTiebreakWinner('first'));
+    act(() => {
+      pad(view).actions.recordTiebreak();
+      pad(view).actions.recordTiebreak();
+    });
+    await flush();
+    expect(lines(fakes, EVENT)).toHaveLength(1);
+  });
+
+  // A Record the match refuses (the tie-break is already recorded) is no tie-break recorded: the line is not written. The
+  // sheet's own Record is held from before, as a screen that has not drawn the sheet's going yet would hold it.
+  it('says nothing for a Record the match refuses', async () => {
+    const { fakes, view } = await opened(DRAWN);
+    await openTiebreak(view);
+    await step(view, (a) => a.pickRung('rapid'));
+    await step(view, (a) => a.pickTiebreakWinner('first'));
+    const stale = pad(view).actions.recordTiebreak;
+    act(() => stale());
+    await flush();
+    await wait();
+    expect(lines(fakes, EVENT)).toHaveLength(1);
+    act(() => stale());
+    await flush();
+    expect(lines(fakes, EVENT)).toHaveLength(1);
+    expect(await typesOf(fakes, DRAWN)).toEqual([
+      'core.start',
+      'boardgame.result',
+      'boardgame.tiebreak',
+    ]);
+  });
+
+  it('names no player, no entrant, no code and no link in any line', async () => {
+    const { fakes, view } = await opened(DRAWN);
+    await recordTimed(view, 'blitz', 'second', '2–0');
     const everything = JSON.stringify(readRecord(fakes.record));
     for (const private_ of ['Sharma', 'Chen', FAKE_SCORING_SECRET, HOME_ENTRANT, AWAY_ENTRANT]) {
       expect(everything).not.toContain(private_);

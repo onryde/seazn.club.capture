@@ -58,7 +58,8 @@ export const StepSheet = memo(function StepSheet({
   );
 });
 
-const StepRow = memo(function StepRow({
+/** One choice of a step, a full-width row; the tie-break sheet (`TieBreakSheet`) draws its rows with it too. */
+export const StepRow = memo(function StepRow({
   option,
   onChoose,
 }: {
