@@ -104,10 +104,11 @@ const NO_COLOUR_LITERALS = [
  * generic scoring file may not name a sport's module, by value or by type: badminton's files (`badminton*`, and the
  * hooks and services named `*Badminton*`) and its sheets (`usePadSheets`: Sanction and Set score), and table tennis's
  * (`tableTennis*`, and the hooks, services and screens named `*TableTennis*`: these import patterns match without regard
- * to case, so one spelling holds both; `SPORT_OWN_FILES` below needs both). Tests are free to.
+ * to case, so one spelling holds both; `SPORT_OWN_FILES` below needs both), and chess's (`chess*`, and the services,
+ * hooks and screens named `*Chess*`, by the same rule). Tests are free to.
  */
 const SPORT_MODULES = {
-  group: ['**/*badminton*', '**/*tableTennis*', '**/usePadSheets'],
+  group: ['**/*badminton*', '**/*tableTennis*', '**/*chess*', '**/usePadSheets'],
   message:
     'A generic scoring file names no sport (owner, 2026-11-02: pad per sport): ask the match’s sport (`ScoringSport`).',
 };
@@ -149,6 +150,8 @@ const SPORT_OWN_FILES = [
   '**/*Badminton*',
   '**/*tableTennis*',
   '**/*TableTennis*',
+  '**/*chess*',
+  '**/*Chess*',
   'src/hooks/usePadSheets.ts',
   'src/domain/scoring/sports.ts',
 ];

@@ -44,6 +44,8 @@ type Counted = { readonly tap: string; readonly at: number; readonly opens: bool
 type Once = (tap: string, make: () => PadOutcome, opens?: boolean) => boolean;
 /** A tap whose control leaves the screen with it, through the bounce memory (`useTaps`): whether it counted. */
 export type Opening = (tap: string, make: () => PadOutcome) => boolean;
+/** The window of such a tap and nothing else (`useTaps`' `arm`): no tap is made and the line is left as it was. */
+export type Arm = (tap: string) => void;
 
 /**
  * A tap on a half and Undo: each counts once for a repeat within the bounce window (`bounce.ts`) of its own last
@@ -53,7 +55,9 @@ export type Opening = (tap: string, make: () => PadOutcome) => boolean;
  * second touch of a double tap on it lands on what was under it, a half, Undo or a tool (hardening and review I1,
  * 2026-11-01), and counts once with it; a tool then opens nothing (`secondTouch`). A tool that scores a point and stays
  * on screen (a sport's own scoring tool) is a `point`: it counts once as a half does, under its own name, and flashes the
- * half it credited.
+ * half it credited. A sheet's close is no tap but leaves the screen as one does, so it only `arm`s the window: it makes
+ * no tap and says nothing, since an `opening` tap clears the line, and a line the scorer has not read yet (a refusal
+ * shown before the sheet covered the pad) must survive the close.
  */
 export function useTaps(
   pad: PadTapDriver,
@@ -71,6 +75,12 @@ export function useTaps(
   );
   const undo = useCallback(() => void once('undo', () => pad.undo()), [once, pad]);
   const opening = useCallback<Opening>((tap, make) => once(tap, make, true), [once]);
+  const arm = useCallback<Arm>(
+    (tap) => {
+      last.current = { tap, at: clock().getTime(), opens: true };
+    },
+    [clock],
+  );
   const secondTouch = useCallback((): boolean => {
     const prior = last.current;
     if (prior === null || !prior.opens || !isBounce(clock().getTime() - prior.at)) return false;
@@ -78,8 +88,8 @@ export function useTaps(
     return true;
   }, [clock, say]);
   return useMemo(
-    () => ({ tapHalf, point, undo, opening, secondTouch }),
-    [tapHalf, point, undo, opening, secondTouch],
+    () => ({ tapHalf, point, undo, opening, arm, secondTouch }),
+    [tapHalf, point, undo, opening, arm, secondTouch],
   );
 }
 

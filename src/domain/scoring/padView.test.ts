@@ -34,6 +34,8 @@ const live: PadView<Key> = {
       sub: { key: 'k.sub' },
       marks: { clock: true, cards: ['caution'], said: [{ key: 'k.sub' }] },
       serving: { shown: { key: 'k.serving' }, said: { key: 'k.servingSaid' } },
+      plate: null,
+      action: null,
       bar: 'lit',
       hint: { key: 'k.hint' },
       tappable: true,
@@ -46,6 +48,8 @@ const live: PadView<Key> = {
       sub: null,
       marks: { clock: false, cards: [], said: [] },
       serving: null,
+      plate: null,
+      action: null,
       bar: 'dim',
       hint: { key: 'k.hint' },
       tappable: true,
@@ -219,6 +223,7 @@ describe('withCard', () => {
       ...live,
       start: {
         ask: { key: 'k.ask' },
+        needsToss: true,
         sides: [
           { side: 'first', label: 'A' },
           { side: 'second', label: 'B' },

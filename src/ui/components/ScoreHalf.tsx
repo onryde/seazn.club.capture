@@ -13,6 +13,7 @@ import { usePadText } from '@/hooks/usePadText';
 import type { MessageKey } from '@/i18n/messages';
 import { Glyph } from '@/ui/components/Glyph';
 import { NameText } from '@/ui/components/NameText';
+import { SidePlate } from '@/ui/components/SidePlate';
 import { TapFlash } from '@/ui/components/TapFlash';
 import { Text } from '@/ui/components/Text';
 import { scoreRole } from '@/ui/theme/scoreRole';
@@ -29,12 +30,13 @@ type ScoreHalfProps = {
 
 /**
  * One side's half of the pad (layout A, owner 2026-10-31): the whole half is the button that gives that side the
- * rally, far larger than any other target. The names as typed and the serving plate, with the service court on it
- * (owner ruling 17), on top, then at the far right the marks (owner ruling 56, 2026-11-04): a stopwatch while the sport's
+ * rally, far larger than any other target. The names as typed, the serving plate, with the service court on it
+ * (owner ruling 17), and a sport's own plate word if it has one (`PadHalf.plate`: chess's WHITE and BLACK), on top, then at the far right the marks (owner ruling 56, 2026-11-04): a stopwatch while the sport's
  * clock rule is in force and the side's card; the big value in the LED lime, centred in the space between them and the
  * bottom row, at the largest size the half holds (`scoreRole`); the bottom row: the finished games' boxes (owner ruling
  * 16), a sport's one line after them if it has one (table tennis's doubles server) and the visible hint, the one word
- * "Tap" (owner ruling 56, which superseded ruling 14's "Tap: rally to …"). A tap that counted flashes the half
+ * "Tap" (owner ruling 56, which superseded ruling 14's "Tap: rally to …") unless the sport labels its tap
+ * (`PadHalf.action`: chess's "White won · A. Sharma"). A tap that counted flashes the half
  * (`TapFlash`). A screen reader reads the side, the value, the finished games, the card and Expedite, and Serving with
  * the court as one name, and `hint` says what a tap does; the boxes, the marks and the visible hint are hidden from it,
  * so nothing is read twice. A half that takes no tap (a card is up, a match is over) is disabled, draws the same, and
@@ -67,7 +69,7 @@ export const ScoreHalf = memo(function ScoreHalf({ half, flash, onTap }: ScoreHa
       <HalfFoot
         scores={half.periods?.scores ?? NO_SCORES}
         sub={sub}
-        hint={half.tappable ? words(TAP) : null}
+        hint={half.tappable ? words(half.action ?? TAP) : null}
       />
     </Pressable>
   );
@@ -101,7 +103,10 @@ function halfName(
 ): string {
   const periods = half.periods === null ? NO_WORDS : half.periods.said.map(words);
   const serving = half.serving === null ? null : words(half.serving.said);
-  return [half.label, half.value, ...periods, sub, ...marks, serving].filter(isWords).join(', ');
+  const plate = half.plate === null ? null : words(half.plate);
+  return [half.label, half.value, ...periods, sub, ...marks, serving, plate]
+    .filter(isWords)
+    .join(', ');
 }
 
 /**
@@ -116,6 +121,7 @@ const HalfHead = memo(function HalfHead({ half }: { readonly half: PadHalf<Messa
         {half.label}
       </NameText>
       {half.serving === null ? null : <ServingPlate words={words(half.serving.shown)} />}
+      {half.plate === null ? null : <SidePlate words={words(half.plate)} />}
       <HalfMarks clock={half.marks.clock} cards={half.marks.cards} />
     </View>
   );

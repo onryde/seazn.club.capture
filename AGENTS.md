@@ -93,6 +93,13 @@ S2), so several scorers may write and the ledger's `expected_seq` keeps them
 honest. Each sport has its own pad screen over a shared kit, never one pad
 with sport conditions (S2 ruling 38; owner, 2026-11-02).
 
+The phone scores badminton (S2-1), table tennis (S2-2) and chess (S2-3,
+`docs/specs/2026-11-04-s2-3-chess-design.md`, rulings 57–62). Chess records one
+game's result only (57, 58). Its key is the engine's shared `boardgame`, and
+every `boardgame` match is treated as chess (61). Forfeit, walkover, abandon
+and lots are the organiser's: the phone never sends `core.forfeit`,
+`core.settle`, `core.abandon` or a forfeit method.
+
 Adding a fourth mode, or a screen outside a mode, is a product decision, not
 an implementation detail. Raise it; don't build it.
 
@@ -132,7 +139,7 @@ page in the main repo, not here. Do not grow the app to accommodate them.
   secret is masked in both records before the caller has it. These are the
   only two such calls.
 - **Never build a second state machine in TypeScript.** The aggregate lives in
-  native. The TS layer is a *projection* of native events. Two authorities
+  native. The TS layer is a _projection_ of native events. Two authorities
   disagree at 3-1 in the 40th over. The rule is about the capture session.
   Remote Scoring is JavaScript's, not native's: its match state is a fold of
   the web's ledger by `@seazn/engine`, its queue and sync are pure reducers in
@@ -158,8 +165,10 @@ src/
                    # the record upload's credential, kept 24 h after its code goes (R4)
     policy/        # fallback strategy, degradation ladder
     scoring/       # Remote Scoring: wire shapes, the tap queue, sync, the match reducer, and one
-                   # module set per sport behind `ScoringSport` (`sportFor`, a table). Generic files
-                   # never import a sport's: lint (`SPORT_MODULES`) enforces it
+                   # module set per sport (`badminton*`, `tableTennis*`, `chess*`) behind `ScoringSport`
+                   # (`sportFor`, a table keyed by the bootstrap's `sport_key`: `badminton`, `tabletennis`,
+                   # `boardgame`). Generic files never import a sport's: lint (`SPORT_MODULES`,
+                   # `SPORT_OWN_FILES`, both casings) enforces it
   i18n/            # en/es/fr/nl dictionaries, t()/tp(), formatTime(). Pure.
   ui/
     components/    # Text, Button, StatusLine, Tile, CodePanel, TurnCard, …
@@ -246,21 +255,21 @@ scoring-pad tokens derived from it). The scoring pad is the same design problem
 as this app — a dark operator surface with LED digits, read at a glance — so we
 take its palette rather than inventing a second dark theme for one company.
 
-| Token | Value | Web source | Means |
-|---|---|---|---|
-| `ground` / `surface` / `surface2` | `#150b36` / `#1d1145` / `#241650` | `--mk-night`, `--mk-night-2` | The board |
-| `ink` / `ink2` / `ink3` | `#f5f0e8` / 80% / `#b7aede` | `--mk-cream` | Primary / secondary / inert |
-| `lime` | `#9ae600` | `--sport-led` | The LED: elapsed clock, ready, hairlines |
-| `live` | `#ef4444` | `--mk-live` | **ON AIR** |
-| `caution` | `#fb923c` | `--mk-orange` | Degraded, fell back, thermal, and failures |
-| `violet` | `#7c3aed` | `--mk-purple` | Brand. Decorative only — see below |
-| `cardCaution` / `cardDismissal` | `#d97706` / `#dc2626` | `--sport-caution`, `--sport-dismissal` | The scoring pad's card icons, and nothing else: Remote Scoring has no broadcast, so red here is never ON AIR (owner ruling 56, 2026-11-04) |
+| Token                             | Value                             | Web source                             | Means                                                                                                                                      |
+| --------------------------------- | --------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ground` / `surface` / `surface2` | `#150b36` / `#1d1145` / `#241650` | `--mk-night`, `--mk-night-2`           | The board                                                                                                                                  |
+| `ink` / `ink2` / `ink3`           | `#f5f0e8` / 80% / `#b7aede`       | `--mk-cream`                           | Primary / secondary / inert                                                                                                                |
+| `lime`                            | `#9ae600`                         | `--sport-led`                          | The LED: elapsed clock, ready, hairlines                                                                                                   |
+| `live`                            | `#ef4444`                         | `--mk-live`                            | **ON AIR**                                                                                                                                 |
+| `caution`                         | `#fb923c`                         | `--mk-orange`                          | Degraded, fell back, thermal, and failures                                                                                                 |
+| `violet`                          | `#7c3aed`                         | `--mk-purple`                          | Brand. Decorative only — see below                                                                                                         |
+| `cardCaution` / `cardDismissal`   | `#d97706` / `#dc2626`             | `--sport-caution`, `--sport-dismissal` | The scoring pad's card icons, and nothing else: Remote Scoring has no broadcast, so red here is never ON AIR (owner ruling 56, 2026-11-04) |
 
 Three rules travel with these tokens:
 
 - **Never violet text or plates on night.** `#7c3aed` sits at ~2.1:1 on
   `#150b36` and fails AA. The web flips primary buttons to a lime plate with
-  night ink; so do we. Lime text *on night* is correct and is what the scoring
+  night ink; so do we. Lime text _on night_ is correct and is what the scoring
   pad does — the web rule being "never lime on a light ground".
 - **Red means ON AIR**, following the broadcast tally convention the product's
   own `--mk-live` already encodes. Nothing red is left for failures: a crash
@@ -284,9 +293,9 @@ Three rules travel with these tokens:
   figures matter and the column is not the constraint.
 - Numbers that must not twitch as they change use `tabular-nums`, whichever
   face they are set in.
-- **Two audiences, two designs.** State must read *peripherally at two metres*,
-  unfocused — that is colour and area, not type. Detail reads at *arm's
-  length* — that is type. Do not judge one by the other's standard.
+- **Two audiences, two designs.** State must read _peripherally at two metres_,
+  unfocused — that is colour and area, not type. Detail reads at _arm's
+  length_ — that is type. Do not judge one by the other's standard.
 - `StyleSheet.create`, never inline style objects. Styles reference tokens
   only — a colour literal in a component is a review blocker.
 
@@ -397,7 +406,7 @@ Three rules travel with these tokens:
 - **Go Live and Stop are both 3-second holds, with a progress fill.** Product
   owner's call, 2026-09-11, replacing "Go Live is a tap, Stop is
   hold-to-confirm"; first set at 5 s and shortened to 3 s on 2026-09-12. The reason the asymmetry was wrong: at a ground the likely
-  mistake is not a deliberate wrong decision but a *mis-tap* — a pocket, a
+  mistake is not a deliberate wrong decision but a _mis-tap_ — a pocket, a
   tripod pan bar, a volunteer steadying the phone — and that is as costly
   starting as stopping. A tap cannot be distinguished from an accident; three
   seconds under a moving fill cannot be mistaken for one, in either direction,
@@ -458,7 +467,7 @@ Three rules travel with these tokens:
   the encode profile is the first one that will be. The named exception is
   Settings' automatic switch: it stays usable on air, because it only affects
   the automatic stop (A4). It lives inside the Live Stream route
-  (`app/stream/`), so on air it is only *leaving the mode* that is blocked:
+  (`app/stream/`), so on air it is only _leaving the mode_ that is blocked:
   Home is hidden and Back says how to stop. A broadcast started remotely moves
   the app to Live Stream from wherever it is (A2).
 - **The app's Settings** (Home's gear; owner, 2026-11-02, §1) has no
@@ -556,7 +565,7 @@ is the only thing that matters.
 
 **Thermal pressure is a device condition, not a session state.** A hot handset
 sheds step 1 long before it touches the encode, so it is usually
-still publishing cleanly — reporting it as a degraded *broadcast* would be a
+still publishing cleanly — reporting it as a degraded _broadcast_ would be a
 lie. It travels in telemetry as `shed`, and `DegradeReason` deliberately has no
 thermal member. Only transport trouble degrades a session.
 
@@ -684,7 +693,7 @@ thermal member. Only transport trouble degrades a session.
   and test build is local — owner ruling, 2026-09-11, after one dev build
   queued for 42 minutes. A build on a real handset is still a prerequisite for
   anything native (it gated P5), but it is a local one: `pnpm expo prebuild -p
-  android --no-install`, then `pnpm expo run:android --no-bundler` or
+android --no-install`, then `pnpm expo run:android --no-bundler` or
   `./gradlew assembleDebug|assembleRelease`, installed with `adb`. A local build is the dev twin,
   `com.seazn.capture.dev`, named "Seazn Club (dev)" with the scheme
   `seazn-capture-dev`, so it installs beside the Play app; only `eas.json`'s
@@ -730,7 +739,7 @@ thermal member. Only transport trouble degrades a session.
   remote Go live can arrive at any moment. A phone updating at 2pm on a
   Saturday is a self-inflicted outage. OTA cannot touch the engine, so its
   blast radius is UI.
-- Sentry for crashes — but a three-hour outdoor stream fails by *degrading*,
+- Sentry for crashes — but a three-hour outdoor stream fails by _degrading_,
   not crashing. The thing that matters is a structured post-match session
   record: every transition, thermal reading, fallback and reconnect,
   timestamped. Don't let "we have Sentry" substitute for knowing what happened
@@ -776,8 +785,8 @@ into it is a permanent tax on the rest of the session.
   does this vendor package actually do") → `scout`. A scoped task with
   acceptance criteria → `implementer`. A diff to judge → `reviewer`. The
   three live in `.claude/agents/` and run on Opus. Known file + known symbol
-  + one fact → inline; a spawn costs more than the answer. Never delegate a
-  search *and* run it too.
+  - one fact → inline; a spawn costs more than the answer. Never delegate a
+    search _and_ run it too.
 - **Every dispatch carries five things** or the agent guesses: exact file
   paths, acceptance criteria, what NOT to touch, the verify command, and an
   output cap ("final message under 15 lines — counts, paths, deviations,
@@ -799,24 +808,24 @@ Assume these before diagnosing a real bug:
 
 - `rtk` summaries can print `PASS(0) FAIL(0)` for a suite that **failed to
   collect**. When a count matters, use `pnpm vitest run --reporter=json
-  --outputFile=<scratch>/r.json` and read `numTotalTests`.
+--outputFile=<scratch>/r.json` and read `numTotalTests`.
 - Capture exit codes with a redirect, never a pipe: `cmd > out 2>&1; echo
-  "EXIT=$?"`. A killed background command reports exit 0 — that 0 is the
+"EXIT=$?"`. A killed background command reports exit 0 — that 0 is the
   SIGTERM.
 - **The shell cwd resets to the main checkout between calls.** A run
   launched "from a worktree" then executes on `main`. Put `cd <abs
-  worktree> &&` in the same call as every command you judge.
+worktree> &&` in the same call as every command you judge.
 - **`git stash` is shared with every worktree.** Never bare `stash`/`pop`.
   Restore a mutation from a `cp` backup, never `git checkout <file>` on
   uncommitted work.
 - `pnpm check` is typecheck + lint + Prettier check (`src app modules test`)
-  + vitest. Prettier on docs and config is not in it: run
-  `pnpm prettier --check` on any other file you touched.
+  - vitest. Prettier on docs and config is not in it: run
+    `pnpm prettier --check` on any other file you touched.
 - **Prebuild rewrites `package.json`** (`android`/`ios` scripts become
   `expo run:*`). Revert it after every prebuild; never commit it.
 - `JAVA_HOME` is already set to JDK 17. Overriding it with
   `/usr/libexec/java_home -v 17` blanks it ("Unable to locate a Java
-  Runtime"). `expo run:android --device` wants a device *name*, not an adb
+  Runtime"). `expo run:android --device` wants a device _name_, not an adb
   serial — omit it when one phone is attached.
 - A black screenshot usually means the phone is locked or dozing, not that
   the app failed. Check before diagnosing.
@@ -846,7 +855,7 @@ From the main repo's list, the ones that have already recurred here:
    nothing in production wires. Check `createNativePorts`, not the fake.
 2. **The brief is a hypothesis; a grep is not a read; a read is not a
    run.** Re-verify every line number and capability claim. A claim about
-   what the operator *sees* is settled only on a device.
+   what the operator _sees_ is settled only on a device.
 3. **An absent symptom can mean suppressed.** A caught error that shows
    nothing looks exactly like no error — S0 fixed an unreadable store and a
    refused save that had both been made silent.

@@ -34,6 +34,8 @@ function padWith(card: PadStateCard | null, lastTap: PadView<'k.x'>['lastTap'] =
     sub: null,
     marks: { clock: false, cards: [], said: [] },
     serving: null,
+    plate: null,
+    action: null,
     bar: 'dim',
     hint: TEXT,
     tappable: false,

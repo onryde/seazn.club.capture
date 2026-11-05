@@ -1,7 +1,9 @@
 import type { ComponentType } from 'react';
 import { badmintonSport } from '@/domain/scoring/badmintonSport';
+import { chessSport } from '@/domain/scoring/chessSport';
 import { tableTennisSport } from '@/domain/scoring/tableTennisSport';
 import { BadmintonMatchScreen } from '@/ui/screens/BadmintonMatchScreen';
+import { ChessMatchScreen } from '@/ui/screens/ChessMatchScreen';
 import { TableTennisMatchScreen } from '@/ui/screens/TableTennisMatchScreen';
 
 /** A sport's screen for a match it scores: its pad, and whatever it needs of the states every sport shares. */
@@ -16,6 +18,7 @@ export type SportScreen = ComponentType<{ readonly fixtureId: string }>;
 const SCREENS: ReadonlyMap<string, SportScreen> = new Map<string, SportScreen>([
   [badmintonSport.key, BadmintonMatchScreen],
   [tableTennisSport.key, TableTennisMatchScreen],
+  [chessSport.key, ChessMatchScreen],
 ]);
 
 export function screenFor(sportKey: string): SportScreen | null {

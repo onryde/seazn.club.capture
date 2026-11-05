@@ -294,6 +294,8 @@ describe('every path the navigation moves to has its route file, and each Settin
       'src/ui/screens/BadmintonPadScreen.tsx',
       'src/ui/screens/TableTennisMatchScreen.tsx',
       'src/ui/screens/TableTennisPadScreen.tsx',
+      'src/ui/screens/ChessMatchScreen.tsx',
+      'src/ui/screens/ChessPadScreen.tsx',
     ]);
   });
 

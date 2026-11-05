@@ -1,0 +1,610 @@
+import { act, fireEvent, screen, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { encodeSavedCode } from '@/domain/mode/savedCode';
+import { chessCfg } from '@/domain/scoring/chessEngine';
+import en from '@/i18n/en.json';
+import es from '@/i18n/es.json';
+import fr from '@/i18n/fr.json';
+import nl from '@/i18n/nl.json';
+import { AWAY_ENTRANT, HOME_ENTRANT, chessSeed } from '@/services/fakeChessPad';
+import type { FakeMatchSeed } from '@/services/fakeScoringPort';
+import { STORE_KEYS } from '@/services/modeStore';
+import { TEST_NOW } from '../../../test/fakePorts';
+import { ledgerOf, result } from '../../../test/chessLedger';
+import { screenIsHeld, type HoldLog } from '../../../test/heldScreen';
+import { linkKey } from '../../../test/scoringHomeFixtures';
+import { backgroundAndBack, flush, launchApp, type LaunchedApp } from '../../../test/routedApp';
+
+const holds = vi.hoisted((): HoldLog => []);
+vi.mock('@/hooks/keepAwake', async () => {
+  const { recordingHold } = await import('../../../test/heldScreen');
+  return { holdScreenOn: recordingHold(holds) };
+});
+
+beforeEach(() => {
+  seconds = 0;
+  vi.useFakeTimers();
+  holds.length = 0;
+});
+afterEach(() => vi.useRealTimers());
+
+// Plan S2-3 Task 3: the chess pad screen and the sheet that asks How (design §4 to §6), on the fake server with the real
+// runner, queue, sender and fold under it. Each test reads what the scorer sees; copy is the dictionary's. What jsdom
+// cannot see (the plates and the lime fill drawn, how the chips wrap at 320 dp, a screen reader reading the sheet, a
+// press's feedback) is the device check's.
+
+const LINK = { origin: 'https://stg.seazn.club', token: 'dl_madeUpTokenForChess0000001' };
+
+const START = { type: 'core.start', payload: {} } as const;
+const DRAW = { type: 'boardgame.result', payload: { winner: null } } as const;
+
+/** A phone that scanned `seed`'s match earlier: the code saved, the link kept with the sport the bootstrap named. */
+function inMatch(seed: FakeMatchSeed): Record<string, string> {
+  return {
+    [STORE_KEYS.active]: 'scoring',
+    [STORE_KEYS.code('scoring')]: encodeSavedCode({
+      mode: 'scoring',
+      raw: '',
+      slot: null,
+      savedAt: TEST_NOW,
+      expiresAt: null,
+      stream: null,
+      scoring: { fixtureId: seed.fixtureId, label: 'Board 4' },
+    }),
+    [linkKey(seed.fixtureId)]: JSON.stringify({ ...LINK, sportKey: 'boardgame' }),
+  };
+}
+
+let seconds = 0;
+/** The phone's clock a second on: the next tap is never in the bounce window of the last. */
+const aSecondOn = (app: LaunchedApp) => {
+  seconds += 1;
+  app.setNow(new Date(TEST_NOW.getTime() + seconds * 1000));
+};
+
+/** A game another scorer started: the pad is live from the first read. */
+const LIVE = chessSeed({ events: [START] });
+
+/** Time passing: the phone's clock and the timers move together, a second at a time. */
+async function pass(app: LaunchedApp, ms: number): Promise<void> {
+  for (let elapsed = 0; elapsed < ms; elapsed += 1000) {
+    aSecondOn(app);
+    await flush(1000);
+  }
+}
+
+const half = (side: 'first' | 'second') => screen.getByTestId(`half-${side}`);
+const plate = (side: 'first' | 'second') => within(half(side)).queryByTestId('plate')?.textContent;
+const strip = () => screen.getByTestId('strip-note').textContent;
+const tally = () => screen.getByTestId('tally').textContent;
+const lastTap = () => screen.getByTestId('last-tap-sentence').textContent;
+const toolNames = () =>
+  within(screen.getByTestId('tool-row'))
+    .getAllByRole('button')
+    .map((button) => button.getAttribute('aria-label'));
+const choices = () => screen.getAllByRole('radio').map((choice) => choice.textContent);
+// A no-break space in a dictionary (French puts one before a colon, a question mark) reads as a plain space in the DOM.
+const plain = (text: string) => text.replace(/\u00a0/g, ' ');
+const fill = (text: string, vars: Record<string, string | number>) =>
+  plain(
+    Object.entries(vars).reduce(
+      (out, [name, value]) => out.replace(`{${name}}`, String(value)),
+      text,
+    ),
+  );
+
+const events = async (app: LaunchedApp, seed: FakeMatchSeed) => {
+  const ledger = await app.scoring.events(LINK, seed.fixtureId, 0);
+  return Array.isArray(ledger) ? ledger : [];
+};
+const typesOf = async (app: LaunchedApp, seed: FakeMatchSeed = LIVE) =>
+  (await events(app, seed)).map((event) => event.type);
+
+/** A button pressed a second after the last thing the scorer did, and the time its sheet needs before it takes a choice. */
+async function press(app: LaunchedApp, name: string): Promise<void> {
+  aSecondOn(app);
+  act(() => fireEvent.click(screen.getByRole('button', { name })));
+  await flush(400);
+}
+
+async function tapHalf(app: LaunchedApp, side: 'first' | 'second'): Promise<void> {
+  aSecondOn(app);
+  act(() => fireEvent.click(half(side)));
+  await flush(400);
+}
+
+async function pick(app: LaunchedApp, name: string): Promise<void> {
+  aSecondOn(app);
+  act(() => fireEvent.click(screen.getByRole('radio', { name })));
+  await flush(0);
+}
+
+/** The match opened as the phone finds it, a minute before the test's taps. */
+async function open(seed: FakeMatchSeed = LIVE, over: Parameters<typeof launchApp>[0] = {}) {
+  const app = await launchApp({ scoringSeed: seed, kvSeed: inMatch(seed), ...over });
+  await flush(200);
+  app.setNow(new Date(TEST_NOW.getTime() - 60_000));
+  return app;
+}
+
+/** A result recorded through the sheet by this phone, as the scorer does it. */
+async function record(app: LaunchedApp, side: 'first' | 'second' | null, method?: string) {
+  if (side === null) await press(app, en['scoring.chess.tool.draw']);
+  else await tapHalf(app, side);
+  if (method !== undefined) await pick(app, method);
+  await press(app, en['scoring.chess.how.record']);
+}
+
+describe('the Start screen', () => {
+  it('names the two players with their colours, has no serve to pick, and Start match is ready', async () => {
+    await open(chessSeed());
+    const rows = screen.getByTestId('start-sides');
+    expect(within(screen.getByTestId('start-side-first')).getByText('A. Sharma')).toBeTruthy();
+    expect(within(screen.getByTestId('start-side-first')).getByTestId('plate').textContent).toBe(
+      en['scoring.chess.chip.white'],
+    );
+    expect(within(screen.getByTestId('start-side-second')).getByTestId('plate').textContent).toBe(
+      en['scoring.chess.chip.black'],
+    );
+    expect(rows).toBeTruthy();
+    expect(screen.queryAllByRole('radio')).toEqual([]);
+    const startButton = screen.getByRole('button', { name: en['scoring.start.confirm'] });
+    expect(startButton.getAttribute('aria-disabled')).not.toBe('true');
+  });
+
+  it('Start match starts the game with no side named, and the players are the halves', async () => {
+    const app = await open(chessSeed());
+    act(() => fireEvent.click(screen.getByRole('button', { name: en['scoring.start.confirm'] })));
+    await flush(200);
+    expect(await typesOf(app, chessSeed())).toEqual(['core.start']);
+    expect((await events(app, chessSeed()))[0]?.payload).toEqual({});
+    expect(half('first')).toBeTruthy();
+    expect(half('second')).toBeTruthy();
+  });
+});
+
+describe('the live game', () => {
+  it('shows each player on a half with the colour in words, and what a tap records', async () => {
+    await open();
+    expect(within(half('first')).getByText('A. Sharma')).toBeTruthy();
+    expect(within(half('second')).getByText('L. Chen')).toBeTruthy();
+    expect(plate('first')).toBe(en['scoring.chess.chip.white']);
+    expect(plate('second')).toBe(en['scoring.chess.chip.black']);
+    expect(
+      within(half('first')).getByText(
+        fill(en['scoring.chess.result.white'], { name: 'A. Sharma' }),
+      ),
+    ).toBeTruthy();
+    expect(
+      within(half('second')).getByText(fill(en['scoring.chess.result.black'], { name: 'L. Chen' })),
+    ).toBeTruthy();
+    // The colour is in the half's name for a screen reader, beside the player.
+    expect(half('first').getAttribute('aria-label')).toContain(en['scoring.chess.chip.white']);
+  });
+
+  it('offers Draw and Swap colours, and says in one line that forfeits are the organiser’s', async () => {
+    await open();
+    expect(toolNames()).toEqual([en['scoring.chess.tool.draw'], en['scoring.chess.tool.swap']]);
+    expect(strip()).toBe(en['scoring.chess.forfeit']);
+  });
+
+  // The header's visible tally is empty before a result; what a screen reader says for it must not be an empty sentence.
+  it('says "no result" for the header while no result stands, and the points once one does', async () => {
+    const app = await open();
+    const label = () => screen.getByTestId('tally').getAttribute('aria-label');
+    expect(tally()).toBe('');
+    expect(label()).toBe(en['scoring.chess.tallyNone']);
+    await record(app, 'first');
+    expect(label()).toBe(
+      fill(en['scoring.chess.tallySaid'], {
+        first: 'A. Sharma',
+        firstPoints: '1',
+        second: 'L. Chen',
+        secondPoints: '0',
+      }),
+    );
+  });
+
+  it('holds the screen on while the pad stands', async () => {
+    await open();
+    expect(screenIsHeld(holds)).toBe(true);
+  });
+
+  it('every button has a name a screen reader can say', async () => {
+    await open();
+    for (const button of screen.getAllByRole('button')) {
+      const name = button.getAttribute('aria-label') ?? button.textContent ?? '';
+      expect(name.trim(), button.outerHTML.slice(0, 80)).not.toBe('');
+    }
+  });
+});
+
+describe('a division without colours', () => {
+  const NO_COLOURS = chessSeed({ events: [START], cfg: chessCfg({ colors: false }) });
+
+  it('shows no plates, says “{name} won”, and offers only Draw', async () => {
+    await open(NO_COLOURS);
+    expect(plate('first')).toBeUndefined();
+    expect(plate('second')).toBeUndefined();
+    expect(
+      within(half('first')).getByText(
+        fill(en['scoring.chess.result.plain'], { name: 'A. Sharma' }),
+      ),
+    ).toBeTruthy();
+    expect(toolNames()).toEqual([en['scoring.chess.tool.draw']]);
+  });
+});
+
+describe('the sheet that asks How', () => {
+  it('a half opens it for that player: the decisive methods in order, Record and Cancel, and nothing is sent', async () => {
+    const app = await open();
+    await tapHalf(app, 'second');
+    expect(screen.getByText(fill(en['scoring.chess.how.won'], { name: 'L. Chen' }))).toBeTruthy();
+    expect(choices()).toEqual([
+      en['scoring.chess.method.checkmate'],
+      en['scoring.chess.method.resign'],
+      en['scoring.chess.method.time'],
+      en['scoring.chess.method.adjudication'],
+      en['scoring.chess.method.illegal_move'],
+    ]);
+    expect(screen.getByRole('button', { name: en['scoring.chess.how.record'] })).toBeTruthy();
+    expect(screen.getByRole('button', { name: en['scoring.sheet.cancel'] })).toBeTruthy();
+    expect(screen.getByTestId('pad-content').getAttribute('aria-hidden')).toBe('true');
+    expect(await typesOf(app)).toEqual(['core.start']);
+  });
+
+  it('Draw opens it for a draw: the drawn methods, and the question is not about a player', async () => {
+    const app = await open();
+    await press(app, en['scoring.chess.tool.draw']);
+    expect(screen.getByText(en['scoring.chess.how.drawn'])).toBeTruthy();
+    expect(choices()).toEqual([
+      en['scoring.chess.method.agreement'],
+      en['scoring.chess.method.stalemate'],
+      en['scoring.chess.method.insufficient'],
+      en['scoring.chess.method.adjudication'],
+      en['scoring.chess.method.repetition'],
+      en['scoring.chess.method.fifty_move'],
+      en['scoring.chess.method.dead_position'],
+    ]);
+  });
+
+  it('offers no forfeit and no walkover, and no method the engine would refuse for the result', async () => {
+    const app = await open();
+    await tapHalf(app, 'first');
+    expect(choices().join(' | ')).not.toMatch(/forfeit|walkover|forfait|wo\b/i);
+    expect(choices()).not.toContain(en['scoring.chess.method.stalemate']);
+  });
+
+  it('a method is picked, shown picked, and tapped again is none', async () => {
+    const app = await open();
+    await tapHalf(app, 'first');
+    await pick(app, en['scoring.chess.method.time']);
+    const picked = (name: string) =>
+      screen.getByRole('radio', { name }).getAttribute('aria-checked');
+    expect(picked(en['scoring.chess.method.time'])).toBe('true');
+    expect(picked(en['scoring.chess.method.resign'])).toBe('false');
+    await pick(app, en['scoring.chess.method.time']);
+    expect(picked(en['scoring.chess.method.time'])).toBe('false');
+  });
+
+  // A double tap on a chip: its second touch is a tap on the picked chip, which would clear what the first picked.
+  it('a double tap on a method picks it and leaves it picked', async () => {
+    const app = await open();
+    await tapHalf(app, 'first');
+    aSecondOn(app);
+    // Two touches, the first drawn before the second lands (a phone's touches are tens of ms apart, not one batch).
+    for (let touch = 0; touch < 2; touch += 1) {
+      const chip = screen.getByRole('radio', { name: en['scoring.chess.method.time'] });
+      act(() => fireEvent.click(chip));
+      await flush(0);
+    }
+    expect(
+      screen
+        .getByRole('radio', { name: en['scoring.chess.method.time'] })
+        .getAttribute('aria-checked'),
+    ).toBe('true');
+    // A tap after the window is the scorer taking the choice back.
+    await pick(app, en['scoring.chess.method.time']);
+    expect(
+      screen
+        .getByRole('radio', { name: en['scoring.chess.method.time'] })
+        .getAttribute('aria-checked'),
+    ).toBe('false');
+  });
+
+  // A sheet's close leaves the screen with the touch, so the second touch of a double tap lands on the tool row under it,
+  // where Swap colours writes a pairing: every close takes the next touches with it, the sheet Cancel's alike.
+  it.each([
+    ['Match details', en['scoring.details.title']],
+    ['History', en['scoring.history.title']],
+  ])(
+    'a second touch on Swap colours straight after %s is closed counts once',
+    async (_name, icon) => {
+      const app = await open();
+      await press(app, icon);
+      await press(app, en['panel.close']);
+      expect(screen.queryByRole('button', { name: en['panel.close'] })).toBeNull();
+      act(() =>
+        fireEvent.click(screen.getByRole('button', { name: en['scoring.chess.tool.swap'] })),
+      );
+      await flush(400);
+      expect(await typesOf(app)).toEqual(['core.start']);
+      await press(app, en['scoring.chess.tool.swap']);
+      expect(await typesOf(app)).toEqual(['core.start', 'boardgame.pairing']);
+    },
+  );
+
+  // What the line said before a sheet covered the pad is still there when the sheet closes: a close is no tap, and a tap
+  // clears the line. (A refusal or a note the scorer had not read would be wiped unseen.)
+  it.each([
+    ['Match details', en['scoring.details.title']],
+    ['History', en['scoring.history.title']],
+  ])(
+    'the note on the line before %s opened is still there after it closes',
+    async (_name, icon) => {
+      const app = await open();
+      aSecondOn(app);
+      // Two taps in one moment: Swap colours counts, and Draw on its heels is "Counted once".
+      act(() => {
+        fireEvent.click(screen.getByRole('button', { name: en['scoring.chess.tool.swap'] }));
+      });
+      act(() => {
+        fireEvent.click(screen.getByRole('button', { name: en['scoring.chess.tool.draw'] }));
+      });
+      await flush(400);
+      const note = () => screen.getByTestId('last-tap-note', { exact: true }).textContent;
+      expect(note()).toBe(en['scoring.pad.countedOnce']);
+      await press(app, icon);
+      await press(app, en['panel.close']);
+      expect(screen.queryByRole('button', { name: en['panel.close'] })).toBeNull();
+      expect(note()).toBe(en['scoring.pad.countedOnce']);
+    },
+  );
+
+  it('Cancel, the dim and Back leave with nothing recorded', async () => {
+    const app = await open();
+    await tapHalf(app, 'first');
+    await press(app, en['scoring.sheet.cancel']);
+    expect(screen.queryByTestId('how-sheet')).toBeNull();
+    await tapHalf(app, 'first');
+    aSecondOn(app);
+    act(() => fireEvent.click(screen.getByTestId('how-dim')));
+    await flush(400);
+    expect(screen.queryByTestId('how-sheet')).toBeNull();
+    await tapHalf(app, 'first');
+    let handled = false;
+    act(() => {
+      handled = app.back.press();
+    });
+    expect(handled).toBe(true);
+    expect(screen.queryByTestId('how-sheet')).toBeNull();
+    expect(await typesOf(app)).toEqual(['core.start']);
+  });
+});
+
+describe('Record', () => {
+  it('with no method closes the sheet, writes the result, and shows who won in words and in the sheet’s line', async () => {
+    const app = await open();
+    await record(app, 'first');
+    expect(screen.queryByTestId('how-sheet')).toBeNull();
+    expect((await events(app, LIVE)).at(-1)).toMatchObject({
+      type: 'boardgame.result',
+      payload: { winner: HOME_ENTRANT },
+    });
+    expect(tally()).toBe('1–0');
+    expect(strip()).toBe(fill(en['scoring.chess.last.won'], { name: 'A. Sharma' }));
+    expect(lastTap()).toBe(fill(en['scoring.chess.last.won'], { name: 'A. Sharma' }));
+    expect(
+      within(screen.getByTestId('pad-card')).getByText(en['scoring.card.resultRecorded.title']),
+    ).toBeTruthy();
+  });
+
+  it('with a method says it, and the ledger carries it', async () => {
+    const app = await open();
+    await record(app, 'second', en['scoring.chess.method.resign']);
+    expect((await events(app, LIVE)).at(-1)).toMatchObject({
+      type: 'boardgame.result',
+      payload: { winner: AWAY_ENTRANT, method: 'resign' },
+    });
+    expect(tally()).toBe('0–1');
+    expect(lastTap()).toBe(
+      fill(en['scoring.chess.last.wonBy'], {
+        name: 'L. Chen',
+        how: en['scoring.chess.method.resign'],
+      }),
+    );
+  });
+
+  it('a draw writes nobody as the winner and says drawn', async () => {
+    const app = await open();
+    await record(app, null, en['scoring.chess.method.agreement']);
+    expect((await events(app, LIVE)).at(-1)).toMatchObject({
+      type: 'boardgame.result',
+      payload: { winner: null, method: 'agreement' },
+    });
+    expect(tally()).toBe('½');
+    expect(strip()).toBe(en['scoring.chess.last.drawn']);
+  });
+
+  // The names keep their places: A. Sharma is still on top after a swap, and a win for the top half is still A. Sharma's.
+  it('after a swap, the player in the half tapped is the one who won, whoever holds White', async () => {
+    const app = await open();
+    await press(app, en['scoring.chess.tool.swap']);
+    expect(plate('first')).toBe(en['scoring.chess.chip.black']);
+    expect(plate('second')).toBe(en['scoring.chess.chip.white']);
+    await record(app, 'first');
+    expect((await events(app, LIVE)).at(-1)).toMatchObject({
+      type: 'boardgame.result',
+      payload: { winner: HOME_ENTRANT },
+    });
+    // A. Sharma holds Black now: the header writes the game as a scoresheet does, White's score first.
+    expect(tally()).toBe('0–1');
+    expect(strip()).toBe(fill(en['scoring.chess.last.won'], { name: 'A. Sharma' }));
+  });
+});
+
+describe('Swap colours', () => {
+  it('moves the plates and never the names, and writes one pairing', async () => {
+    const app = await open();
+    await press(app, en['scoring.chess.tool.swap']);
+    expect(within(half('first')).getByText('A. Sharma')).toBeTruthy();
+    expect(plate('first')).toBe(en['scoring.chess.chip.black']);
+    expect(plate('second')).toBe(en['scoring.chess.chip.white']);
+    expect(await typesOf(app)).toEqual(['core.start', 'boardgame.pairing']);
+    expect(lastTap()).toBe(en['scoring.chess.last.swap']);
+  });
+});
+
+describe('Undo', () => {
+  it('takes this phone’s own result back, and the game is live again', async () => {
+    const app = await open();
+    await record(app, 'first');
+    await press(app, en['scoring.pad.undo']);
+    expect(await typesOf(app)).toEqual(['core.start', 'boardgame.result', 'core.void']);
+    expect(tally()).toBe('');
+    expect(toolNames()).toEqual([en['scoring.chess.tool.draw'], en['scoring.chess.tool.swap']]);
+  });
+
+  it('is off for a result another scorer wrote', async () => {
+    const app = await open(chessSeed({ events: [START, DRAW] }));
+    expect(tally()).toBe('½');
+    // Under a recorded result whose Undo window was never this phone's, the cell is gone (`hasUndoCell`).
+    expect(screen.queryByRole('button', { name: en['scoring.pad.undo'] })).toBeNull();
+    expect(await typesOf(app, chessSeed({ events: [START, DRAW] }))).toEqual([
+      'core.start',
+      'boardgame.result',
+    ]);
+  });
+
+  it('does not take a swap back', async () => {
+    const app = await open();
+    await press(app, en['scoring.chess.tool.swap']);
+    const undo = screen.getByRole('button', { name: en['scoring.pad.undo'] });
+    expect(undo.getAttribute('aria-disabled')).toBe('true');
+    expect(await typesOf(app)).toEqual(['core.start', 'boardgame.pairing']);
+  });
+});
+
+describe('a game another scorer ended while the sheet is open', () => {
+  it('closes the sheet and shows their result, not the one this scorer was about to record', async () => {
+    const app = await open();
+    await tapHalf(app, 'first');
+    app.scoring.addOtherScorerEvent('boardgame.result', { winner: AWAY_ENTRANT, method: 'time' });
+    app.realtime.ping();
+    await flush(400);
+    expect(screen.queryByTestId('how-sheet')).toBeNull();
+    expect(tally()).toBe('0–1');
+    expect(await typesOf(app)).toEqual(['core.start', 'boardgame.result']);
+  });
+});
+
+describe('the organiser’s part', () => {
+  it('a drawn bracket game waits for the tie-break: no result button, and the line says why', async () => {
+    const seed = chessSeed({ events: [START, DRAW], cfg: chessCfg({ tiebreak: true }) });
+    await open(seed);
+    expect(strip()).toBe(en['scoring.chess.waiting.tiebreak']);
+    expect(screen.queryByRole('radio')).toBeNull();
+    expect(half('first').getAttribute('aria-disabled')).toBe('true');
+    expect(half('second').getAttribute('aria-disabled')).toBe('true');
+    expect(screen.queryAllByRole('button', { name: en['scoring.chess.tool.draw'] })).toEqual([]);
+  });
+
+  it('a walkover shows the winner’s name in words, since the last-tap line has none', async () => {
+    const seed = chessSeed({
+      events: [START, { type: 'core.forfeit', payload: { by: AWAY_ENTRANT, reason: 'walkover' } }],
+    });
+    await open(seed);
+    expect(strip()).toBe(fill(en['scoring.chess.last.won'], { name: 'A. Sharma' }));
+  });
+
+  it('an abandoned game is over with no result, and the card does not claim one', async () => {
+    const seed = chessSeed({
+      events: [START, { type: 'core.abandon', payload: { reason: 'flooded' } }],
+    });
+    await open(seed);
+    const card = screen.getByTestId('pad-card');
+    expect(within(card).getByText(en['scoring.card.cancelled.body'])).toBeTruthy();
+    expect(card.textContent).not.toContain(en['scoring.card.resultRecorded.title']);
+    expect(tally()).toBe('');
+    // Nothing is left to score on a game that is over, so the screen is not kept on for it.
+    expect(screenIsHeld(holds)).toBe(false);
+  });
+
+  it('a result the organiser has locked is view only, and the screen is let go', async () => {
+    const app = await open(chessSeed({ events: [START, DRAW] }));
+    // A result this phone may still undo keeps the screen on; the organiser's lock lets it go.
+    expect(screenIsHeld(holds)).toBe(true);
+    app.scoring.finalize();
+    // The lock is the bootstrap's word, read at most every 15 s: the next look after that (the foreground) finds it.
+    await pass(app, 16_000);
+    await backgroundAndBack(app);
+    await flush(2_000);
+    expect(screen.getByTestId('pad-card').textContent).toBe(
+      en['scoring.card.viewOnly.title'] + en['scoring.card.viewOnly.body'],
+    );
+    expect(half('first').getAttribute('aria-disabled')).toBe('true');
+    expect(screenIsHeld(holds)).toBe(false);
+  });
+});
+
+describe('a match the phone cannot fold', () => {
+  it('says so in words on the shared state screen, never a blank pad', async () => {
+    // A result before the game started: a record the engine refuses.
+    await open(LIVE, {
+      prepare: (fakes) => {
+        vi.spyOn(fakes.scoring, 'events').mockResolvedValue(ledgerOf([result('H')]));
+      },
+    });
+    expect(screen.queryByTestId('pad-content')).toBeNull();
+    expect(screen.getByText(en['scoring.state.ledger.title'])).toBeTruthy();
+  });
+});
+
+const LANGUAGES = [
+  ['es', es],
+  ['fr', fr],
+  ['nl', nl],
+] as const;
+
+describe.each(LANGUAGES)('%s', (language, words: Readonly<Record<string, string>>) => {
+  it('draws the halves, the plates, the tools and the line from its dictionary', async () => {
+    await open(LIVE, { deviceLanguages: [language] });
+    expect(plate('first')).toBe(plain(words['scoring.chess.chip.white']!));
+    expect(plate('second')).toBe(plain(words['scoring.chess.chip.black']!));
+    expect(
+      within(half('first')).getByText(
+        fill(words['scoring.chess.result.white']!, { name: 'A. Sharma' }),
+      ),
+    ).toBeTruthy();
+    expect(toolNames()).toEqual([
+      words['scoring.chess.tool.draw'],
+      words['scoring.chess.tool.swap'],
+    ]);
+    expect(strip()).toBe(plain(words['scoring.chess.forfeit']!));
+  });
+
+  it('says "no result" for the header from its dictionary', async () => {
+    await open(LIVE, { deviceLanguages: [language] });
+    expect(screen.getByTestId('tally').getAttribute('aria-label')).toBe(
+      plain(words['scoring.chess.tallyNone']!),
+    );
+  });
+
+  it('asks How in its words, with its methods', async () => {
+    const app = await open(LIVE, { deviceLanguages: [language] });
+    aSecondOn(app);
+    act(() => fireEvent.click(half('second')));
+    await flush(400);
+    expect(
+      screen.getByText(fill(words['scoring.chess.how.won']!, { name: 'L. Chen' })),
+    ).toBeTruthy();
+    expect(choices()).toEqual([
+      words['scoring.chess.method.checkmate'],
+      words['scoring.chess.method.resign'],
+      words['scoring.chess.method.time'],
+      words['scoring.chess.method.adjudication'],
+      words['scoring.chess.method.illegal_move'],
+    ]);
+    expect(screen.getByRole('button', { name: words['scoring.chess.how.record']! })).toBeTruthy();
+  });
+});
