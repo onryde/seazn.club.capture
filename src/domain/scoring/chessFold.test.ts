@@ -408,6 +408,14 @@ describe('foldChess: a tie-break decides who advances', () => {
     expect(display.tiebreak.decided).toEqual({ rung: 'blitz', advances: 'second' });
   });
 
+  it('has no decided tie-break for a game that was simply won, in a bracket stage or a table', () => {
+    for (const stage of [BRACKET, GAME]) {
+      const won = displayOf([start(), result('H', 'checkmate')], { bootstrap: stage });
+      expect(won.phase).toBe('done');
+      expect(won.tiebreak.decided).toBeNull();
+    }
+  });
+
   it('has no decided tie-break while it is owed, or after a settle or a forfeit', () => {
     expect(displayOf(DRAWN, { bootstrap: BRACKET }).tiebreak.decided).toBeNull();
     expect(decidedBy(settle('A')).tiebreak.decided).toBeNull();

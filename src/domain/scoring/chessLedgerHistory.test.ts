@@ -121,6 +121,8 @@ describe('doneOf: a tie-break', () => {
     expect(read({ rung: 'armageddon', black: HOME, result: 'unknown' })).toBeNull();
     expect(read({ rung: 'armageddon', black: HOME })).toBeNull();
     expect(read({ rung: 'lots', winner: HOME })).toBeNull();
+    // The fields of an Armageddon under a rung that is not one: the rung decides, not the shape of the rest.
+    expect(read({ rung: 'lots', black: HOME, result: 'draw' })).toBeNull();
     expect(read(null)).toBeNull();
   });
 

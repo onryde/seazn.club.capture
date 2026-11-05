@@ -14,8 +14,8 @@ import { sideOfEntrant, type SetBasedNames } from '@/domain/scoring/setBasedSide
 /**
  * What a chess event did, in the pad's words (spec §4; plan S2-3 Task 1), `tableTennisLedgerHistory`'s twin: the one
  * vocabulary History and the last-tap line speak. The rest of History from the ledger (the rows, the voids) is the
- * set-based files' to share where they are generic (`ledgerRows`); this is chess's part: its three events and the taps
- * they are.
+ * set-based files' to share where they are generic (`ledgerRows`); this is chess's part: its four events (the start, a
+ * pairing, a result and a tie-break) and the taps they are.
  */
 
 /**

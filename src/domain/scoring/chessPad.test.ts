@@ -11,8 +11,9 @@ import type { ChessDisplay, ChessLastTap } from '@/domain/scoring/chessTypes';
 import { NO_TIEBREAK, chessDisplay, pendingTiebreak } from '../../../test/chessLedger';
 
 // The Chess pad (spec §4, rulings 57 to 61; plan S2-3 Task 1): the two players are the halves, a tap on one records a
-// result for that player; Draw and Swap colours are the tools; the tie-break's waiting line is the strip's note. Every
-// expected value is written out. Words are dictionary keys here: the keys' text is Task 3's.
+// result for that player; Draw and Swap colours are the tools; while a tie-break is owed the Tie-break tool replaces them
+// (S2-3b), and the strip's waiting line is for a drawn game the organiser holds (a stage that lists no rung). Every
+// expected value is written out. Words are dictionary keys here: the keys' text is the dictionaries'.
 
 const SHARMA = 'A. Sharma';
 const CHEN = 'L. Chen';

@@ -247,7 +247,9 @@ function outcomeOf(
  * Where a drawn knockout game stands. The rungs are the stage's own list, in its order (`effectiveRungs`: all three when it
  * names none), and only for a knockout stage (`cfg.tiebreak`). A tie-break is owed while the engine says a decider is
  * pending (`deciderPending`, never the module phase alone: a settle leaves the phase as it was). A stage that lists no rung
- * folds the drawn game level and done, so it is held (for the organiser) while the outcome is still that draw.
+ * folds the drawn game level and done (`boardgame.js:284-290`), so it is held (for the organiser) while the outcome is still
+ * that draw. "No rung listed" is not tested here: in a knockout stage a draw that is still the outcome can only be that, since
+ * a listed rung sends the draw to the tie-break (no outcome), and a settle or a withdrawal replaces it with a win or an award.
  */
 function tiebreakOf(
   cfg: BoardgameCfg,
@@ -257,15 +259,16 @@ function tiebreakOf(
   return {
     rungs,
     pending: deciderPending(boardgame, facts),
-    held:
-      cfg.tiebreak === true &&
-      rungs.length === 0 &&
-      engineOutcomeOf(boardgame, facts)?.kind === 'draw',
+    held: cfg.tiebreak === true && engineOutcomeOf(boardgame, facts)?.kind === 'draw',
     decided: decidedTiebreak(facts.state),
   };
 }
 
-/** The tie-break that ended the game, with the seat it sent through: the engine's win by `tiebreak_<rung>`. */
+/**
+ * The tie-break that ended the game, with the seat it sent through: the engine's win by `tiebreak_<rung>`. The engine sets
+ * the rung only together with that win (`boardgame.js:395-421`), so the win check is for the outcome's type, not a second
+ * condition.
+ */
 function decidedTiebreak(state: BoardgameState): ChessTiebreakState['decided'] {
   const rung = state.tiebreak?.rung;
   if (rung === undefined || state.outcome?.kind !== 'win') return null;
