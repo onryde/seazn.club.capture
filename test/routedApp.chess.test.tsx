@@ -24,7 +24,8 @@ afterEach(() => vi.useRealTimers());
 // runner, queue, sender and fold under it (the real engine judges every event). Each test reads what the scorer sees;
 // copy and expected states come from the dictionary and the design, never from the code under test. What jsdom cannot see
 // (the plates' look, how the chips wrap at 320 dp, a screen reader reading the sheet, a press's feedback) is the device
-// check's: nothing here claims it.
+// check's: nothing here claims it. The four questions: a division without colours is covered in useChessMatch.test.tsx and
+// ChessPadScreen.test.tsx; orientation does not apply (Remote Scoring is portrait only).
 
 const DICTIONARIES = { en, es, fr, nl } as const;
 type Words = Readonly<Record<string, string>>;
@@ -55,7 +56,8 @@ const aSecondOn = (app: LaunchedApp) => {
   app.setNow(new Date(TEST_NOW.getTime() + seconds * 1000));
 };
 
-// A no-break space in a dictionary (French puts one before a colon, a question mark) reads as a plain space in the DOM.
+// A no-break space in a dictionary (French puts one before a colon, a question mark) is matched as a plain space by
+// getByText's normaliser, but `textContent` and an accessible name keep it: strings compared to either go through `plain`.
 const plain = (text: string) => text.replace(/ /g, ' ');
 const fill = (text: string, vars: Record<string, string | number>) =>
   plain(
@@ -82,7 +84,9 @@ const undoCell = (words: Words = en) =>
 /** The ledger the fake server holds for the match, whoever wrote it. */
 async function ledger(app: LaunchedApp, seed: FakeMatchSeed) {
   const rows = await app.scoring.events(LINK, seed.fixtureId, 0);
-  return Array.isArray(rows) ? rows : [];
+  if (!Array.isArray(rows))
+    throw new Error(`the fake server answered the ledger with ${JSON.stringify(rows)}`);
+  return rows;
 }
 const typesOf = async (app: LaunchedApp, seed: FakeMatchSeed) =>
   (await ledger(app, seed)).map((event) => event.type);
@@ -377,7 +381,10 @@ describe('a second scorer', () => {
     expect(half('first').getAttribute('aria-disabled')).toBe('true');
   });
 
-  it('Undo is this phone’s own result’s alone: another scorer’s result has no Undo cell', async () => {
+  // The Undo cell needs two things: this phone's Undo window and the fold's `undoable` (a result of this phone's own).
+  // Either alone hides it for a result written elsewhere, so this test pins the outcome, not a guard. The fold's
+  // `undoable` is carried by the unseen-conflict test below, the Undo window by the "found again" test after it.
+  it('a result another scorer wrote and the pad was told of has no Undo cell', async () => {
     const app = await live();
     app.scoring.addOtherScorerEvent('boardgame.result', { winner: null });
     app.realtime.ping();
@@ -405,6 +412,8 @@ describe('a second scorer', () => {
     expect(await typesOf(app, chessSeed())).toEqual(['core.start', 'boardgame.result']);
     expect(tally()).toBe('0–1');
     expect(strip()).toBe(fill(en['scoring.chess.last.won'], { name: 'L. Chen' }));
+    // The scorer is told their Record did not count, not left to guess from a changed score.
+    expect(screen.getByTestId('refusal').textContent).toBe(en['scoring.refusal.notCounted']);
     expect(undoCell()).toBeNull();
   });
 
@@ -452,7 +461,6 @@ describe('after an interruption', () => {
     const seed = chessSeed({ events: [START] });
     const app = await launchApp({ scoringSeed: seed, kvSeed: inMatch(seed) });
     await flush(200);
-    app.setNow(new Date(TEST_NOW.getTime() - 60_000));
     expect(app.nav.current()).toBe('scoring');
     expect(screen.queryByTestId('start-screen')).toBeNull();
     await record(app, 'first', en['scoring.chess.method.checkmate']);
@@ -548,6 +556,12 @@ describe.each(Object.entries(DICTIONARIES))('in %s', (language, words: Words) =>
     );
     await startPressed(app, words);
     expect(lastTap()).toBe(plain(words['scoring.chess.last.start']!));
+    // A string with a name in it, said in the language (what a tap on the half records).
+    expect(
+      within(half('first')).getByText(
+        fill(words['scoring.chess.result.white']!, { name: 'A. Sharma' }),
+      ),
+    ).toBeTruthy();
 
     await press(app, words['scoring.chess.tool.draw']!);
     expect(screen.getByText(plain(words['scoring.chess.how.drawn']!))).toBeTruthy();
