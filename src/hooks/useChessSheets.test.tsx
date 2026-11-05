@@ -327,6 +327,29 @@ describe('Match details, History and the reconnect question', () => {
     expect(view.result.current.view?.kind).toBe('discard');
   });
 
+  // The second touch of a double tap on the question's button lands on the confirm it opens; it must not answer it.
+  it('takes no Discard in the bounce window of the question appearing, and takes it after', () => {
+    const view = rig({ ...snapshot(), ask: ASK });
+    act(() => view.result.current.actions.askDiscard());
+    expect(view.result.current.view?.kind).toBe('ask');
+    settle(view.fakes);
+    act(() => view.result.current.actions.askDiscard());
+    expect(view.result.current.view?.kind).toBe('discard');
+  });
+
+  it('opens no How sheet while the question stands: the ledger is not settled, so a half is not now', () => {
+    const view = rig({ ...snapshot(), ask: ASK });
+    let outcome: PadOutcome = TAKEN;
+    act(() => {
+      outcome = view.result.current.show('first');
+    });
+    expect(outcome).toEqual({ ok: false, refusal: 'notNow' });
+    expect(view.result.current.view?.kind).toBe('ask');
+    view.rerender({ snap: snapshot() });
+    expect(view.result.current.view).toBeNull();
+    expect(view.result.current.open).toBe(false);
+  });
+
   it('opens nothing over a dead link’s card', () => {
     const view = rig({ ...snapshot(), ask: ASK, card: { kind: 'linkInvalid' } });
     expect(view.result.current.view).toBeNull();

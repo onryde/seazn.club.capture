@@ -1,13 +1,13 @@
-import { writeFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { chessResultLine } from '@/domain/scoring/chessPad';
-import type { ChessDisplay, ChessMethod } from '@/domain/scoring/chessTypes';
+import type { ChessMethod } from '@/domain/scoring/chessTypes';
 import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
 import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
 import { layout, space } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
+import { chessDisplay } from '../../../test/chessLedger';
 import { loadFont } from '../../../test/fontMetrics';
 import { linesIn, linesOf } from '../../../test/textFit';
 
@@ -116,7 +116,7 @@ describe('the header’s result line at 320 and 360', () => {
   const tallyRoom = (width: number) =>
     column(width) - 3 * layout.iconButton - layout.padSyncBox - 4 * space.xs;
   const lineOf = (outcome: 'white' | 'draw' | 'black') =>
-    chessResultLine({ result: { outcome, method: null, own: false } } as ChessDisplay);
+    chessResultLine(chessDisplay({ result: { outcome, method: null, own: false } }));
 
   it('has 72 and 112 dp, as the other pads’ tally does', () => {
     expect(WIDTHS.map(tallyRoom)).toEqual([72, 112]);

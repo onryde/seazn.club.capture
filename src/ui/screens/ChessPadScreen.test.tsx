@@ -13,7 +13,7 @@ import { TEST_NOW } from '../../../test/fakePorts';
 import { ledgerOf, result } from '../../../test/chessLedger';
 import { screenIsHeld, type HoldLog } from '../../../test/heldScreen';
 import { linkKey } from '../../../test/scoringHomeFixtures';
-import { flush, launchApp, type LaunchedApp } from '../../../test/routedApp';
+import { backgroundAndBack, flush, launchApp, type LaunchedApp } from '../../../test/routedApp';
 
 const holds = vi.hoisted((): HoldLog => []);
 vi.mock('@/hooks/keepAwake', async () => {
@@ -64,6 +64,14 @@ const aSecondOn = (app: LaunchedApp) => {
 
 /** A game another scorer started: the pad is live from the first read. */
 const LIVE = chessSeed({ events: [START] });
+
+/** Time passing: the phone's clock and the timers move together, a second at a time. */
+async function pass(app: LaunchedApp, ms: number): Promise<void> {
+  for (let elapsed = 0; elapsed < ms; elapsed += 1000) {
+    aSecondOn(app);
+    await flush(1000);
+  }
+}
 
 const half = (side: 'first' | 'second') => screen.getByTestId(`half-${side}`);
 const plate = (side: 'first' | 'second') => within(half(side)).queryByTestId('plate')?.textContent;
@@ -427,15 +435,24 @@ describe('the organiser’s part', () => {
     expect(within(card).getByText(en['scoring.card.cancelled.body'])).toBeTruthy();
     expect(card.textContent).not.toContain(en['scoring.card.resultRecorded.title']);
     expect(tally()).toBe('');
+    // Nothing is left to score on a game that is over, so the screen is not kept on for it.
+    expect(screenIsHeld(holds)).toBe(false);
   });
 
   it('a result the organiser has locked is view only, and the screen is let go', async () => {
     const app = await open(chessSeed({ events: [START, DRAW] }));
+    // A result this phone may still undo keeps the screen on; the organiser's lock lets it go.
+    expect(screenIsHeld(holds)).toBe(true);
     app.scoring.finalize();
-    app.realtime.ping();
-    await flush(400);
-    expect(screen.getByTestId('pad-card')).toBeTruthy();
+    // The lock is the bootstrap's word, read at most every 15 s: the next look after that (the foreground) finds it.
+    await pass(app, 16_000);
+    await backgroundAndBack(app);
+    await flush(2_000);
+    expect(screen.getByTestId('pad-card').textContent).toBe(
+      en['scoring.card.viewOnly.title'] + en['scoring.card.viewOnly.body'],
+    );
     expect(half('first').getAttribute('aria-disabled')).toBe('true');
+    expect(screenIsHeld(holds)).toBe(false);
   });
 });
 

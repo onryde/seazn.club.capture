@@ -78,6 +78,21 @@ const ignoreFlash = (): void => undefined;
 const NOTHING_TO_UNDO: PadOutcome = refusing('nothingToUndo');
 const NOT_NOW: PadOutcome = refusing('notNow');
 
+/**
+ * The taps the bounce memory drives. Chess has no rally: a half opens a sheet (`choose`), never a tap of its own. Undo is
+ * the result's alone: the generic Undo takes this phone's last tap back, which could be a swap (the Batch A review's
+ * ruling 5), and a swap is taken back by swapping again.
+ */
+function useChessDriver(sender: Sender, undoable: boolean): PadTapDriver {
+  return useMemo(
+    () => ({
+      rally: () => NOT_NOW,
+      undo: () => (undoable ? sender.undo() : NOTHING_TO_UNDO),
+    }),
+    [sender, undoable],
+  );
+}
+
 function useChessPad(
   ports: Ports,
   runner: ScoringRunner | null,
@@ -86,38 +101,37 @@ function useChessPad(
   const sender = useSender<ChessTypes>(ports, runner);
   const [cardNote, setCardNote] = useState<MessageKey | null>(null);
   const settle = useSettle(sender.say);
-  const undoable = pad?.display.undoable ?? false;
-  const driver = useMemo<PadTapDriver>(
-    () => ({
-      // Chess has no rally: a half opens a sheet (`choose`), never a tap of its own.
-      rally: () => NOT_NOW,
-      // Undo is the result's alone: the generic Undo takes this phone's last tap back, which could be a swap (the Batch A
-      // review's ruling 5), and a swap is taken back by swapping again.
-      undo: () => (undoable ? sender.undo() : NOTHING_TO_UNDO),
-    }),
-    [sender, undoable],
-  );
+  const driver = useChessDriver(sender, pad?.display.undoable ?? false);
   const taps = useTaps(driver, settle, sender.say, ignoreFlash);
   const sheets = useSheets(ports, sender, taps.opening, pad);
   const actions = useActions({ sender, runner, pad, taps, sheets, setCardNote });
   useBackCloses(sheets.open, sheets.cancel);
   useClosedInBackground(sheets.howOpen, sheets.cancel);
   return useMemo(
-    () =>
-      pad === null
-        ? null
-        : {
-            kind: 'pad',
-            view: pad.view,
-            sheet: sheets.view,
-            line: pad.line,
-            cardNote,
-            flash: null,
-            toss: pad.toss,
-            actions,
-          },
+    () => modelOf(pad, sheets.view, cardNote, actions),
     [pad, sheets.view, cardNote, actions],
   );
+}
+
+/** What the screen is drawn from, or none while the match is loading. */
+function modelOf(
+  pad: PadFacts | null,
+  sheet: ChessSheetView | null,
+  cardNote: MessageKey | null,
+  actions: ChessPadActions,
+): ChessPadModel | null {
+  if (pad === null) return null;
+  return {
+    kind: 'pad',
+    view: pad.view,
+    sheet,
+    line: pad.line,
+    cardNote,
+    // Chess flashes no half: a result is not a point scored.
+    flash: null,
+    toss: pad.toss,
+    actions,
+  };
 }
 
 /**

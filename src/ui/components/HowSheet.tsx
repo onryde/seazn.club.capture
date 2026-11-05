@@ -53,19 +53,29 @@ export const HowSheet = memo(function HowSheet({
       <Pressable testID="how-dim" aria-hidden onPress={onCancel} style={padSheet.dim} />
       <View testID="how-sheet" accessibilityViewIsModal aria-modal style={padSheet.sheet}>
         <Text variant="title">{title}</Text>
-        <View style={styles.options}>
-          {options.map((option) => (
-            <HowChip
-              key={option.id}
-              option={option}
-              picked={option.id === picked}
-              onPick={onPick}
-            />
-          ))}
-        </View>
+        <HowOptions options={options} picked={picked} onPick={onPick} />
         <Button label={recordLabel} onPress={onRecord} />
         <GhostButton label={cancelLabel} onPress={onCancel} />
       </View>
+    </View>
+  );
+});
+
+/** The ways a game could have ended, as chips that wrap to the sheet's width; one is picked, or none. */
+const HowOptions = memo(function HowOptions({
+  options,
+  picked,
+  onPick,
+}: {
+  readonly options: readonly HowOption[];
+  readonly picked: string | null;
+  readonly onPick: (id: string | null) => void;
+}) {
+  return (
+    <View style={styles.options}>
+      {options.map((option) => (
+        <HowChip key={option.id} option={option} picked={option.id === picked} onPick={onPick} />
+      ))}
     </View>
   );
 });
