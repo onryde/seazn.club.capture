@@ -535,6 +535,7 @@
   "scoring.chess.waiting.tiebreak": "Esperando el desempate del organizador",
   "scoring.chess.forfeit": "El organizador registra las incomparecencias",
   "scoring.chess.tallySaid": "Resultado: {first} {firstPoints}, {second} {secondPoints}",
+  "scoring.chess.tallyNone": "Sin resultado",
   "scoring.chess.gameHeading": "Partida",
   "scoring.chess.last.start": "Partida iniciada",
   "scoring.chess.last.swap": "Colores cambiados",

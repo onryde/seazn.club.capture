@@ -188,6 +188,23 @@ describe('the live game', () => {
     expect(strip()).toBe(en['scoring.chess.forfeit']);
   });
 
+  // The header's visible tally is empty before a result; what a screen reader says for it must not be an empty sentence.
+  it('says "no result" for the header while no result stands, and the points once one does', async () => {
+    const app = await open();
+    const label = () => screen.getByTestId('tally').getAttribute('aria-label');
+    expect(tally()).toBe('');
+    expect(label()).toBe(en['scoring.chess.tallyNone']);
+    await record(app, 'first');
+    expect(label()).toBe(
+      fill(en['scoring.chess.tallySaid'], {
+        first: 'A. Sharma',
+        firstPoints: '1',
+        second: 'L. Chen',
+        secondPoints: '0',
+      }),
+    );
+  });
+
   it('holds the screen on while the pad stands', async () => {
     await open();
     expect(screenIsHeld(holds)).toBe(true);
@@ -269,6 +286,53 @@ describe('the sheet that asks How', () => {
     await pick(app, en['scoring.chess.method.time']);
     expect(picked(en['scoring.chess.method.time'])).toBe('false');
   });
+
+  // A double tap on a chip: its second touch is a tap on the picked chip, which would clear what the first picked.
+  it('a double tap on a method picks it and leaves it picked', async () => {
+    const app = await open();
+    await tapHalf(app, 'first');
+    aSecondOn(app);
+    // Two touches, the first drawn before the second lands (a phone's touches are tens of ms apart, not one batch).
+    for (let touch = 0; touch < 2; touch += 1) {
+      const chip = screen.getByRole('radio', { name: en['scoring.chess.method.time'] });
+      act(() => fireEvent.click(chip));
+      await flush(0);
+    }
+    expect(
+      screen
+        .getByRole('radio', { name: en['scoring.chess.method.time'] })
+        .getAttribute('aria-checked'),
+    ).toBe('true');
+    // A tap after the window is the scorer taking the choice back.
+    await pick(app, en['scoring.chess.method.time']);
+    expect(
+      screen
+        .getByRole('radio', { name: en['scoring.chess.method.time'] })
+        .getAttribute('aria-checked'),
+    ).toBe('false');
+  });
+
+  // A sheet's close leaves the screen with the touch, so the second touch of a double tap lands on the tool row under it,
+  // where Swap colours writes a pairing: every close takes the next touches with it, the sheet Cancel's alike.
+  it.each([
+    ['Match details', en['scoring.details.title']],
+    ['History', en['scoring.history.title']],
+  ])(
+    'a second touch on Swap colours straight after %s is closed counts once',
+    async (_name, icon) => {
+      const app = await open();
+      await press(app, icon);
+      await press(app, en['panel.close']);
+      expect(screen.queryByRole('button', { name: en['panel.close'] })).toBeNull();
+      act(() =>
+        fireEvent.click(screen.getByRole('button', { name: en['scoring.chess.tool.swap'] })),
+      );
+      await flush(400);
+      expect(await typesOf(app)).toEqual(['core.start']);
+      await press(app, en['scoring.chess.tool.swap']);
+      expect(await typesOf(app)).toEqual(['core.start', 'boardgame.pairing']);
+    },
+  );
 
   it('Cancel, the dim and Back leave with nothing recorded', async () => {
     const app = await open();
@@ -490,6 +554,13 @@ describe.each(LANGUAGES)('%s', (language, words: Readonly<Record<string, string>
       words['scoring.chess.tool.swap'],
     ]);
     expect(strip()).toBe(plain(words['scoring.chess.forfeit']!));
+  });
+
+  it('says "no result" for the header from its dictionary', async () => {
+    await open(LIVE, { deviceLanguages: [language] });
+    expect(screen.getByTestId('tally').getAttribute('aria-label')).toBe(
+      plain(words['scoring.chess.tallyNone']!),
+    );
   });
 
   it('asks How in its words, with its methods', async () => {

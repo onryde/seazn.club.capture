@@ -131,8 +131,31 @@ describe('picking How', () => {
     expect(how(view)?.picked).toBe('time');
     act(() => view.result.current.actions.pickMethod('resign'));
     expect(how(view)?.picked).toBe('resign');
+    settle(view.fakes);
     act(() => view.result.current.actions.pickMethod(null));
     expect(how(view)?.picked).toBeNull();
+  });
+
+  // The second touch of a double tap on a chip is a tap on the picked chip, which clears it: it must not undo the first.
+  it('a clear on the heels of the pick is a double tap’s second touch and is ignored; a later one clears', () => {
+    const view = opened('first');
+    act(() => view.result.current.actions.pickMethod('time'));
+    act(() => view.result.current.actions.pickMethod(null));
+    expect(how(view)?.picked).toBe('time');
+    settle(view.fakes);
+    act(() => view.result.current.actions.pickMethod(null));
+    expect(how(view)?.picked).toBeNull();
+  });
+
+  it('a pick of another method on the heels of one is taken, and a clear on the heels of that is ignored', () => {
+    const view = opened('first');
+    act(() => view.result.current.actions.pickMethod('time'));
+    settle(view.fakes, 200);
+    act(() => view.result.current.actions.pickMethod('resign'));
+    expect(how(view)?.picked).toBe('resign');
+    settle(view.fakes, 200);
+    act(() => view.result.current.actions.pickMethod(null));
+    expect(how(view)?.picked).toBe('resign');
   });
 
   // A win's list is the decisive one and a draw's the drawn one; the engine refuses a method that contradicts the winner.
@@ -241,9 +264,7 @@ describe('the sheet closes when the ledger moves under it', () => {
   };
 
   it('closes when another scorer recorded a result', () => {
-    expect(
-      closes({}, { phase: 'done', result: { outcome: 'black', method: null, own: false } }),
-    ).toBe(true);
+    expect(closes({}, { phase: 'done', result: { outcome: 'black', method: null } })).toBe(true);
   });
 
   it('closes when the game goes to the tie-break, is locked or is abandoned', () => {

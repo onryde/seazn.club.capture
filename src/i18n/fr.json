@@ -535,6 +535,7 @@
   "scoring.chess.waiting.tiebreak": "En attente du départage\u00a0: l'organisateur le saisit",
   "scoring.chess.forfeit": "Les forfaits sont saisis par l'organisateur",
   "scoring.chess.tallySaid": "Résultat\u00a0: {first} {firstPoints}, {second} {secondPoints}",
+  "scoring.chess.tallyNone": "Pas de résultat",
   "scoring.chess.gameHeading": "Partie",
   "scoring.chess.last.start": "Partie lancée",
   "scoring.chess.last.swap": "Couleurs inversées",

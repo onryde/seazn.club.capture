@@ -66,13 +66,13 @@ export type ChessLastTap = ChessDone | { readonly kind: 'undone'; readonly tap: 
 export type ChessPhase = 'notStarted' | 'live' | 'tiebreak' | 'done' | 'final';
 
 /**
- * The game's result as it stands. `own` is true only when this phone recorded the result (`ownEventIds`, queued taps
- * included), never by the device link, which a browser on the same link shares.
+ * The game's result as it stands. Whose it is, this phone's or another scorer's, is not here: it decides only whether Undo
+ * is offered, and that is `ChessDisplay.undoable` (`ownEventIds`, queued taps included, never the device link, which a
+ * browser on the same link shares).
  */
 export type ChessResult = {
   readonly outcome: ChessOutcome;
   readonly method: ChessMethod | null;
-  readonly own: boolean;
 };
 
 /** A chess game as the pad shows it, folded from the ledger and this phone's queued taps. */
@@ -105,6 +105,7 @@ export type ChessPadKey =
   | 'scoring.chess.waiting.tiebreak'
   | 'scoring.chess.forfeit'
   | 'scoring.chess.tallySaid'
+  | 'scoring.chess.tallyNone'
   | 'scoring.chess.gameHeading'
   | 'scoring.chess.last.start'
   | 'scoring.chess.last.swap'

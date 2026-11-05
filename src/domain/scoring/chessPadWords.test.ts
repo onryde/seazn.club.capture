@@ -24,8 +24,8 @@ const views = [
   chessPad(chessDisplay({ colorOfHome: 'B' })),
   chessPad(chessDisplay({ colorOfHome: null })),
   chessPad(chessDisplay({ phase: 'tiebreak' })),
-  decided({ result: { outcome: 'white', method: 'checkmate', own: true } }),
-  decided({ result: { outcome: 'draw', method: null, own: false } }),
+  decided({ result: { outcome: 'white', method: 'checkmate' } }),
+  decided({ result: { outcome: 'draw', method: null } }),
   decided({ result: null }),
 ];
 

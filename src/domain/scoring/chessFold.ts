@@ -161,7 +161,6 @@ function displayOf(
   const { state } = folded.facts;
   // The switch says whether the pad offers colours; a pairing recorded before it was turned off is a fact the pad ignores.
   const colour = match.engine.cfg.colors ? state.colorOfHome : null;
-  const own = stream.entries.some((entry) => entry.envelope.id === resultId && entry.own);
   return {
     phase: phaseOf(folded.facts),
     colorOfHome: colour,
@@ -169,7 +168,7 @@ function displayOf(
       first: seatName(match.seats.first, match.names.sides.first),
       second: seatName(match.seats.second, match.names.sides.second),
     },
-    result: resultOf(folded.facts, colour, own),
+    result: resultOf(folded.facts, colour),
     context: match.context,
     lastTap: lastTapOf(stream.envelopes, recorded, tapOfDone),
     undoable: undoesResult(undoTargetOf(input, stream), resultId),
@@ -208,10 +207,9 @@ const settledTiebreak = (facts: FoldedOutcomeFacts<BoardgameState>): boolean =>
 function resultOf(
   facts: FoldedOutcomeFacts<BoardgameState>,
   colour: ChessColour | null,
-  own: boolean,
 ): ChessResult | null {
   const outcome = outcomeOf(facts, colour);
-  return outcome === null ? null : { outcome, method: methodOf(facts.state.method), own };
+  return outcome === null ? null : { outcome, method: methodOf(facts.state.method) };
 }
 
 function outcomeOf(

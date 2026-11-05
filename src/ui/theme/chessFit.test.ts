@@ -116,7 +116,7 @@ describe('the header’s result line at 320 and 360', () => {
   const tallyRoom = (width: number) =>
     column(width) - 3 * layout.iconButton - layout.padSyncBox - 4 * space.xs;
   const lineOf = (outcome: 'white' | 'draw' | 'black') =>
-    chessResultLine(chessDisplay({ result: { outcome, method: null, own: false } }));
+    chessResultLine(chessDisplay({ result: { outcome, method: null } }));
 
   it('has 72 and 112 dp, as the other pads’ tally does', () => {
     expect(WIDTHS.map(tallyRoom)).toEqual([72, 112]);

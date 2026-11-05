@@ -165,7 +165,11 @@ function point(display: ChessDisplay, seat: PadSide): string {
   return seatOfOutcome(result.outcome, display.colorOfHome) === seat ? POINT.win : POINT.loss;
 }
 
-/** The header's tally: the result line once a result stands, and the points said with the names. */
+/**
+ * The header's tally: the result line once a result stands, and the points said with the names. Before one stands (the
+ * game in play, or over with none) the line is empty and so are the points, which a screen reader would read as
+ * "Result: A. Sharma , L. Chen ": it is told there is no result.
+ */
 function tally(
   display: ChessDisplay,
   halves: readonly [PadHalf<ChessPadKey>, PadHalf<ChessPadKey>],
@@ -173,15 +177,18 @@ function tally(
   const [top, bottom] = halves;
   return {
     shown: chessResultLine(display),
-    said: {
-      key: 'scoring.chess.tallySaid',
-      vars: {
-        first: top.label,
-        firstPoints: top.value,
-        second: bottom.label,
-        secondPoints: bottom.value,
-      },
-    },
+    said:
+      display.result === null
+        ? { key: 'scoring.chess.tallyNone' }
+        : {
+            key: 'scoring.chess.tallySaid',
+            vars: {
+              first: top.label,
+              firstPoints: top.value,
+              second: bottom.label,
+              secondPoints: bottom.value,
+            },
+          },
   };
 }
 

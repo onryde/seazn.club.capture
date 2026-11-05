@@ -94,7 +94,6 @@ describe('foldChess: the result is White, Black or a draw', () => {
     expect(displayOf([start(), result('H')]).result).toEqual({
       outcome: 'white',
       method: null,
-      own: false,
     });
   });
 
@@ -118,7 +117,6 @@ describe('foldChess: the result is White, Black or a draw', () => {
     expect(displayOf([start(), result(null, 'agreement')]).result).toEqual({
       outcome: 'draw',
       method: 'agreement',
-      own: false,
     });
   });
 
@@ -149,7 +147,7 @@ describe('foldChess: Undo', () => {
   it('a new result after the void stands as the result', () => {
     const display = displayOf([start(), result('H'), voiding(2), result('A', 'time')]);
     expect(display.phase).toBe('done');
-    expect(display.result).toEqual({ outcome: 'black', method: 'time', own: false });
+    expect(display.result).toEqual({ outcome: 'black', method: 'time' });
   });
 
   it('a void of the pairing puts the colours back', () => {
@@ -175,7 +173,7 @@ describe('foldChess: a drawn game in a bracket stage', () => {
       bootstrap: BRACKET,
     });
     expect(display.phase).toBe('done');
-    expect(display.result).toEqual({ outcome: 'draw', method: 'agreement', own: false });
+    expect(display.result).toEqual({ outcome: 'draw', method: 'agreement' });
   });
 
   it('a draw in a stage with no tie-break is done, not waiting', () => {
@@ -196,7 +194,7 @@ describe('foldChess: a game the organiser settles', () => {
       bootstrap: BRACKET,
       own: [1, 2],
     });
-    expect(display.result).toEqual({ outcome: 'draw', method: 'agreement', own: true });
+    expect(display.result).toEqual({ outcome: 'draw', method: 'agreement' });
   });
 
   it('waits for the organiser again once a void takes the settle back', () => {
@@ -210,7 +208,7 @@ describe('foldChess: a game the organiser settles', () => {
   it('leaves a settled level game that was no tie-break a done draw', () => {
     const display = displayOf([start(), result(null), settle('H')]);
     expect(display.phase).toBe('done');
-    expect(display.result).toEqual({ outcome: 'draw', method: null, own: false });
+    expect(display.result).toEqual({ outcome: 'draw', method: null });
   });
 
   it('is not waiting for a tie-break the settle came before: a bracket game still level keeps waiting', () => {
@@ -226,7 +224,7 @@ describe('foldChess: a forfeit while the tie-break waits', () => {
       bootstrap: BRACKET,
     });
     expect(display.phase).toBe('done');
-    expect(display.result).toEqual({ outcome: 'draw', method: null, own: false });
+    expect(display.result).toEqual({ outcome: 'draw', method: null });
   });
 });
 
@@ -234,7 +232,7 @@ describe('foldChess: what the organiser decides', () => {
   it('a walkover is done, and the player who turned up is the result’s winner, with no method', () => {
     const display = displayOf([forfeit('A')]);
     expect(display.phase).toBe('done');
-    expect(display.result).toEqual({ outcome: 'white', method: null, own: false });
+    expect(display.result).toEqual({ outcome: 'white', method: null });
   });
 
   it('a double walkover is done with no result: nobody won and nobody drew', () => {
@@ -246,25 +244,27 @@ describe('foldChess: what the organiser decides', () => {
 });
 
 describe('foldChess: whose result it is', () => {
-  it('is not this phone’s when another device’s link recorded it', () => {
-    expect(displayOf([start(), result('H')], { own: [1] }).result?.own).toBe(false);
+  // The result carries no owner: whose it is shows in what Undo may take back (`undoable`), and nowhere else.
+  it('is not this phone’s when another device’s link recorded it: no Undo', () => {
+    expect(displayOf([start(), result('H')], { own: [1] }).undoable).toBe(false);
   });
 
-  it('is this phone’s only when its event ids hold the result', () => {
-    expect(displayOf([start(), result('H')], { own: [1, 2] }).result?.own).toBe(true);
+  it('is this phone’s only when its event ids hold the result: Undo', () => {
+    expect(displayOf([start(), result('H')], { own: [1, 2] }).undoable).toBe(true);
   });
 
   it('is this phone’s when the result is only queued', () => {
     const queued = [queuedOf('tap-1', result('A', 'resign'))];
     const display = displayOf([start()], { own: [1], queued });
     expect(display.phase).toBe('done');
-    expect(display.result).toEqual({ outcome: 'black', method: 'resign', own: true });
+    expect(display.result).toEqual({ outcome: 'black', method: 'resign' });
+    expect(display.undoable).toBe(true);
   });
 
   it('follows the result that stands: after an Undo and another scorer’s new result it is theirs', () => {
     const specs = [start(), result('H'), voiding(2), result('A')];
-    expect(displayOf(specs, { own: [1, 2, 3] }).result?.own).toBe(false);
-    expect(displayOf(specs, { own: [1, 2, 3, 4] }).result?.own).toBe(true);
+    expect(displayOf(specs, { own: [1, 2, 3] }).undoable).toBe(false);
+    expect(displayOf(specs, { own: [1, 2, 3, 4] }).undoable).toBe(true);
   });
 });
 

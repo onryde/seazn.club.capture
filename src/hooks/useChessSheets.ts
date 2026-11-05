@@ -1,11 +1,12 @@
-import { useCallback, useMemo, useState } from 'react';
-import { chessMethodsFor, chessTakesResult } from '@/domain/scoring/chessPad';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import type {
   ChessColour,
   ChessDisplay,
   ChessMethod,
   ChessPadKey,
 } from '@/domain/scoring/chessTypes';
+import { isBounce } from '@/domain/scoring/bounce';
+import { chessMethodsFor, chessTakesResult } from '@/domain/scoring/chessPad';
 import { TAKEN, refusing, type PadOutcome } from '@/domain/scoring/padLine';
 import type { PadHistoryGroup, PadMatchDetails, PadSide } from '@/domain/scoring/padView';
 import {
@@ -16,6 +17,7 @@ import {
   type AskView,
   type Recording,
 } from '@/hooks/usePadSheetParts';
+import { usePorts } from '@/hooks/usePorts';
 
 /**
  * The sheets over the chess pad (plan S2-3 Task 3; spec §4; the Batch A review's rulings): the How sheet, which asks how a
@@ -72,11 +74,15 @@ const DISCARD: Sheet = { kind: 'discard' };
 
 const NOT_NOW: PadOutcome = refusing('notNow');
 
+/** The name a sheet's close has in the bounce memory. */
+const CLOSE_TAP = 'close';
+
 /**
  * The sheet over the chess pad: a half or Draw shows How (`show`), a pick chooses a method or none, Record sends the result
  * and leaves, Cancel, the dim and Back close it with nothing sent. A pick or Record takes no tap in the bounce window of
  * the sheet appearing (`justShown`): the second touch of a double tap on a half lands on the sheet, on the same edge.
- * `record` is the bounce memory's (`useTaps`' `opening`): Record leaves the sheet with it, and a double tap counts once.
+ * `record` is the bounce memory's (`useTaps`' `opening`): Record leaves the sheet with it, and so does every close by touch
+ * (`dismiss`), so a double tap counts once and its second touch cannot reach the tool under the button.
  */
 export function useChessSheets(
   pad: ChessSheetDriver,
@@ -130,16 +136,27 @@ type Parts = {
 function useActions({ sheet, setSheet, snapshot, justShown, pad, record, cancel }: Parts) {
   const details = useCallback(() => setSheet(DETAILS), [setSheet]);
   const history = useCallback(() => setSheet(HISTORY), [setSheet]);
+  // A sheet's own close (Cancel, the dim, Details' close, Keep, History's close) leaves the screen with its touch, so it is
+  // an opening tap (`useTaps`): the second touch of a double tap lands on what was under it, a half or a tool (Swap colours
+  // writes a pairing), and counts once with it. Back is not a touch on the pad: `cancel` stays out of the memory.
   const dismiss = useCallback(() => {
-    if (!justShown()) cancel();
-  }, [justShown, cancel]);
+    if (justShown()) return;
+    record(CLOSE_TAP, () => {
+      cancel();
+      return TAKEN;
+    });
+  }, [justShown, record, cancel]);
+  const { picked, justPicked } = usePickedAt();
   const pickMethod = useCallback(
     (method: ChessMethod | null) => {
       if (sheet?.kind !== 'how' || justShown()) return;
       if (method !== null && !chessMethodsFor(sheet.winner).includes(method)) return;
+      // A tap on the picked chip clears it; on the heels of the pick it is the second touch of a double tap, not a choice.
+      if (method === null && justPicked()) return;
+      if (method !== null) picked();
       setSheet({ ...sheet, picked: method });
     },
-    [sheet, setSheet, justShown],
+    [sheet, setSheet, justShown, justPicked, picked],
   );
   const recordResult = useCallback(() => {
     if (sheet?.kind !== 'how' || justShown()) return;
@@ -154,6 +171,20 @@ function useActions({ sheet, setSheet, snapshot, justShown, pad, record, cancel 
     () => ({ details, history, pickMethod, record: recordResult, dismiss, askDiscard }),
     [details, history, pickMethod, recordResult, dismiss, askDiscard],
   );
+}
+
+/** When a method was last picked: a clear inside the bounce window of it is the same chip tapped twice (`pickMethod`). */
+function usePickedAt() {
+  const { clock } = usePorts();
+  const at = useRef<number | null>(null);
+  const picked = useCallback(() => {
+    at.current = clock().getTime();
+  }, [clock]);
+  const justPicked = useCallback(
+    () => at.current !== null && isBounce(clock().getTime() - at.current),
+    [clock],
+  );
+  return { picked, justPicked };
 }
 
 /**

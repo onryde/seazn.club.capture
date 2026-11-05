@@ -535,6 +535,7 @@
   "scoring.chess.waiting.tiebreak": "Wacht op de beslissing van de organisator",
   "scoring.chess.forfeit": "Een forfait legt de organisator vast",
   "scoring.chess.tallySaid": "Uitslag: {first} {firstPoints}, {second} {secondPoints}",
+  "scoring.chess.tallyNone": "Geen uitslag",
   "scoring.chess.gameHeading": "Partij",
   "scoring.chess.last.start": "Partij gestart",
   "scoring.chess.last.swap": "Kleuren gewisseld",

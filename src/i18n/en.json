@@ -535,6 +535,7 @@
   "scoring.chess.waiting.tiebreak": "Waiting for the organiser's tie-break",
   "scoring.chess.forfeit": "Forfeits are the organiser's to record",
   "scoring.chess.tallySaid": "Result: {first} {firstPoints}, {second} {secondPoints}",
+  "scoring.chess.tallyNone": "No result",
   "scoring.chess.gameHeading": "Game",
   "scoring.chess.last.start": "Game started",
   "scoring.chess.last.swap": "Colours swapped",

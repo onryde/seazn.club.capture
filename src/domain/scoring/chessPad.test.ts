@@ -19,7 +19,7 @@ const CHEN = 'L. Chen';
 
 const OWN_WHITE_WIN = chessDisplay({
   phase: 'done',
-  result: { outcome: 'white', method: 'checkmate', own: true },
+  result: { outcome: 'white', method: 'checkmate' },
   lastTap: { kind: 'result', winner: 'first', method: 'checkmate' },
   undoable: true,
 });
@@ -166,7 +166,7 @@ describe('chessPad: the halves are the players', () => {
       chessDisplay({
         phase: 'done',
         colorOfHome,
-        result: { outcome, method: null, own: false },
+        result: { outcome, method: null },
       });
     expect(values(decided('W', 'white'))).toEqual(['1', '0']);
     expect(values(decided('W', 'black'))).toEqual(['0', '1']);
@@ -270,7 +270,7 @@ describe('chessPad: the strip', () => {
         chessDisplay({
           phase: 'done',
           colorOfHome,
-          result: { outcome, method: 'checkmate', own: false },
+          result: { outcome, method: 'checkmate' },
         }),
       );
     const won = (name: string) => [
@@ -287,9 +287,7 @@ describe('chessPad: the strip', () => {
 
   it('names the winner after the organiser locks the result, and says nothing of a result that is none', () => {
     expect(
-      note(
-        chessDisplay({ phase: 'final', result: { outcome: 'black', method: null, own: false } }),
-      ),
+      note(chessDisplay({ phase: 'final', result: { outcome: 'black', method: null } })),
     ).toEqual([{ slot: 'note', text: { key: 'scoring.chess.last.won', vars: { name: CHEN } } }]);
     expect(note(chessDisplay({ phase: 'final', result: null }))).toEqual([
       { slot: 'note', text: null },
@@ -315,9 +313,7 @@ describe('chessPad: a game that ended with no result (the Batch A review, M2)', 
 
   it('keeps the recorded-result card for a game that has a result', () => {
     expect(
-      chessPad(
-        chessDisplay({ phase: 'done', result: { outcome: 'draw', method: null, own: true } }),
-      ).card,
+      chessPad(chessDisplay({ phase: 'done', result: { outcome: 'draw', method: null } })).card,
     ).toEqual({ kind: 'resultRecorded', undoLeft: null });
   });
 
@@ -357,7 +353,7 @@ describe('chessPad: a result stands', () => {
     const view = chessPad({
       ...OWN_WHITE_WIN,
       undoable: false,
-      result: { outcome: 'white', method: 'checkmate', own: false },
+      result: { outcome: 'white', method: 'checkmate' },
     });
     expect(view.lastTap?.undo).toBe(false);
     expect(view.card).toEqual({ kind: 'resultRecorded', undoLeft: null });
@@ -372,7 +368,7 @@ describe('chessPad: a result stands', () => {
     const drawn = chessPad(
       chessDisplay({
         phase: 'done',
-        result: { outcome: 'draw', method: null, own: true },
+        result: { outcome: 'draw', method: null },
         lastTap: { kind: 'result', winner: null, method: null },
         undoable: true,
       }),
@@ -415,6 +411,18 @@ describe('chessPad: the header and the rest of the view', () => {
     });
   });
 
+  // Before a result the visible tally is empty and the points are too: a screen reader must not read "Result: A. Sharma , L. Chen ".
+  it.each([
+    ['a game in play', chessDisplay()],
+    ['a game over with no result', chessDisplay({ phase: 'done', result: null })],
+    ['an abandoned game', chessDisplay({ phase: 'final', result: null })],
+  ])(
+    'says "no result" to a screen reader for %s, with no names and no empty points',
+    (_name, display) => {
+      expect(chessPad(display).tally.said).toEqual({ key: 'scoring.chess.tallyNone' });
+    },
+  );
+
   it('carries the match context into the details, with no rules table', () => {
     const display = chessDisplay();
     expect(chessPad(display).details).toEqual({ context: display.context, rules: [] });
@@ -434,9 +442,9 @@ describe('chessResultLine: the pad’s own line, in chess notation', () => {
 
   // A draw is a bare "½": "½–½" is 81 dp at the tally's size, wider than the header's room at 320 dp (chessFit.test.ts).
   it('is 1–0, ½ or 0–1, White’s score first, with an en dash', () => {
-    expect(lineOf({ outcome: 'white', method: null, own: false })).toBe('1–0');
-    expect(lineOf({ outcome: 'draw', method: null, own: false })).toBe('½');
-    expect(lineOf({ outcome: 'black', method: null, own: false })).toBe('0–1');
+    expect(lineOf({ outcome: 'white', method: null })).toBe('1–0');
+    expect(lineOf({ outcome: 'draw', method: null })).toBe('½');
+    expect(lineOf({ outcome: 'black', method: null })).toBe('0–1');
   });
 
   it('is empty while the game is live, and while the tie-break waits', () => {
@@ -444,7 +452,7 @@ describe('chessResultLine: the pad’s own line, in chess notation', () => {
   });
 
   it('does not change with the method', () => {
-    expect(lineOf({ outcome: 'white', method: 'resign', own: true })).toBe('1–0');
+    expect(lineOf({ outcome: 'white', method: 'resign' })).toBe('1–0');
   });
 
   it('stays White’s score first when home holds Black: the pad’s tally reads like a scoresheet', () => {
@@ -453,7 +461,7 @@ describe('chessResultLine: the pad’s own line, in chess notation', () => {
         chessDisplay({
           phase: 'done',
           colorOfHome,
-          result: { outcome, method: null, own: false },
+          result: { outcome, method: null },
         }),
       ).tally.shown;
     expect(tally('B', 'white')).toBe('1–0');
@@ -466,9 +474,7 @@ describe('chessCardLine: Home’s card, the first side’s score first', () => {
     colorOfHome: ChessDisplay['colorOfHome'],
     outcome: 'white' | 'draw' | 'black',
   ) =>
-    chessCardLine(
-      chessDisplay({ phase: 'done', colorOfHome, result: { outcome, method: null, own: false } }),
-    );
+    chessCardLine(chessDisplay({ phase: 'done', colorOfHome, result: { outcome, method: null } }));
 
   it('is the first side’s point and then the second’s, with home holding White', () => {
     expect(cardLine('W', 'white')).toBe('1–0');

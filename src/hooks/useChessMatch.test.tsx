@@ -205,6 +205,7 @@ describe('choosing a result opens the How sheet and sends nothing', () => {
     expect(how(view)?.picked).toBe('time');
     act_(view, (actions) => actions.pickMethod('stalemate'));
     expect(how(view)?.picked).toBe('time');
+    await wait(300);
     act_(view, (actions) => actions.pickMethod(null));
     expect(how(view)?.picked).toBeNull();
   });
@@ -229,6 +230,64 @@ describe('choosing a result opens the How sheet and sends nothing', () => {
     await wait(300);
     act_(view, (actions) => actions.cancelSheet());
     expect(pad(view).sheet).toBeNull();
+  });
+
+  // The second touch of a double tap on a close lands on what was under it: Swap colours sits at the same height as Cancel
+  // and writes a pairing, so a close opens the window for every tap (the Batch B review, I1).
+  describe('a sheet’s close takes the second touch of a double tap with it', () => {
+    const closes: readonly [string, (view: Match) => Promise<void>][] = [
+      ['Cancel', (view) => openHow(view, 'first').then(() => act_(view, (a) => a.cancelSheet()))],
+      [
+        'the dim',
+        (view) => openHow(view, null).then(() => act_(view, (actions) => actions.cancelSheet())),
+      ],
+      [
+        'Match details’ close',
+        async (view) => {
+          act_(view, (actions) => actions.details());
+          await wait(300);
+          act_(view, (actions) => actions.dismiss());
+        },
+      ],
+      [
+        'History’s close',
+        async (view) => {
+          act_(view, (actions) => actions.history());
+          await wait(300);
+          act_(view, (actions) => actions.dismiss());
+        },
+      ],
+    ];
+
+    it.each(closes)('%s: Swap colours 100 ms later writes no pairing', async (_name, close) => {
+      const { fakes, view } = await opened();
+      await close(view);
+      expect(pad(view).sheet).toBeNull();
+      await wait(100);
+      act_(view, (actions) => actions.tool('swap'));
+      await flush();
+      expect(await typesOf(fakes)).toEqual(['core.start']);
+      expect(pad(view).line).toEqual({ kind: 'note', key: 'scoring.pad.countedOnce' });
+    });
+
+    it('nor does Draw 100 ms later open a sheet', async () => {
+      const { view } = await opened();
+      await openHow(view, 'first');
+      act_(view, (actions) => actions.cancelSheet());
+      await wait(100);
+      act_(view, (actions) => actions.tool('draw'));
+      expect(pad(view).sheet).toBeNull();
+    });
+
+    it('a Swap colours after the window writes its pairing, as it always did', async () => {
+      const { fakes, view } = await opened();
+      await openHow(view, 'first');
+      act_(view, (actions) => actions.cancelSheet());
+      await wait(300);
+      act_(view, (actions) => actions.tool('swap'));
+      await flush();
+      expect(await typesOf(fakes)).toEqual(['core.start', 'boardgame.pairing']);
+    });
   });
 
   it('Back (the phone’s) closes the sheet and records nothing', async () => {

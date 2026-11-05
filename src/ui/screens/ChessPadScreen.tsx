@@ -48,7 +48,7 @@ const PadSheet = memo(function PadSheet({
     case 'details':
       return <MatchDetailsView details={sheet.details} onClose={actions.dismiss} />;
     case 'history':
-      return <MatchHistory groups={sheet.groups} onClose={actions.cancel} />;
+      return <MatchHistory groups={sheet.groups} onClose={actions.dismiss} />;
     case 'ask':
       return <AskSheet ask={sheet.ask} onSend={actions.sendTaps} onDiscard={actions.askDiscard} />;
     case 'discard':

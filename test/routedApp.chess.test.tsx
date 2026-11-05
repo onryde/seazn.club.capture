@@ -516,6 +516,35 @@ describe('the four questions', () => {
     expect(tally()).toBe('1–0');
   });
 
+  // A double tap on the sheet's Cancel (or its dim): the first closes the sheet, the second lands on the pad under it, where
+  // Swap colours sits at the same height and writes a pairing (the Batch B review, I1). A close opens the bounce window.
+  it.each([
+    ['Cancel', () => screen.getByRole('button', { name: en['scoring.sheet.cancel'] })],
+    ['the dim', () => screen.getByTestId('how-dim')],
+  ] as const)(
+    'a second touch on the tool row straight after %s counts once: no pairing is written',
+    async (_name, closer) => {
+      const app = await live();
+      await tapHalf(app, 'first');
+      const close = closer();
+      const append = vi.spyOn(app.scoring, 'append');
+      aSecondOn(app);
+      act(() => fireEvent.click(close));
+      // A moment on (the sheet is gone and the tools are live), the phone's clock still inside the 250 ms window.
+      await flush(60);
+      expect(howSheet()).toBeNull();
+      act(() =>
+        fireEvent.click(screen.getByRole('button', { name: en['scoring.chess.tool.swap'] })),
+      );
+      await flush(2_000);
+      expect(append).not.toHaveBeenCalled();
+      expect(await typesOf(app, chessSeed())).toEqual(['core.start']);
+      // Only a touch after the window is the scorer's own Swap colours.
+      await press(app, en['scoring.chess.tool.swap']);
+      expect(await typesOf(app, chessSeed())).toEqual(['core.start', 'boardgame.pairing']);
+    },
+  );
+
   it('Swap pressed twice in the same moment writes one pairing', async () => {
     const app = await live();
     const swap = screen.getByRole('button', { name: en['scoring.chess.tool.swap'] });
