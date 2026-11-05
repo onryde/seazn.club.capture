@@ -33,8 +33,9 @@ import {
 /**
  * The sheets over the chess pad (plan S2-3 Task 3; spec §4; the Batch A review's rulings): the How sheet, which asks how a
  * game was won or drawn and records nothing until Record, the tie-break sheet of a drawn knockout game (S2-3b; its parts are
- * `useChessTiebreak`), then Match details, History, and the reconnect question over them all. Table tennis's twin is `useTableTennisSheets`; what the sports share (the bounce window of a sheet appearing, the
- * question) is `usePadSheetParts`.
+ * `useChessTiebreak`), then Match details, History, and the reconnect question over them all. Table tennis's twin is
+ * `useTableTennisSheets`; what the sports share (the bounce window of a sheet appearing, the question) is
+ * `usePadSheetParts`.
  */
 
 /** What Record asks the match to do, and what it came to at once. */

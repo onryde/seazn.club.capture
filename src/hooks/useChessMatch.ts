@@ -46,8 +46,10 @@ export type ChessPadActions = PadActions & {
   readonly pickMethod: (method: ChessMethod | null) => void;
   readonly record: () => void;
   /**
-   * The How sheet's Cancel and its dim: quiet in the bounce window of the sheet appearing, since the second touch of a double
-   * tap on a half lands on one of them. `cancel` is Back's, the background's and a dead link's close, with no such window.
+   * The Cancel and the dim of the How sheet and of the tie-break sheet: quiet in the bounce window of the sheet appearing,
+   * since the second touch of a double tap on a half or the tile lands on one of them, and they arm the same window on the
+   * way out, so the second touch of a double tap on Cancel lands on what was under it and counts once. `cancel` is Back's,
+   * the background's and a dead link's close, with no such window.
    */
   readonly cancelSheet: () => void;
   /**

@@ -698,6 +698,31 @@ describe('the Tie-break tile and the rung step', () => {
     expect(await typesOf(app, seed)).toEqual(['core.start', 'boardgame.result']);
   });
 
+  // The second touch of a double tap on Cancel or the dim lands on what is under the sheet, here the tile itself: it is
+  // counted once with the close and does not open the sheet again. A deliberate tap a moment later does.
+  it.each([
+    ['Cancel', () => screen.getByRole('button', { name: en['scoring.sheet.cancel'] })],
+    ['the dim', () => screen.getByTestId('tiebreak-dim')],
+  ] as const)(
+    'a double tap on %s does not reopen the sheet through the tile under it',
+    async (_name, close) => {
+      const seed = drawnWith();
+      const app = await open(seed);
+      await press(app, en['scoring.chess.tiebreak.tool']);
+      aSecondOn(app);
+      act(() => fireEvent.click(close()));
+      expect(tieSheet()).toBeNull();
+      act(() =>
+        fireEvent.click(screen.getByRole('button', { name: en['scoring.chess.tiebreak.tool'] })),
+      );
+      await flush(400);
+      expect(tieSheet()).toBeNull();
+      await press(app, en['scoring.chess.tiebreak.tool']);
+      expect(screen.getByText(en['scoring.chess.tiebreak.rung.title'])).toBeTruthy();
+      expect(await typesOf(app, seed)).toEqual(['core.start', 'boardgame.result']);
+    },
+  );
+
   it('a double tap on the tile opens it once: the second touch does not pick the first rung', async () => {
     const seed = drawnWith();
     const app = await open(seed);
@@ -775,6 +800,28 @@ describe('recording a rapid or blitz tie-break on the sheet', () => {
     expect((await events(app, seed)).at(-1)?.payload).toEqual({
       rung: 'blitz',
       winner: HOME_ENTRANT,
+    });
+  });
+
+  // The chip tapped again gives none back to the sheet (How's methods are optional); a score is cleared by No score, so a
+  // repeat touch on the picked score (a double tap) changes nothing.
+  it('a second touch on the picked score keeps it: only No score clears it', async () => {
+    const seed = drawnWith(['blitz']);
+    const app = await open(seed);
+    await press(app, en['scoring.chess.tiebreak.tool']);
+    await press(app, 'A. Sharma');
+    await pick(app, '2–0');
+    await pick(app, '2–0');
+    expect(tieChips()).toEqual([
+      [en['scoring.chess.tiebreak.score.none'], 'false'],
+      ['2–0', 'true'],
+      ['1½–½', 'false'],
+    ]);
+    await press(app, en['scoring.chess.how.record']);
+    expect((await events(app, seed)).at(-1)?.payload).toEqual({
+      rung: 'blitz',
+      winner: HOME_ENTRANT,
+      score: '2–0',
     });
   });
 

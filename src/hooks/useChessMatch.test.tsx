@@ -852,7 +852,9 @@ describe('the Tie-break tile', () => {
     expect(await typesOf(fakes, DRAWN)).toEqual(['core.start', 'boardgame.result']);
   });
 
-  it('a double tap opens it once, and the line says counted once', async () => {
+  // Both calls are in one act(): the second lands in the bounce window of the first, which is what the line says. That it
+  // does not restart the sheet is `ChessPadScreen.test.tsx`'s (a second touch on the tile does not pick the first rung).
+  it('a second tap on the tile in the same instant is counted once, and the line says so', async () => {
     const { view } = await opened(DRAWN);
     act(() => {
       pad(view).actions.tool('tiebreak');
@@ -1104,8 +1106,8 @@ describe('the tie-break sheet is closed by anything that changes what it was for
     expect(pad(view).view.tools).toEqual([]);
   });
 
-  // A tile pressed for a tie-break that is gone says so on the line and sends nothing.
-  it('a Record held from before the ledger moved does nothing', async () => {
+  // A Record for a tie-break that another scorer has already recorded says "not now" on the line and sends nothing.
+  it('a Record held from before the ledger moved is refused on the line and sends nothing', async () => {
     const { fakes, view } = await opened(DRAWN);
     await openTiebreak(view);
     await step(view, (a) => a.pickRung('rapid'));
@@ -1120,6 +1122,7 @@ describe('the tie-break sheet is closed by anything that changes what it was for
     await wait();
     act(() => stale());
     await flush();
+    expect(pad(view).line).toEqual({ kind: 'refusal', key: 'scoring.refusal.notNow' });
     expect(await typesOf(fakes, DRAWN)).toEqual([
       'core.start',
       'boardgame.result',

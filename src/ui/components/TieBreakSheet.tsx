@@ -1,10 +1,10 @@
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Button } from '@/ui/components/Button';
 import { GhostButton } from '@/ui/components/GhostButton';
 import { HowOptions, type HowOption } from '@/ui/components/HowSheet';
 import { padSheet } from '@/ui/components/padSheet';
-import { StepRow } from '@/ui/components/StepSheet';
+import { StepRow, type StepOption } from '@/ui/components/StepSheet';
 import { Text } from '@/ui/components/Text';
 import { space } from '@/ui/theme/tokens';
 
@@ -78,16 +78,17 @@ const Choices = memo(function Choices({
 }: Pick<TieBreakSheetProps, 'layout' | 'options' | 'picked' | 'onPick'>) {
   // A row never gives none back: only a chip can be tapped again.
   const choose = useCallback((id: string) => onPick(id), [onPick]);
+  // One object per row for as long as the choices stand, so a row (memo) is drawn again only when its own words change.
+  const rows = useMemo<readonly StepOption[]>(
+    () => options.map((option) => ({ id: option.id, label: option.label, tone: 'standard' })),
+    [options],
+  );
   if (options.length === 0) return null;
   if (layout === 'chips') return <HowOptions options={options} picked={picked} onPick={onPick} />;
   return (
     <View style={styles.rows}>
-      {options.map((option) => (
-        <StepRow
-          key={option.id}
-          option={{ id: option.id, label: option.label, tone: 'standard' }}
-          onChoose={choose}
-        />
+      {rows.map((row) => (
+        <StepRow key={row.id} option={row} onChoose={choose} />
       ))}
     </View>
   );

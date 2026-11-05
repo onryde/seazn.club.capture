@@ -173,7 +173,7 @@ describe('foldChess: a drawn game in a bracket stage', () => {
     expect(display.result?.outcome).toBe('white');
   });
 
-  it('the organiser’s tie-break decides who advances; the game itself stays a draw', () => {
+  it('a tie-break decides who advances; the game itself stays a draw', () => {
     const display = displayOf([start(), result(null, 'agreement'), tiebreak('A')], {
       bootstrap: BRACKET,
     });
