@@ -536,6 +536,7 @@
   "scoring.chess.tiebreak.rung.rapid": "Rápidas",
   "scoring.chess.tiebreak.rung.blitz": "Blitz",
   "scoring.chess.tiebreak.rung.armageddon": "Armagedón",
+  "scoring.chess.tiebreak.rung.lots": "por sorteo",
   "scoring.chess.tiebreak.rung.title": "¿Qué desempate lo decidió?",
   "scoring.chess.tiebreak.winner.title": "¿Quién ganó el desempate?",
   "scoring.chess.tiebreak.score.title": "Marcador del desempate (opcional)",

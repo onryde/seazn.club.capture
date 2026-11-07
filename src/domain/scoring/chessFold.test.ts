@@ -289,7 +289,6 @@ describe('foldChess: a tie-break is owed (pending)', () => {
   it('is not owed once the organiser has settled it by lot: lots are the organiser’s', () => {
     const display = displayOf([...DRAWN, settle('A')], { bootstrap: BRACKET });
     expect(display.tiebreak.pending).toBe(false);
-    expect(display.tiebreak.decided).toBeNull();
   });
 
   it('is not owed after a forfeit of the drawn game', () => {
@@ -416,10 +415,100 @@ describe('foldChess: a tie-break decides who advances', () => {
     }
   });
 
-  it('has no decided tie-break while it is owed, or after a settle or a forfeit', () => {
+  it('has no decided tie-break while it is owed, or after a settle by seed or by the organiser’s call, or a forfeit', () => {
     expect(displayOf(DRAWN, { bootstrap: BRACKET }).tiebreak.decided).toBeNull();
-    expect(decidedBy(settle('A')).tiebreak.decided).toBeNull();
+    expect(decidedBy(settle('A', 'higher_seed')).tiebreak.decided).toBeNull();
+    expect(decidedBy(settle('A', 'organiser')).tiebreak.decided).toBeNull();
     expect(decidedBy(forfeit('A')).tiebreak.decided).toBeNull();
+  });
+});
+
+// Ruling 64 (owner, "apply rec", 2026-11-07): a drawn knockout game the organiser settles by lot (`core.settle {method: 'lot'}`,
+// organiser-only) names the player the lot sent through, as a tie-break does, by the rung `lots`. The engine keeps the settle
+// beside the module's state (the fold's `settlement`, `events.d.ts:97-103`); the game itself stays a draw.
+describe('foldChess: a drawing of lots names who advances (ruling 64)', () => {
+  const DRAWN = [start(), result(null, 'agreement')];
+  const ABANDON: Spec = { type: 'core.abandon', payload: { reason: 'flooded' } };
+  const historyOf = (specs: readonly Spec[], over: Over = {}) => {
+    const folded = foldOf(specs, { bootstrap: BRACKET, ...over });
+    if (folded.kind !== 'folded') throw new Error(`did not fold: ${folded.reason}`);
+    return folded.history.flatMap((group) => group.rows);
+  };
+  const lotsRow = (name: string, undone = false) => ({
+    said: {
+      key: 'scoring.chess.tiebreak.advances',
+      vars: { name, how: { key: 'scoring.chess.tiebreak.rung.lots' } },
+    },
+    score: null,
+    by: 'otherScorer',
+    undone,
+    sending: false,
+  });
+
+  it('a game owed its tie-break and settled by lot is done, still a draw, and the seat the lot named advances', () => {
+    const away = displayOf([...DRAWN, settle('A')], { bootstrap: BRACKET });
+    expect(away.phase).toBe('done');
+    expect(away.result).toEqual({ outcome: 'draw', method: 'agreement' });
+    expect(away.tiebreak).toEqual({
+      rungs: ['rapid', 'blitz', 'armageddon'],
+      pending: false,
+      held: false,
+      decided: { rung: 'lots', advances: 'second' },
+    });
+    const home = displayOf([...DRAWN, settle('H')], { bootstrap: BRACKET });
+    expect(home.tiebreak.decided).toEqual({ rung: 'lots', advances: 'first' });
+  });
+
+  it('a game held for the organiser (the stage lists no rung) and settled by lot names the seat too', () => {
+    const display = displayOf([...DRAWN, settle('H')], { bootstrap: bracketWith([]) });
+    expect(display.phase).toBe('done');
+    expect(display.tiebreak).toEqual({
+      rungs: [],
+      pending: false,
+      held: false,
+      decided: { rung: 'lots', advances: 'first' },
+    });
+  });
+
+  it('names the seat whoever holds White: the lot names an entrant, and a seat is the player’s', () => {
+    const display = displayOf([start(), pairing('A'), result(null), settle('A')], {
+      bootstrap: BRACKET,
+    });
+    expect(display.colorOfHome).toBe('B');
+    expect(display.tiebreak.decided).toEqual({ rung: 'lots', advances: 'second' });
+  });
+
+  // The strip names nobody there; the settle event still has its own words, as every event does, so the last-tap line and
+  // History say what the lot did (a corner the ruling does not cover, pinned as built).
+  it('names nobody for an abandoned game settled by lot: it was never drawn, and its card says no result', () => {
+    const display = displayOf([start(), ABANDON, settle('A')], { bootstrap: BRACKET });
+    expect(display.phase).toBe('final');
+    expect(display.result).toBeNull();
+    expect(display.tiebreak.decided).toBeNull();
+    expect(display.lastTap).toEqual({ kind: 'lots', advances: 'second' });
+  });
+
+  it('names nobody once a void takes the lot back: the tie-break is owed again', () => {
+    const display = displayOf([...DRAWN, settle('A'), voiding(3)], { bootstrap: BRACKET });
+    expect(display.tiebreak).toMatchObject({ pending: true, decided: null });
+  });
+
+  it('is the last tap, by the seat the lot named, and the newest row of History, the organiser’s', () => {
+    const specs = [...DRAWN, settle('A')];
+    expect(displayOf(specs, { bootstrap: BRACKET, own: [1, 2] }).lastTap).toEqual({
+      kind: 'lots',
+      advances: 'second',
+    });
+    const [newest, ...rest] = historyOf(specs, { own: [1, 2] });
+    expect(newest).toEqual(lotsRow('L. Chen'));
+    expect(rest).toHaveLength(2);
+  });
+
+  it('a void of the lot leaves no last-tap line (a lot is never a tap, so no Undo names it) and strikes the lot’s row', () => {
+    const specs = [...DRAWN, settle('H'), voiding(3)];
+    expect(displayOf(specs, { bootstrap: BRACKET }).lastTap).toBeNull();
+    const [newest] = historyOf(specs);
+    expect(newest).toEqual(lotsRow('A. Sharma', true));
   });
 });
 
@@ -470,7 +559,8 @@ describe('foldChess: a tie-break the engine refuses is not shown', () => {
     const queued = [queuedOf('tap-1', tiebreak('H'))];
     const folded = legal([...DRAWN, settle('A')], queued, { bootstrap: BRACKET });
     expect(folded.legalQueued).not.toContain('tap-1');
-    expect(folded.display.tiebreak.decided).toBeNull();
+    // The lot stands and names its seat (ruling 64); the refused tie-break, which would send the first seat, is not shown.
+    expect(folded.display.tiebreak.decided).toEqual({ rung: 'lots', advances: 'second' });
   });
 
   it('refuses a tie-break after the organiser locked the result', () => {

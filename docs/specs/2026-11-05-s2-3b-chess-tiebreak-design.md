@@ -26,11 +26,19 @@ on 2026-11-05 why a phone, which is Remote Scoring, could not do what the web's 
 | #   | Ruling                                                                                                                                                                        |
 | --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 63  | The phone records the tie-break of a drawn knockout game, mirroring the web pad: a guided sheet with the rung, then who won and an optional score, or Armageddon's Black and result ("Mirror the web (Recommended)", 2026-11-05). |
+| 64  | A drawn knockout game the organiser settles by lot (`core.settle`): the pad names who it sent through, "{name} advances · by lot", in the strip, last-tap line and History; Home's card stays "½–½" ("apply rec", 2026-11-07).    |
 
 ## 3. The controller's calls, for the owner to correct
 
 - **Lots stay the organiser's.** A drawing of lots is `core.settle`, organiser-only. The sheet says so in one line, as the
-  web's does, and the phone never sends a settle.
+  web's does, and the phone never sends a settle. Since ruling 64 (2026-11-07) the pad names who a lot sent through, as it
+  does after a tie-break: "{name} advances · by lot" (`scoring.chess.tiebreak.rung.lots`, so `{how}` is "by lot" where a
+  tie-break puts its rung). Before it the pad read "Drawn" there and never named the advancer. The seat is read off the
+  engine's fold (`settlement`, kept beside the module's state), never the ledger around it; History and the last-tap line
+  read the settle event's own words, as they read every event. Only a game drawn on the board names one: an abandoned game
+  settled by lot keeps its "cancelled" card and an empty strip. A settle by seed or by the organiser's call still reads
+  "Drawn" (the ruling is the lot's). A lot is never this phone's tap, so when the organiser voids it no "Undone" line names
+  it: the tile is owed again and History strikes the lot.
 - **The tile.** While a tie-break is pending the pad shows a **Tie-break** tile; the result halves and Draw stay on the pad but
   are aria-disabled (as built; the web hides them), and the waiting line is replaced by the tile. When the stage lists no rungs the game is held
   as a draw (`needs_decision`) and the S2-3 line stands, reworded to "Waiting for the organiser" (it was never the

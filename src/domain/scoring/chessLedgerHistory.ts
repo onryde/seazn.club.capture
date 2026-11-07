@@ -19,9 +19,10 @@ import { sideOfEntrant, type SetBasedNames } from '@/domain/scoring/setBasedSide
  */
 
 /**
- * What an event did, or null for one the pad has no words for: the organiser's forfeit, a settle, the lock. A result
- * names the seat that won (by the entrant the payload names), or none for a draw. A tie-break names the seat that won it
- * (rapid, blitz) or the seat that had Black and how it ended (Armageddon).
+ * What an event did, or null for one the pad has no words for: the organiser's forfeit, a settle that is not a lot, the
+ * lock. A result names the seat that won (by the entrant the payload names), or none for a draw. A tie-break names the seat
+ * that won it (rapid, blitz) or the seat that had Black and how it ended (Armageddon). The organiser's drawing of lots names
+ * the seat it sent through (ruling 64).
  */
 export function doneOf(envelope: EventEnvelope, names: SetBasedNames): ChessDone | null {
   const { payload } = envelope;
@@ -34,6 +35,8 @@ export function doneOf(envelope: EventEnvelope, names: SetBasedNames): ChessDone
       return resultDone(names, payload);
     case 'boardgame.tiebreak':
       return tiebreakDone(names, payload);
+    case 'core.settle':
+      return lotsDone(names, payload);
     default:
       return null;
   }
@@ -61,6 +64,13 @@ function tiebreakDone(names: SetBasedNames, payload: unknown): ChessDone | null 
   return black === null || result === null ? null : { kind: 'tiebreak', rung, black, result };
 }
 
+/** A settle by lot, by the seat of the entrant it names; a settle by seed or by the organiser's call has no words here. */
+function lotsDone(names: SetBasedNames, payload: unknown): ChessDone | null {
+  if (field(payload, 'method') !== 'lot') return null;
+  const advances = sideOfEntrant(names, field(payload, 'winner'));
+  return advances === null ? null : { kind: 'lots', advances };
+}
+
 /** A score of the two the pad offers, else none: the web takes any score of the shape, and the line never speaks one. */
 const scoreOf = (value: unknown): ChessTiebreakScore | null =>
   CHESS_TIEBREAK_SCORES.find((score) => score === value) ?? null;
@@ -79,9 +89,12 @@ export const CHESS_FACTS: EventFacts = {
   sanctionedPerson: null,
 };
 
-/** The tap an event was, as an Undo names it, or null for the start, whose Undo shows no line. A result names its seat both ways. */
+/**
+ * The tap an event was, as an Undo names it, or null for the start, whose Undo shows no line, and for the organiser's
+ * drawing of lots, which is never a tap (so a void of it shows no line either). A result names its seat both ways.
+ */
 export function tapOfDone(did: ChessDone): ChessTap | null {
-  return did.kind === 'start' ? null : did;
+  return did.kind === 'start' || did.kind === 'lots' ? null : did;
 }
 
 /** What a tap does, as the event it makes would be read back: a result names the same seat. */

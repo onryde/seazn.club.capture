@@ -28,6 +28,7 @@ import {
   type ChessTypes,
 } from '@/domain/scoring/chessTypes';
 import type { MatchContext } from '@/domain/scoring/matchContext';
+import type { PadSide } from '@/domain/scoring/padView';
 import type { SportFold, SportFoldInput, Unfoldable } from '@/domain/scoring/scoringSport';
 import { lastTapOf } from '@/domain/scoring/setBasedBoard';
 import { lineupOf, queuedEventId } from '@/domain/scoring/setBasedEngine';
@@ -250,6 +251,7 @@ function outcomeOf(
  * folds the drawn game level and done (`boardgame.js:284-290`), so it is held (for the organiser) while the outcome is still
  * that draw. "No rung listed" is not tested here: in a knockout stage a draw that is still the outcome can only be that, since
  * a listed rung sends the draw to the tie-break (no outcome), and a settle or a withdrawal replaces it with a win or an award.
+ * What decided it is a tie-break the engine folded, or else the organiser's drawing of lots (ruling 64).
  */
 function tiebreakOf(
   cfg: BoardgameCfg,
@@ -260,7 +262,7 @@ function tiebreakOf(
     rungs,
     pending: deciderPending(boardgame, facts),
     held: cfg.tiebreak === true && engineOutcomeOf(boardgame, facts)?.kind === 'draw',
-    decided: decidedTiebreak(facts.state),
+    decided: decidedTiebreak(facts.state) ?? decidedByLot(facts),
   };
 }
 
@@ -272,8 +274,24 @@ function tiebreakOf(
 function decidedTiebreak(state: BoardgameState): ChessTiebreakState['decided'] {
   const rung = state.tiebreak?.rung;
   if (rung === undefined || state.outcome?.kind !== 'win') return null;
-  return { rung, advances: state.outcome.winner === state.entrants.home ? 'first' : 'second' };
+  return { rung, advances: seatOfEntrant(state, state.outcome.winner) };
 }
+
+/**
+ * A drawn game the organiser settled by lot (ruling 64), with the seat the lot sent through: the settle the engine keeps
+ * beside the module's state (`settlement`), never the module's own outcome, which a settle leaves as it was. Only a game
+ * drawn on the board: an abandoned game settled by lot has no result, and its card says so. A settle by seed or by the
+ * organiser's call names nobody here (the ruling is the lot's).
+ */
+function decidedByLot(facts: FoldedOutcomeFacts<BoardgameState>): ChessTiebreakState['decided'] {
+  const { settlement } = facts;
+  if (settlement?.method !== 'lot' || outcomeOf(facts, null) !== 'draw') return null;
+  return { rung: 'lots', advances: seatOfEntrant(facts.state, settlement.winner) };
+}
+
+/** The seat an entrant sits in: home is the first. */
+const seatOfEntrant = (state: BoardgameState, entrant: string): PadSide =>
+  entrant === state.entrants.home ? 'first' : 'second';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Undo

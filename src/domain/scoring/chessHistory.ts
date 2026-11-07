@@ -1,10 +1,10 @@
 import { doneOfTap } from '@/domain/scoring/chessLedgerHistory';
 import {
   advancerOf,
+  type ChessDecider,
   type ChessDone,
   type ChessMethod,
   type ChessPadKey,
-  type ChessRung,
   type ChessTap,
 } from '@/domain/scoring/chessTypes';
 import type { PadHistoryGroup, PadSide, PadText } from '@/domain/scoring/padView';
@@ -44,7 +44,7 @@ const how = (method: ChessMethod): Text => ({ key: `scoring.chess.method.${metho
 /**
  * What an event did, in the last-tap line's words ("A. Sharma won · Checkmate", "Drawn · Agreement"): the line says it of
  * the last tap, and History of every one, in the one vocabulary. A method is said only when one was chosen. A tie-break names
- * the player it sent through and its rung, never the score.
+ * the player it sent through and its rung, never the score; the organiser's drawing of lots, the player and "by lot" (ruling 64).
  */
 export function doneSaid(names: Names, did: ChessDone): Text {
   switch (did.kind) {
@@ -56,11 +56,13 @@ export function doneSaid(names: Names, did: ChessDone): Text {
       return did.winner === null ? drawnSaid(did.method) : wonSaid(names[did.winner], did.method);
     case 'tiebreak':
       return advancesSaid(names[advancerOf(did)], did.rung);
+    case 'lots':
+      return advancesSaid(names[did.advances], 'lots');
   }
 }
 
-/** "A. Sharma advances · Rapid": the player a tie-break sent through, and the rung that did. */
-export const advancesSaid = (name: string, rung: ChessRung): Text => ({
+/** "A. Sharma advances · Rapid": the player a tie-break sent through, and the rung that did ("by lot" for the organiser's lots). */
+export const advancesSaid = (name: string, rung: ChessDecider): Text => ({
   key: 'scoring.chess.tiebreak.advances',
   vars: { name, how: { key: `scoring.chess.tiebreak.rung.${rung}` } },
 });

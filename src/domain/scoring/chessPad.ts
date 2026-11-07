@@ -222,8 +222,9 @@ function strip(display: ChessDisplay): readonly PadStripItem<ChessPadKey>[] {
  * Before the result: a forfeit is the organiser's to record, which the pad cannot (the web refuses it from a device link).
  * While a drawn knockout game waits for its tie-break: nothing, since the Tie-break tool is the call (S2-3b). A drawn game
  * the stage plays no tie-break for: the organiser's to decide, said. A tie-break that decided it: who advances and by which
- * rung. Once a result stands: who won it, in words, since an organiser's walkover leaves the last-tap line without a name;
- * the header's result line reads White's score first. A game over with no result says nothing here: its card does.
+ * rung; the organiser's drawing of lots, who advances "by lot" (ruling 64). Once a result stands: who won it, in words,
+ * since an organiser's walkover leaves the last-tap line without a name; the header's result line reads White's score
+ * first. A game over with no result says nothing here: its card does.
  */
 function noteOf(display: ChessDisplay): PadText<ChessPadKey> | null {
   const { pending, held, decided } = display.tiebreak;

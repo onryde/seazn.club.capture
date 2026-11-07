@@ -81,8 +81,8 @@ const T = {
   lots: en['scoring.chess.tiebreak.lotsHint'],
 } as const;
 
-/** "L. Chen advances · Rapid", as the dictionary says it. */
-const advances = (name: string, rung: keyof typeof T.rung, words: Words = en) =>
+/** "L. Chen advances · Rapid", as the dictionary says it; "L. Chen advances · by lot" for the organiser's lots (ruling 64). */
+const advances = (name: string, rung: keyof typeof T.rung | 'lots', words: Words = en) =>
   fill(words['scoring.chess.tiebreak.advances']!, {
     name,
     how: words[`scoring.chess.tiebreak.rung.${rung}`]!,
@@ -111,15 +111,15 @@ async function lastEvent(app: LaunchedApp, seed: FakeMatchSeed) {
 const BEFORE = ['core.start', 'boardgame.result'];
 
 /**
- * What the pad says once the organiser has settled a drawn game by lot: the game stays a draw, so the strip, the last-tap line
- * and the header say "Drawn" and "½", under the "Result recorded" card, with nothing to tap. It does not name the player the
- * lot sent through. Whether it should is a controller ruling still pending: these lines pin what the pad says today, and a
- * ruling that changes them changes them here.
+ * What the pad says once the organiser has settled a drawn game by lot (ruling 64, owner, "apply rec", 2026-11-07): the strip
+ * and the last-tap line name the player the lot sent through, "{name} advances · by lot"; the game stays a draw, so the
+ * header says "½", under the "Result recorded" card, with nothing to tap.
  */
-function expectSettledByLot(lastTapLine = true): void {
-  expect(strip()).toBe(en['scoring.chess.last.drawn']);
+function expectSettledByLot(name: string, lastTapLine = true): void {
+  expect(strip()).toBe(advances(name, 'lots'));
+  expect(strip()).toBe(`${name} advances · by lot`);
   // A refusal on the line takes the last-tap sentence's place until the scorer's next tap.
-  if (lastTapLine) expect(lastTap()).toBe(en['scoring.chess.last.drawn']);
+  if (lastTapLine) expect(lastTap()).toBe(advances(name, 'lots'));
   expect(tally()).toBe('½');
   expect(screen.getByTestId('pad-card').textContent).toContain(
     en['scoring.card.resultRecorded.title'],
@@ -472,7 +472,7 @@ describe('a stage that lists one rung, or none', () => {
     app.scoring.addOtherScorerEvent('core.settle', { winner: HOME_ENTRANT, method: 'lot' });
     app.realtime.ping();
     await flush(400);
-    expectSettledByLot();
+    expectSettledByLot('A. Sharma');
     expect(await typesOf(app, seed)).toEqual([...BEFORE, 'core.settle']);
   });
 });
@@ -746,7 +746,7 @@ describe('another scorer, or the organiser, moves the game while the sheet is op
       app.realtime.ping();
       await flush(400);
       expect(sheet()).toBeNull();
-      expectSettledByLot();
+      expectSettledByLot('L. Chen');
       expect(await typesOf(app, seed)).toEqual([...BEFORE, 'core.settle']);
       // No Record is left to press and no lots line stands: the scorer's draft went with the sheet.
       expect(screen.queryByRole('button', { name: T.record })).toBeNull();
@@ -768,7 +768,7 @@ describe('another scorer, or the organiser, moves the game while the sheet is op
     expect(sheet()).toBeNull();
     expect(await typesOf(app, seed)).toEqual([...BEFORE, 'core.settle']);
     expect(screen.getByTestId('refusal').textContent).toBe(en['scoring.refusal.notCounted']);
-    expectSettledByLot(false);
+    expectSettledByLot('A. Sharma', false);
     expect(undoCell()).toBeNull();
   });
 
@@ -1078,6 +1078,104 @@ describe('History and Match details after a tie-break', () => {
   });
 });
 
+// Ruling 64 (owner, "apply rec", 2026-11-07): the organiser's drawing of lots on a drawn knockout game names the player it sent
+// through, "{name} advances · by lot", in the strip, the last-tap line and History; Home's card keeps the game's ½–½. The lot is
+// `core.settle {method: 'lot'}`, organiser-only: the phone reads it off the engine's fold and never sends one.
+describe('The organiser’s drawing of lots (ruling 64)', () => {
+  /** The organiser draws lots for `winner`, and the phone reads the ledger again. */
+  async function settledByLot(app: LaunchedApp, winner: string) {
+    const lot = app.scoring.addOtherScorerEvent('core.settle', { winner, method: 'lot' });
+    app.realtime.ping();
+    await flush(400);
+    return lot;
+  }
+  const historySaid = () => screen.getAllByTestId('history-said').map((row) => row.textContent);
+  const historyBy = () => screen.getAllByTestId('history-by').map((row) => row.textContent);
+
+  it('History lists the lot on top as another scorer’s, and Home’s Finished card keeps the game’s ½–½', async () => {
+    const seed = bracketChessSeed();
+    const app = await drawn(seed);
+    await settledByLot(app, AWAY_ENTRANT);
+    expectSettledByLot('L. Chen');
+    await press(app, en['scoring.history.title']);
+    // Newest first: the organiser's lot, the drawn game, the start.
+    expect(historySaid()).toEqual([
+      advances('L. Chen', 'lots'),
+      en['scoring.chess.last.drawn'],
+      en['scoring.chess.last.start'],
+    ]);
+    expect(historyBy()).toEqual([
+      en['scoring.history.otherScorer'],
+      en['scoring.history.thisPhone'],
+      en['scoring.history.thisPhone'],
+    ]);
+    await press(app, en['panel.close']);
+    act(() => {
+      app.back.press();
+    });
+    await flush(400);
+    expect(app.nav.current()).toBe('home');
+    expect(
+      within(screen.getByTestId('scoring-continue')).getByText(
+        fill(en['home.scoring.finishedScore'], { score: '½–½' }),
+      ),
+    ).toBeTruthy();
+    expect(await typesOf(app, seed)).toEqual([...BEFORE, 'core.settle']);
+  });
+
+  it('says it once and the same after a second read and after the app went to the background', async () => {
+    const seed = bracketChessSeed();
+    const app = await drawn(seed);
+    await settledByLot(app, HOME_ENTRANT);
+    app.realtime.ping();
+    await flush(400);
+    expectSettledByLot('A. Sharma');
+    await backgroundAndBack(app);
+    await flush(400);
+    expectSettledByLot('A. Sharma');
+    expect(await typesOf(app, seed)).toEqual([...BEFORE, 'core.settle']);
+  });
+
+  // The organiser takes the lot back (the web's "void the settle first"): the tie-break is owed again. A lot is never this
+  // phone's tap, so no "Undone" line names it (as the start's): the tile is the call, and History keeps the lot struck.
+  it('the organiser voids the lot: the tile is owed again, the strip and the last-tap line say nothing, History strikes the lot', async () => {
+    const seed = bracketChessSeed();
+    const app = await drawn(seed);
+    const lot = await settledByLot(app, HOME_ENTRANT);
+    expectSettledByLot('A. Sharma');
+    app.scoring.addOtherScorerEvent('core.void', { event_id: lot.id });
+    app.realtime.ping();
+    await flush(400);
+    expect(toolNames()).toEqual([T.tile]);
+    expect(strip()).toBe('');
+    // The line keeps its place, empty (`LastTapLine` draws an empty sentence for no last tap).
+    expect(lastTap()).toBe('');
+    expect(screen.queryByTestId('pad-card')).toBeNull();
+    expect(tally()).toBe('');
+    await press(app, en['scoring.history.title']);
+    expect(historySaid()[0]).toBe(advances('A. Sharma', 'lots'));
+    expect(screen.getAllByTestId('history-undone')).toHaveLength(1);
+  });
+
+  // A settle by seed or by the organiser's call is not a lot: the ruling names only the lot, so the pad says the drawn game.
+  it.each(['higher_seed', 'organiser'] as const)(
+    'a settle by %s names nobody: the strip and the last-tap line say the drawn game',
+    async (method) => {
+      const seed = bracketChessSeed();
+      const app = await drawn(seed);
+      app.scoring.addOtherScorerEvent('core.settle', { winner: AWAY_ENTRANT, method });
+      app.realtime.ping();
+      await flush(400);
+      expect(strip()).toBe(en['scoring.chess.last.drawn']);
+      expect(lastTap()).toBe(en['scoring.chess.last.drawn']);
+      expect(screen.getByTestId('pad-card').textContent).toContain(
+        en['scoring.card.resultRecorded.title'],
+      );
+      expect(toolNames()).toEqual([]);
+    },
+  );
+});
+
 describe.each(Object.entries(DICTIONARIES))('in %s', (language, words: Words) => {
   const launched = async (seed: FakeMatchSeed): Promise<LaunchedApp> => {
     const app = await launchApp({
@@ -1173,5 +1271,20 @@ describe.each(Object.entries(DICTIONARIES))('in %s', (language, words: Words) =>
       screen.queryByRole('button', { name: plain(words['scoring.chess.tiebreak.tool']!) }),
     ).toBeNull();
     expect(await typesOf(app, seed)).toEqual(BEFORE);
+  });
+
+  // Ruling 64: the organiser's drawing of lots, said in the phone's language in the strip, the last-tap line and History.
+  it('the organiser’s drawing of lots names who it sent through in the phone’s language', async () => {
+    const seed = bracketChessSeed();
+    const app = await launched(seed);
+    app.scoring.addOtherScorerEvent('core.settle', { winner: AWAY_ENTRANT, method: 'lot' });
+    app.realtime.ping();
+    await flush(400);
+    expect(said(strip())).toBe(advances('L. Chen', 'lots', words));
+    expect(said(lastTap())).toBe(advances('L. Chen', 'lots', words));
+    await press(app, words['scoring.history.title']!);
+    expect(said(screen.getAllByTestId('history-said')[0]?.textContent ?? null)).toBe(
+      advances('L. Chen', 'lots', words),
+    );
   });
 });

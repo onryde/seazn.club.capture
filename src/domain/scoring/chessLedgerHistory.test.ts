@@ -136,6 +136,33 @@ describe('doneOf: a tie-break', () => {
   });
 });
 
+// Ruling 64: the organiser's drawing of lots (`core.settle {winner, method: 'lot'}`) is said like a tie-break, by the seat of
+// the entrant it names. A settle by seed or by the organiser's call keeps no words (the ruling is the lot's).
+describe('doneOf: the organiser’s drawing of lots', () => {
+  const read = (payload: unknown) => doneOf(envelope('core.settle', payload), NAMES);
+
+  it('reads a lot by the seat of the entrant it sent through', () => {
+    expect(read({ winner: HOME, method: 'lot' })).toEqual({ kind: 'lots', advances: 'first' });
+    expect(read({ winner: AWAY, method: 'lot', note: 'drawn at the board' })).toEqual({
+      kind: 'lots',
+      advances: 'second',
+    });
+  });
+
+  it('has no words for a settle by seed or by the organiser’s call, nor for a lot that names nobody on this game', () => {
+    expect(read({ winner: HOME, method: 'higher_seed' })).toBeNull();
+    expect(read({ winner: AWAY, method: 'organiser' })).toBeNull();
+    expect(read({ winner: HOME })).toBeNull();
+    expect(read({ winner: 'ent-stranger', method: 'lot' })).toBeNull();
+    expect(read({ method: 'lot' })).toBeNull();
+    expect(read(null)).toBeNull();
+  });
+
+  it('is never the tap an Undo names: this phone never draws lots', () => {
+    expect(tapOfDone({ kind: 'lots', advances: 'first' })).toBeNull();
+  });
+});
+
 describe('tapOfDone and doneOfTap: a tap and what it did name the same seat', () => {
   it('turns what was done into the tap an Undo names, the start never', () => {
     expect(tapOfDone({ kind: 'start' })).toBeNull();

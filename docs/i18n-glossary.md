@@ -484,6 +484,23 @@ For the owner's language pass (what a reader should check first):
 | Confirm the result                                     | Confirma el resultado                                     | Confirmer le résultat                                            | Bevestig de uitslag                                          | `tiebreak.confirm.title`: the Armageddon's last step, with who advances and Record.                                                                                  |
 | Decided by lot? Ask the organiser to settle the match. | ¿Por sorteo? Pide al organizador que resuelva el partido. | Tirage au sort ? Demandez à l'organisateur de trancher le match. | Door loting? Vraag de organisator de wedstrijd te beslissen. | `tiebreak.lotsHint`: a drawing of lots is the organiser's settle, never a rung (design §3).                                                                          |
 
+### The organiser's drawing of lots (ruling 64, 2026-11-07)
+
+After the organiser settles a drawn knockout game by lot (`core.settle`, organiser-only), the strip, the last-tap line and
+History say "{name} advances · {how}" from the table above with this phrase as `{how}`, lowercase, where a tie-break puts
+its rung. es, fr and nl start from the web's own words (`matchCentre.result.settled_lot`, `eventCopy.settled.lot`) and are
+**unreviewed drafts, for the owner's language pass**, as the table above.
+
+- **fr _par tirage au sort_** cuts a long name (as an organiser might type it) in the strip at 320 dp, and nl's last-tap line
+  with that name takes four lines at 320 and is cut at three, as nl's Armageddon is. Both are pinned in `chessFit.test.ts`
+  rather than shortened; a shorter phrase is the language pass's call.
+- **nl _na loting_**, from the web's _gaat door na loting_, not the method word _Door loting_: "gaat door · door loting"
+  would repeat _door_.
+
+| English | Español    | Français           | Nederlands | Notes                                                                                                          |
+| ------- | ---------- | ------------------ | ---------- | -------------------------------------------------------------------------------------------------------------- |
+| by lot  | por sorteo | par tirage au sort | na loting  | `tiebreak.rung.lots`: the second half of "{name} advances · {how}" after a lot; never a rung the sheet offers. |
+
 ## App settings (2026-11-02)
 
 The app's own Settings, from the gear in Home's top-right corner (owner, 2026-11-02: "we should have common setting in a top

@@ -73,6 +73,19 @@ describe('doneSaid: what an event did, in the pad’s words', () => {
     expect(arma('second', 'draw')).toEqual({ name: 'L. Chen', how });
   });
 
+  // Ruling 64: the organiser's drawing of lots, said as a tie-break is, with "by lot" for the rung.
+  it('says who a drawing of lots sent through, by name, and "by lot"', () => {
+    const how = { key: 'scoring.chess.tiebreak.rung.lots' };
+    expect(doneSaid(NAMES, { kind: 'lots', advances: 'first' })).toEqual({
+      key: 'scoring.chess.tiebreak.advances',
+      vars: { name: 'A. Sharma', how },
+    });
+    expect(doneSaid(NAMES, { kind: 'lots', advances: 'second' })).toEqual({
+      key: 'scoring.chess.tiebreak.advances',
+      vars: { name: 'L. Chen', how },
+    });
+  });
+
   it('has a method word for each of the engine’s eleven, under its own name', () => {
     const methods = [
       'checkmate',
@@ -184,6 +197,29 @@ describe('chessHistory: the game’s sheet', () => {
       'scoring.chess.last.drawnBy',
       'scoring.chess.last.start',
     ]);
+  });
+
+  it('lists the organiser’s drawing of lots as the last thing done, with the player it sent through', () => {
+    const rows =
+      chessHistory(
+        [
+          entry({ kind: 'start' }),
+          entry({ kind: 'result', winner: null, method: null }),
+          entry({ kind: 'lots', advances: 'second' }, { own: false }),
+        ],
+        NAMES,
+      )[0]?.rows ?? [];
+    expect(rows[0]).toEqual({
+      said: {
+        key: 'scoring.chess.tiebreak.advances',
+        vars: { name: 'L. Chen', how: { key: 'scoring.chess.tiebreak.rung.lots' } },
+      },
+      score: null,
+      by: 'otherScorer',
+      undone: false,
+      sending: false,
+    });
+    expect(rows).toHaveLength(3);
   });
 
   it('keeps an entry Undo took back in its place, struck', () => {

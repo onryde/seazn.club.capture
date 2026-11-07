@@ -34,6 +34,11 @@ const views = [
   chessPad(chessDisplay({ phase: 'tiebreak', tiebreak: pendingTiebreak() })),
   decided({ tiebreak: { ...NO_TIEBREAK, held: true } }),
   ...TIEBREAK_RUNGS.map(advanced),
+  // Ruling 64: the organiser's drawing of lots, said as a tie-break with "by lot".
+  decided({
+    result: { outcome: 'draw', method: null },
+    tiebreak: { ...NO_TIEBREAK, decided: { rung: 'lots', advances: 'first' } },
+  }),
   decided({ result: { outcome: 'white', method: 'checkmate' } }),
   decided({ result: { outcome: 'draw', method: null } }),
   decided({ result: null }),
@@ -51,6 +56,7 @@ const lastTaps: readonly ChessLastTap[] = [
   { kind: 'tiebreak', rung: 'rapid', winner: 'first', score: null },
   { kind: 'tiebreak', rung: 'blitz', winner: 'second', score: '2–0' },
   { kind: 'tiebreak', rung: 'armageddon', black: 'first', result: 'draw' },
+  { kind: 'lots', advances: 'second' },
   { kind: 'undone', tap: { kind: 'result', winner: 'first', method: 'resign' } },
   { kind: 'undone', tap: { kind: 'swap' } },
   { kind: 'undone', tap: { kind: 'tiebreak', rung: 'rapid', winner: 'first', score: null } },
@@ -123,6 +129,18 @@ describe('the chess pad: its words', () => {
     }
     expect(named.has('scoring.chess.tiebreak.tool')).toBe(true);
     expect(named.has('scoring.chess.tiebreak.advances')).toBe(true);
+  });
+
+  // Ruling 64: "by lot" is the organiser's drawing of lots in the same sentence, never a rung the sheet offers.
+  it('names "by lot" for the organiser’s drawing of lots, in all four languages, apart from the rungs', () => {
+    expect(named.has('scoring.chess.tiebreak.rung.lots')).toBe(true);
+    expect(en['scoring.chess.tiebreak.rung.lots']).toBe('by lot');
+    for (const dictionary of [en, es, fr, nl] as readonly Readonly<Record<string, string>>[]) {
+      const lots = dictionary['scoring.chess.tiebreak.rung.lots'] ?? '';
+      expect(lots).not.toBe('');
+      for (const rung of TIEBREAK_RUNGS)
+        expect(lots).not.toBe(dictionary[`scoring.chess.tiebreak.rung.${rung}`]);
+    }
   });
 
   // Dutch "snelschaak" is rapid chess, so it cannot be the word for Blitz (the first draft used it): the two rungs are two words.

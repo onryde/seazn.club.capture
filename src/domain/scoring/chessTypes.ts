@@ -38,6 +38,13 @@ export const methodsOf = (winner: PadSide | null): readonly ChessMethod[] =>
 export type ChessRung = TiebreakRung;
 
 /**
+ * What sent a drawn knockout game's player through: a tie-break of one of the rungs, or the organiser's drawing of lots
+ * (`core.settle {method: 'lot'}`; ruling 64), which the strip, the last-tap line and History say as "{name} advances · by lot".
+ * The pad never offers or sends lots.
+ */
+export type ChessDecider = ChessRung | 'lots';
+
+/**
  * How an Armageddon ended, from White's side. The scorer never names its winner: White won sends the other entrant through,
  * Black won or a draw sends Black (BG-KO-2), and the engine works that out.
  */
@@ -103,7 +110,9 @@ export type ChessDone =
       readonly winner: PadSide | null;
       readonly method: ChessMethod | null;
     }
-  | ChessTiebreakTap;
+  | ChessTiebreakTap
+  /** The organiser's drawing of lots, by the seat of the entrant it sent through (ruling 64). Never a tap of this phone's. */
+  | { readonly kind: 'lots'; readonly advances: PadSide };
 
 /** What the last tap did, or the tap Undo took back. */
 export type ChessLastTap = ChessDone | { readonly kind: 'undone'; readonly tap: ChessTap };
@@ -139,8 +148,11 @@ export type ChessTiebreakState = {
    * draw), and nothing the pad records decides it.
    */
   readonly held: boolean;
-  /** The tie-break that decided it: its rung and the seat that advances. The game itself stays a draw. */
-  readonly decided: { readonly rung: ChessRung; readonly advances: PadSide } | null;
+  /**
+   * What decided it: a tie-break's rung, or the organiser's drawing of lots (`lots`, ruling 64), and the seat that advances.
+   * The game itself stays a draw.
+   */
+  readonly decided: { readonly rung: ChessDecider; readonly advances: PadSide } | null;
 };
 
 /** A chess game as the pad shows it, folded from the ledger and this phone's queued taps. */
@@ -174,7 +186,7 @@ export type ChessPadKey =
   | 'scoring.chess.waiting.tiebreak'
   | 'scoring.chess.tiebreak.tool'
   | 'scoring.chess.tiebreak.advances'
-  | `scoring.chess.tiebreak.rung.${ChessRung}`
+  | `scoring.chess.tiebreak.rung.${ChessDecider}`
   | 'scoring.chess.forfeit'
   | 'scoring.chess.tallySaid'
   | 'scoring.chess.tallyNone'

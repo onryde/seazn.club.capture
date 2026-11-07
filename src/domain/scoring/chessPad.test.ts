@@ -375,7 +375,8 @@ describe('chessPad: a tie-break decided it', () => {
     expect(chessCardLine(display)).toBe('½–½');
   });
 
-  it('says a settle by lot, which leaves no decided tie-break, as the drawn game', () => {
+  // A settle by seed or by the organiser's call leaves no decided tie-break (ruling 64 is the lot's): the drawn game.
+  it('says a settle that is not a lot, which leaves no decided tie-break, as the drawn game', () => {
     const view = chessPad(
       chessDisplay({
         phase: 'done',
@@ -384,6 +385,39 @@ describe('chessPad: a tie-break decided it', () => {
       }),
     );
     expect(view.strip).toEqual([{ slot: 'note', text: { key: 'scoring.chess.last.drawn' } }]);
+  });
+});
+
+// Ruling 64 (owner, "apply rec", 2026-11-07): the organiser's drawing of lots names who it sent through, "{name} advances · by
+// lot", in the strip and the last-tap line; the game stays a draw, so the header stays level and Home's card says ½–½.
+describe('chessPad: the organiser decided it by lot', () => {
+  const LOTS = {
+    key: 'scoring.chess.tiebreak.advances',
+    vars: { name: CHEN, how: { key: 'scoring.chess.tiebreak.rung.lots' } },
+  };
+  const settled = chessDisplay({
+    phase: 'done',
+    result: { outcome: 'draw', method: 'agreement' },
+    lastTap: { kind: 'lots', advances: 'second' },
+    undoable: false,
+    tiebreak: { ...NO_TIEBREAK, rungs: ['rapid'], decided: { rung: 'lots', advances: 'second' } },
+  });
+  const view = chessPad(settled);
+
+  it('names the player the lot sent through in the strip and the last-tap line, with no Undo: the lot is the organiser’s', () => {
+    expect(view.strip).toEqual([{ slot: 'note', text: LOTS }]);
+    expect(view.lastTap).toEqual({ text: LOTS, undo: false });
+  });
+
+  it('keeps the header level, the result card over the players and no tool', () => {
+    expect(view.tally.shown).toBe('½');
+    expect(view.halves.map((half) => half.value)).toEqual(['½', '½']);
+    expect(view.card).toEqual({ kind: 'resultRecorded', undoLeft: null });
+    expect(view.tools).toEqual([]);
+  });
+
+  it('leaves Home’s card line at the game’s score', () => {
+    expect(chessCardLine(settled)).toBe('½–½');
   });
 });
 

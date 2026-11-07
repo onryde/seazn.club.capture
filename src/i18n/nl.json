@@ -536,6 +536,7 @@
   "scoring.chess.tiebreak.rung.rapid": "Rapid",
   "scoring.chess.tiebreak.rung.blitz": "Blitz",
   "scoring.chess.tiebreak.rung.armageddon": "Armageddon",
+  "scoring.chess.tiebreak.rung.lots": "na loting",
   "scoring.chess.tiebreak.rung.title": "Welke tiebreak besliste?",
   "scoring.chess.tiebreak.winner.title": "Wie won de tiebreak?",
   "scoring.chess.tiebreak.score.title": "Tiebreakstand (optioneel)",

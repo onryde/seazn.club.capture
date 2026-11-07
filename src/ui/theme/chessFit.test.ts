@@ -115,6 +115,8 @@ const DRAWN: readonly ChessMethod[] = [
 ];
 const METHODS: readonly ChessMethod[] = [...new Set([...DECISIVE, ...DRAWN])];
 const RUNGS = ['rapid', 'blitz', 'armageddon'] as const;
+/** What can follow "{name} advances ·": a rung, or the organiser's drawing of lots, "by lot" (ruling 64). */
+const DECIDERS = [...RUNGS, 'lots'] as const;
 
 /** The widest of a language's rung words by `measure`: the line that carries one is the longest in that language. */
 const widestRung = (dictionary: Dictionary, measure: (text: string) => number) =>
@@ -278,17 +280,18 @@ describe('the strip’s one line', () => {
       for (const key of lines) expect(said(dictionary, key)).not.toBe('');
   });
 
-  // S2-3b: after a tie-break the strip names the player it sent through and the rung.
-  const advancesLine = (dictionary: Dictionary, name: string, rung: (typeof RUNGS)[number]) =>
+  // S2-3b: after a tie-break the strip names the player it sent through and the rung; after the organiser's drawing of lots,
+  // the player and "by lot" (ruling 64).
+  const advancesLine = (dictionary: Dictionary, name: string, rung: (typeof DECIDERS)[number]) =>
     fill(said(dictionary, 'scoring.chess.tiebreak.advances'), {
       name,
       how: said(dictionary, `scoring.chess.tiebreak.rung.${rung}`),
     });
 
   it.each(LANGUAGES)(
-    '%s: holds "{name} advances · {rung}" for each rung on the one line at 320 and 360, 8 dp clear',
+    '%s: holds "{name} advances · {rung}" for each rung and for lots on the one line at 320 and 360, 8 dp clear',
     (_lang, dictionary: Dictionary) => {
-      for (const rung of RUNGS)
+      for (const rung of DECIDERS)
         for (const width of WIDTHS) {
           const text = advancesLine(dictionary, NAMES[0], rung);
           expect(linesOf(text, column(width), unitWidth), `${width} ${text}`).toBe(1);
@@ -299,25 +302,27 @@ describe('the strip’s one line', () => {
 
   // A long name is the organiser's as typed. The line is cut with an ellipsis past the row; the half's head carries the name
   // whole and the last-tap line says the rest. At 320 only Armageddon, the widest rung, outgrows the row, and only in English
-  // and Dutch (298 dp of 288; French's 284 is within the row but not 8 dp clear of it); at 360 every one is whole.
+  // and Dutch (298 dp of 288; French's 284 is within the row but not 8 dp clear of it), and French's "par tirage au sort" for
+  // the organiser's lots (309 dp; ruling 64, pinned rather than shortened: the language pass may pick a shorter phrase); at
+  // 360 every one is whole.
   const longCuts = (width: number) =>
     LANGUAGES.flatMap(([lang, dictionary]) =>
-      RUNGS.filter(
+      DECIDERS.filter(
         (rung) => linesOf(advancesLine(dictionary, LONG, rung), column(width), unitWidth) > 1,
       ).map((rung) => `${lang} ${rung}`),
     );
 
-  it('cuts a long winner’s name on the strip only for Armageddon, in English and Dutch, at 320', () => {
-    expect(longCuts(320)).toEqual(['en armageddon', 'nl armageddon']);
+  it('cuts a long winner’s name on the strip only for Armageddon in English and Dutch, and for lots in French, at 320', () => {
+    expect(longCuts(320)).toEqual(['en armageddon', 'fr lots', 'nl armageddon']);
     expect(longCuts(360)).toEqual([]);
   });
 
-  it('holds a long name whole in the other three rungs and languages at 320 (anti-vacuity)', () => {
+  it('holds a long name whole in the other rungs, lots and languages at 320 (anti-vacuity)', () => {
     const fits = LANGUAGES.flatMap(([, dictionary]) =>
-      RUNGS.map((rung) => unitWidth(advancesLine(dictionary, LONG, rung))),
+      DECIDERS.map((rung) => unitWidth(advancesLine(dictionary, LONG, rung))),
     );
     expect(Math.max(...fits.filter((width) => width <= column(320)))).toBeGreaterThan(280);
-    expect(fits.filter((width) => width > column(320))).toHaveLength(2);
+    expect(fits.filter((width) => width > column(320))).toHaveLength(3);
   });
 
   // The Dutch sentence for a held game: it names the organiser, not a tie-break (design §3).
@@ -358,6 +363,11 @@ describe('the last-tap line', () => {
       name: NAMES[0],
       how: widestRung(dictionary, controlWidth),
     });
+    // The organiser's drawing of lots (ruling 64). It has no undone line: a lot is never a tap, so its void shows none.
+    const lots = fill(said(dictionary, 'scoring.chess.tiebreak.advances'), {
+      name: NAMES[0],
+      how: said(dictionary, 'scoring.chess.tiebreak.rung.lots'),
+    });
     return [
       ['start', said(dictionary, 'scoring.chess.last.start')],
       ['swap', said(dictionary, 'scoring.chess.last.swap')],
@@ -370,6 +380,7 @@ describe('the last-tap line', () => {
       ['undone swap', undone(said(dictionary, 'scoring.chess.last.swap'))],
       ['advances', advances],
       ['undone advances', undone(advances)],
+      ['lots', lots],
     ] as const;
   };
 
@@ -380,8 +391,8 @@ describe('the last-tap line', () => {
         .map(([name]) => `${lang} ${name}`),
     );
 
-  it('reads eleven sentences in each language (anti-vacuity)', () => {
-    for (const [, dictionary] of LANGUAGES) expect(sentences(dictionary)).toHaveLength(11);
+  it('reads twelve sentences in each language (anti-vacuity)', () => {
+    for (const [, dictionary] of LANGUAGES) expect(sentences(dictionary)).toHaveLength(12);
   });
 
   // Dutch's Undo ("Ongedaan maken") is the widest and leaves its sentence 129.5 dp at 320, as it does table tennis's: the
@@ -420,12 +431,13 @@ describe('the last-tap line', () => {
     ]);
   });
 
-  // A long name in the tie-break sentence: three lines in every language at 360, and at 320 all but Dutch's Armageddon,
-  // which is four and is cut at the third with the name's head kept. The half's head carries the name whole.
-  it('holds a long winner’s name in the advances sentence in three lines at 360, and at 320 but for Dutch’s Armageddon', () => {
+  // A long name in the tie-break sentence: three lines in every language at 360, and at 320 all but Dutch's Armageddon and
+  // Dutch's lots ("Alexandra / Sharma-Williams / gaat door · na / loting", ruling 64), which are four and are cut at the third
+  // with the name's head kept. The half's head carries the name whole.
+  it('holds a long winner’s name in the advances sentence in three lines at 360, and at 320 but for Dutch’s Armageddon and lots', () => {
     const long = (width: number) =>
       LANGUAGES.flatMap(([lang, dictionary]) =>
-        RUNGS.filter((rung) => {
+        DECIDERS.filter((rung) => {
           const text = fill(said(dictionary, 'scoring.chess.tiebreak.advances'), {
             name: LONG,
             how: said(dictionary, `scoring.chess.tiebreak.rung.${rung}`),
@@ -434,7 +446,7 @@ describe('the last-tap line', () => {
         }).map((rung) => `${lang} ${rung}`),
       );
     expect(long(360)).toEqual([]);
-    expect(long(320)).toEqual(['nl armageddon']);
+    expect(long(320)).toEqual(['nl armageddon', 'nl lots']);
   });
 });
 
