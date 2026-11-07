@@ -31,8 +31,8 @@ on 2026-11-05 why a phone, which is Remote Scoring, could not do what the web's 
 
 - **Lots stay the organiser's.** A drawing of lots is `core.settle`, organiser-only. The sheet says so in one line, as the
   web's does, and the phone never sends a settle.
-- **The tile.** While a tie-break is pending the pad shows a **Tie-break** tile in place of the result halves and Draw
-  (the web hides them too), and the waiting line is replaced by the tile. When the stage lists no rungs the game is held
+- **The tile.** While a tie-break is pending the pad shows a **Tie-break** tile; the result halves and Draw stay on the pad but
+  are aria-disabled (as built; the web hides them), and the waiting line is replaced by the tile. When the stage lists no rungs the game is held
   as a draw (`needs_decision`) and the S2-3 line stands, reworded to "Waiting for the organiser" (it was never the
   organiser's tie-break to wait for).
 - **The sheet** follows the web's steps: pick the rung (skipped when the stage lists exactly one), then Rapid or Blitz:

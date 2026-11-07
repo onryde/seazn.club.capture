@@ -9,6 +9,7 @@ import {
   aSecondOn,
   fill,
   half,
+  howSheet,
   inMatch,
   lastTap,
   ledger,
@@ -520,6 +521,8 @@ describe('Undo of a tie-break', () => {
       'boardgame.tiebreak',
     ]);
     expect(strip()).toBe(advances('A. Sharma', 'blitz'));
+    // The new tie-break is this phone's own, inside its window: Undo is there and live (an absent cell is not "enabled").
+    expect(undoCell()).not.toBeNull();
     expect(undoCell()?.getAttribute('aria-disabled')).not.toBe('true');
   });
 
@@ -640,6 +643,9 @@ describe('Undo of a tie-break', () => {
     await pick(app, '1½–½');
     await press(app, T.record);
     expect(strip()).toBe(advances('L. Chen', 'rapid'));
+    // Unsent, it is still this phone's own to take back: Undo is there and live.
+    expect(undoCell()).not.toBeNull();
+    expect(undoCell()?.getAttribute('aria-disabled')).not.toBe('true');
     // Nothing can be read from the server while it is out of reach; the pad's sync badge is the scorer's sign of it.
     app.scoring.goOffline(false);
     aSecondOn(app, 120);
@@ -651,7 +657,12 @@ describe('Undo of a tie-break', () => {
     expect(rows.map((event) => event.type)).toEqual([...BEFORE, 'boardgame.tiebreak']);
     expect(rows[2]?.payload).toEqual({ rung: 'rapid', winner: AWAY_ENTRANT, score: '1½–½' });
     expect(strip()).toBe(advances('L. Chen', 'rapid'));
-    expect(undoCell()?.getAttribute('aria-disabled')).not.toBe('true');
+    // The phone's clock moved 240 s while the sender retried, past the 45 s window the tap opened: Undo is gone, and the
+    // card sends the scorer to the organiser.
+    expect(undoCell()).toBeNull();
+    expect(screen.getByTestId('pad-card').textContent).toContain(
+      en['scoring.card.resultRecorded.bodyClosed'],
+    );
   });
 });
 
@@ -842,6 +853,36 @@ describe('another scorer, or the organiser, moves the game while the sheet is op
     expect(toolNames()).toEqual([]);
     expect(undoCell()).toBeNull();
   });
+
+  // The tie-break sent L. Chen on and the web carried the result forward (the next round seated): it refuses every write
+  // from a device link, an Undo inside the window included (403 RESULT_CARRIED_FORWARD, judged before the void). The
+  // scorer's Undo is refused once: the card says the result has moved on, the tie-break stands, and Undo is off.
+  it('the web carries the tie-break forward, then the scorer takes Undo: the carried-forward card, no void on the ledger, and Undo disabled', async () => {
+    const seed = bracketChessSeed();
+    const app = await drawn(seed);
+    await openTiebreak(app);
+    await press(app, T.rung.rapid);
+    await press(app, 'L. Chen');
+    await press(app, T.record);
+    expect(undoCell()).not.toBeNull();
+    expect(undoCell()?.getAttribute('aria-disabled')).not.toBe('true');
+    app.scoring.carryForward(true);
+    const append = vi.spyOn(app.scoring, 'append');
+    aSecondOn(app, 5);
+    await flush(1_000);
+    await press(app, en['scoring.pad.undo']);
+    await flush(1_000);
+    // The void was asked for once, refused, and never asked for again: the ledger ends on the tie-break.
+    expect(await typesOf(app, seed)).toEqual([...BEFORE, 'boardgame.tiebreak']);
+    expect(append.mock.calls.map((call) => call[2].type)).toEqual(['core.void']);
+    expect(screen.getByTestId('pad-card').textContent).toBe(
+      en['scoring.card.carriedForward.title'] + en['scoring.card.carriedForward.body'],
+    );
+    expect(strip()).toBe(advances('L. Chen', 'rapid'));
+    expect(tally()).toBe('½');
+    expect(undoCell()).not.toBeNull();
+    expect(undoCell()?.getAttribute('aria-disabled')).toBe('true');
+  });
 });
 
 describe('after an interruption', () => {
@@ -989,6 +1030,27 @@ describe('a second call', () => {
     expect(sheet()).toBeNull();
     await press(app, T.tile);
     expect(sheet()).not.toBeNull();
+  });
+
+  // Record on the How sheet of a knockout game's draw closes the sheet and draws the Tie-break tile in the tool row under
+  // it: the second touch of a double tap lands on the tile, and the bounce memory the result and the tile share refuses it.
+  it('a second touch on the new Tie-break tile straight after the How sheet’s Record for a draw opens nothing', async () => {
+    const seed = bracketChessSeed();
+    const app = await live(seed);
+    await press(app, en['scoring.chess.tool.draw']);
+    expect(howSheet()).not.toBeNull();
+    aSecondOn(app);
+    await touch(T.record);
+    expect(howSheet()).toBeNull();
+    expect(await typesOf(app, seed)).toEqual(BEFORE);
+    // The tile is on the screen under the finger, and the touch on it is the same double tap's.
+    expect(tileButton()).not.toBeNull();
+    await touch(T.tile);
+    expect(sheet()).toBeNull();
+    expect(toolNames()).toEqual([T.tile]);
+    // Only a touch after the window is the scorer’s own.
+    await press(app, T.tile);
+    expect(stepTitle(T.titles.rung)).toBeTruthy();
   });
 });
 

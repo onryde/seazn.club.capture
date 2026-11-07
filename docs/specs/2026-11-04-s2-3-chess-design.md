@@ -36,7 +36,8 @@ Non-goals:
 - A forfeit, a no-show, a walkover, an abandon, or drawing lots from the phone. The web refuses them
   from a device link (`core.forfeit`, `core.abandon`, `core.settle` are organiser-only), and the owner
   asked for no web change (§7). The pad says so in one line.
-- The rapid or blitz tie-break rungs (`boardgame.tiebreak`) and the mini-match score (the web's D6).
+- The rapid or blitz tie-break rungs (`boardgame.tiebreak`) and the mini-match score (the web's D6). **Superseded by
+  ruling 63:** built in S2-3b, see `docs/specs/2026-11-05-s2-3b-chess-tiebreak-design.md`.
 - A second state machine in TypeScript: the match state is a fold of the web's ledger by
   `@onryde/seazn-engine` (S2 design §6.1), as for the other sports.
 

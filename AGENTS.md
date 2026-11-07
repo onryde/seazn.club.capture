@@ -95,7 +95,8 @@ with sport conditions (S2 ruling 38; owner, 2026-11-02).
 
 The phone scores badminton (S2-1), table tennis (S2-2) and chess (S2-3,
 `docs/specs/2026-11-04-s2-3-chess-design.md`, rulings 57–62). Chess records one
-game's result only (57, 58). Its key is the engine's shared `boardgame`, and
+game's result only (57, 58), and for a drawn knockout game also its tie-break
+(ruling 63, `docs/specs/2026-11-05-s2-3b-chess-tiebreak-design.md`). Its key is the engine's shared `boardgame`, and
 every `boardgame` match is treated as chess (61). Forfeit, walkover, abandon
 and lots are the organiser's: the phone never sends `core.forfeit`,
 `core.settle`, `core.abandon` or a forfeit method.
