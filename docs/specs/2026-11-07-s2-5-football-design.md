@@ -80,6 +80,7 @@ Anti-goals (a failure even if it works):
 | 107 | A shared clock anchored on the server that every screen resyncs to ("can we have some shared clock in server which can resync with mobile?", then "yes" to the controller's proposal, 2026-11-08), after the builder check showed the web does not share a running clock today (§7.1). Built from the ledger's own clock events, no new server state (§7.2); the web console follows it too (§10). |
 | 108 | The clock shows match time, as football counts it: the second half starts at 45:00, added time reads "90+3"; and the web console's football clock changes to match ("A, change console too", 2026-11-08).                                                                                                                                                                                          |
 | 109 | In added time the clock face shows the time passed, "90+2:30", and an event's minute is the minute being played, "90+3'" for the same moment, as football counts a goal at 0:30 as the 1st minute ("A", 2026-11-08).                                                                                                                                                                               |
+| 110 | The viewers' scoreboard overlay follows the same shared clock: the same anchor (§7.2), corrected to the server's time, and the same match time (§7.4, ruling 109), football only, in the same web PR. The streaming phone still draws no clock or score (AGENTS.md §7) ("apply rec", 2026-11-08).                                                                                                  |
 
 ## 4. What staging answered (probed before this design)
 
@@ -448,6 +449,13 @@ One change in `onryde/seazn.club`, on its own branch and PR, owned by this work 
   minutes within a period), so the change is behind football's skin, not in the shared formatter. The web's ledger
   read must expose `recorded_at` to the pad if it does not already (the builder checks). Its clock tests
   (`clock.ts`'s properties) are updated for the new rule, and a new test holds two pads following one anchor.
+- **The viewers' overlay** (ruling 110), in the same PR: the scoreboard overlay (`server/overlay/project.ts`'s
+  `clockOf`, `components/overlay/use-overlay-clock.ts`) today anchors on the newest stamped event of any kind, reads
+  the viewer machine's own clock uncorrected, counts within the period and caps added time at "45+". For football it
+  takes §7.2's anchor (the newest standing `football.clock` event), a server-time offset measured as on the pad
+  (Date header), and §7.4's match time with ruling 109's added time. Other sports' overlays keep today's behaviour.
+  The phone's Live Stream mode is untouched: it draws no score and no match clock (AGENTS.md §7), and its own clock is
+  the broadcast's elapsed time.
 - No new endpoint, no change to who may read lineups, no change to the events route. The device link still cannot read
   or write a team sheet; it receives the one it is scoring with, as the web's own `/score/{token}` pad already does on
   the server (`app/score/[token]/page.tsx:205-217`).
