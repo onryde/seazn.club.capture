@@ -335,6 +335,19 @@ In `seazn.club.engine`, released as a version both the web and the phone take:
 3. **A hand strike swap**: today a ball whose `striker`/`nonStriker` differ from the fold's pair is refused (1524-1542).
    The engine designs how a swap is recorded, so the phone can offer "tap a batter to swap".
 
+What each costs (engine recon, 2026-11-07; engine `AGENTS.md` "Releasing", `src/sport/fold-epoch.ts:5-25`,
+`rules/README.md`, `src/testkit/GOLDEN-POLICY.md`):
+
+| Change | Kind | Why |
+| --- | --- | --- |
+| 1. Exports | additive, minor release | two fields on `CricketPadRules` (`pad/types.ts:62-67`), `orderFromLineup` into `sports/cricket/index.ts`; already inside the phone subpaths, so no closure re-pin; proved like CK-FH-1 (`pad/cricket.test.ts:242, 289`) under rows CK-NB-1 and CK-WD-1 |
+| 2. Mid-over change | **fold epoch bump** (major) | the fold holds one `currentBowler` and one `prevOverBowler` (`cricket.ts:481-482, 1742`), and the scorecard gives an over one bowler (`scorecard-types.ts:47-50`). It needs an explicit event or flag, never "credit whoever is named", which would re-credit stored ledgers. A cricket epoch bump makes the web refuse cricket writes from older clients (`scoring.ts:804`, 426); no phone scores cricket yet, so this costs the phone nothing |
+| 3. Strike swap | additive if it accepts exactly the reversed pair | on replay the ledger's pair is already adopted (`cricket.ts:1546-1547`), so old engines fold it the same; the strict check (1524-1548) is a rule, pinned by `cricket.test.ts:194` and DOMAIN.md:79, so it needs an engine ruling and a rules row. A separate swap event would be a bump |
+
+The web pad changes with them: `cricket.tsx` `bowlerIsReadOnly` (287-292), `bowlerBlockReason` (728-734),
+`creaseEndLocked` (293-299), and a wide/no-ball narrowing beside 2268. The scorecard's readers (`overlay-cricket.ts:96`,
+`match-centre.ts`, `appearances.ts`) change only for 2.
+
 The phone takes the release (the S2-2 path: ruling 53). The web takes it too, and the web pad's fixes use the same
 changes. The engine's own rules and owner rulings govern the change. Until it ships, the phone falls back to a trial
 fold for the dismissal kinds, and offers neither the mid-over change nor the swap.
