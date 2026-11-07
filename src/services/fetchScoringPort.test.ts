@@ -100,7 +100,13 @@ type Call = Parameters<ScoringFetch>;
 
 function portOver(
   fetch: ScoringFetch,
-  overrides: { logger?: Logger; host?: string; timeoutMs?: number } = {},
+  overrides: {
+    logger?: Logger;
+    host?: string;
+    timeoutMs?: number;
+    now?: () => number;
+    serverTime?: (sampleMs: number) => void;
+  } = {},
 ) {
   const calls: Call[] = [];
   const record = createRingRecord();
@@ -113,7 +119,8 @@ function portOver(
     logger,
     host: overrides.host ?? 'stg.seazn.club',
     ...(overrides.timeoutMs === undefined ? {} : { timeoutMs: overrides.timeoutMs }),
-    now: () => NOW,
+    now: overrides.now ?? (() => NOW),
+    ...(overrides.serverTime === undefined ? {} : { serverTime: overrides.serverTime }),
   });
   const entries = () => record.lines().map(parseRecordLine);
   return { port, calls, record, entries };
@@ -341,6 +348,114 @@ describe('Retry-After', () => {
       kind: 'rateLimited',
       retryAfterMs: 120_000,
     });
+  });
+});
+
+/**
+ * S2-5 design §7.2: each answer's `Date` header is one sample of the server's clock against the request's midpoint on
+ * the phone's (`offsetSampleOf`), handed to `serverTime`. NOW is 10:00:00Z; the server's header says 10:05:00, so a
+ * request sent at NOW and answered 200 ms later samples 10:05:00 + 500 − (NOW + 100) = 300 400.
+ */
+describe('the server’s time, from each answer’s Date header', () => {
+  const SERVER_DATE = 'Mon, 02 Nov 2026 10:05:00 GMT';
+  /** The phone's clock: NOW when the request goes, 200 ms on once anything later asks. */
+  const stepping = () => {
+    let asked = 0;
+    return () => (asked++ === 0 ? NOW : NOW + 200);
+  };
+  const sampling = (response: FetchResponse, extra: Parameters<typeof portOver>[1] = {}) => {
+    const samples: number[] = [];
+    const over = portOver(answering(response), {
+      now: stepping(),
+      serverTime: (sampleMs) => samples.push(sampleMs),
+      ...extra,
+    });
+    return { ...over, samples };
+  };
+
+  it('an answer with a Date header reports one sample', async () => {
+    const { port, samples } = sampling(respond(201, CREATED, { Date: SERVER_DATE }));
+    expect(await port.append(LINK, FIXTURE, BODY)).toMatchObject({ kind: 'accepted' });
+    expect(samples).toEqual([300_400]);
+  });
+
+  it('every call samples its answer, whatever the status: the header is the server’s', async () => {
+    const reads = sampling(respond(200, ok([]), { Date: SERVER_DATE }));
+    await reads.port.events(LINK, FIXTURE, 0);
+    expect(reads.samples).toEqual([300_400]);
+    const refused = sampling(respond(409, failure('SEQ_CONFLICT'), { Date: SERVER_DATE }));
+    expect(await refused.port.append(LINK, FIXTURE, BODY)).toMatchObject({ kind: 'seqConflict' });
+    expect(refused.samples).toEqual([300_400]);
+  });
+
+  it('no Date, or "garbage", reports none', async () => {
+    const none = sampling(respond(201, CREATED));
+    await none.port.append(LINK, FIXTURE, BODY);
+    expect(none.samples).toEqual([]);
+    const garbage = sampling(respond(201, CREATED, { Date: 'garbage' }));
+    expect(await garbage.port.append(LINK, FIXTURE, BODY)).toMatchObject({ kind: 'accepted' });
+    expect(garbage.samples).toEqual([]);
+  });
+
+  it('a round trip over 5 s reports none', async () => {
+    let asked = 0;
+    const slow = () => (asked++ === 0 ? NOW : NOW + 5_001);
+    const { port, samples } = sampling(respond(201, CREATED, { Date: SERVER_DATE }), { now: slow });
+    expect(await port.append(LINK, FIXTURE, BODY)).toMatchObject({ kind: 'accepted' });
+    expect(samples).toEqual([]);
+  });
+
+  it('a redirected answer reports none', async () => {
+    const elsewhere: FetchResponse = {
+      ...respond(201, CREATED, { Date: SERVER_DATE }),
+      url: 'https://portal.example/login',
+    };
+    const { port, samples } = sampling(elsewhere);
+    expect(await port.append(LINK, FIXTURE, BODY)).toEqual({ kind: 'offline' });
+    expect(samples).toEqual([]);
+  });
+
+  // The answer lands after the call has given up (its abort ignored): the caller was told offline, and the clock is
+  // not fed by an answer nobody took. The clock here never moves, so the round trip alone would let it through.
+  it('a timed-out answer reports none', async () => {
+    vi.useFakeTimers();
+    const samples: number[] = [];
+    const late: ScoringFetch = () =>
+      new Promise((resolve) => {
+        setTimeout(
+          () => resolve(respond(201, CREATED, { Date: SERVER_DATE })),
+          SCORING_TIMEOUT_MS + 1,
+        );
+      });
+    const { port } = portOver(late, { serverTime: (sampleMs) => samples.push(sampleMs) });
+    const pending = port.append(LINK, FIXTURE, BODY);
+    await vi.advanceTimersByTimeAsync(SCORING_TIMEOUT_MS + 1);
+    expect(await pending).toEqual({ kind: 'offline' });
+    await vi.advanceTimersByTimeAsync(1);
+    expect(samples).toEqual([]);
+  });
+
+  it('the same answer in time, on that same unmoving clock, is a sample', async () => {
+    const samples: number[] = [];
+    const { port } = portOver(answering(respond(201, CREATED, { Date: SERVER_DATE })), {
+      serverTime: (sampleMs) => samples.push(sampleMs),
+    });
+    await port.append(LINK, FIXTURE, BODY);
+    expect(samples).toEqual([300_500]); // NOW and NOW: 10:05:00 + 500 − NOW
+  });
+
+  it('a network failure reports none, and a port with no clock to feed still answers', async () => {
+    const samples: number[] = [];
+    const { port } = portOver(
+      async () => {
+        throw new Error('Network request failed');
+      },
+      { serverTime: (sampleMs) => samples.push(sampleMs) },
+    );
+    expect(await port.append(LINK, FIXTURE, BODY)).toEqual({ kind: 'offline' });
+    expect(samples).toEqual([]);
+    const unfed = portOver(answering(respond(201, CREATED, { Date: SERVER_DATE })));
+    expect(await unfed.port.append(LINK, FIXTURE, BODY)).toMatchObject({ kind: 'accepted' });
   });
 });
 

@@ -87,7 +87,7 @@
     "lastEnd": "native: LastEnd wire",
     "lock": "JS: an orientation lock name",
     "mode": "JS: a mode name",
-    "ms": "JS: a duration",
+    "ms": "JS: a duration; JS: scoring.clock.offset, the server's clock less the phone's",
     "notReady": "native: NotReady wire (A11)",
     "op": "both: a store operation name (native: read, write, prune, delete)",
     "phase": "native: a phase name",

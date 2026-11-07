@@ -1,22 +1,26 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { scoringPortFor } from '@/hooks/scoringPortWiring';
 import type { ScoringFetch } from '@/services/fetchScoringPort';
 import { createLogger } from '@/services/logger';
+import { createServerClock } from '@/services/serverClock';
 import { createRingRecord } from '@/services/sessionRecord';
 import { FAKE_SCORING_SECRET } from '../../test/fakeScoringLinkPort';
 
 const FIXTURE = '6f0c5a52-3d1e-4a0b-8f55-0c2f6d7b9e10';
 
 /** A server that is never reached, so what the port asked is all a test sees. */
-function wiring(hosts: readonly string[]) {
+function wiring(hosts: readonly string[], headers: Readonly<Record<string, string>> = {}) {
   const asked: string[] = [];
   const fetch: ScoringFetch = async (url) => {
     asked.push(url);
-    return { status: 503, headers: { get: () => null }, text: async () => '' };
+    return { status: 503, headers: { get: (name) => headers[name] ?? null }, text: async () => '' };
   };
   const logger = createLogger({ record: createRingRecord(), now: () => 0 });
-  return { port: scoringPortFor({ fetch, logger, hosts }), asked };
+  const serverClock = createServerClock({ logger });
+  return { port: scoringPortFor({ fetch, logger, hosts, serverClock }), asked, serverClock };
 }
+
+afterEach(() => vi.useRealTimers());
 
 /**
  * The inert seam (AGENTS §13, class 1): `createNativePorts` is not run by any test, so the rule it wires lives in
@@ -45,5 +49,23 @@ describe('which host the composition root’s scoring port trusts', () => {
     const link = { origin: 'https://stg.seazn.club', token: FAKE_SCORING_SECRET };
     expect(await port.bootstrap(link)).toEqual({ kind: 'offline' });
     expect(asked).toEqual([]);
+  });
+});
+
+/**
+ * S2-5 design §7.2: the server clock in `Ports` is fed by this port's answers, or the football clock reads the
+ * phone's own time for ever (the inert seam). On the device's clock (`Date.now`, frozen here by the fake timers at
+ * 12:00:00Z), an answer whose `Date` says 12:01:00 samples 60 000 + 500.
+ */
+describe('which clock the composition root’s scoring port feeds', () => {
+  it('the server clock it is given: each answer’s Date header moves its offset', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.UTC(2026, 10, 7, 12, 0, 0));
+    const { port, serverClock } = wiring(['stg.seazn.club'], {
+      Date: 'Sat, 07 Nov 2026 12:01:00 GMT',
+    });
+    expect(serverClock.offsetMs()).toBe(0);
+    await port.rules({ origin: 'https://stg.seazn.club', token: FAKE_SCORING_SECRET }, FIXTURE);
+    expect(serverClock.offsetMs()).toBe(60_500);
   });
 });

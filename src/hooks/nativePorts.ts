@@ -18,6 +18,7 @@ import { createLogger } from '@/services/logger';
 import { createModeStore } from '@/services/modeStore';
 import { createProbeFlight } from '@/services/probeFlight';
 import { createScanFlight } from '@/services/scanFlight';
+import { createServerClock } from '@/services/serverClock';
 import { createExpoRouterNavigation } from '@/services/native/expoRouterNavigation';
 import { createNativeBack } from '@/services/native/nativeBack';
 import { createNativeForeground } from '@/services/native/nativeForeground';
@@ -94,6 +95,8 @@ export function createNativePorts(
     fetch: (url, init) => fetch(url, init),
     logger,
   });
+  // S2-5 design §7.2: built before the scoring port, which feeds it every answer's `Date` header.
+  const serverClock = createServerClock({ logger });
   return {
     engine: wired.engine,
     devEngine: wired.devEngine,
@@ -126,7 +129,8 @@ export function createNativePorts(
     scoringLink: scoringLinkPortFor(native, { logger, hosts }),
     // S2: plain fetch (AGENTS §8), to the build's host only. The match runner (`scoringRunner.ts`) calls it, and the live
     // owner (`scoringLive.ts`) asks it for the Realtime token.
-    scoring: scoringPortFor({ fetch: (url, init) => fetch(url, init), logger, hosts }),
+    scoring: scoringPortFor({ fetch: (url, init) => fetch(url, init), logger, hosts, serverClock }),
+    serverClock,
     // S2: one JSON file per match in the document directory. The runner, the hub and Home's cards read and write it.
     tapQueue: createTapQueueStore({ files: createExpoQueueFiles(), logger }),
     // S2: the real `@supabase/realtime-js` over the runtime's WebSocket. The focused match's live owner (`scoringLive.ts`) subscribes.

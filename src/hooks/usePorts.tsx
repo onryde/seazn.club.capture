@@ -30,6 +30,7 @@ import type { RecordSendFlight } from '@/services/recordSendFlight';
 import type { ScanFlight } from '@/services/scanFlight';
 import type { ScoringLinkPort } from '@/services/scoringLinkPort';
 import type { ScoringPort } from '@/services/scoringPort';
+import type { ServerClock } from '@/services/serverClock';
 import type { SessionRecord } from '@/services/sessionRecord';
 import type { StreamSettingsStore } from '@/services/streamSettingsStore';
 import type { TapQueueStore } from '@/services/tapQueueStore';
@@ -86,6 +87,11 @@ export type Ports = {
   readonly scoringLink: ScoringLinkPort;
   /** S2: Remote scoring's calls to the web (bootstrap, ledger, rules, append, realtime grant), plain fetch. */
   readonly scoring: ScoringPort;
+  /**
+   * S2-5: how far the server's clock is ahead of this phone's, from the scoring answers' `Date` headers (design §7.2),
+   * for the football clock's shared match time. Subscribe to it; it changes only when an answer arrives (AGENTS §8).
+   */
+  readonly serverClock: ServerClock;
   /** S2: the taps a phone has made and the server has not yet accepted, one file per match; no secret in it. */
   readonly tapQueue: TapQueueStore;
   /** S2: the "something changed" ping from the server, a private Realtime channel; down means poll (plan Task 8). */

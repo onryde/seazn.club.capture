@@ -218,3 +218,32 @@ describe('fake scoring server', () => {
     expect(ports.scoring).toBe(own);
   });
 });
+
+describe('fake server clock', () => {
+  it('offsetMs is 0 until setOffset, then what was set; a sample does not move it', () => {
+    const { serverClock, ports } = createFakePorts();
+    expect(ports.serverClock).toBe(serverClock);
+    expect(serverClock.offsetMs()).toBe(0);
+    serverClock.setOffset(300_000);
+    expect(serverClock.offsetMs()).toBe(300_000);
+    serverClock.sample(-5_000);
+    expect(serverClock.offsetMs()).toBe(300_000);
+    serverClock.setOffset(-2_500);
+    expect(serverClock.offsetMs()).toBe(-2_500);
+  });
+
+  it('a subscriber hears setOffset change it, until it unsubscribes', () => {
+    const { serverClock } = createFakePorts();
+    let heard = 0;
+    const leave = serverClock.subscribe(() => {
+      heard += 1;
+    });
+    serverClock.setOffset(1_000);
+    expect(heard).toBe(1);
+    serverClock.setOffset(1_000); // no change, nothing to hear
+    expect(heard).toBe(1);
+    leave();
+    serverClock.setOffset(2_000);
+    expect(heard).toBe(1);
+  });
+});
