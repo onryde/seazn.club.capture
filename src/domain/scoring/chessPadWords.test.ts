@@ -34,7 +34,7 @@ const views = [
   chessPad(chessDisplay({ phase: 'tiebreak', tiebreak: pendingTiebreak() })),
   decided({ tiebreak: { ...NO_TIEBREAK, held: true } }),
   ...TIEBREAK_RUNGS.map(advanced),
-  // Ruling 64: the organiser's drawing of lots, said as a tie-break with "by lot".
+  // Ruling 63b: the organiser's drawing of lots, said as a tie-break with "by lot".
   decided({
     result: { outcome: 'draw', method: null },
     tiebreak: { ...NO_TIEBREAK, decided: { rung: 'lots', advances: 'first' } },
@@ -131,7 +131,7 @@ describe('the chess pad: its words', () => {
     expect(named.has('scoring.chess.tiebreak.advances')).toBe(true);
   });
 
-  // Ruling 64: "by lot" is the organiser's drawing of lots in the same sentence, never a rung the sheet offers.
+  // Ruling 63b: "by lot" is the organiser's drawing of lots in the same sentence, never a rung the sheet offers.
   it('names "by lot" for the organiser’s drawing of lots, in all four languages, apart from the rungs', () => {
     expect(named.has('scoring.chess.tiebreak.rung.lots')).toBe(true);
     expect(en['scoring.chess.tiebreak.rung.lots']).toBe('by lot');

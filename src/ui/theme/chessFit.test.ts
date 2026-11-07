@@ -115,7 +115,7 @@ const DRAWN: readonly ChessMethod[] = [
 ];
 const METHODS: readonly ChessMethod[] = [...new Set([...DECISIVE, ...DRAWN])];
 const RUNGS = ['rapid', 'blitz', 'armageddon'] as const;
-/** What can follow "{name} advances ·": a rung, or the organiser's drawing of lots, "by lot" (ruling 64). */
+/** What can follow "{name} advances ·": a rung, or the organiser's drawing of lots, "by lot" (ruling 63b). */
 const DECIDERS = [...RUNGS, 'lots'] as const;
 
 /** The widest of a language's rung words by `measure`: the line that carries one is the longest in that language. */
@@ -281,7 +281,7 @@ describe('the strip’s one line', () => {
   });
 
   // S2-3b: after a tie-break the strip names the player it sent through and the rung; after the organiser's drawing of lots,
-  // the player and "by lot" (ruling 64).
+  // the player and "by lot" (ruling 63b).
   const advancesLine = (dictionary: Dictionary, name: string, rung: (typeof DECIDERS)[number]) =>
     fill(said(dictionary, 'scoring.chess.tiebreak.advances'), {
       name,
@@ -303,7 +303,7 @@ describe('the strip’s one line', () => {
   // A long name is the organiser's as typed. The line is cut with an ellipsis past the row; the half's head carries the name
   // whole and the last-tap line says the rest. At 320 only Armageddon, the widest rung, outgrows the row, and only in English
   // and Dutch (298 dp of 288; French's 284 is within the row but not 8 dp clear of it), and French's "par tirage au sort" for
-  // the organiser's lots (309 dp; ruling 64, pinned rather than shortened: the language pass may pick a shorter phrase); at
+  // the organiser's lots (309 dp; ruling 63b, pinned rather than shortened: the language pass may pick a shorter phrase); at
   // 360 every one is whole.
   const longCuts = (width: number) =>
     LANGUAGES.flatMap(([lang, dictionary]) =>
@@ -363,7 +363,7 @@ describe('the last-tap line', () => {
       name: NAMES[0],
       how: widestRung(dictionary, controlWidth),
     });
-    // The organiser's drawing of lots (ruling 64). It has no undone line: a lot is never a tap, so its void shows none.
+    // The organiser's drawing of lots (ruling 63b). It has no undone line: a lot is never a tap, so its void shows none.
     const lots = fill(said(dictionary, 'scoring.chess.tiebreak.advances'), {
       name: NAMES[0],
       how: said(dictionary, 'scoring.chess.tiebreak.rung.lots'),
@@ -432,7 +432,7 @@ describe('the last-tap line', () => {
   });
 
   // A long name in the tie-break sentence: three lines in every language at 360, and at 320 all but Dutch's Armageddon and
-  // Dutch's lots ("Alexandra / Sharma-Williams / gaat door · na / loting", ruling 64), which are four and are cut at the third
+  // Dutch's lots ("Alexandra / Sharma-Williams / gaat door · na / loting", ruling 63b), which are four and are cut at the third
   // with the name's head kept. The half's head carries the name whole.
   it('holds a long winner’s name in the advances sentence in three lines at 360, and at 320 but for Dutch’s Armageddon and lots', () => {
     const long = (width: number) =>

@@ -375,7 +375,7 @@ describe('chessPad: a tie-break decided it', () => {
     expect(chessCardLine(display)).toBe('½–½');
   });
 
-  // A settle by seed or by the organiser's call leaves no decided tie-break (ruling 64 is the lot's): the drawn game.
+  // A settle by seed or by the organiser's call leaves no decided tie-break (ruling 63b is the lot's): the drawn game.
   it('says a settle that is not a lot, which leaves no decided tie-break, as the drawn game', () => {
     const view = chessPad(
       chessDisplay({
@@ -388,7 +388,7 @@ describe('chessPad: a tie-break decided it', () => {
   });
 });
 
-// Ruling 64 (owner, "apply rec", 2026-11-07): the organiser's drawing of lots names who it sent through, "{name} advances · by
+// Ruling 63b (owner, "apply rec", 2026-11-07): the organiser's drawing of lots names who it sent through, "{name} advances · by
 // lot", in the strip and the last-tap line; the game stays a draw, so the header stays level and Home's card says ½–½.
 describe('chessPad: the organiser decided it by lot', () => {
   const LOTS = {

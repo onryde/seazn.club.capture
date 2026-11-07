@@ -484,7 +484,7 @@ For the owner's language pass (what a reader should check first):
 | Confirm the result                                     | Confirma el resultado                                     | Confirmer le résultat                                            | Bevestig de uitslag                                          | `tiebreak.confirm.title`: the Armageddon's last step, with who advances and Record.                                                                                  |
 | Decided by lot? Ask the organiser to settle the match. | ¿Por sorteo? Pide al organizador que resuelva el partido. | Tirage au sort ? Demandez à l'organisateur de trancher le match. | Door loting? Vraag de organisator de wedstrijd te beslissen. | `tiebreak.lotsHint`: a drawing of lots is the organiser's settle, never a rung (design §3).                                                                          |
 
-### The organiser's drawing of lots (ruling 64, 2026-11-07)
+### The organiser's drawing of lots (ruling 63b, 2026-11-07)
 
 After the organiser settles a drawn knockout game by lot (`core.settle`, organiser-only), the strip, the last-tap line and
 History say "{name} advances · {how}" from the table above with this phrase as `{how}`, lowercase, where a tie-break puts

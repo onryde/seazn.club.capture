@@ -423,10 +423,10 @@ describe('foldChess: a tie-break decides who advances', () => {
   });
 });
 
-// Ruling 64 (owner, "apply rec", 2026-11-07): a drawn knockout game the organiser settles by lot (`core.settle {method: 'lot'}`,
+// Ruling 63b (owner, "apply rec", 2026-11-07): a drawn knockout game the organiser settles by lot (`core.settle {method: 'lot'}`,
 // organiser-only) names the player the lot sent through, as a tie-break does, by the rung `lots`. The engine keeps the settle
 // beside the module's state (the fold's `settlement`, `events.d.ts:97-103`); the game itself stays a draw.
-describe('foldChess: a drawing of lots names who advances (ruling 64)', () => {
+describe('foldChess: a drawing of lots names who advances (ruling 63b)', () => {
   const DRAWN = [start(), result(null, 'agreement')];
   const ABANDON: Spec = { type: 'core.abandon', payload: { reason: 'flooded' } };
   const historyOf = (specs: readonly Spec[], over: Over = {}) => {
@@ -479,8 +479,8 @@ describe('foldChess: a drawing of lots names who advances (ruling 64)', () => {
   });
 
   // The strip names nobody there; the settle event still has its own words, as every event does, so the last-tap line and
-  // History say what the lot did (a corner the ruling does not cover, pinned as built).
-  it('names nobody for an abandoned game settled by lot: it was never drawn, and its card says no result', () => {
+  // History say what the lot did (a corner the amendment does not cover, pinned as built).
+  it('decides nothing for an abandoned game settled by lot (never drawn, its card says no result); the last-tap line still says the lot', () => {
     const display = displayOf([start(), ABANDON, settle('A')], { bootstrap: BRACKET });
     expect(display.phase).toBe('final');
     expect(display.result).toBeNull();
@@ -493,22 +493,34 @@ describe('foldChess: a drawing of lots names who advances (ruling 64)', () => {
     expect(display.tiebreak).toMatchObject({ pending: true, decided: null });
   });
 
-  it('is the last tap, by the seat the lot named, and the newest row of History, the organiser’s', () => {
+  it('is the last tap, by the seat the lot named, with no Undo of this phone’s draw under it, and the newest row of History, the organiser’s', () => {
     const specs = [...DRAWN, settle('A')];
-    expect(displayOf(specs, { bootstrap: BRACKET, own: [1, 2] }).lastTap).toEqual({
-      kind: 'lots',
-      advances: 'second',
-    });
+    const display = displayOf(specs, { bootstrap: BRACKET, own: [1, 2] });
+    expect(display.lastTap).toEqual({ kind: 'lots', advances: 'second' });
+    // The organiser's event stands after this phone's draw: Undo cannot reach the draw (another scorer has scored since).
+    expect(display.undoable).toBe(false);
     const [newest, ...rest] = historyOf(specs, { own: [1, 2] });
     expect(newest).toEqual(lotsRow('L. Chen'));
     expect(rest).toHaveLength(2);
   });
 
-  it('a void of the lot leaves no last-tap line (a lot is never a tap, so no Undo names it) and strikes the lot’s row', () => {
+  // A lot is never this phone's tap, so no "Undone" line names it: the line passes over the voided lot and says the draw
+  // again, with this phone's Undo of its own draw, as before the lot. History keeps the lot, struck.
+  it('a void of the lot says the drawn game again on the last-tap line, with Undo of this phone’s draw, and strikes the lot’s row', () => {
     const specs = [...DRAWN, settle('H'), voiding(3)];
-    expect(displayOf(specs, { bootstrap: BRACKET }).lastTap).toBeNull();
-    const [newest] = historyOf(specs);
+    const display = displayOf(specs, { bootstrap: BRACKET, own: [1, 2] });
+    expect(display.lastTap).toEqual({ kind: 'result', winner: null, method: 'agreement' });
+    expect(display.undoable).toBe(true);
+    const [newest] = historyOf(specs, { own: [1, 2] });
     expect(newest).toEqual(lotsRow('A. Sharma', true));
+  });
+
+  it('a void of the drawn result is still said as undone: only a voided lot is passed over', () => {
+    const specs = [...DRAWN, voiding(2)];
+    expect(displayOf(specs, { bootstrap: BRACKET }).lastTap).toEqual({
+      kind: 'undone',
+      tap: { kind: 'result', winner: null, method: 'agreement' },
+    });
   });
 });
 
@@ -559,7 +571,7 @@ describe('foldChess: a tie-break the engine refuses is not shown', () => {
     const queued = [queuedOf('tap-1', tiebreak('H'))];
     const folded = legal([...DRAWN, settle('A')], queued, { bootstrap: BRACKET });
     expect(folded.legalQueued).not.toContain('tap-1');
-    // The lot stands and names its seat (ruling 64); the refused tie-break, which would send the first seat, is not shown.
+    // The lot stands and names its seat (ruling 63b); the refused tie-break, which would send the first seat, is not shown.
     expect(folded.display.tiebreak.decided).toEqual({ rung: 'lots', advances: 'second' });
   });
 

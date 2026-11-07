@@ -73,7 +73,7 @@ describe('doneSaid: what an event did, in the pad’s words', () => {
     expect(arma('second', 'draw')).toEqual({ name: 'L. Chen', how });
   });
 
-  // Ruling 64: the organiser's drawing of lots, said as a tie-break is, with "by lot" for the rung.
+  // Ruling 63b: the organiser's drawing of lots, said as a tie-break is, with "by lot" for the rung.
   it('says who a drawing of lots sent through, by name, and "by lot"', () => {
     const how = { key: 'scoring.chess.tiebreak.rung.lots' };
     expect(doneSaid(NAMES, { kind: 'lots', advances: 'first' })).toEqual({

@@ -81,7 +81,7 @@ const T = {
   lots: en['scoring.chess.tiebreak.lotsHint'],
 } as const;
 
-/** "L. Chen advances · Rapid", as the dictionary says it; "L. Chen advances · by lot" for the organiser's lots (ruling 64). */
+/** "L. Chen advances · Rapid", as the dictionary says it; "L. Chen advances · by lot" for the organiser's lots (ruling 63b). */
 const advances = (name: string, rung: keyof typeof T.rung | 'lots', words: Words = en) =>
   fill(words['scoring.chess.tiebreak.advances']!, {
     name,
@@ -111,7 +111,7 @@ async function lastEvent(app: LaunchedApp, seed: FakeMatchSeed) {
 const BEFORE = ['core.start', 'boardgame.result'];
 
 /**
- * What the pad says once the organiser has settled a drawn game by lot (ruling 64, owner, "apply rec", 2026-11-07): the strip
+ * What the pad says once the organiser has settled a drawn game by lot (ruling 63b, owner, "apply rec", 2026-11-07): the strip
  * and the last-tap line name the player the lot sent through, "{name} advances · by lot"; the game stays a draw, so the
  * header says "½", under the "Result recorded" card, with nothing to tap.
  */
@@ -1078,10 +1078,10 @@ describe('History and Match details after a tie-break', () => {
   });
 });
 
-// Ruling 64 (owner, "apply rec", 2026-11-07): the organiser's drawing of lots on a drawn knockout game names the player it sent
+// Ruling 63b (owner, "apply rec", 2026-11-07): the organiser's drawing of lots on a drawn knockout game names the player it sent
 // through, "{name} advances · by lot", in the strip, the last-tap line and History; Home's card keeps the game's ½–½. The lot is
 // `core.settle {method: 'lot'}`, organiser-only: the phone reads it off the engine's fold and never sends one.
-describe('The organiser’s drawing of lots (ruling 64)', () => {
+describe('The organiser’s drawing of lots (ruling 63b)', () => {
   /** The organiser draws lots for `winner`, and the phone reads the ledger again. */
   async function settledByLot(app: LaunchedApp, winner: string) {
     const lot = app.scoring.addOtherScorerEvent('core.settle', { winner, method: 'lot' });
@@ -1137,8 +1137,9 @@ describe('The organiser’s drawing of lots (ruling 64)', () => {
   });
 
   // The organiser takes the lot back (the web's "void the settle first"): the tie-break is owed again. A lot is never this
-  // phone's tap, so no "Undone" line names it (as the start's): the tile is the call, and History keeps the lot struck.
-  it('the organiser voids the lot: the tile is owed again, the strip and the last-tap line say nothing, History strikes the lot', async () => {
+  // phone's tap, so no "Undone" line names it: the line says this phone's draw again, with its Undo, as before the lot; the
+  // tile is the call, and History keeps the lot struck.
+  it('the organiser voids the lot: the tile is owed again, the last-tap line says the draw with its Undo, History strikes the lot', async () => {
     const seed = bracketChessSeed();
     const app = await drawn(seed);
     const lot = await settledByLot(app, HOME_ENTRANT);
@@ -1148,13 +1149,28 @@ describe('The organiser’s drawing of lots (ruling 64)', () => {
     await flush(400);
     expect(toolNames()).toEqual([T.tile]);
     expect(strip()).toBe('');
-    // The line keeps its place, empty (`LastTapLine` draws an empty sentence for no last tap).
-    expect(lastTap()).toBe('');
+    expect(lastTap()).toBe(en['scoring.chess.last.drawn']);
+    expect(undoCell()).not.toBeNull();
+    expect(undoCell()?.getAttribute('aria-disabled')).not.toBe('true');
     expect(screen.queryByTestId('pad-card')).toBeNull();
     expect(tally()).toBe('');
     await press(app, en['scoring.history.title']);
     expect(historySaid()[0]).toBe(advances('A. Sharma', 'lots'));
     expect(screen.getAllByTestId('history-undone')).toHaveLength(1);
+    await press(app, en['panel.close']);
+    // The Undo is this phone's draw's: pressed, it voids the draw and the game is live again.
+    const drawId = (await ledger(app, seed))[1]?.id;
+    await press(app, en['scoring.pad.undo']);
+    await flush(400);
+    const rows = await ledger(app, seed);
+    expect(rows.map((event) => event.type)).toEqual([
+      ...BEFORE,
+      'core.settle',
+      'core.void',
+      'core.void',
+    ]);
+    expect(rows.at(-1)?.voids).toBe(drawId);
+    expect(toolNames()).not.toContain(T.tile);
   });
 
   // A settle by seed or by the organiser's call is not a lot: the ruling names only the lot, so the pad says the drawn game.
@@ -1273,7 +1289,7 @@ describe.each(Object.entries(DICTIONARIES))('in %s', (language, words: Words) =>
     expect(await typesOf(app, seed)).toEqual(BEFORE);
   });
 
-  // Ruling 64: the organiser's drawing of lots, said in the phone's language in the strip, the last-tap line and History.
+  // Ruling 63b: the organiser's drawing of lots, said in the phone's language in the strip, the last-tap line and History.
   it('the organiser’s drawing of lots names who it sent through in the phone’s language', async () => {
     const seed = bracketChessSeed();
     const app = await launched(seed);

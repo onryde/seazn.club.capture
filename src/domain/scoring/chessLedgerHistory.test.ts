@@ -136,7 +136,7 @@ describe('doneOf: a tie-break', () => {
   });
 });
 
-// Ruling 64: the organiser's drawing of lots (`core.settle {winner, method: 'lot'}`) is said like a tie-break, by the seat of
+// Ruling 63b: the organiser's drawing of lots (`core.settle {winner, method: 'lot'}`) is said like a tie-break, by the seat of
 // the entrant it names. A settle by seed or by the organiser's call keeps no words (the ruling is the lot's).
 describe('doneOf: the organiser’s drawing of lots', () => {
   const read = (payload: unknown) => doneOf(envelope('core.settle', payload), NAMES);

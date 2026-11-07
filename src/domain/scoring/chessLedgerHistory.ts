@@ -22,7 +22,7 @@ import { sideOfEntrant, type SetBasedNames } from '@/domain/scoring/setBasedSide
  * What an event did, or null for one the pad has no words for: the organiser's forfeit, a settle that is not a lot, the
  * lock. A result names the seat that won (by the entrant the payload names), or none for a draw. A tie-break names the seat
  * that won it (rapid, blitz) or the seat that had Black and how it ended (Armageddon). The organiser's drawing of lots names
- * the seat it sent through (ruling 64).
+ * the seat it sent through (ruling 63b).
  */
 export function doneOf(envelope: EventEnvelope, names: SetBasedNames): ChessDone | null {
   const { payload } = envelope;
@@ -91,7 +91,8 @@ export const CHESS_FACTS: EventFacts = {
 
 /**
  * The tap an event was, as an Undo names it, or null for the start, whose Undo shows no line, and for the organiser's
- * drawing of lots, which is never a tap (so a void of it shows no line either). A result names its seat both ways.
+ * drawing of lots, which is never a tap (the fold passes a voided lot over: `withoutVoidedLots`). A result names its seat
+ * both ways.
  */
 export function tapOfDone(did: ChessDone): ChessTap | null {
   return did.kind === 'start' || did.kind === 'lots' ? null : did;

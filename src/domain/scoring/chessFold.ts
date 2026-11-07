@@ -185,10 +185,26 @@ function displayOf(
     },
     result: resultOf(folded.facts, colour),
     context: match.context,
-    lastTap: lastTapOf(stream.envelopes, recorded, tapOfDone),
+    lastTap: lastTapOf(stream.envelopes, withoutVoidedLots(recorded, stream.envelopes), tapOfDone),
     undoable: undoesResult(undoTargetOf(input, stream), decidingId),
     tiebreak: tiebreakOf(match.engine.cfg, folded.facts),
   };
+}
+
+/**
+ * What the last-tap line may name: every event with words, but a lot a void took back (ruling 63b). A lot is never this
+ * phone's tap, so no "Undone" line names it; dropped here, the line passes over the lot and its void and says the event
+ * before them (this phone's draw, with its Undo), as before the lot. History keeps the lot, struck (`ledgerRows`).
+ */
+function withoutVoidedLots(
+  recorded: ReadonlyMap<string, Recorded<ChessDone>>,
+  envelopes: readonly EventEnvelope[],
+): ReadonlyMap<string, Recorded<ChessDone>> {
+  const kept = new Map(recorded);
+  for (const id of voidedIn(envelopes)) {
+    if (recorded.get(id)?.did.kind === 'lots') kept.delete(id);
+  }
+  return kept;
 }
 
 /**
@@ -251,7 +267,7 @@ function outcomeOf(
  * folds the drawn game level and done (`boardgame.js:284-290`), so it is held (for the organiser) while the outcome is still
  * that draw. "No rung listed" is not tested here: in a knockout stage a draw that is still the outcome can only be that, since
  * a listed rung sends the draw to the tie-break (no outcome), and a settle or a withdrawal replaces it with a win or an award.
- * What decided it is a tie-break the engine folded, or else the organiser's drawing of lots (ruling 64).
+ * What decided it is a tie-break the engine folded, or else the organiser's drawing of lots (ruling 63b).
  */
 function tiebreakOf(
   cfg: BoardgameCfg,
@@ -278,7 +294,7 @@ function decidedTiebreak(state: BoardgameState): ChessTiebreakState['decided'] {
 }
 
 /**
- * A drawn game the organiser settled by lot (ruling 64), with the seat the lot sent through: the settle the engine keeps
+ * A drawn game the organiser settled by lot (ruling 63b), with the seat the lot sent through: the settle the engine keeps
  * beside the module's state (`settlement`), never the module's own outcome, which a settle leaves as it was. Only a game
  * drawn on the board: an abandoned game settled by lot has no result, and its card says so. A settle by seed or by the
  * organiser's call names nobody here (the ruling is the lot's).

@@ -44,7 +44,7 @@ const how = (method: ChessMethod): Text => ({ key: `scoring.chess.method.${metho
 /**
  * What an event did, in the last-tap line's words ("A. Sharma won · Checkmate", "Drawn · Agreement"): the line says it of
  * the last tap, and History of every one, in the one vocabulary. A method is said only when one was chosen. A tie-break names
- * the player it sent through and its rung, never the score; the organiser's drawing of lots, the player and "by lot" (ruling 64).
+ * the player it sent through and its rung, never the score; the organiser's drawing of lots, the player and "by lot" (ruling 63b).
  */
 export function doneSaid(names: Names, did: ChessDone): Text {
   switch (did.kind) {

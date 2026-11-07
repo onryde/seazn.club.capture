@@ -39,7 +39,7 @@ export type ChessRung = TiebreakRung;
 
 /**
  * What sent a drawn knockout game's player through: a tie-break of one of the rungs, or the organiser's drawing of lots
- * (`core.settle {method: 'lot'}`; ruling 64), which the strip, the last-tap line and History say as "{name} advances · by lot".
+ * (`core.settle {method: 'lot'}`; ruling 63b), which the strip, the last-tap line and History say as "{name} advances · by lot".
  * The pad never offers or sends lots.
  */
 export type ChessDecider = ChessRung | 'lots';
@@ -111,7 +111,7 @@ export type ChessDone =
       readonly method: ChessMethod | null;
     }
   | ChessTiebreakTap
-  /** The organiser's drawing of lots, by the seat of the entrant it sent through (ruling 64). Never a tap of this phone's. */
+  /** The organiser's drawing of lots, by the seat of the entrant it sent through (ruling 63b). Never a tap of this phone's. */
   | { readonly kind: 'lots'; readonly advances: PadSide };
 
 /** What the last tap did, or the tap Undo took back. */
@@ -149,7 +149,7 @@ export type ChessTiebreakState = {
    */
   readonly held: boolean;
   /**
-   * What decided it: a tie-break's rung, or the organiser's drawing of lots (`lots`, ruling 64), and the seat that advances.
+   * What decided it: a tie-break's rung, or the organiser's drawing of lots (`lots`, ruling 63b), and the seat that advances.
    * The game itself stays a draw.
    */
   readonly decided: { readonly rung: ChessDecider; readonly advances: PadSide } | null;
