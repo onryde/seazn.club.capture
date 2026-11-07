@@ -84,6 +84,8 @@ with the console agreeing ball for ball (§8).
 | 73  | A 4 or 6 that was run, not a boundary, goes under the 5+ key ("ran 4", "ran 6"); the 4 and 6 keys are boundaries ("Under 5+ (Recommended)", 2026-11-07). |
 | 74  | A tie with no players entered: "Tied — the organiser decides the super over" ("Say so, organiser decides (Recommended)", 2026-11-07). |
 | 75  | A mid-over bowler change follows the Laws ("Follow the Laws (Recommended)", 2026-11-07): neither bowler may bowl the next over (Law 17.7); the part over counts as a full over toward each bowler's max-overs limit (ICC limited-overs conditions); neither is credited a maiden for it; each bowler's figures get the balls they bowled. For the engine to record as its own ruling. |
+| 77  | A Players sheet during the match, opened by a tap on the score panel (the owner, on the preview, 2026-11-07: "how do I see list of player batter/bowler after match started and choose the order between overs?"; then "Tap the score panel (Recommended)"). Batting tab: out (how, runs (balls)), at the crease, yet to bat. Bowling tab: figures, overs left, who can't bowl next and why; a tap sets the next bowler between overs. |
+| 78  | The yet-to-bat order can be changed at any time; it is the phone's own and only changes the suggested next batter ("Any time (Recommended)", 2026-11-07). |
 | 76  | The strike swap reverses the pair only: the same two batters, swapped ends; no separate swap event ("Reverse the pair only (Recommended)", 2026-11-07). Additive; for the engine to record as its own ruling. |
 
 ## 4. How a scorer meets it
@@ -227,6 +229,20 @@ innings break (2177-2179, 1050). In a super over More is empty (3144-3150).
 Penalty runs are not in More: they ride a legal ball (§4.2). Left out, _the controller's_: `cricket.player.line`
 (post-match, §2). The toss, the balls, the super-over balls and the over totals are in the main flow. The plan reads each
 gate from the engine at its line, and a gate the engine moves is a finding.
+
+### 4.8a Players (rulings 77, 78)
+
+A tap on the score panel (the score, the crease, the bowler line) opens **Players**, a sheet with two tabs:
+
+- **Batting**, in batting order: out (how out, runs (balls)), at the crease (runs (balls), ● the striker), yet to bat.
+  Yet to bat reorders by drag or ▲▼, at any time. The order is the phone's own pending pick (§6): nothing is recorded,
+  and it only changes the batter suggested after the next wicket (§4.3). Retired-not-out batters show as such and may be
+  chosen to resume.
+- **Bowling**: every fielder with O-M-R-W and overs left of `maxOversPerBowler`; who can't bowl the next over and why
+  (`eligibleBowlers`). Between overs a tap sets the next bowler (the §4.4 sheet's pick); mid-over the list is read-only
+  (a mid-over change is ruling 75's, through the engine change).
+
+Figures come from `deriveCricketScorecard`, never the phone's own sums. Read-only for anything already bowled.
 
 ### 4.9 Match details
 
