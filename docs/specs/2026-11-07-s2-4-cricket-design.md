@@ -89,6 +89,7 @@ with the console agreeing ball for ball (§8).
 | 79  | No 5+ key on the pad: "canwe remove 5+ add it in more ? like penalty or something use that space for 3 equal button" (the owner, on the preview, 2026-11-07). The bottom row is Out, Undo, More, three equal buttons. More's first row is "Other runs and penalty": 5, 7, all-run 4 or 6, and +5 penalty on a fair ball. Supersedes ruling 73's 5+ key and §4.2's "+ Penalty" on a legal ball's sheet. |
 | 80  | Extras open a sheet that asks the runs (A), as on the preview ("Keep the sheet (Recommended)", 2026-11-07). |
 | 81  | Undo of this phone's last ball only; an older mistake is the organiser's on the web ("Undo last only (Recommended)", 2026-11-07). |
+| 82  | In every sheet a row that takes a tap has a lime border; a row that can't is greyed with its reason ("player tap is not clear or visiable so better to have a lime boder?", the owner on the preview, 2026-11-07). The chosen row is a heavier lime border on `surface`. |
 | 76  | The strike swap reverses the pair only: the same two batters, swapped ends; no separate swap event ("Reverse the pair only (Recommended)", 2026-11-07). Additive; for the engine to record as its own ruling. |
 
 ## 4. How a scorer meets it
