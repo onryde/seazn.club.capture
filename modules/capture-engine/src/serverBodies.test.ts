@@ -55,10 +55,12 @@ const named = (name: string) => {
 
 describe('the native tests answer with the web contract shapes', () => {
   // The pin itself is test/contractPins.test.ts; here, that every vendored schema reached ajv.
-  it('registers the six vendored schemas, the QR and the record among them', () => {
+  it('registers the eight vendored schemas, the QR and the record among them', () => {
     expect([...SCHEMAS].sort()).toEqual([
       'capture-beat.v1.json',
       'capture-descriptor.v1.json',
+      'capture-matchday-day.v1.json',
+      'capture-matchday-open.v1.json',
       'capture-qr.v2.json',
       'capture-record.v1.json',
       'capture-scoring-link.v1.json',
