@@ -26,9 +26,12 @@ from `docs/match-day-design`. The recon was taken at `bfc52fd`. Re-verify every 
 
 ## Global Constraints
 
-- **Verification:** run only `pnpm tsc --noEmit` locally (the controller's directive, relayed 2026-11-08).
-  - Tests, lint and Prettier run on CI: push the branch, or open a draft PR, and read the CI counts.
-  - A "Run" step below means "push and read CI", unless it says tsc.
+- **Verification:** the controller's directive, relayed 2026-11-08.
+  - Locally: `pnpm tsc --noEmit` plus **only the test files this task changed or added**, by path
+    (`pnpm vitest run <paths>`).
+  - Never run the full suite or `pnpm check`. Lint, Prettier and the full suite run on CI: push the branch, or open
+    a draft PR, and read the CI counts.
+  - Where a step below says "push and read CI", also run that task's own test files locally first.
 - **AGENTS.md applies in full**, notably:
   - §3: `domain/` stays pure, no barrels, and screens reach native code only through `Ports`;
   - §4: `type` in the domain and `interface` only for ports; one parser per wire shape;

@@ -52,9 +52,10 @@ windowSeconds:1})`. Opening a match also spends `rateLimit(\`dlmint:${ip}\`, DEV
 - **`md_` is refused everywhere else.** `rejectDeviceLink` also refuses `md_`, with a 403.
 - **Copy** in en/es/fr/nl under the `matchDay.code.*` prefix, which `match-day/page.tsx` passes to the client.
   Afterwards run `npm run i18n:gen-keys`.
-- **Verification:** run only `npx tsc --noEmit` locally (the controller's directive, relayed 2026-11-08). Tests,
-  lint and e2e run on CI: push the branch, or open a draft PR, and read the CI counts. Wherever a "Run" step below
-  is not tsc, it means push and read CI.
+- **Verification:** locally, run `npx tsc --noEmit` plus **only the test files this task changed or added**, by
+  path (`npx vitest run <paths>`, with the DB env from Task 1). Never run the full suite or the full gate. Lint, e2e
+  and the full suite run on CI: push the branch, or open a draft PR, and read the CI counts (the controller's
+  directive, relayed 2026-11-08).
 - **DB tests:** `describe.skipIf(!HAS_DB)`. Read CI's **skipped** count: a skipped DB suite is not a pass. If web CI
   skips the DB suites, stop and ask the owner before relying on them.
 
