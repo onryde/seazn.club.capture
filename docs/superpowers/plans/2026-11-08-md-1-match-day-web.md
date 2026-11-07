@@ -52,7 +52,12 @@ windowSeconds:1})`. Opening a match also spends `rateLimit(\`dlmint:${ip}\`, DEV
 - **`md_` is refused everywhere else.** `rejectDeviceLink` also refuses `md_`, with a 403.
 - **Copy** in en/es/fr/nl under the `matchDay.code.*` prefix, which `match-day/page.tsx` passes to the client.
   Afterwards run `npm run i18n:gen-keys`.
-- **Verification:** locally, run `npx tsc --noEmit` plus **only the test files this task changed or added**, by
+- **Verification:** locally, run
+  the scoped type-check: a temporary `tsconfig.changed.json` that extends `./tsconfig.json` with
+  `{"compilerOptions":{"noEmit":true,"incremental":false},"include":[],"files":[<changed .ts/.tsx>]}`, then
+  `npx tsc -p tsconfig.changed.json` and `rm tsconfig.changed.json`. Never bare `tsc a.ts` (it ignores tsconfig),
+  never the whole project, and never commit that file,
+  plus **only the test files this task changed or added**, by
   path (`npx vitest run <paths>`, with the DB env from Task 1). Never run the full suite or the full gate. Lint, e2e
   and the full suite run on CI: push the branch, or open a draft PR, and read the CI counts (the controller's
   directive, relayed 2026-11-08).

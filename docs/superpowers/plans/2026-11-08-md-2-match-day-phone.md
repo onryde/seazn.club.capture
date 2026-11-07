@@ -27,7 +27,11 @@ from `docs/match-day-design`. The recon was taken at `bfc52fd`. Re-verify every 
 ## Global Constraints
 
 - **Verification:** the controller's directive, relayed 2026-11-08.
-  - Locally: `pnpm tsc --noEmit` plus **only the test files this task changed or added**, by path
+  - Locally: the scoped type-check: a temporary `tsconfig.changed.json` that extends `./tsconfig.json` with
+    `{"compilerOptions":{"noEmit":true,"incremental":false},"include":[],"files":[<changed .ts/.tsx>]}`, then
+    `npx tsc -p tsconfig.changed.json` and `rm tsconfig.changed.json`. Never bare `tsc a.ts` (it ignores tsconfig),
+    never the whole project, and never commit that file,
+    plus **only the test files this task changed or added**, by path
     (`pnpm vitest run <paths>`).
   - Never run the full suite or `pnpm check`. Lint, Prettier and the full suite run on CI: push the branch, or open
     a draft PR, and read the CI counts.
@@ -110,9 +114,9 @@ from `docs/match-day-design`. The recon was taken at `bfc52fd`. Re-verify every 
   - `a scoring code scanned from the matchday tile offers to switch` (decision record ruling 2)
   - in `homeFit.test.ts`, the three tiles in order `stream, scoring, matchday`, with the label "Match Day" in all
     four languages
-- [ ] **Step 2: Run tsc.** Expected: it fails on the missing union member.
+- [ ] **Step 2: Run the scoped type-check.** Expected: it fails on the missing union member.
 - [ ] **Step 3: Implement** the rename and the recogniser branch.
-- [ ] **Step 4: Run tsc**, then push and read CI. Expected: tsc clean, and CI green on the touched suites.
+- [ ] **Step 4: Run the scoped type-check**, then push and read CI. Expected: tsc clean, and CI green on the touched suites.
 - [ ] **Step 5: Commit** `feat(matchday): rename Dashboard to Match Day and recognise day links`.
 
 ### Task 2: Vendor the contracts; the domain parsers and model
@@ -147,9 +151,9 @@ from `docs/match-day-design`. The recon was taken at `bfc52fd`. Re-verify every 
   - `next and then come from the queue's first two`
   - `a court with no now and no next is Free`
   - `bannerFor is null without approvals`
-- [ ] **Step 2: Run tsc.** Expected: FAIL.
+- [ ] **Step 2: Run the scoped type-check.** Expected: FAIL.
 - [ ] **Step 3: Implement.** No `react` and no `services`: domain purity is lint-enforced.
-- [ ] **Step 4: Run tsc**, then push and read CI.
+- [ ] **Step 4: Run the scoped type-check**, then push and read CI.
 - [ ] **Step 5: Commit** `feat(matchday): vendor the Match Day contracts and parse them`.
 
 ### Task 3: The port, the store and the tile
@@ -192,9 +196,9 @@ from `docs/match-day-design`. The recon was taken at `bfc52fd`. Re-verify every 
   - `the Home Continue card reads "Match Day · SAFE Open · Hall A"`
   - `a scoring code scanned while Match Day is saved opens Remote Scoring and leaves code.matchday in place`
     (Review Focus 4)
-- [ ] **Step 2: Run tsc.** Expected: FAIL.
+- [ ] **Step 2: Run the scoped type-check.** Expected: FAIL.
 - [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run tsc**, then push and read CI.
+- [ ] **Step 4: Run the scoped type-check**, then push and read CI.
 - [ ] **Step 5: Commit** `feat(matchday): Match Day port, store, tile and Continue card`.
 
 ### Task 4: The list screen
@@ -233,9 +237,9 @@ from `docs/match-day-design`. The recon was taken at `bfc52fd`. Re-verify every 
   - `the venue chips show only on a competition code with two venues`
   - `cold start with active matchday reopens into matchday` (Review Focus 2, first half)
   - in all four languages: the header and a court card render without overflow at 320 dp (the `homeFit` pattern)
-- [ ] **Step 2: Run tsc.** Expected: FAIL.
+- [ ] **Step 2: Run the scoped type-check.** Expected: FAIL.
 - [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run tsc**, then push and read CI.
+- [ ] **Step 4: Run the scoped type-check**, then push and read CI.
 - [ ] **Step 5: Commit** `feat(matchday): the day's list by court`.
 
 ### Task 5: Open a match and come back
@@ -278,9 +282,9 @@ from `docs/match-day-design`. The recon was taken at `bfc52fd`. Re-verify every 
   - `a double tap opens once`
   - `offline with a stored link opens it; offline without one shows "Offline"`
   - `MD_OUT_OF_SCOPE shows "This match isn't on your courts" and does not navigate`
-- [ ] **Step 2: Run tsc.** Expected: FAIL.
+- [ ] **Step 2: Run the scoped type-check.** Expected: FAIL.
 - [ ] **Step 3: Implement.** Nothing in `src/domain/scoring/` may import from `matchday`.
-- [ ] **Step 4: Run tsc**, then push and read CI. Lint's `SPORT_MODULES` and boundaries must pass.
+- [ ] **Step 4: Run the scoped type-check**, then push and read CI. Lint's `SPORT_MODULES` and boundaries must pass.
 - [ ] **Step 5: Commit** `feat(matchday): open a match in Remote Scoring and come back to the day`.
 
 ### Task 6: Approvals
@@ -303,9 +307,9 @@ from `docs/match-day-design`. The recon was taken at `bfc52fd`. Re-verify every 
   - `a code without can_approve: the banner has no button and reads "{label} · pair on the web desk"`
   - `a second hold while approving does nothing`
   - `the record gets matchday.approve {kind, outcome}` with no token
-- [ ] **Step 2: Run tsc.** Expected: FAIL.
+- [ ] **Step 2: Run the scoped type-check.** Expected: FAIL.
 - [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run tsc**, then push and read CI.
+- [ ] **Step 4: Run the scoped type-check**, then push and read CI.
 - [ ] **Step 5: Commit** `feat(matchday): review and approve a draw with a 3 s hold`.
 
 ### Task 7: Exit, the Sending card, record lines and the docs
@@ -340,9 +344,9 @@ from `docs/match-day-design`. The recon was taken at `bfc52fd`. Re-verify every 
   - `Stay changes nothing`
   - `after Exit the tile scans again`
   - `the record gets matchday.exit {unsent} and matchday.open {sport}` with no token or fixture link
-- [ ] **Step 2: Run tsc.** Expected: FAIL.
+- [ ] **Step 2: Run the scoped type-check.** Expected: FAIL.
 - [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run tsc**, then push and read CI. Run `pnpm prettier --check` on the two docs on CI, or with the
+- [ ] **Step 4: Run the scoped type-check**, then push and read CI. Run `pnpm prettier --check` on the two docs on CI, or with the
   owner's leave.
 - [ ] **Step 5: Commit** `feat(matchday): exit without losing a tap; AGENTS.md and the decision record`.
 
