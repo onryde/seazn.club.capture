@@ -90,6 +90,7 @@ with the console agreeing ball for ball (§8).
 | 80  | Extras open a sheet that asks the runs (A), as on the preview ("Keep the sheet (Recommended)", 2026-11-07). |
 | 81  | Undo of this phone's last ball only; an older mistake is the organiser's on the web ("Undo last only (Recommended)", 2026-11-07). |
 | 82  | In every sheet a row that takes a tap has a lime border; a row that can't is greyed with its reason ("player tap is not clear or visiable so better to have a lime boder?", the owner on the preview, 2026-11-07). The chosen row is a heavier lime border on `surface`. |
+| 83  | The toss uses the whole screen ("in toss, choose team and bat or bow, can we use more space on that screen?", the owner on the preview, 2026-11-07): two halves, "Who won the toss?" over the two team names and "{team} chose to…" over Bat and Bowl, each a pair of big buttons; the second half shows greyed until the first is answered, so nothing moves. |
 | 76  | The strike swap reverses the pair only: the same two batters, swapped ends; no separate swap event ("Reverse the pair only (Recommended)", 2026-11-07). Additive; for the engine to record as its own ruling. |
 
 ## 4. How a scorer meets it
@@ -101,7 +102,8 @@ As the S2 design §4 (scan, Not started card, pad, History, result), with these 
 1. **Match card**: teams, competition, division, round, and the format line from the fixture's `cfg`: overs per
    innings (or "unlimited"), balls per over, players a side, max overs per bowler, super over on or off, follow-on and
    reviews when the format has them.
-2. **Toss**: "Who won the toss?", two buttons with the **team names** (the web asks Home/Away; gap 1). Then
+2. **Toss**, on the whole screen (ruling 83): "Who won the toss?", two big buttons with the **team names** (the web asks
+   Home/Away; gap 1). Then
    "{team} chose to…", Bat or Bowl. Records `cricket.toss {wonBy, elected}`. The engine accepts a toss only before
    `core.start`, so the toss is asked before Start, as table tennis's serve pick is.
 3. **Batting order**: the batting side's starting players, in the team sheet's order (`order_no`), the first two marked
