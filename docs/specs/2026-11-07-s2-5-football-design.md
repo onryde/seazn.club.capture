@@ -79,6 +79,7 @@ Anti-goals (a failure even if it works):
 | 106 | The tap flows as played back ("Ok", 2026-11-07) and as drawn in the flow mockup ("yes", 2026-11-07, `goal-sub-flow.html`): §5 and §6.                                                                                                                                                                                                                                                              |
 | 107 | A shared clock anchored on the server that every screen resyncs to ("can we have some shared clock in server which can resync with mobile?", then "yes" to the controller's proposal, 2026-11-08), after the builder check showed the web does not share a running clock today (§7.1). Built from the ledger's own clock events, no new server state (§7.2); the web console follows it too (§10). |
 | 108 | The clock shows match time, as football counts it: the second half starts at 45:00, added time reads "90+3"; and the web console's football clock changes to match ("A, change console too", 2026-11-08).                                                                                                                                                                                          |
+| 109 | In added time the clock face shows the time passed, "90+2:30", and an event's minute is the minute being played, "90+3'" for the same moment, as football counts a goal at 0:30 as the 1st minute ("A", 2026-11-08).                                                                                                                                                                               |
 
 ## 4. What staging answered (probed before this design)
 
@@ -89,34 +90,34 @@ players a side, 11 starting with a goalkeeper and 5 on the bench, shirt numbers 
 device link, one event each, on 2026-11-07; the match ended 5–5, 4–1 on penalties, `decided`, not finalized. The
 fixture is spent; the device run needs a fresh one (§11).
 
-| Event                                                                          | Answer                                                                                                                   |
-| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| any write while the division is not started                                    | 422 `WRONG_PHASE` ("division has not started — scoring is closed"); the bootstrap's `screen` says `division_not_started` |
-| `core.start {}`                                                                | 201, status `in_play`                                                                                                    |
-| `football.clock {running, at}`                                                 | 201; `at.elapsed` as a string → 422 `INVALID_EVENT`                                                                      |
-| `football.goal` team-only `{by, at}`                                           | 201                                                                                                                      |
-| goal with scorer and assist (starters)                                         | 201                                                                                                                      |
-| goal with a bench or other-side scorer                                         | 422 `INVALID_EVENT`, "scorer … is not on the pitch for …"; nothing written                                               |
-| goal with a bench player as **assist**                                         | 201: the assist is not checked                                                                                           |
-| `ownGoal: true` (`by` = the side credited, `scorer` = the other side's player) | 201                                                                                                                      |
-| `penalty: true` goal                                                           | 201                                                                                                                      |
-| `football.card` yellow, second yellow, red, with reason                        | 201 each; a card for a player already sent off → 422; an unknown reason → 422                                            |
-| card for a bench player                                                        | 201 (allowed)                                                                                                            |
-| `football.sub {by, off, on, at}`                                               | 201; the player who came on can then score, the one taken off cannot                                                     |
-| `core.lineup.substitution`                                                     | 201 too; the web pad sends `football.sub` (`football.tsx:1292-1314`), so the phone does                                  |
-| sub of a sent-off player / a return in 11-a-side                               | 422 (the first with a misleading "not in this squad": a web bug, §12)                                                    |
-| `football.penalty` missed                                                      | 201; `outcome: "scored"` → 422 (a scored penalty is a goal)                                                              |
-| `sinbin.start` / `sinbin.end`                                                  | 201 / 201; the binned player cannot score meanwhile                                                                      |
-| `football.shot`                                                                | 201, with or without `at`                                                                                                |
-| an `at` earlier than the newest one recorded                                   | 422 `NON_MONOTONIC_TIME`                                                                                                 |
-| `football.period {phase: "HT"}`                                                | 201; H2 opens by itself. A goal stamped `H1` after HT counts in H2: the fold's phase decides                             |
-| `period FT` at a level score                                                   | 201; extra time opens by itself; `ET_FT` level → the shootout opens by itself                                            |
-| `shootout.kick {by, person, scored}`                                           | 201; out of turn → 422 ("kicks must alternate: expected …")                                                              |
-| the deciding kick                                                              | 201, `outcome {kind: "win", method: "shootout"}`, status `decided` by itself                                             |
-| a kick after the decision                                                      | 422 `ALREADY_DECIDED`                                                                                                    |
-| `core.void {event_id}` of the link's own event                                 | 201; again → 409 `UNDO_ALREADY_VOIDED`; another's → 403. A void on a decided match reopens it                            |
-| `core.forfeit`, `core.abandon`, `core.settle`                                  | 403 `FORBIDDEN` ("Only an organiser can …")                                                                              |
-| `core.finalize`                                                                | 403 `FORBIDDEN` ("Finalizing needs an organiser or scorer account")                                                      |
+| Event                                                                                                                                         | Answer                                                                                                                   |
+| --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| any write while the division is not started                                                                                                   | 422 `WRONG_PHASE` ("division has not started — scoring is closed"); the bootstrap's `screen` says `division_not_started` |
+| `core.start {}`                                                                                                                               | 201, status `in_play`                                                                                                    |
+| `football.clock {running, at}`                                                                                                                | 201; `at.elapsed` as a string → 422 `INVALID_EVENT`                                                                      |
+| `football.goal` team-only `{by, at}`                                                                                                          | 201                                                                                                                      |
+| goal with scorer and assist (starters)                                                                                                        | 201                                                                                                                      |
+| goal with a bench or other-side scorer                                                                                                        | 422 `INVALID_EVENT`, "scorer … is not on the pitch for …"; nothing written                                               |
+| goal with a bench player as **assist**                                                                                                        | 201: the assist is not checked                                                                                           |
+| `ownGoal: true` (`by` = the side whose player put it in, `scorer` = that player; the goal counts for the other side, `football.ts:1255-1271`) | 201                                                                                                                      |
+| `penalty: true` goal                                                                                                                          | 201                                                                                                                      |
+| `football.card` yellow, second yellow, red, with reason                                                                                       | 201 each; a card for a player already sent off → 422; an unknown reason → 422                                            |
+| card for a bench player                                                                                                                       | 201 (allowed)                                                                                                            |
+| `football.sub {by, off, on, at}`                                                                                                              | 201; the player who came on can then score, the one taken off cannot                                                     |
+| `core.lineup.substitution`                                                                                                                    | 201 too; the web pad sends `football.sub` (`football.tsx:1292-1314`), so the phone does                                  |
+| sub of a sent-off player / a return in 11-a-side                                                                                              | 422 (the first with a misleading "not in this squad": a web bug, §12)                                                    |
+| `football.penalty` missed                                                                                                                     | 201; `outcome: "scored"` → 422 (a scored penalty is a goal)                                                              |
+| `sinbin.start` / `sinbin.end`                                                                                                                 | 201 / 201; the binned player cannot score meanwhile                                                                      |
+| `football.shot`                                                                                                                               | 201, with or without `at`                                                                                                |
+| an `at` earlier than the newest one recorded                                                                                                  | 422 `NON_MONOTONIC_TIME`                                                                                                 |
+| `football.period {phase: "HT"}`                                                                                                               | 201; H2 opens by itself. A goal stamped `H1` after HT counts in H2: the fold's phase decides                             |
+| `period FT` at a level score                                                                                                                  | 201; extra time opens by itself; `ET_FT` level → the shootout opens by itself                                            |
+| `shootout.kick {by, person, scored}`                                                                                                          | 201; out of turn → 422 ("kicks must alternate: expected …")                                                              |
+| the deciding kick                                                                                                                             | 201, `outcome {kind: "win", method: "shootout"}`, status `decided` by itself                                             |
+| a kick after the decision                                                                                                                     | 422 `ALREADY_DECIDED`                                                                                                    |
+| `core.void {event_id}` of the link's own event                                                                                                | 201; again → 409 `UNDO_ALREADY_VOIDED`; another's → 403. A void on a decided match reopens it                            |
+| `core.forfeit`, `core.abandon`, `core.settle`                                                                                                 | 403 `FORBIDDEN` ("Only an organiser can …")                                                                              |
+| `core.finalize`                                                                                                                               | 403 `FORBIDDEN` ("Finalizing needs an organiser or scorer account")                                                      |
 
 The bootstrap: `sport_key: "football"`, `engine_epoch_required: 4`, `cfg` with `halves`, `halfMinutes`,
 `extraTime`, `shootout`, `shootoutAttempts`, `sinBinMinutes` and the rest; each side's `lineup` is 16 rows of
@@ -195,7 +196,8 @@ the name; with no shirt number, the name alone.
 **Goal** — _Who scored? · {team}_: the team's players on the pitch (the fold's `onPitch`), then _Own goal (by {other
 team})_ and _Don't know_. A player opens _Assist?_: the same team's players on the pitch but the scorer, then _No
 assist_. Own goal opens _Who put it in?_: the **other** team's players on the pitch, then _Don't know_; it records
-`{by: <this column's team>, ownGoal: true, scorer: <that player>}`, as the probe did. _Don't know_ records the goal
+`{by: <the other team>, ownGoal: true, scorer: <that player>}`: in the engine `by` is the side whose player put it
+in, and the goal counts for the other side (`football.ts:1255-1271`; corrected by the plan, the probe agrees). _Don't know_ records the goal
 for the team with no scorer. A **penalty** goal is a toggle on the scorer step ("Penalty"), which adds `penalty: true`
 and skips the assist step (_the controller's_: a penalty has no assist). Sent when the sheet closes on its last step:
 one `football.goal`, the scorer in the same event (the engine's `scorer` is a field of the goal, not a follow-up
@@ -258,7 +260,7 @@ punctuation only, as `resultLine` requires (S2-3: no translated words on Home's 
 ### 6.8 Fit
 
 `footballFit.test.ts`, the S2 fit-test pattern: 320 and 360 dp, four languages. Held: two 24-character team names
-wrap to two lines and end in an ellipsis without moving the score or the buttons; the clock's "90+12" and the longest
+wrap to two lines and end in an ellipsis without moving the score or the buttons; the clock's "120+15:00" and the longest
 period word fit beside Start/Pause; every sheet row's `#99 ` and a 24-character name; the longest End-of-period word in
 each language in a row of two cells.
 
@@ -289,9 +291,10 @@ time when it arrived, §4). No new table, endpoint or field. From it every scree
 - no clock event yet in the current period: 0, stopped. A period marker stops the clock in the fold (§7.6), so a new
   period always starts from its own Start.
 
-`serverNow` is the device's own time corrected by an offset the phone measures against the server: on each reply that
-carries a `recorded_at` for an event it just sent, offset ≈ `recorded_at − (sentAt + roundTrip / 2)`, smoothed over
-the last few replies (_the controller's_; the plan sets the smoothing). A phone whose own clock is minutes wrong still
+`serverNow` is the device's own time corrected by an offset the phone measures against the server: from the HTTP `Date`
+header on each scoring reply, against the request's midpoint, smoothed over the last few (the plans' finding: no
+reply carries `recorded_at`, and an accepted tap stays in the phone's ledger stamped with the phone's own time,
+`sync.ts:396-406`; so the phone's own clock events count on its own clock and other screens' on the server's). A phone whose own clock is minutes wrong still
 reads the shared time.
 
 **Resync.** The reading is re-derived whenever a read brings a newer clock event (the Realtime nudge already wakes a
@@ -333,14 +336,15 @@ yet hold (`copied` false):
   first-half goal into the second half;
 - a substitution is restamped by its own rule above, at send.
 
-A `NON_MONOTONIC_TIME` refusal that still arrives is treated as stale: re-read, restamp by the rules above, resend
-once; a second refusal surfaces as the kit's refusal banner (_the controller's_; the plan sets the exact retry).
+`expected_seq` turns any race into a 409 and a re-read before `NON_MONOTONIC_TIME` can arise; what matters is that
+the fold judges queued taps with their corrected stamps, so an offline tap is never dropped before it is sent (the
+plan's finding).
 
 ### 7.4 What the scorer sees
 
 Match time (ruling 108): `MM:SS` counted from the start of the match. The second half starts at 45:00 (from
 `cfg.halfMinutes`), extra time at 90:00, each quarter at the sum of the ones before (`cfg.periodSeconds`, variants).
-Past a period's nominal end the clock reads "45+2" and "90+3", the minutes over the period's end. Events in the
+Past a period's nominal end the clock reads the time passed in added time, "45+1:20", "90+2:30" (ruling 109). Events in the
 last-tap line and the sheets name the minute the same way ("67'", "90+3'"). Only the display adds the earlier periods'
 lengths: `at.elapsed` stays seconds within the period on the wire, as the engine requires. The arithmetic is one pure
 function, `matchTime(at, cfg)`, written once for the phone and mirrored in the web (§10); the builder reads the
@@ -391,7 +395,8 @@ naming it (the lint's `SPORT_MODULES` gains the football group). The file plan, 
 - `footballEngine.ts`: the bootstrap's sides and team sheets as the engine's `LineupSlot`s (`slot`, `squadNumber`,
   `positionKey`, `orderNo`, `role`, `roles`, from §10's fields), built as the web's server fold builds them
   (`server/engine-db/lineups.ts:64-79`), so the phone and the console fold the same pitch. A team with no slots is
-  folded with no lineup (§6.6). The set-based sports' `setBasedEngine.ts` is not touched.
+  folded as all starting and shown team-only (§6.6): folded with no lineup, a goal naming a player from the console
+  would make the ledger unreplayable on the phone (`football.ts:1260-1267`; the plan's finding). The set-based sports' `setBasedEngine.ts` is not touched.
 - `footballFold.ts`, `footballEvents.ts` (taps → events; `payloadForSend` with §7.3's restamp), `footballPad.ts` (the
   display → the pad's view), `footballClock.ts` (§7.2, pure), `footballHistory.ts`.
 - `src/ui/screens/FootballMatchScreen.tsx` and `FootballPadScreen.tsx`; rows in `sports.ts` and `scoringScreens.ts`.
