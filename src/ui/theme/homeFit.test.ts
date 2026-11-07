@@ -424,9 +424,7 @@ describe('portrait with the gear in the logo’s row: do three equal tiles fit? 
   it('equal thirds fit with no card; a card still squeezes them on 360 × 720 in es, fr and nl: R11 stands', () => {
     const shortfall = (width: number, window: number, state: (typeof STATES)[number][0]) =>
       LANGS.map((lang) => {
-        const tallest = Math.max(
-          ...TILE_MODES.map((mode) => tileAt(width, lang, mode)),
-        );
+        const tallest = Math.max(...TILE_MODES.map((mode) => tileAt(width, lang, mode)));
         const card = STATES.find(([name]) => name === state)?.[1] ?? 0;
         return SPEND + card + 3 * tallest + 2 * space.sm - window;
       });
