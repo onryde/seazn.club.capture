@@ -86,6 +86,7 @@ with the console agreeing ball for ball (§8).
 | 75  | A mid-over bowler change follows the Laws ("Follow the Laws (Recommended)", 2026-11-07): neither bowler may bowl the next over (Law 17.7); the part over counts as a full over toward each bowler's max-overs limit (ICC limited-overs conditions); neither is credited a maiden for it; each bowler's figures get the balls they bowled. For the engine to record as its own ruling. |
 | 77  | A Players sheet during the match, opened by a tap on the score panel (the owner, on the preview, 2026-11-07: "how do I see list of player batter/bowler after match started and choose the order between overs?"; then "Tap the score panel (Recommended)"). Batting tab: out (how, runs (balls)), at the crease, yet to bat. Bowling tab: figures, overs left, who can't bowl next and why; a tap sets the next bowler between overs. |
 | 78  | The yet-to-bat order can be changed at any time; it is the phone's own and only changes the suggested next batter ("Any time (Recommended)", 2026-11-07). |
+| 79  | No 5+ key on the pad: "canwe remove 5+ add it in more ? like penalty or something use that space for 3 equal button" (the owner, on the preview, 2026-11-07). The bottom row is Out, Undo, More, three equal buttons. More's first row is "Other runs and penalty": 5, 7, all-run 4 or 6, and +5 penalty on a fair ball. Supersedes ruling 73's 5+ key and §4.2's "+ Penalty" on a legal ball's sheet. |
 | 76  | The strike swap reverses the pair only: the same two batters, swapped ends; no separate swap event ("Reverse the pair only (Recommended)", 2026-11-07). Additive; for the engine to record as its own ruling. |
 
 ## 4. How a scorer meets it
@@ -112,8 +113,8 @@ on chips (gap 1). The phone asks.
 
 ### 4.2 Each ball
 
-- **Runs**: one tap on 0, 1, 2, 3, 4 or 6; "5+" opens 5, 7, "ran 4" and "ran 6". The 4 and 6 keys are boundaries
-  (`boundary`); a run 4 or 6 carries none (ruling 73). `boundary` is never checked against the runs; it feeds the fours,
+- **Runs**: one tap on 0, 1, 2, 3, 4 or 6, two rows of three. 5, 7 and an all-run 4 or 6 are in More, "Other runs and
+  penalty" (ruling 79). The 4 and 6 keys are boundaries (`boundary`); an all-run 4 or 6 carries none (ruling 73). `boundary` is never checked against the runs; it feeds the fours,
   sixes and boundary-count tie-break only (212, 1653, 1751).
 - **Extras**: Wide, No-ball, Bye, Leg-bye each open a sheet that stays until a choice is made or it is cancelled (gap 4):
   - Wide → "Runs run" 0–4. The engine's `extras.runs` counts the wide's own run, so a wide and two run is
@@ -131,8 +132,8 @@ on chips (gap 1). The phone asks.
   simplification, which the owner should know (§11).
 - **Penalty runs** (Law 41) are an extra of kind `penalty` on a ball, the batting side's only. The engine counts that
   ball as legal (over, striker's and bowler's balls all go up; 1578, 1614-1629, 1725), and a ball carries one extra only
-  (209), so a penalty can't ride with a wide, no-ball or bye. The pad offers it as "+ Penalty" on a legal ball's sheet,
-  not in More. There is no fielding-side penalty and none between balls (§11).
+  (209), so a penalty can't ride with a wide, no-ball or bye. The pad offers it in More's "Other runs and penalty", on a fair ball
+  with the runs off the bat (ruling 79). There is no fielding-side penalty and none between balls (§11).
 - **Never sent**: `freeHit` (the server refuses it unless a free hit is pending, 1574-1576; the web stopped sending it).
   **Always sent**: `over` and `ballInOver`, checked strictly against the fold (201-203, 1482-1487).
 - **Over strip**: this over's balls as chips (`·`, runs, `wd`, `nb`, `b`, `lb`, `W`), extras in the caution colour,
@@ -226,7 +227,7 @@ innings break (2177-2179, 1050). In a super over More is empty (3144-3150).
 | Match close (draw) | `cricket.match.close` | two innings a side |
 | Review | `cricket.review {by, kind, outcome, …}` | innings open. Recordable without `cfg.reviews` (91-95, 2279), which only caps them |
 
-Penalty runs are not in More: they ride a legal ball (§4.2). Left out, _the controller's_: `cricket.player.line`
+More's first row is always "Other runs and penalty" (ruling 79): 5, 7, all-run 4 or 6, +5 penalty on a fair ball. Left out, _the controller's_: `cricket.player.line`
 (post-match, §2). The toss, the balls, the super-over balls and the over totals are in the main flow. The plan reads each
 gate from the engine at its line, and a gate the engine moves is a finding.
 
@@ -272,9 +273,9 @@ height:
 2. Score: runs/wickets large in lime, overs, the side batting and the innings; when chasing, "Need {n} off {m} balls".
 3. Crease: striker (● lime) and non-striker, each "runs (balls)"; the bowler with O-M-R-W.
 4. This over: the strip of §4.2.
-5. Run keys: 0 1 2 3 4 6 large, 5+ small.
+5. Run keys: 0 1 2 3 4 6 large, two rows of three.
 6. Extras row: Wide, No-ball, Bye, Leg-bye.
-7. Out, Undo, More.
+7. Out, Undo, More: three equal buttons (ruling 79).
 8. One status line (S2's): the last ball, Free hit, or an engine refusal in the caution colour.
 
 Fit is the plan's (`padFit.test.ts` at 320 and 360 dp, en/es/fr/nl). Cricket names are long; a name gives way to an
