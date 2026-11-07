@@ -253,12 +253,12 @@ it("S2-4 T1: More never lists cricket.bowler.change", () => {
 - Modify: `skins/cricket.tsx`:
   - `CricketFineShape` (:147) gains `prevOverBowlers?: string[]`, `overSpells?: { bowler: string; legalBalls: number }[]`, `partOvers?: Record<string, number>`, `partOverBalls?: Record<string, number>`.
   - `export function bowlerChangeOpen(state: CricketStateShape, cfg: CricketCfgShape): boolean`: `phase === "live"`, a fine scoring innings, `fine.currentBowler != null`, and `eligibleChangeBowlers(...)` non-empty.
-  - `buildTiles` pushes a minor tile `bowlerChange` (label `pad.cricket.action.bowlerChange`, `action: { sheet: "bowlerChange" }`) only when it is open.
+  - More lists it (the engine's padSpec Innings drawer, label `pad.cricket.action.bowlerChange`) only when it is open, and it opens `bowlerChangeSheet`; no tile (ruling 84: the change lives in More).
   - `refusedEventTypes` (Task 1's line) refuses `cricket.bowler.change` exactly when it is not open (one condition, two readers).
   - `bowlerChangeSheet(view): GuidedSheetSpec`. Steps: `bowler` (person, `candidates: eligibleChangeBowlers(order, fine, cfg.maxOversPerBowler, bpo)`) and `reason` (choice; values from `CricketBowlerChange`'s schema enum, never a typed list). Payload: `{bowler, reason}`.
   - `bowlerBlockReason` (:715) and `bowlerBlocked` (:1837): `prevOver` also when `fine.prevOverBowlers` holds the bowler. The quota reason is already right through the engine's `eligibleBowlers`/`oversUsed`.
   - `cricketBallDetail`'s activity hook words a `cricket.bowler.change` row: `pad.cricket.activity.bowlerChange` ("{name} completes the over").
-  - `bowlerIsReadOnly` (:286) keeps its behaviour (the chip is not the change's door; the sheet is, so More stays single-entry without touching `pad-host.tsx`); its doc is corrected.
+  - `bowlerIsReadOnly` (:286) keeps its behaviour (the chip is not the change's door; More is); its doc is corrected.
 - Modify: dictionaries (4) and `i18n-keys.ts`: `pad.cricket.sheet.bowlerChange.{bowler,reason}.title`, `pad.cricket.activity.bowlerChange`
 - Test: `skins/__tests__/pad-rules-cricket.test.ts`, `skins/__tests__/cricket.test.ts` (activity)
 
@@ -267,7 +267,7 @@ it("S2-4 T1: More never lists cricket.bowler.change", () => {
 - Produces: `bowlerChangeOpen`.
 
 - [ ] **Step 1: Failing tests.**
-  - `mid-over Change bowler offers eligibleChangeBowlers, folds, and the over's next ball names the new bowler`: the candidates equal the engine's call on the folded state; the change folds; the next run tile's payload names the new bowler and folds.
+  - `mid-over More lists Change bowler, which offers eligibleChangeBowlers, folds, and the over's next ball names the new bowler`: the candidates equal the engine's call on the folded state; the change folds; the next run tile's payload names the new bowler and folds.
   - `no Change bowler before the first ball, at an over's end, in a super over or in an over-totals innings; More agrees`: for 4 states, no tile, and `refusedEventTypes` holds the type.
   - `after a split over both bowlers are greyed for the next over` (Review Focus 4): `bowlerBlocked` reasons are `prevOver` for both; with `maxOversPerBowler: 1`, each is out of the quota after the part over (`oversUsed`).
   - `a bowler change row in History names who completes the over`.
