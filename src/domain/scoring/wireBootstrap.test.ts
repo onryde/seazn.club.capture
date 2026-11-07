@@ -28,6 +28,53 @@ describe('bootstrapToWire', () => {
     },
   );
 
+  // S2-5 design §10: the team sheet on each lineup row. The boot cache keeps it, so a cached football match folds the
+  // same pitch as a fresh one.
+  it('bootstrapToWire then parseBootstrap round-trips every new field, and a row with none', () => {
+    const home = SINGLES.sides.home;
+    if (home === null) throw new Error('SINGLES has a home side');
+    const sheet: Bootstrap = {
+      ...SINGLES,
+      sides: {
+        home: {
+          ...home,
+          lineup: [
+            {
+              personId: 'p-gk',
+              pairOrder: null,
+              slot: 'starting',
+              positionKey: 'GK',
+              orderNo: 1,
+              role: 'player',
+              roles: ['captain', 'goalkeeper'],
+              squadNumber: 0,
+            },
+            { personId: 'p-coach', pairOrder: null, slot: 'bench', orderNo: 17, role: 'coach' },
+            { personId: 'p-old', pairOrder: 2 },
+          ],
+        },
+        away: SINGLES.sides.away,
+      },
+    };
+    expect(parseBootstrap(bootstrapToWire(sheet))).toStrictEqual(sheet);
+  });
+
+  it('writes a row with no team sheet as the web would: every field there, empty', () => {
+    const wire = bootstrapToWire(SINGLES) as {
+      data: { sides: { home: { lineup: Record<string, unknown>[] } } };
+    };
+    expect(wire.data.sides.home.lineup[0]).toStrictEqual({
+      person_id: 'p-sharma',
+      pair_order: null,
+      slot: null,
+      position_key: null,
+      order_no: null,
+      role: null,
+      roles: [],
+      squad_number: null,
+    });
+  });
+
   it("writes the endpoint's own words, as the web sends them", () => {
     const wire = bootstrapToWire(SINGLES) as { ok: boolean; data: Record<string, unknown> };
     expect(wire.ok).toBe(true);

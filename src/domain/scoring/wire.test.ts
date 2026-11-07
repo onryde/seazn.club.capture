@@ -362,6 +362,110 @@ describe('parseBootstrap', () => {
   });
 });
 
+/**
+ * S2-5 design §10: each lineup row carries the team sheet beside `pair_order`, as the web's bootstrap sends it
+ * (`DeviceLinkBootstrapLineupRow`: slot, position_key, order_no, role, roles, squad_number). A field is a key only when
+ * the wire has a value for it, so an older web's row reads exactly as it did; a value of the wrong shape is garbled.
+ */
+describe('parseBootstrap: the team sheet on a lineup row', () => {
+  const rowOf = (row: Record<string, unknown>) => {
+    const home = { ...singlesSide('ent-home', 'Home FC', 'p-1'), lineup: [row] };
+    const parsed = parseBootstrap(envelope(bootstrapData({ sides: { home, away: null } })));
+    return parsed === null ? null : parsed.sides.home?.lineup[0];
+  };
+  const sheetRow = (fields: Record<string, unknown>) =>
+    rowOf({ person_id: 'p-1', pair_order: null, ...fields });
+
+  it('a row with no new fields reads exactly as before', () => {
+    expect(rowOf({ person_id: 'p-1', pair_order: 2 })).toStrictEqual({
+      personId: 'p-1',
+      pairOrder: 2,
+    });
+  });
+
+  it('a bench row with squad_number 14, order_no 12, position_key "GK", roles ["captain"], role "player" reads them', () => {
+    const row = sheetRow({
+      slot: 'bench',
+      squad_number: 14,
+      order_no: 12,
+      position_key: 'GK',
+      roles: ['captain'],
+      role: 'player',
+    });
+    expect(row).toStrictEqual({
+      personId: 'p-1',
+      pairOrder: null,
+      slot: 'bench',
+      squadNumber: 14,
+      orderNo: 12,
+      positionKey: 'GK',
+      roles: ['captain'],
+      role: 'player',
+    });
+  });
+
+  it('reads a starting row and a coach', () => {
+    expect(sheetRow({ slot: 'starting', role: 'coach' })).toStrictEqual({
+      personId: 'p-1',
+      pairOrder: null,
+      slot: 'starting',
+      role: 'coach',
+    });
+    expect(sheetRow({ role: 'staff' })?.role).toBe('staff');
+  });
+
+  it('squad_number 0 is kept', () => {
+    expect(sheetRow({ squad_number: 0 })?.squadNumber).toBe(0);
+  });
+
+  it('null fields read as no key', () => {
+    const row = sheetRow({
+      slot: null,
+      position_key: null,
+      order_no: null,
+      role: null,
+      roles: null,
+      squad_number: null,
+    });
+    expect(row).toStrictEqual({ personId: 'p-1', pairOrder: null });
+  });
+
+  // The web leaves "no roles" as an empty list and "no position" as an empty name: neither is a value.
+  it('an empty roles list and an empty position_key read as no key', () => {
+    expect(sheetRow({ roles: [], position_key: '' })).toStrictEqual({
+      personId: 'p-1',
+      pairOrder: null,
+    });
+  });
+
+  // The web's schema takes "" in `roles`; the engine's `LineupSlot` refuses it (`z.string().min(1)`), so the entry is
+  // dropped rather than the whole bootstrap refused (controller ruling X-3).
+  it('roles ["", "x"] reads ["x"]', () => {
+    expect(sheetRow({ roles: ['', 'x'] })?.roles).toStrictEqual(['x']);
+  });
+
+  it('a roles entry that is no string is dropped, and roles with nothing left read as no key', () => {
+    expect(sheetRow({ roles: [3, 'captain', null] })?.roles).toStrictEqual(['captain']);
+    expect(sheetRow({ roles: ['', 7] })).toStrictEqual({ personId: 'p-1', pairOrder: null });
+  });
+
+  it.each([
+    ['slot "reserve" is garbled', { slot: 'reserve' }],
+    ['a slot of a number is garbled', { slot: 1 }],
+    ['order_no 0 is garbled', { order_no: 0 }],
+    ['a fractional order_no is garbled', { order_no: 1.5 }],
+    ['an order_no of text is garbled', { order_no: '3' }],
+    ['a negative squad_number is garbled', { squad_number: -1 }],
+    ['a fractional squad_number is garbled', { squad_number: 7.5 }],
+    ['a squad_number of text is garbled', { squad_number: '9' }],
+    ['role "referee" is garbled', { role: 'referee' }],
+    ['a position_key of a number is garbled', { position_key: 4 }],
+    ['roles that are no list are garbled', { roles: 'captain' }],
+  ])('%s: the bootstrap is null', (_name, fields) => {
+    expect(sheetRow(fields)).toBeNull();
+  });
+});
+
 describe('matchContextOf', () => {
   it('is the pad’s match context: the names as typed, the sides’ names top first', () => {
     const parsed = parseBootstrap(envelope(bootstrapData()));
