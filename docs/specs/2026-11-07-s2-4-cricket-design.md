@@ -83,6 +83,8 @@ with the console agreeing ball for ball (§8).
 | 72  | The web pad's gaps (§7.2) are fixed by this session in a `seazn.club` worktree, on staging before the phone's exit bar ("This session (Recommended)", 2026-11-07). |
 | 73  | A 4 or 6 that was run, not a boundary, goes under the 5+ key ("ran 4", "ran 6"); the 4 and 6 keys are boundaries ("Under 5+ (Recommended)", 2026-11-07). |
 | 74  | A tie with no players entered: "Tied — the organiser decides the super over" ("Say so, organiser decides (Recommended)", 2026-11-07). |
+| 75  | A mid-over bowler change follows the Laws ("Follow the Laws (Recommended)", 2026-11-07): neither bowler may bowl the next over (Law 17.7); the part over counts as a full over toward each bowler's max-overs limit (ICC limited-overs conditions); neither is credited a maiden for it; each bowler's figures get the balls they bowled. For the engine to record as its own ruling. |
+| 76  | The strike swap reverses the pair only: the same two batters, swapped ends; no separate swap event ("Reverse the pair only (Recommended)", 2026-11-07). Additive; for the engine to record as its own ruling. |
 
 ## 4. How a scorer meets it
 
