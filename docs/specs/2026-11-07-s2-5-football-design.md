@@ -306,10 +306,17 @@ re-seated from a clock event projects forward to now, so it never "shows the pas
 
 **This phone's own taps** apply at once, locally, before the server has them (the queue's optimistic display, S2
 design §6.2): Start shows running from the tap. When the server's copy arrives, the reading moves to its anchor, a
-jump of the network delay, under a second online. A clock tap made **offline** is anchored by the server when it
-finally arrives, so screens that read it then are off by the time it waited; the phone keeps its own count meanwhile,
-and the next clock tap from any screen puts every screen back on one anchor (_the controller's_; a wall-time field on
-the event would need an engine schema change, which this work does not make).
+jump of the network delay, under a second online. A Start (a clock event with `running: true`) made **offline** reaches the server late and is anchored at its
+arrival, so the phone sends it with `at.elapsed` moved on by the time it waited in the queue (send time less tap time,
+both the phone's clock, whole seconds): its stamp and its arrival then agree, and every screen reads the same time
+(_the controller's_, 2026-11-08, from the owner's "what if [the server is] down for 2 mins"; no schema change). A Pause
+carries a stopped reading and is sent as tapped. If play was really stopped while the Start waited, the phone cannot
+know; the next Pause re-anchors every screen.
+
+The anchor's `recorded_at` is the clock of the web server that wrote the event (`append-event.ts:418`), and each
+screen's offset is measured against whichever web server answers it. Every screen agrees within the offset's
+precision only while the web servers' clocks are synced (NTP, as hosted servers are); the median of five samples
+outvotes one stray server among several (_the controller's_, 2026-11-08).
 
 It is a pure function in `src/domain/scoring/footballClock.ts`, `reading(anchor, serverNow)`, with the offset and the
 timer in the screen's hook, never in the fold. The same arithmetic goes into the web's clock (§10), so the phone and the
