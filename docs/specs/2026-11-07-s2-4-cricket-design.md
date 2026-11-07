@@ -1,6 +1,6 @@
 # S2-4 — Remote Scoring, cricket: design
 
-Status: **draft, awaiting the owner's read**. Brainstormed in the session of 2026-11-07 ("s2-4"). The owner signs off on
+Status: **approved by the owner, 2026-11-07** ("Approve, write plan (Recommended)"). Brainstormed in the session of 2026-11-07 ("s2-4"). The owner signs off on
 this document and on a throwaway preview on the phone (ruling 70).
 
 This design adds cricket to Remote Scoring. It argues from the S2 design
@@ -87,6 +87,8 @@ with the console agreeing ball for ball (§8).
 | 77  | A Players sheet during the match, opened by a tap on the score panel (the owner, on the preview, 2026-11-07: "how do I see list of player batter/bowler after match started and choose the order between overs?"; then "Tap the score panel (Recommended)"). Batting tab: out (how, runs (balls)), at the crease, yet to bat. Bowling tab: figures, overs left, who can't bowl next and why; a tap sets the next bowler between overs. |
 | 78  | The yet-to-bat order can be changed at any time; it is the phone's own and only changes the suggested next batter ("Any time (Recommended)", 2026-11-07). |
 | 79  | No 5+ key on the pad: "canwe remove 5+ add it in more ? like penalty or something use that space for 3 equal button" (the owner, on the preview, 2026-11-07). The bottom row is Out, Undo, More, three equal buttons. More's first row is "Other runs and penalty": 5, 7, all-run 4 or 6, and +5 penalty on a fair ball. Supersedes ruling 73's 5+ key and §4.2's "+ Penalty" on a legal ball's sheet. |
+| 80  | Extras open a sheet that asks the runs (A), as on the preview ("Keep the sheet (Recommended)", 2026-11-07). |
+| 81  | Undo of this phone's last ball only; an older mistake is the organiser's on the web ("Undo last only (Recommended)", 2026-11-07). |
 | 76  | The strike swap reverses the pair only: the same two batters, swapped ends; no separate swap event ("Reverse the pair only (Recommended)", 2026-11-07). Additive; for the engine to record as its own ruling. |
 
 ## 4. How a scorer meets it
@@ -408,14 +410,9 @@ Left out: a wagon wheel on every run; logins per player; ads near the pad; onlin
 
 ## 11. Open for the owner
 
-1. **Extras**: the sheet of §4.2 (A), or the extra lit then a run key (B). The preview shows A; the owner judges it there.
-2. **Editing an older ball** (CricHeroes has it; ours is Undo of the last only).
-3. **Timed out** without a phantom ball, and a **fielding-side penalty**: not chosen for the engine change (ruling 71);
-   the phone offers neither.
-4. **No eligible bowler** (§4.4): say so and offer over totals for the rest of the innings (_the controller's_).
-
-Settled 2026-11-07: who builds the web fixes (ruling 72), the engine changes (71), a run 4 or 6 (73), a tie with no
-players (74).
+Nothing open. Settled 2026-11-07: the web fixes (ruling 72), the engine changes (71, 75, 76), a run 4 or 6 (73, 79), a
+tie with no players (74), extras (80), editing an older ball (81). Not chosen: timed out without a phantom ball, a
+fielding-side penalty (ruling 71). No eligible bowler (§4.4) stays _the controller's_.
 
 ## 12. Left to the builder
 
