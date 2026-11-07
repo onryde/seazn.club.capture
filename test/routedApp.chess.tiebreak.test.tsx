@@ -109,8 +109,28 @@ async function lastEvent(app: LaunchedApp, seed: FakeMatchSeed) {
 
 const BEFORE = ['core.start', 'boardgame.result'];
 
+/**
+ * What the pad says once the organiser has settled a drawn game by lot: the game stays a draw, so the strip, the last-tap line
+ * and the header say "Drawn" and "½", under the "Result recorded" card, with nothing to tap. It does not name the player the
+ * lot sent through. Whether it should is a controller ruling still pending: these lines pin what the pad says today, and a
+ * ruling that changes them changes them here.
+ */
+function expectSettledByLot(lastTapLine = true): void {
+  expect(strip()).toBe(en['scoring.chess.last.drawn']);
+  // A refusal on the line takes the last-tap sentence's place until the scorer's next tap.
+  if (lastTapLine) expect(lastTap()).toBe(en['scoring.chess.last.drawn']);
+  expect(tally()).toBe('½');
+  expect(screen.getByTestId('pad-card').textContent).toContain(
+    en['scoring.card.resultRecorded.title'],
+  );
+  expect(tileButton()).toBeNull();
+  expect(toolNames()).toEqual([]);
+  expect(half('first').getAttribute('aria-disabled')).toBe('true');
+  expect(half('second').getAttribute('aria-disabled')).toBe('true');
+}
+
 describe('the Tie-break tile of a drawn knockout game', () => {
-  it('replaces Draw and Swap colours and the result halves, and the strip says nothing: the tile is the call', async () => {
+  it('puts the Tie-break tile in place of Draw and Swap colours, leaves the halves where they are but not tappable, and the strip says nothing: the tile is the call', async () => {
     const seed = bracketChessSeed();
     const app = await drawn(seed);
     // The draw is recorded as the game's result, and the pad is not decided yet: no card, no result line, no strip note.
@@ -301,6 +321,11 @@ describe('an Armageddon', () => {
     return fill(en[`scoring.chess.result.${c.result}`], { name });
   };
 
+  it('has six cases: each Black seat against the three results', () => {
+    expect(CASES).toHaveLength(6);
+    expect(new Set(CASES.map((c) => `${c.black}/${c.result}`)).size).toBe(6);
+  });
+
   it.each(CASES)(
     '$blackName had Black and the result was $result: $blackName/$whiteName, and the right player advances',
     async (c) => {
@@ -439,18 +464,14 @@ describe('a stage that lists one rung, or none', () => {
     expect(await typesOf(app, seed)).toEqual(BEFORE);
   });
 
-  it('a held game the organiser then settles by lot: the line goes, nothing is offered, and the phone sent nothing', async () => {
+  it('a held game the organiser then settles by lot: the waiting line goes, nothing is offered, and the phone sent nothing', async () => {
     const seed = bracketChessSeed([]);
     const app = await drawn(seed);
+    expect(strip()).toBe(en['scoring.chess.waiting.tiebreak']);
     app.scoring.addOtherScorerEvent('core.settle', { winner: HOME_ENTRANT, method: 'lot' });
     app.realtime.ping();
     await flush(400);
-    expect(strip()).not.toBe(en['scoring.chess.waiting.tiebreak']);
-    expect(tileButton()).toBeNull();
-    expect(toolNames()).toEqual([]);
-    expect(screen.getByTestId('pad-card').textContent).toContain(
-      en['scoring.card.resultRecorded.title'],
-    );
+    expectSettledByLot();
     expect(await typesOf(app, seed)).toEqual([...BEFORE, 'core.settle']);
   });
 });
@@ -570,9 +591,10 @@ describe('Undo of a tie-break', () => {
     expect(await typesOf(app, seed)).toEqual([...BEFORE, 'boardgame.tiebreak']);
   });
 
-  // A tie-break the phone could not send yet is still the phone's own to take back: Undo drops it from the queue, and
-  // nothing reaches the ledger when the network comes back.
-  it('with no network, Undo drops the queued tie-break: the tile is owed again and nothing is sent when the network returns', async () => {
+  // A tie-break the phone could not reach the server with is still the phone's own to take back, but a send of it may have
+  // got through before the answer was lost, so Undo cannot discard it (`awaitAnswer`): it waits for the answer and then
+  // voids the event the answer names. The sender retries on the phone's clock, which a test must move.
+  it('with no network, Undo queues a void behind the unsent tie-break: when the network returns both reach the ledger in order, and the tile is owed again', async () => {
     const seed = bracketChessSeed();
     const app = await drawn(seed);
     app.scoring.goOffline(true);
@@ -580,6 +602,7 @@ describe('Undo of a tie-break', () => {
     await openTiebreak(app);
     await press(app, T.rung.blitz);
     await press(app, 'L. Chen');
+    await pick(app, '2–0');
     await press(app, T.record);
     // The pad shows the tie-break at once; the server was asked and could not be reached.
     expect(strip()).toBe(advances('L. Chen', 'blitz'));
@@ -588,19 +611,52 @@ describe('Undo of a tie-break', () => {
     await press(app, en['scoring.pad.undo']);
     expect(toolNames()).toEqual([T.tile]);
     expect(strip()).toBe('');
-    const asked = append.mock.calls.length;
+
+    // The network returns and the sender retries when its backoff is due on the phone's clock.
     app.scoring.goOffline(false);
+    aSecondOn(app, 120);
     app.realtime.ping();
     await flush(10_000);
-    // Nothing was written, and nothing more was asked: no tie-break and no void for it.
-    expect(await typesOf(app, seed)).toEqual(BEFORE);
-    expect(append.mock.calls.length).toBe(asked);
+    aSecondOn(app, 120);
+    await flush(10_000);
+    const rows = await ledger(app, seed);
+    expect(rows.map((event) => event.type)).toEqual([...BEFORE, 'boardgame.tiebreak', 'core.void']);
+    // The tie-break arrived whole, once, and the void names it.
+    expect(rows[2]?.payload).toEqual({ rung: 'blitz', winner: AWAY_ENTRANT, score: '2–0' });
+    expect(rows[3]?.voids).toBe(rows[2]?.id);
     expect(toolNames()).toEqual([T.tile]);
+    expect(strip()).toBe('');
+    expect(tally()).toBe('');
+  });
+
+  // The same tap with Undo left alone: it reaches the ledger once, with its score, when the sender retries.
+  it('with no network, a tie-break recorded reaches the ledger once with its score when the network returns', async () => {
+    const seed = bracketChessSeed();
+    const app = await drawn(seed);
+    app.scoring.goOffline(true);
+    await openTiebreak(app);
+    await press(app, T.rung.rapid);
+    await press(app, 'L. Chen');
+    await pick(app, '1½–½');
+    await press(app, T.record);
+    expect(strip()).toBe(advances('L. Chen', 'rapid'));
+    // Nothing can be read from the server while it is out of reach; the pad's sync badge is the scorer's sign of it.
+    app.scoring.goOffline(false);
+    aSecondOn(app, 120);
+    app.realtime.ping();
+    await flush(10_000);
+    aSecondOn(app, 120);
+    await flush(10_000);
+    const rows = await ledger(app, seed);
+    expect(rows.map((event) => event.type)).toEqual([...BEFORE, 'boardgame.tiebreak']);
+    expect(rows[2]?.payload).toEqual({ rung: 'rapid', winner: AWAY_ENTRANT, score: '1½–½' });
+    expect(strip()).toBe(advances('L. Chen', 'rapid'));
+    expect(undoCell()?.getAttribute('aria-disabled')).not.toBe('true');
   });
 });
 
 describe('another scorer, or the organiser, moves the game while the sheet is open', () => {
-  it('a second scorer records the tie-break first: the sheet closes, the pad shows theirs without Undo, and this phone’s never goes', async () => {
+  it('a second scorer records the tie-break first: the sheet closes and the pad shows theirs, without Undo', async () => {
     const seed = bracketChessSeed();
     const app = await drawn(seed);
     await openTiebreak(app);
@@ -637,41 +693,72 @@ describe('another scorer, or the organiser, moves the game while the sheet is op
     expect(undoCell()).toBeNull();
   });
 
-  it('the organiser settles the game by lot: the sheet closes at any step, the tile goes, and nothing of this phone’s is sent', async () => {
-    const seed = bracketChessSeed();
-    const app = await drawn(seed);
-    await openTiebreak(app);
-    await press(app, T.rung.armageddon);
-    await press(app, 'A. Sharma');
-    await press(app, en['scoring.chess.tiebreak.result.draw']);
-    expect(stepTitle(T.titles.confirm)).toBeTruthy();
-    app.scoring.addOtherScorerEvent('core.settle', { winner: AWAY_ENTRANT, method: 'lot' });
-    app.realtime.ping();
-    await flush(400);
-    expect(sheet()).toBeNull();
-    expect(tileButton()).toBeNull();
-    expect(toolNames()).toEqual([]);
-    // The game is decided: the pad says so on its card, and the halves take nothing.
-    expect(screen.getByTestId('pad-card').textContent).toContain(
-      en['scoring.card.resultRecorded.title'],
-    );
-    expect(half('first').getAttribute('aria-disabled')).toBe('true');
-    expect(await typesOf(app, seed)).toEqual([...BEFORE, 'core.settle']);
-    // No Record is left to press: the scorer’s draft went with the sheet.
-    expect(screen.queryByRole('button', { name: T.record })).toBeNull();
-  });
+  // The sheet is stale as soon as no tie-break is owed, whichever step the scorer is on.
+  it.each([
+    ['the rung', T.titles.rung, async () => undefined],
+    ['who won', T.titles.winner, (app: LaunchedApp) => press(app, T.rung.rapid)],
+    [
+      'the score',
+      T.titles.score,
+      async (app: LaunchedApp) => {
+        await press(app, T.rung.rapid);
+        await press(app, 'A. Sharma');
+      },
+    ],
+    ['who had Black', T.titles.black, (app: LaunchedApp) => press(app, T.rung.armageddon)],
+    [
+      'the Armageddon result',
+      T.titles.result,
+      async (app: LaunchedApp) => {
+        await press(app, T.rung.armageddon);
+        await press(app, 'A. Sharma');
+      },
+    ],
+    [
+      'the Armageddon read-back',
+      T.titles.confirm,
+      async (app: LaunchedApp) => {
+        await press(app, T.rung.armageddon);
+        await press(app, 'A. Sharma');
+        await press(app, en['scoring.chess.tiebreak.result.draw']);
+      },
+    ],
+  ] as const)(
+    'the organiser settles the game by lot while the sheet is on %s: the sheet closes with its draft, and nothing of this phone’s is sent',
+    async (_step, title, walk) => {
+      const seed = bracketChessSeed();
+      const app = await drawn(seed);
+      await openTiebreak(app);
+      await walk(app);
+      expect(stepTitle(title)).toBeTruthy();
+      app.scoring.addOtherScorerEvent('core.settle', { winner: AWAY_ENTRANT, method: 'lot' });
+      app.realtime.ping();
+      await flush(400);
+      expect(sheet()).toBeNull();
+      expectSettledByLot();
+      expect(await typesOf(app, seed)).toEqual([...BEFORE, 'core.settle']);
+      // No Record is left to press and no lots line stands: the scorer's draft went with the sheet.
+      expect(screen.queryByRole('button', { name: T.record })).toBeNull();
+      expect(screen.queryByText(T.lots)).toBeNull();
+    },
+  );
 
-  it('the organiser settles it while the rung is still to be picked, and the lots line they were thinking of is gone with the sheet', async () => {
+  // The settle is on the server before this phone has read it, and Record is pressed on a pad that does not know. The
+  // append meets the web's seq; the phone reads the ledger, finds no tie-break owed, and the scorer is told.
+  it('the organiser settles by lot between this scorer’s pick and Record, unseen: nothing of this phone’s lands, the sheet is closed, and the scorer is told', async () => {
     const seed = bracketChessSeed();
     const app = await drawn(seed);
     await openTiebreak(app);
-    expect(stepTitle(T.titles.rung)).toBeTruthy();
+    await press(app, T.rung.rapid);
+    await press(app, 'L. Chen');
     app.scoring.addOtherScorerEvent('core.settle', { winner: HOME_ENTRANT, method: 'lot' });
-    app.realtime.ping();
-    await flush(400);
+    await press(app, T.record);
+    await flush(1_000);
     expect(sheet()).toBeNull();
-    expect(screen.queryByText(T.lots)).toBeNull();
-    expect(tileButton()).toBeNull();
+    expect(await typesOf(app, seed)).toEqual([...BEFORE, 'core.settle']);
+    expect(screen.getByTestId('refusal').textContent).toBe(en['scoring.refusal.notCounted']);
+    expectSettledByLot(false);
+    expect(undoCell()).toBeNull();
   });
 
   // The organiser corrected the stage's format (a new rules version) after this scorer opened the sheet and picked a rung
@@ -796,7 +883,7 @@ describe('after an interruption', () => {
     expect(toolNames()).toEqual([T.tile]);
   });
 
-  it('a cold start in a drawn game reopens on the pad with the tile, and the tie-break goes in from there', async () => {
+  it('a cold start in a drawn game reopens on the pad with the tile, the tie-break goes in from there, and Undo takes it back', async () => {
     const seed = bracketChessSeed(undefined, {
       events: [
         { type: 'core.start', payload: {} },
@@ -812,8 +899,13 @@ describe('after an interruption', () => {
     await press(app, 'L. Chen');
     await press(app, T.record);
     expect((await lastEvent(app, seed))?.payload).toEqual({ rung: 'blitz', winner: AWAY_ENTRANT });
-    // The tie-break is this phone's own, but a tap made before this launch has nothing else to undo: Undo is its own.
     expect(strip()).toBe(advances('L. Chen', 'blitz'));
+    // The draw before it was another scorer's, but the tie-break is this phone's own, so Undo is offered and voids it.
+    expect(undoCell()?.getAttribute('aria-disabled')).not.toBe('true');
+    const mine = (await ledger(app, seed)).at(-1);
+    await press(app, en['scoring.pad.undo']);
+    expect((await lastEvent(app, seed))?.voids).toBe(mine?.id);
+    expect(toolNames()).toEqual([T.tile]);
   });
 });
 
