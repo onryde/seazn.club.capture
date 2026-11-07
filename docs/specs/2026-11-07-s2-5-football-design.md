@@ -157,7 +157,7 @@ both (`sport/fold-epoch.ts:51,61`). No engine bump is needed.
 
 Across the top, under the top bar. Left: the clock, Barlow Condensed in lime with `tabular-nums`, `MM:SS` counted
 the way the match counts (45:00 starts the second half, §7.4), and once a period runs past its length the added
-minutes over ("45+2", "90+3"; ruling 108). Under it the period in `ink3` caps ("1st half", "2nd half", "Extra time
+time passed in added time ("45+1:20", "90+2:30"; ruling 109). Under it the period in `ink3` caps ("1st half", "2nd half", "Extra time
 1st half", "1st quarter", …, "Half-time" between periods). Right: one button, **Start** while the clock is stopped,
 **Pause** while it runs.
 
