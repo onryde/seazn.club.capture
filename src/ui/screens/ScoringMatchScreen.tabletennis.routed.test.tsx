@@ -123,7 +123,8 @@ async function choose(app: LaunchedApp, name: string): Promise<void> {
 async function scanned(over: Parameters<typeof launchApp>[0] = {}): Promise<LaunchedApp> {
   const app = await launchApp({ scoringSeed: SEED, ...over });
   app.scanner.queue({ outcome: 'scanned', raw: RAW });
-  act(() => screen.getByRole('button', { name: /Remote Scoring|Puntuación|Score|Scoren/ }).click());
+  // The tile by its English name: "Score" alone also names Match Day's tile ("Score every match of the day.").
+  act(() => screen.getByRole('button', { name: new RegExp(en['mode.scoring']) }).click());
   await flush(400);
   return app;
 }
