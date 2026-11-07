@@ -30,10 +30,11 @@ import { undoTarget } from '@/domain/scoring/undoTarget';
 import { matchContextOf, type Bootstrap } from '@/domain/scoring/wire';
 
 /**
- * The fold the set-based sports (badminton, table tennis) share (design §6; plan S2-1 Task 7, lifted for S2-2 Task 3): the
- * server's ledger with this phone's queued taps on top, folded through @seazn/engine. A generic file: it names no sport.
- * A sport gives a `SetBasedKit` (its engine module, its two event types, how it judges an append and what an event did)
- * and reads its display off the `SetBasedFolding` this returns; the engine decides every fact, this only reads them off.
+ * The fold the one-against-one sports share (badminton, table tennis and chess; design §6; plan S2-1 Task 7, lifted for
+ * S2-2 Task 3): the server's ledger with this phone's queued taps on top, folded through @seazn/engine. A generic file: it
+ * names no sport. A set-based sport gives a `SetBasedKit` (its engine module, its two event types, how it judges an
+ * append and what an event did) and reads its display off the `SetBasedFolding` this returns; the engine decides every
+ * fact, this only reads them off. Chess is not set-based: it has its own fold and takes only `streamOf` from here.
  *
  * Each queued tap is judged as the server would judge its append on the ledger and the legal taps before it (the kit's
  * `mayAppend`). An illegal tap is skipped, never shown, and the ones behind it are judged without it (`stream.legal`,
@@ -110,7 +111,9 @@ export function foldSetBased<D>(
 ): SetBasedFolding<D> | Unfoldable {
   const match = matchOf(kit, input.bootstrap);
   if (typeof match === 'string') return match;
-  const stream = streamOf(kit, match, input);
+  const stream = streamOf(match.engine.fixtureId, input, (before, next) =>
+    kit.mayAppend(match, before, next),
+  );
   const folded = foldOf(kit, match.engine, stream.envelopes);
   if (folded === null) return 'ledger';
   const legalTaps = input.queued.filter((tap) => stream.legal.includes(tap.key));
@@ -142,13 +145,18 @@ function matchOf<D>(kit: SetBasedKit<D>, bootstrap: Bootstrap): SetBasedMatch | 
   };
 }
 
-function streamOf<D>(
-  kit: SetBasedKit<D>,
-  match: SetBasedMatch,
+/**
+ * The stream the server would hold: the ledger, then each queued tap `mayAppend` says the server would take after the
+ * events before it (an illegal tap is skipped and the ones behind it are judged without it). Any one-against-one sport's,
+ * set-based or not: the sport gives its own judge of one append.
+ */
+export function streamOf(
+  fixtureId: string,
   input: SportFoldInput,
+  mayAppend: (before: readonly EventEnvelope[], next: EventEnvelope) => boolean,
 ): SetBasedStream {
   const own = new Set(input.ownEventIds);
-  const envelopes = input.ledger.map((event) => envelopeOf(match.engine.fixtureId, event));
+  const envelopes = input.ledger.map((event) => envelopeOf(fixtureId, event));
   const entries: LedgerEntry[] = envelopes.map((envelope) => ({
     envelope,
     own: own.has(envelope.id),
@@ -156,8 +164,8 @@ function streamOf<D>(
   }));
   const legal: string[] = [];
   for (const tap of input.queued) {
-    const envelope = queuedEnvelopeOf(match.engine.fixtureId, tap, nextSeq(envelopes));
-    if (!kit.mayAppend(match, envelopes, envelope)) continue;
+    const envelope = queuedEnvelopeOf(fixtureId, tap, nextSeq(envelopes));
+    if (!mayAppend(envelopes, envelope)) continue;
     envelopes.push(envelope);
     entries.push({ envelope, own: true, sending: true });
     legal.push(tap.key);

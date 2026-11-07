@@ -5,10 +5,13 @@ import { NameText } from '@/ui/components/NameText';
 import { Text } from '@/ui/components/Text';
 import { colour, layout, plateInk, radius, space } from '@/ui/theme/tokens';
 
+/** A side to pick: its seat and its name (a plate, if the sport gives one, is not the picker's). */
+type TossOption = Pick<PadStartSide, 'side' | 'label'>;
+
 type TossPickerProps = {
   /** The question, in the operator's language: the group's heading and its name to a screen reader. */
   readonly ask: string;
-  readonly sides: readonly [PadStartSide, PadStartSide];
+  readonly sides: readonly [TossOption, TossOption];
   readonly picked: PadSide | null;
   readonly onPick: (side: PadSide) => void;
 };
@@ -51,7 +54,7 @@ const TossSide = memo(function TossSide({
   checked,
   onPick,
 }: {
-  readonly side: PadStartSide;
+  readonly side: TossOption;
   readonly checked: boolean;
   readonly onPick: (side: PadSide) => void;
 }) {

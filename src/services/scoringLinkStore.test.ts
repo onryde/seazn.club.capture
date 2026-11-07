@@ -43,6 +43,16 @@ describe('the scoring link store', () => {
     });
   });
 
+  it('keeps chess under the engine’s key for it, boardgame: the record carries the bootstrap’s word, never "chess"', async () => {
+    const kv = createMemoryKeyValueStore();
+    await saveScoringLink(kv, FIXTURE, LINK, HOST, 'boardgame');
+    expect(await readScoringLink(kv, FIXTURE, HOST)).toEqual({
+      kind: 'link',
+      link: LINK,
+      sportKey: 'boardgame',
+    });
+  });
+
   it('a second save of the match keeps the sport of the last, as a fresh scan does', async () => {
     const kv = createMemoryKeyValueStore();
     await saveScoringLink(kv, FIXTURE, LINK, HOST, 'badminton');

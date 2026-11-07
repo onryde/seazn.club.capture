@@ -113,7 +113,7 @@
     "to": "native: a transport (fell-back), a bitrate in bits per second (bitrate), or a state or phase name",
     "tokenTag": "both: which issue of a code, eight hex digits; never the token (carry 2)",
     "transport": "both: srt or rtmps",
-    "word": "native: the class name of a ServerWord verdict"
+    "word": "native: the class name of a ServerWord verdict; JS: chess method chosen (scoring.chess.method), one short word"
   },
   "scalars": {
     "audioFps": "native: video-stalled, audio packets per second, or null",

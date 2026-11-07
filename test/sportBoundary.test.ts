@@ -184,3 +184,67 @@ describe('a generic scoring file names no table tennis module either', { timeout
     expect(await refusals(TT_VALUE, 'src/domain/scoring/tableTennisFold.test.ts')).toEqual([]);
   });
 });
+
+/**
+ * Chess is held the same way (plan S2-3 Task 1): its modules are `chess*` (domain, services) and `*Chess*` (hooks, screens),
+ * both case spellings since the globs are case sensitive. Its sport key is `boardgame`, so no file name carries it.
+ */
+const CHESS_VALUE =
+  "import { foldChess } from '@/domain/scoring/chessFold';\nexport const f = foldChess;\n";
+const CHESS_TYPE =
+  "import type { ChessDisplay } from '@/domain/scoring/chessTypes';\nexport type D = ChessDisplay;\n";
+const CHESS_CAPITAL =
+  "import { useChessMatch } from '@/hooks/useChessMatch';\nexport const h = useChessMatch;\n";
+
+const CHESS_OWN = [
+  'src/domain/scoring/chessFold.ts',
+  'src/domain/scoring/chessLedgerHistory.ts',
+  'src/domain/scoring/chessPad.ts',
+  'src/domain/scoring/chessSport.ts',
+  'src/hooks/useChessMatch.ts',
+  'src/hooks/useChessSheets.ts',
+  'src/ui/screens/ChessPadScreen.tsx',
+  'src/services/fakeChessPad.ts',
+  // held by `usePad*` and exempt only by `*Chess*`
+  'src/hooks/usePadChessProbe.ts',
+] as const;
+
+describe('a generic scoring file names no chess module either', { timeout: 180_000 }, () => {
+  it('refuses a chess import, by value and by type, from a path of every glob', async () => {
+    const byValue = await Promise.all(
+      GENERIC.map(async (file) => (await refusals(CHESS_VALUE, file)).length),
+    );
+    const byType = await Promise.all(
+      GENERIC.map(async (file) => (await refusals(CHESS_TYPE, file)).length),
+    );
+    expect(byValue).toEqual(GENERIC.map(() => 1));
+    expect(byType).toEqual(GENERIC.map(() => 1));
+  });
+
+  it('refuses the capitalised spelling too (a hook or a screen)', async () => {
+    const counts = await Promise.all(
+      GENERIC.map(async (file) => (await refusals(CHESS_CAPITAL, file)).length),
+    );
+    expect(counts).toEqual(GENERIC.map(() => 1));
+  });
+
+  it('refuses the sport module from a path of every glob, and from the lifted set-based file', async () => {
+    const source =
+      "import { chessSport } from '@/domain/scoring/chessSport';\nexport const s = chessSport;\n";
+    const paths = [...GENERIC, 'src/domain/scoring/setBasedSanction.ts'];
+    const counts = await Promise.all(
+      paths.map(async (file) => (await refusals(source, file)).length),
+    );
+    expect(counts).toEqual(paths.map(() => 1));
+  });
+
+  it('stays silent in chess’s own files, and in a test', async () => {
+    const own = await Promise.all(
+      CHESS_OWN.flatMap((file) =>
+        [CHESS_VALUE, CHESS_CAPITAL].map(async (src) => (await refusals(src, file)).length),
+      ),
+    );
+    expect(own).toEqual(CHESS_OWN.flatMap(() => [0, 0]));
+    expect(await refusals(CHESS_VALUE, 'src/domain/scoring/chessFold.test.ts')).toEqual([]);
+  });
+});

@@ -23,6 +23,7 @@ import { LastTapLine } from '@/ui/components/LastTapLine';
 import { PadStateCard } from '@/ui/components/PadStateCard';
 import { PadStrip } from '@/ui/components/PadStrip';
 import { ScoreHalf } from '@/ui/components/ScoreHalf';
+import { StartSides } from '@/ui/components/StartSides';
 import { SyncBadge } from '@/ui/components/SyncBadge';
 import { Text } from '@/ui/components/Text';
 import { ToolRow } from '@/ui/components/ToolRow';
@@ -202,7 +203,9 @@ const PadBody = memo(function PadBody({
 /**
  * The Start screen (owner, 2026-11-01, option A), in the halves' place until the match starts: the match card, who
  * serves first, then Start match, a tap and no hold (it is not destructive: Undo takes it back). It scrolls when it is
- * taller than the room. Start match is disabled, and says so, until a side is picked.
+ * taller than the room. Start match is disabled, and says so, until a side is picked; a sport with no serve to pick
+ * (`needsToss` false) has no question and no picker, and Start match is ready (plan S2-3 Task 2). Such a sport whose sides
+ * carry plates shows the names with their plates as read-only rows (`StartSides`).
  */
 const StartPanel = memo(function StartPanel({
   start,
@@ -220,13 +223,21 @@ const StartPanel = memo(function StartPanel({
   return (
     <ScrollView testID="start-screen" style={styles.body} contentContainerStyle={styles.start}>
       <DetailsCard details={details} />
-      <TossPicker
-        ask={words(start.ask)}
-        sides={start.sides}
-        picked={toss}
-        onPick={actions.pickServer}
+      {start.needsToss ? (
+        <TossPicker
+          ask={words(start.ask)}
+          sides={start.sides}
+          picked={toss}
+          onPick={actions.pickServer}
+        />
+      ) : (
+        <StartSides sides={start.sides} />
+      )}
+      <Button
+        label={t('scoring.start.confirm')}
+        onPress={actions.start}
+        disabled={start.needsToss && toss === null}
       />
-      <Button label={t('scoring.start.confirm')} onPress={actions.start} disabled={toss === null} />
     </ScrollView>
   );
 });
