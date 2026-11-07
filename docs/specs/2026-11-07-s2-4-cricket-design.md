@@ -79,6 +79,10 @@ with the console agreeing ball for ball (§8).
 | 68  | The flow of §4, played back in plain words, is agreed: "ok" (2026-11-07). |
 | 69  | More holds Retire, Penalty runs, Declare / close innings and Rain: revised target, and "try to match and see possible action from engine" (2026-11-07): every live action the engine records and the format allows (§4.8). |
 | 70  | Sign-off is a throwaway preview on the phone plus this document ("1 and 3", 2026-11-07). The preview has no tests and no mutation testing ("don't do any mutation/test in preview"). It is never merged. |
+| 71  | Engine changes before cricket ships on the phone (2026-11-07): export the wide and no-ball dismissal sets and `orderFromLineup`; a mid-over bowler change; a hand strike swap. A fielding-side penalty was not chosen. (§7.3) |
+| 72  | The web pad's gaps (§7.2) are fixed by this session in a `seazn.club` worktree, on staging before the phone's exit bar ("This session (Recommended)", 2026-11-07). |
+| 73  | A 4 or 6 that was run, not a boundary, goes under the 5+ key ("ran 4", "ran 6"); the 4 and 6 keys are boundaries ("Under 5+ (Recommended)", 2026-11-07). |
+| 74  | A tie with no players entered: "Tied — the organiser decides the super over" ("Say so, organiser decides (Recommended)", 2026-11-07). |
 
 ## 4. How a scorer meets it
 
@@ -104,8 +108,9 @@ on chips (gap 1). The phone asks.
 
 ### 4.2 Each ball
 
-- **Runs**: one tap on 0, 1, 2, 3, 4 or 6; "5+" opens 5 and 7. A 4 or a 6 off the bat is a boundary (`boundary`) unless
-  the scorer marks it run (_the controller's_: one long-press, or a "ran 4" choice in 5+; the plan settles it).
+- **Runs**: one tap on 0, 1, 2, 3, 4 or 6; "5+" opens 5, 7, "ran 4" and "ran 6". The 4 and 6 keys are boundaries
+  (`boundary`); a run 4 or 6 carries none (ruling 73). `boundary` is never checked against the runs; it feeds the fours,
+  sixes and boundary-count tie-break only (212, 1653, 1751).
 - **Extras**: Wide, No-ball, Bye, Leg-bye each open a sheet that stays until a choice is made or it is cancelled (gap 4):
   - Wide → "Runs run" 0–4. The engine's `extras.runs` counts the wide's own run, so a wide and two run is
     `{wide, runs: 3}` (`cricket.ts` ~1655). The web records a wide as one run, always (gap 3).
@@ -238,7 +243,7 @@ may be partial (a chase that passes the target mid-over, `CHASE_OVERSHOOT`, 1817
 whole overs.
 
 **A tie in over-totals mode is a dead end**: a summary needs the match live (1765), and a super-over ball needs batters
-in the lineup (1554-1559). The pad says "Tied — the organiser decides the super over" and stops (_the controller's_, §11).
+in the lineup (1554-1559). The pad says "Tied — the organiser decides the super over" and stops (ruling 74).
 
 ## 5. The screen
 
@@ -316,8 +321,23 @@ the same things:
 | 7 | "Who walks in?" after an innings-ending wicket (seen on the super over's second) | Not asked |
 | 8 | The layout jumps after every ball | Fixed-height regions |
 
-Who builds it, and where, is open (§11). The S2 pattern was this session in a `seazn.club` worktree, deployed to staging
-before the phone's exit bar.
+This session builds it in a `seazn.club` worktree, deployed to staging before the phone's exit bar (ruling 72).
+
+### 7.3 Engine changes (ruling 71)
+
+In `seazn.club.engine`, released as a version both the web and the phone take:
+
+1. **Exports**: the wide and no-ball dismissal sets (into `cricketPadRules`, beside `freeHitDismissalKinds`) and
+   `orderFromLineup`, so the phone offers exactly the engine's kinds and orders a lineup exactly as the server does.
+2. **A mid-over bowler change**: today a second bowler in an over in progress is refused (1512-1517) and no event names
+   the change. The engine designs the event (Law 17.8: the over is completed by another bowler, who may not have bowled
+   the previous over or bowl the next).
+3. **A hand strike swap**: today a ball whose `striker`/`nonStriker` differ from the fold's pair is refused (1524-1542).
+   The engine designs how a swap is recorded, so the phone can offer "tap a batter to swap".
+
+The phone takes the release (the S2-2 path: ruling 53). The web takes it too, and the web pad's fixes use the same
+changes. The engine's own rules and owner rulings govern the change. Until it ships, the phone falls back to a trial
+fold for the dismissal kinds, and offers neither the mid-over change nor the swap.
 
 ## 8. Exit bar
 
@@ -356,20 +376,14 @@ Left out: a wagon wheel on every run; logins per player; ads near the pad; onlin
 
 ## 11. Open for the owner
 
-1. **Extras**: the sheet of §4.2 (A), or the extra lit then a run key (B). The preview shows A.
-2. **The web fixes of §7.2**: built by this session in a `seazn.club` worktree (as S2), or by the web session.
-3. **Engine changes**, and whether S2-4 waits for them or ships without:
-   a. a mid-over bowler change (refused today, 1512-1517; no event);
-   b. a hand strike swap (refused today, 1524-1542);
-   c. exporting the wide / no-ball dismissal sets and `orderFromLineup` (my recommendation: yes, a small engine release
-      the phone takes, rather than trial folds);
-   d. penalty runs to the fielding side, or between balls (not modelled);
-   e. timed out without a phantom ball.
-4. **Editing an older ball** (CricHeroes has it; ours is Undo of the last only).
-5. **A 4 or 6 that was run, not a boundary**: how the scorer says so (`boundary` is never checked against the runs; it
-   feeds the fours, sixes and boundary-count tie-break only, 212, 1653, 1751).
-6. **Over-totals dead ends** (§4.10): a tie, and no eligible bowler. My recommendation: say so and leave it to the
-   organiser.
+1. **Extras**: the sheet of §4.2 (A), or the extra lit then a run key (B). The preview shows A; the owner judges it there.
+2. **Editing an older ball** (CricHeroes has it; ours is Undo of the last only).
+3. **Timed out** without a phantom ball, and a **fielding-side penalty**: not chosen for the engine change (ruling 71);
+   the phone offers neither.
+4. **No eligible bowler** (§4.4): say so and offer over totals for the rest of the innings (_the controller's_).
+
+Settled 2026-11-07: who builds the web fixes (ruling 72), the engine changes (71), a run 4 or 6 (73), a tie with no
+players (74).
 
 ## 12. Left to the builder
 
