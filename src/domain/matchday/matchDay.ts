@@ -1,0 +1,132 @@
+/**
+ * Match Day's day, as the phone holds it (S4 Match Day design §5, §7): what `parseDay` reads from the web's day read
+ * (capture-matchday-day.v1, the web's `MatchDayCodeView`), in camelCase, with Dates, and the list model the screen
+ * draws from it. The phone works nothing out: the courts' order and states, the queues and the approvals are the
+ * server's (decision record ruling 14).
+ */
+
+/** A match's place in its day: not started, in play, or over (decided, finalized, held, abandoned, forfeited or cancelled). */
+export type RowStatus = 'upcoming' | 'inPlay' | 'finished';
+
+/** One match as the list shows it. */
+export type Row = {
+  readonly fixtureId: string;
+  /** Decides which pad opens. */
+  readonly sportKey: string;
+  readonly divisionName: string;
+  /** As the web's board codes it (R2, QF, SF, F, …), or null. */
+  readonly roundLabel: string | null;
+  /** A seat with no entrant yet is null, never a made-up name. */
+  readonly home: string | null;
+  readonly away: string | null;
+  readonly status: RowStatus;
+  readonly scheduledAt: Date | null;
+  /** The short score while it plays, or the result once finished; null before any. */
+  readonly summary: string | null;
+};
+
+/** Playing or called (one of the competition's matches is on it), free, or held by another competition. */
+export type CourtState = 'playing' | 'called' | 'free' | 'inUseElsewhere';
+
+/** A court (or table, or board) in the code's scope, as the server lists it. */
+export type Court = {
+  readonly courtId: string;
+  readonly courtName: string;
+  readonly venueName: string;
+  readonly state: CourtState;
+  readonly now: Row | null;
+  /** The court's queue, in planned order. */
+  readonly next: readonly Row[];
+  /** Today's finished matches on it, newest first. */
+  readonly finished: readonly Row[];
+};
+
+export type ScopeKind = 'competition' | 'venue' | 'courts';
+
+/** A Swiss stage's next round, or the seed proposal from groups into a knockout (the draw). */
+export type ApprovalKind = 'swiss' | 'draw';
+
+export type Approval = {
+  readonly kind: ApprovalKind;
+  readonly stageId: string;
+  readonly divisionName: string;
+  /** The stage's name. */
+  readonly label: string;
+  /** Swiss: the round awaiting pairing ("Round 4 pairings are ready"); a draw: null. */
+  readonly round: number | null;
+};
+
+export type MatchDay = {
+  readonly competition: { readonly id: string; readonly name: string };
+  /** `label` is what the header shows: the competition's, the venue's or the courts' names. */
+  readonly scope: { readonly kind: ScopeKind; readonly label: string };
+  /** The code's day, YYYY-MM-DD, in `tz`: a calendar day, not an instant. */
+  readonly day: string;
+  readonly tz: string;
+  /** Before it the code answers MD_NOT_OPEN; from `expiresAt` it answers MD_ENDED. */
+  readonly opensAt: Date;
+  readonly expiresAt: Date;
+  /** Minted with "can approve draws". */
+  readonly canApprove: boolean;
+  readonly courts: readonly Court[];
+  /** A whole-competition code only: the day's matches on no court. */
+  readonly noCourt: readonly Row[];
+  /** Online chess boards: read-only. */
+  readonly online: readonly Row[];
+  /** Waiting in the code's scope, listed whether or not it can approve. */
+  readonly approvals: readonly Approval[];
+};
+
+/** Every refusal word the md_ routes answer, the contracts' closed list (`$defs.refusal.code`). */
+export const MATCHDAY_REFUSALS = [
+  'MD_UNKNOWN',
+  'MD_WITHDRAWN',
+  'MD_ENDED',
+  'MD_NOT_OPEN',
+  'MD_OUT_OF_SCOPE',
+  'MD_NO_APPROVE',
+  'MD_STALE',
+  'MD_ALREADY',
+  'MD_TIES',
+] as const;
+
+export type MatchDayRefusal = (typeof MATCHDAY_REFUSALS)[number];
+
+/** One court's card: Now, the first two of its queue as Next and Then, and its finished matches below them. */
+export type CourtCard = {
+  readonly courtId: string;
+  readonly name: string;
+  readonly venueName: string;
+  readonly state: CourtState;
+  readonly now: Row | null;
+  readonly next: Row | null;
+  readonly then: Row | null;
+  readonly finished: readonly Row[];
+};
+
+/** The banner over the list: the first approval waiting. Without `canApprove` it has no button (`matchday.approve.webOnly`). */
+export type Banner = { readonly approval: Approval; readonly canApprove: boolean };
+
+/** One card per court, in the server's order. Only the first two of a queue are shown. */
+export function courtCards(day: MatchDay): readonly CourtCard[] {
+  return day.courts.map(cardOf);
+}
+
+function cardOf(court: Court): CourtCard {
+  return {
+    courtId: court.courtId,
+    name: court.courtName,
+    venueName: court.venueName,
+    state: court.state,
+    now: court.now,
+    next: court.next[0] ?? null,
+    then: court.next[1] ?? null,
+    finished: court.finished,
+  };
+}
+
+/** The first approval the server lists, or null when none waits. */
+export function bannerFor(day: MatchDay): Banner | null {
+  const approval = day.approvals[0];
+  return approval === undefined ? null : { approval, canApprove: day.canApprove };
+}

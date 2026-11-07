@@ -6,8 +6,10 @@ folder (`capture-*` and `fixtures/capture-*`) at one commit, and nothing here is
 services' contracts there too (`relay-job.v1`, the compositor's); they are not the phone's and stay behind (owner,
 2026-10-26, amending §3.1).
 
-Vendored from web `f0feab16c2f4966b221ea2a53cabf76a420f54ea` (web #1037, merged 2026-10-26) on 2026-10-26: 6 schemas
-and 202 fixtures. Staging deploys the web's `main`. f0feab16c changed only the record contract and its fixtures: it
+Vendored from web `1a6f5ebc9efc68c0e0e6ca81a0cab68c04ce0937` on 2026-11-07: 8 schemas and 224 fixtures. Staging
+deploys the web's `main`. 1a6f5ebc9 (MD-1 Tasks 3 and 4) added Match Day's day read and its open,
+`capture-matchday-day.v1` and `capture-matchday-open.v1`, with their 22 fixtures, and changed no other file. Before
+it, `f0feab16c` (web #1037, merged 2026-10-26) changed only the record contract and its fixtures: it
 lists the regulator's seven scalars (`bandwidthBps`, `dropped`, `egressBps`, `gateBps`, `lost`, `sendBufferMs`,
 `target`; R-990P, `_FINDINGS.md` N41) and adds three `bitrate` fixtures. Before it, `a6cc1f038` (web #944, merged
 2026-10-12) changed only the record contract's description: a pairing
@@ -21,16 +23,18 @@ that, `53f28ebfc` (web #941) added the record contract and its 52 fixtures, and 
 vendoring, on 2026-10-09, was at web `8afdd8b42`; the second, the same day, at `5a02cc4a5`, which changed the
 descriptor schema's prose and fifteen fixtures' RTMPS host to `live.cloudflare.com`, and no verdict.
 
-| File                           | What it is                                                                 |
-| ------------------------------ | -------------------------------------------------------------------------- |
-| `capture-qr.v2.json`           | The stream QR: code, slot and token, never a credential                    |
-| `capture-descriptor.v1.json`   | `GET code`'s answer: the waiting fields, and the session shape with `cred` |
-| `capture-beat.v1.json`         | A beat and its answer                                                      |
-| `capture-start.v1.json`        | `POST start`'s answer and its refusals                                     |
-| `capture-scoring-link.v1.json` | The Remote scoring link's answer                                           |
-| `capture-record.v1.json`       | One line of Send record to Seazn's NDJSON body, its 201 and its refusals   |
-| `fixtures/<contract>/…`        | The web's own fixtures for each, in the web's tree                         |
-| `VENDORED.json`                | The web commit and the sha256 of every file above, written by the script   |
+| File                            | What it is                                                                 |
+| ------------------------------- | -------------------------------------------------------------------------- |
+| `capture-qr.v2.json`            | The stream QR: code, slot and token, never a credential                    |
+| `capture-descriptor.v1.json`    | `GET code`'s answer: the waiting fields, and the session shape with `cred` |
+| `capture-beat.v1.json`          | A beat and its answer                                                      |
+| `capture-start.v1.json`         | `POST start`'s answer and its refusals                                     |
+| `capture-scoring-link.v1.json`  | The Remote scoring link's answer                                           |
+| `capture-record.v1.json`        | One line of Send record to Seazn's NDJSON body, its 201 and its refusals   |
+| `capture-matchday-day.v1.json`  | A Match Day code's day read: courts, queues, approvals, and its refusals   |
+| `capture-matchday-open.v1.json` | Opening a match through a Match Day code: its scoring link, or finished    |
+| `fixtures/<contract>/…`         | The web's own fixtures for each, in the web's tree                         |
+| `VENDORED.json`                 | The web commit and the sha256 of every file above, written by the script   |
 
 ## How a contract changes
 
@@ -48,14 +52,15 @@ A contract changes only through `pnpm contracts:vendor` and the pin test (R7):
    behind. A file that is neither a capture contract nor of a family in the script's `NOT_THE_PHONES` refuses the run:
    name its family there, or ask why the phone's contract is not called `capture-`. It only reads the web checkout, and it never runs
    in CI. A fresh clone of the public repo, checked out at that commit, serves as well: the 5a02cc4a5, 55ac34d5d,
-   a6cc1f038 and f0feab16c vendorings used one, so the web checkout in daily use was never moved.
+   a6cc1f038 and f0feab16c vendorings used one, so the web checkout in daily use was never moved. The 1a6f5ebc9
+   vendoring used a detached worktree at that commit, for the same reason.
 
-2. By hand, copy the web's commit and its six schema pins (`SHA256` in the web's
+2. By hand, copy the web's commit and its schema pins (`SHA256` in the web's
    `apps/web/src/server/api-v1/__tests__/capture-contract.test.ts`) into `WEB_COMMIT` and `WEB_PINS` in
    `test/contractPins.test.ts`. The script never writes them, so a re-vendor cannot move both sides of the pin at
    once.
 
-3. Run `pnpm check`. `test/contractPins.test.ts` holds every file here to `VENDORED.json` and the six schemas to the
+3. Run `pnpm check`. `test/contractPins.test.ts` holds every file here to `VENDORED.json` and the schemas to the
    web's own pins. A changed shape reds its parser's tests; the parser changes in the same pull request.
 
 ## Rules
@@ -66,8 +71,9 @@ A contract changes only through `pnpm contracts:vendor` and the pin test (R7):
   `VENDORED.json`; the pin covers neither.
 - **The wire shape never reaches the domain.** Each wire shape has one parser, in one language (AGENTS §4): the QR
   and the waiting fields in TypeScript (`src/domain/credentials`), the session shape and the server's answers in
-  Kotlin (`Bodies.kt`). The record upload is the one exception: the app's TypeScript sends it and reads its answer,
-  and the engine never sees it (`src/services/recordContract.ts`, `recordUploadPort.ts`).
+  Kotlin (`Bodies.kt`). Two exceptions, whose wire the engine never sees: the record upload, which the app's
+  TypeScript sends and whose answer it reads (`src/services/recordContract.ts`, `recordUploadPort.ts`), and Match
+  Day's day read, its open and their refusals (`src/domain/matchday`).
 
 ## Words a schema allows that a route never sends
 
