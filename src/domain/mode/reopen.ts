@@ -163,7 +163,7 @@ export type LeaveRule = 'free' | 'freeAndForget' | 'blockedOnAir';
 
 /**
  * Decision 5. Only Live Stream exists in S0; Scoring's "N scores haven't
- * sent yet" and the Dashboard's rule arrive with their modes. A stopped
+ * sent yet" and Match Day's rule arrive with their modes. A stopped
  * session spends the code only when it is this code's (`ownSession`): one
  * left by another code spends nothing (fix round 3).
  */

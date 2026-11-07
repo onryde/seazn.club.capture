@@ -5,14 +5,12 @@
   "crash.mayBeLive": "The broadcast may still be live. Try again to get back to Stop.",
   "mode.stream": "Live Stream",
   "mode.scoring": "Remote Scoring",
-  "mode.dashboard": "Dashboard",
   "home.status.idle": "Tap a mode, then scan its code.",
   "home.tile.stream.purpose": "Film a match to YouTube.",
   "home.tile.stream.hint": "Scan the stream code from the match page",
   "home.settings": "Settings",
   "home.tile.scoring.purpose": "Score one match from the side.",
   "home.tile.scoring.hint": "Scan the scoring link",
-  "home.tile.dashboard.purpose": "Approve the next round of a tournament.",
   "home.tile.comingSoon": "Coming soon",
   "home.continue.title": "Continue {mode}",
   "home.continue.detail": "Slot {slot} · code valid till {time}",
@@ -1168,5 +1166,8 @@
   "scoring.tennis.undone.break": "Break undone",
   "scoring.tennis.setScore.title": "Set score · Set {set}",
   "scoring.tennis.setScore.games": "Games — {side}",
-  "scoring.tennis.setScore.tiebreak": "Tie-break — {side}"
+  "scoring.tennis.setScore.tiebreak": "Tie-break — {side}",
+  "mode.matchday": "Match Day",
+  "home.tile.matchday.purpose": "Score every match of the day.",
+  "home.tile.matchday.hint": "Scan the Match Day code"
 }

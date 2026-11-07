@@ -232,7 +232,7 @@ const panelHandlers = () => ({
 
 /**
  * The sheet's words (copy table, Task 30), in the operator's language, with the
- * mode named. Remote Scoring only: `ModeCode` has no Dashboard code before S2.
+ * mode named. Remote Scoring only: a Match Day code never reaches the sheet until Match Day opens (MD-2 Task 3).
  */
 describe('the unpair sheet', () => {
   it.each<[Lang, HomePanel, string, string, string]>([

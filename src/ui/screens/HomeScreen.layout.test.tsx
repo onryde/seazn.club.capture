@@ -403,7 +403,7 @@ describe('Home turns with the phone (spec §7)', () => {
       'Forget',
       'Live Stream',
       'Remote Scoring',
-      'Dashboard',
+      'Match Day',
     ];
 
     it('lists the same seven, gear first, upright and sideways', async () => {

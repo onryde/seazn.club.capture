@@ -5,14 +5,12 @@
   "crash.mayBeLive": "Puede que la emisión siga en directo. Toca Reintentar para volver al botón Detener.",
   "mode.stream": "Emisión en directo",
   "mode.scoring": "Anotación remota",
-  "mode.dashboard": "Panel",
   "home.status.idle": "Toca un modo y escanea su código.",
   "home.tile.stream.purpose": "Emite un partido en YouTube.",
   "home.tile.stream.hint": "Escanea el código de emisión de la página del partido",
   "home.settings": "Ajustes",
   "home.tile.scoring.purpose": "Lleva el marcador de un partido desde la banda.",
   "home.tile.scoring.hint": "Escanea el enlace de anotación",
-  "home.tile.dashboard.purpose": "Aprueba la siguiente ronda de un torneo.",
   "home.tile.comingSoon": "Próximamente",
   "home.continue.title": "Continuar {mode}",
   "home.continue.detail": "Posición {slot} · código válido hasta las {time}",
@@ -1168,5 +1166,8 @@
   "scoring.tennis.undone.break": "Pausa deshecha",
   "scoring.tennis.setScore.title": "Marcador del set · Set {set}",
   "scoring.tennis.setScore.games": "Juegos: {side}",
-  "scoring.tennis.setScore.tiebreak": "Tie-break: {side}"
+  "scoring.tennis.setScore.tiebreak": "Tie-break: {side}",
+  "mode.matchday": "Día de partidos",
+  "home.tile.matchday.purpose": "Anota todos los partidos del día.",
+  "home.tile.matchday.hint": "Escanea el código del Día de partidos"
 }

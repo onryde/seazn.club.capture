@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ScreenLayout } from '@/domain/mode/homeLayout';
 import { LANGS, type Lang } from '@/i18n/language';
+import { MODES as HOME_MODES } from '@/ui/modeCopy';
 import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
 import fr from '@/i18n/fr.json';
@@ -119,12 +120,46 @@ describe('the landscape rows, at their least (one line of text each)', () => {
   });
 });
 
-/** The line under each tile's purpose, written out here: Remote Scoring says which link opens it (plan S2-1 Task 10). */
+/** Home's three tiles, in the order it draws them, written out here (Home's own list is pinned to it below). */
+const TILE_MODES = ['stream', 'scoring', 'matchday'] as const;
+type TileMode = (typeof TILE_MODES)[number];
+
+/**
+ * The line under each tile's purpose, written out here: Remote Scoring says which link opens it (plan S2-1 Task 10),
+ * and Match Day which code (MD-2 Task 1).
+ */
 const TILE_HINT = {
   stream: 'home.tile.stream.hint',
   scoring: 'home.tile.scoring.hint',
-  dashboard: 'home.tile.comingSoon',
-} as const;
+  matchday: 'home.tile.matchday.hint',
+} as const satisfies Readonly<Record<TileMode, string>>;
+
+// MD-2 Task 1: the third mode is Match Day (S4 design §8), and its title is in every fit below. This pins the order the
+// fits measure and the words, so a change to either is a decision.
+describe('Match Day is the third tile (MD-2 Task 1)', () => {
+  it('Home draws stream, scoring, matchday, in that order: the order every fit here measures', () => {
+    expect([...HOME_MODES]).toEqual([...TILE_MODES]);
+  });
+
+  // es and fr are the web's own words for its Match Day desk (`matchDay.title`). nl is not: the web's _Wedstrijddag_ is
+  // one word too wide for a title sideways at 592 and 640 (154.4 dp at `title`, 142.1 at `action`, for rooms of 117.3
+  // and 133.3), and a title never breaks inside a word (N31). _Speeldag_ fits (100.9 dp).
+  it.each([
+    ['en', 'Match Day'],
+    ['es', 'Día de partidos'],
+    ['fr', 'Jour de match'],
+    ['nl', 'Speeldag'],
+  ] as const)('in %s its title is %s', (lang, title) => {
+    expect(word(lang, 'mode.matchday')).toBe(title);
+  });
+
+  it('the web’s Dutch word would be cut sideways, and the one the app uses is not', () => {
+    const room = (width: number) =>
+      (width - 2 * space.md - 2 * space.sm) / 3 - TILE_EDGE - 2 * TILE_PAD - ICON - space.sm;
+    expect(measureAs('action')('WEDSTRIJDDAG')).toBeGreaterThan(room(640));
+    expect(measureTitle(word('nl', 'mode.matchday').toUpperCase())).toBeLessThan(room(592));
+  });
+});
 
 /**
  * The tallest tile at a window width, per language, over the three modes, from the fonts. `titleLines`, when given,
@@ -135,7 +170,7 @@ function tileNeedBy(width: number, titleLines?: number): Readonly<Record<Lang, n
   const inner = (width - 2 * space.md - 2 * space.sm) / 3 - TILE_EDGE - 2 * TILE_PAD;
   const need: Record<Lang, number> = { en: 0, es: 0, fr: 0, nl: 0 };
   for (const lang of LANGS) {
-    for (const mode of ['stream', 'scoring', 'dashboard'] as const) {
+    for (const mode of TILE_MODES) {
       const title = word(lang, `mode.${mode}`).toUpperCase();
       const hint = TILE_HINT[mode];
       const lines = titleLines ?? linesOf(title, inner - ICON - space.sm, measureTitle);
@@ -318,7 +353,7 @@ describe('portrait with the gear in the logo’s row: do three equal tiles fit? 
     space.sm +
     GHOST;
   /** A tile upright, from the fonts. */
-  const tileAt = (width: number, lang: Lang, mode: 'stream' | 'scoring' | 'dashboard'): number => {
+  const tileAt = (width: number, lang: Lang, mode: TileMode): number => {
     const hint = TILE_HINT[mode];
     const titleLines = linesOf(
       word(lang, `mode.${mode}`).toUpperCase(),
@@ -360,7 +395,7 @@ describe('portrait with the gear in the logo’s row: do three equal tiles fit? 
     [360, 'en', [107, 107, 107], [536, 685, 680, 829]],
     [360, 'es', [123, 129, 107], [602, 751, 746, 895]],
     [360, 'fr', [107, 129, 107], [602, 751, 746, 895]],
-    [360, 'nl', [107, 129, 129], [602, 751, 746, 895]],
+    [360, 'nl', [107, 129, 107], [602, 751, 746, 895]],
     [412, 'en', [107, 107, 107], [536, 685, 680, 829]],
     [412, 'es', [107, 107, 107], [536, 685, 680, 829]],
     [412, 'fr', [107, 129, 107], [602, 751, 746, 895]],
@@ -368,9 +403,7 @@ describe('portrait with the gear in the logo’s row: do three equal tiles fit? 
   ] as const)(
     '%i wide in %s: tiles %j; equal thirds need %j (no card, Continue, ended, both)',
     (width, lang, tiles, needs) => {
-      const drawn = (['stream', 'scoring', 'dashboard'] as const).map((mode) =>
-        tileAt(width, lang, mode),
-      );
+      const drawn = TILE_MODES.map((mode) => tileAt(width, lang, mode));
       expect(drawn).toEqual(tiles);
       const tallest = Math.max(...drawn);
       expect(STATES.map(([, card]) => SPEND + card + 3 * tallest + 2 * space.sm)).toEqual(needs);
@@ -392,7 +425,7 @@ describe('portrait with the gear in the logo’s row: do three equal tiles fit? 
     const shortfall = (width: number, window: number, state: (typeof STATES)[number][0]) =>
       LANGS.map((lang) => {
         const tallest = Math.max(
-          ...(['stream', 'scoring', 'dashboard'] as const).map((mode) => tileAt(width, lang, mode)),
+          ...TILE_MODES.map((mode) => tileAt(width, lang, mode)),
         );
         const card = STATES.find(([name]) => name === state)?.[1] ?? 0;
         return SPEND + card + 3 * tallest + 2 * space.sm - window;
@@ -472,7 +505,7 @@ describe('the top row’s status holds its three lines, in four languages (spec 
       // status, the version, the gear), so three gaps of 16, and the pads.
       const logo = layout.logoLandscape.width - layout.logoInsetLandscape;
       const status = width - 2 * space.md - logo - version - GEAR - 3 * space.md;
-      const longest = ['mode.stream', 'mode.scoring', 'mode.dashboard']
+      const longest = ['mode.stream', 'mode.scoring', 'mode.matchday']
         .map((key) => word(lang, key))
         .reduce((a, b) => (b.length > a.length ? b : a));
       for (const key of keys) {
@@ -503,7 +536,7 @@ describe('every tile title fits its tile, wrapping within two lines, never insid
   // icon and wraps at spaces. A word wider than that room would be cut inside it, so where the widest word does not
   // fit, the title steps down a size (`tileTitleRole`). It fits when, at the size the rule picks, no word is wider than
   // the room and the words take no more lines than the clamp allows.
-  const MODES = ['stream', 'scoring', 'dashboard'] as const;
+  const MODES = TILE_MODES;
   const TITLE_LINES = layout.tileTitleLines;
   /**
    * The title's row (Tile's `head`, which `tileTitleRole` reads): the tile's inner width. Sideways, a tile is a third of
@@ -596,15 +629,12 @@ describe('every tile title fits its tile, wrapping within two lines, never insid
     expect(titlesChecked).toBe(84);
   });
 
-  it('at 592, the step leaves LIVESTREAM 3.9 dp inside the 117.3; at full size it would be cut, as would both DASHBOARDs', () => {
+  // No word of Match Day's titles is wider than the room at full size here (MD-2 Task 1).
+  it('at 592, the step leaves LIVESTREAM 3.9 dp inside the 117.3; at full size it would be cut, the only word that would be', () => {
     const room = titleBudget('landscape', 592);
     expect(room).toBeCloseTo(117.3, 1);
     expect(room - measureAs('action')('LIVESTREAM')).toBeCloseTo(3.9, 1);
-    expect(words().filter((part) => measureTitle(part) > room)).toEqual([
-      'DASHBOARD',
-      'LIVESTREAM',
-      'DASHBOARD',
-    ]);
+    expect(words().filter((part) => measureTitle(part) > room)).toEqual(['LIVESTREAM']);
   });
 
   it('the step holds Home down to 581 wide: at 580, LIVESTREAM is wider than its room even at `action`', () => {
@@ -612,20 +642,20 @@ describe('every tile title fits its tile, wrapping within two lines, never insid
     expect(titleBudget('landscape', 580) - measureAs('action')('LIVESTREAM')).toBeLessThan(0);
   });
 
-  it('the owner’s phone sideways lays Home out 728 wide: both French titles overrun the title’s room by more than the tile’s padding (N31)', () => {
+  it('the owner’s phone sideways lays Home out 728 wide: the French Remote Scoring title overruns the title’s room by more than the tile’s padding (N31)', () => {
     // The D3 shot (r12-home-fr-landscape.png): tiles of 226.7 dp, so Home was 728 wide, not the display's 804. The fit
-    // measures the French titles as the phone drew them (TABLEAU DE BORD's ink: 176.0 measured, 177.3 by the font).
+    // measures the French titles as the phone drew them (TABLEAU DE BORD's ink: 176.0 measured, 177.3 by the font). Since
+    // MD-2 Task 1 the third title is JOUR DE MATCH, which fits the room on one line; SCORE À DISTANCE still wraps.
     expect((728 - 2 * space.md - 2 * space.sm) / 3).toBeCloseTo(226.7, 1);
     const room = titleBudget('landscape', 728);
     expect(room).toBeCloseTo(162.7, 1);
-    for (const key of ['mode.scoring', 'mode.dashboard']) {
-      const title = word('fr', key).toUpperCase();
-      expect(measureTitle(title) - room, title).toBeGreaterThan(TILE_PAD);
-    }
-    expect(['mode.scoring', 'mode.dashboard'].map((key) => word('fr', key).toUpperCase())).toEqual([
+    expect(['mode.scoring', 'mode.matchday'].map((key) => word('fr', key).toUpperCase())).toEqual([
       'SCORE À DISTANCE',
-      'TABLEAU DE BORD',
+      'JOUR DE MATCH',
     ]);
+    expect(measureTitle('SCORE À DISTANCE') - room).toBeGreaterThan(TILE_PAD);
+    expect(measureTitle('JOUR DE MATCH')).toBeCloseTo(156.8, 1);
+    expect(measureTitle('JOUR DE MATCH')).toBeLessThan(room);
   });
 });
 

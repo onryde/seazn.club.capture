@@ -232,7 +232,7 @@ function ScoringSlot({
 }
 
 /**
- * The three tiles. Remote Scoring scans in every build (plan S2-1 Task 10); the Dashboard is still coming soon. None
+ * The three tiles, every one a built mode: Remote Scoring since plan S2-1 Task 10, Match Day since MD-2 Task 1. None
  * carries a gear: Settings is Home's own (owner, 2026-11-02).
  */
 const ModeTiles = memo(function ModeTiles({

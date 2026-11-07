@@ -23,6 +23,12 @@ type Answer = Result<WaitingFields, CodeError>;
 
 const NO_ANSWER: Answer = err({ kind: 'offline' });
 const CHECKING: HomePanel = { kind: 'checking', tapped: 'stream' };
+/**
+ * MD-2 Task 1: Match Day is a built mode, so its code is recognised and offered, but its day is opened by Tasks 3 and
+ * 4. Until then the code is named and told Match Day is coming soon, and nothing of it is saved: no token is kept, and
+ * no pairing is asked about (A7), for a mode that cannot open yet.
+ */
+const DAY_NOT_YET: HomePanel = { kind: 'comingSoon', tapped: 'matchday', mode: 'matchday' };
 
 /**
  * Ruling R12: the store takes writes only once it is `ready`. Read at call
@@ -70,7 +76,7 @@ function useOpenOrCheck(openCode: OpenCode, setPanel: SetPanel): OpenOrCheck {
   return useCallback(
     async (code: ModeCode) => {
       if (code.mode === 'scoring') return checkScoring(code);
-      if (code.mode !== 'stream') return openCode(code, null);
+      if (code.mode === 'matchday') return setPanel(DAY_NOT_YET);
       if (!isReady(modeStore)) return;
       if (code.expiresAt !== null && code.expiresAt.getTime() <= clock().getTime()) {
         return setPanel({ kind: 'expired', tapped: 'stream', mode: 'stream', at: code.expiresAt });

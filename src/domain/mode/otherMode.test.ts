@@ -13,11 +13,11 @@ const ROWS: readonly (readonly [Mode, EngineStatus, boolean])[] = [
   ['scoring', 'live', false],
   ['scoring', 'stopped', false],
   ['scoring', 'failed', false],
-  ['dashboard', 'idle', false],
-  ['dashboard', 'paired', true],
-  ['dashboard', 'live', false],
-  ['dashboard', 'stopped', false],
-  ['dashboard', 'failed', false],
+  ['matchday', 'idle', false],
+  ['matchday', 'paired', true],
+  ['matchday', 'live', false],
+  ['matchday', 'stopped', false],
+  ['matchday', 'failed', false],
   // A stream code while paired is the identity rules' (scanStep), never this sheet.
   ['stream', 'paired', false],
 ];

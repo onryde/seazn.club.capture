@@ -20,19 +20,31 @@ describe('Tile', () => {
     expect(screen.getByText('Scan the stream code from the match page')).toBeTruthy();
   });
 
-  it('says coming soon and cannot be tapped when the mode is not built', () => {
+  // MD-2 Task 1: Match Day is built, so its tile says which code opens it, as Remote Scoring's does.
+  it('names Match Day, says what it does and which code opens it', () => {
     const onPress = vi.fn();
-    renderWithPorts(<Tile mode="dashboard" available={false} onPress={onPress} />);
-    fireEvent.click(screen.getByRole('button', { name: /Dashboard/ }));
+    renderWithPorts(<Tile mode="matchday" available onPress={onPress} />);
+    fireEvent.click(screen.getByRole('button', { name: /Match Day/ }));
+    expect(onPress).toHaveBeenCalledWith('matchday');
+    expect(screen.getByText('Score every match of the day.')).toBeTruthy();
+    expect(screen.getByText('Scan the Match Day code')).toBeTruthy();
+  });
+
+  // Every mode is built (MD-2 Task 1), so Home passes no tile `available={false}`; the tile still refuses the tap.
+  it('cannot be tapped when its mode is not available', () => {
+    const onPress = vi.fn();
+    renderWithPorts(<Tile mode="matchday" available={false} onPress={onPress} />);
+    const tile = screen.getByRole('button', { name: /Match Day/ });
+    fireEvent.click(tile);
     expect(onPress).not.toHaveBeenCalled();
-    expect(screen.getByText('Coming soon')).toBeTruthy();
+    expect(tile.getAttribute('aria-disabled')).toBe('true');
   });
 
   // The owner moved Settings to the gear in Home's corner (2026-11-02): no tile carries one, so each is one button, which
   // is the tile, padded all round and with its head row on the tile's whole width.
   it.each([
     ['scoring', false, 'portrait', '16px'],
-    ['dashboard', false, 'portrait', '16px'],
+    ['matchday', false, 'portrait', '16px'],
     ['stream', true, 'portrait', '16px'],
     ['stream', true, 'landscape', '12px'],
   ] as const)(
@@ -57,7 +69,7 @@ describe('Tile', () => {
   // that a French title stays inside its tile is homeFit.test.ts's measurement and the phone's (Batch 9).
   it.each([
     ['scoring', false, 'portrait'],
-    ['dashboard', false, 'landscape'],
+    ['matchday', false, 'landscape'],
     ['stream', true, 'portrait'],
     ['stream', true, 'landscape'],
   ] as const)(
@@ -120,14 +132,14 @@ describe('Tile pressed (the controller’s ruling, Batch 17)', () => {
     },
   );
 
-  it('a mode that is not built never shows pressed', () => {
-    renderWithPorts(<Tile mode="dashboard" available={false} onPress={vi.fn()} />);
-    const dashboard = screen.getByRole('button', { name: /Dashboard/ });
-    const resting = paintOf(dashboard);
-    pressIn(dashboard);
-    expect(paintOf(dashboard)).toEqual(resting);
+  it('a mode that is not available never shows pressed', () => {
+    renderWithPorts(<Tile mode="matchday" available={false} onPress={vi.fn()} />);
+    const matchDay = screen.getByRole('button', { name: /Match Day/ });
+    const resting = paintOf(matchDay);
+    pressIn(matchDay);
+    expect(paintOf(matchDay)).toEqual(resting);
     expect(resting.opacity).toBe('1');
-    pressOut(dashboard);
+    pressOut(matchDay);
   });
 
   it('a second press, and a press while held, find nothing stuck', () => {

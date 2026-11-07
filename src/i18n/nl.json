@@ -5,14 +5,12 @@
   "crash.mayBeLive": "De stream is mogelijk nog live. Tik op Opnieuw proberen om terug te gaan naar de knop Stoppen.",
   "mode.stream": "Livestream",
   "mode.scoring": "Scoren op afstand",
-  "mode.dashboard": "Dashboard",
   "home.status.idle": "Tik op een modus en scan de bijbehorende code.",
   "home.tile.stream.purpose": "Film een wedstrijd voor YouTube.",
   "home.tile.stream.hint": "Scan de streamcode op de wedstrijdpagina",
   "home.settings": "Instellingen",
   "home.tile.scoring.purpose": "Houd de score van één wedstrijd bij vanaf de zijlijn.",
   "home.tile.scoring.hint": "Scan de scorelink",
-  "home.tile.dashboard.purpose": "Keur de volgende ronde van een toernooi goed.",
   "home.tile.comingSoon": "Binnenkort",
   "home.continue.title": "Verder met {mode}",
   "home.continue.detail": "Positie {slot} · code geldig tot {time}",
@@ -1168,5 +1166,8 @@
   "scoring.tennis.undone.break": "Pauze ongedaan gemaakt",
   "scoring.tennis.setScore.title": "Stand zetten · Set {set}",
   "scoring.tennis.setScore.games": "Games: {side}",
-  "scoring.tennis.setScore.tiebreak": "Tiebreak: {side}"
+  "scoring.tennis.setScore.tiebreak": "Tiebreak: {side}",
+  "mode.matchday": "Speeldag",
+  "home.tile.matchday.purpose": "Scoor alle wedstrijden van de dag.",
+  "home.tile.matchday.hint": "Scan de speeldagcode"
 }

@@ -8,7 +8,7 @@ import {
 } from '@/domain/mode/savedCode';
 import type { KeyValueStore } from '@/services/KeyValueStore';
 
-const MODES: readonly Mode[] = ['stream', 'scoring', 'dashboard'];
+const MODES: readonly Mode[] = ['stream', 'scoring', 'matchday'];
 
 export const STORE_KEYS = {
   active: 'mode.active',
