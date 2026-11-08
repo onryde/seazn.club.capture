@@ -694,5 +694,16 @@
   "scoring.cricket.board.need": "Faltan {runs}",
   "scoring.cricket.board.freeHit": "Free hit",
   "scoring.cricket.board.over": "Over {number}",
-  "scoring.cricket.board.onStrike": "Al bate"
+  "scoring.cricket.board.onStrike": "Al bate",
+  "scoring.cricket.key.wide": "Wide",
+  "scoring.cricket.key.noBall": "No-ball",
+  "scoring.cricket.key.bye": "Bye",
+  "scoring.cricket.key.legBye": "Leg-bye",
+  "scoring.cricket.key.out": "Eliminado",
+  "scoring.cricket.key.more": "Más",
+  "scoring.cricket.extras.ran": "Carreras corridas",
+  "scoring.cricket.extras.bat": "Con el bate",
+  "scoring.cricket.extras.runs": "Carreras",
+  "scoring.cricket.extras.out": "+ Eliminado",
+  "scoring.cricket.wicket.how": "¿Cómo fue eliminado?"
 }

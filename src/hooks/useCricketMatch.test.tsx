@@ -707,3 +707,45 @@ describe('the setup, a second touch (the bounce window)', () => {
     expect(names(setupOf(view).view.order).slice(0, 2)).toEqual(['A. Sharma', 'B. Okafor']);
   });
 });
+
+// Batch 4 dispatch (carried from the Batch 3 review): a ▲▼ move is a choice the phone keeps, not news. A failure standing
+// on the line ("Couldn't save your choice", the disk refusing the picks twice) stays until a save lands (AGENTS §6): the
+// move must not clear it, and the save that lands with the held choice does.
+describe('a ▲▼ move and a choice the disk refused', () => {
+  it('a move leaves “Couldn’t save your choice” standing until a save lands, which clears it', async () => {
+    const { fakes, view } = await opened(cricketSeed());
+    act(() => pad(view).actions.pickTossWinner('first'));
+    act(() => pad(view).actions.recordToss('bat'));
+    await flush();
+    await wait();
+    const real = fakes.tapQueue.saveBoot.bind(fakes.tapQueue);
+    let land: () => void = () => undefined;
+    vi.spyOn(fakes.tapQueue, 'saveBoot')
+      .mockRejectedValueOnce(new Error('the disk refused'))
+      .mockRejectedValueOnce(new Error('the disk refused'))
+      .mockImplementationOnce(
+        (fixtureId, cache) =>
+          new Promise<void>((resolve, reject) => {
+            land = () => void real(fixtureId, cache).then(resolve, reject);
+          }),
+      );
+    act(() => pad(view).actions.moveBatter(1, 0));
+    await flush();
+    const refused = { kind: 'refusal', key: 'scoring.refusal.choiceNotSaved' };
+    expect(pad(view).line).toEqual(refused);
+    await wait();
+    act(() => pad(view).actions.moveBatter(3, 2));
+    await flush();
+    // The move is made and on screen; its save has not landed, so the failure still stands.
+    expect(names(setupOf(view).view.order).slice(0, 4)).toEqual([
+      'B. Okafor',
+      'A. Sharma',
+      'D. Walsh',
+      'C. Mendes',
+    ]);
+    expect(pad(view).line).toEqual(refused);
+    land();
+    await flush();
+    expect(pad(view).line).toBeNull();
+  });
+});

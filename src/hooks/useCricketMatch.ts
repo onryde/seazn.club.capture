@@ -1,5 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
+import { runBall, type SheetExtra } from '@/domain/scoring/cricketExtras';
 import { cricketBoard, type CricketBoardView } from '@/domain/scoring/cricketPad';
+import { withPick, type CricketPick } from '@/domain/scoring/cricketPicks';
 import { cricketSport } from '@/domain/scoring/cricketSport';
 import type {
   CricketDisplay,
@@ -54,6 +56,14 @@ export type CricketPadActions = PadActions &
     readonly sendTaps: () => void;
     readonly askDiscard: () => void;
     readonly confirmDiscard: () => void;
+    /** A run key (0, 1, 2, 3, 4, 6): one ball, the 4 and 6 boundaries (Task 11). */
+    readonly run: (runs: number) => void;
+    /** An extra's key: its sheet, which asks the runs (ruling 80). */
+    readonly openExtras: (extra: SheetExtra) => void;
+    /** Out: the wicket steps for a fair ball. */
+    readonly openOut: () => void;
+    /** A choice on the step on screen (`useCricketSheets`). */
+    readonly choose: (id: string) => void;
   };
 
 /** What the cricket pad screen is drawn from: the shared model, the board and the display it is read from. */
@@ -76,7 +86,7 @@ type Sender = MatchSender<CricketTypes>;
 
 /** Cricket flashes no half: the board stands in the halves' place. */
 const ignoreFlash = (): void => undefined;
-/** No half and no tool takes a tap: the board is read only (its keys are Task 11's). */
+/** No half and no tool takes a tap: the board's keys (`CricketKeys`) are cricket's own actions. */
 const noHalf = (): void => undefined;
 const noTool = (): void => undefined;
 
@@ -103,7 +113,7 @@ function useCricketPad(
   const settle = useSettle(sender.say);
   const driver = useCricketDriver(sender);
   const taps = useTaps(driver, settle, sender.say, ignoreFlash);
-  const sheets = useSheets(taps, pad);
+  const sheets = useSheets(taps, pad, sender);
   const setup = useCricketSetup(pad, sender, taps);
   const actions = useActions({ sender, runner, pad, taps, sheets, setup, setCardNote });
   useBackCloses(sheets.open, sheets.cancel);
@@ -142,15 +152,29 @@ function modelOf(
 }
 
 /** The sheets over the pad, closed at once when the link dies, since the bad-link card then shows (round 8 hardening). */
-function useSheets(taps: ReturnType<typeof useTaps>, pad: PadFacts | null) {
+function useSheets(taps: ReturnType<typeof useTaps>, pad: PadFacts | null, sender: Sender) {
   const snapshot = useMemo<CricketSheetSnapshot | null>(
     () =>
       pad === null
         ? null
-        : { details: pad.view.details, history: pad.history, card: pad.view.card, ask: pad.ask },
+        : {
+            details: pad.view.details,
+            history: pad.history,
+            card: pad.view.card,
+            ask: pad.ask,
+            display: pad.display,
+          },
     [pad],
   );
-  const sheets = useCricketSheets(snapshot, taps.arm);
+  const { tap, setPicks } = sender;
+  const pick = useCallback(
+    (made: CricketPick) => {
+      if (pad !== null) setPicks(withPick(pad.picks, pad.display, made));
+    },
+    [pad, setPicks],
+  );
+  const send = useMemo(() => ({ tap, pick }), [tap, pick]);
+  const sheets = useCricketSheets(snapshot, taps, send);
   useClosedByDeadLink(pad?.view, sheets.open, sheets.cancel);
   return sheets;
 }
@@ -177,6 +201,10 @@ function useActions(parts: Parts): CricketPadActions {
   );
   const links = useLinks(parts.runner, parts.setCardNote);
   const record = useRecord(sender, taps);
+  const run = useCallback(
+    (runs: number) => record({ kind: 'ball', ball: runBall(runs) }),
+    [record],
+  );
   const { cancel } = sheets;
   const { undo } = taps;
   const { setPicks } = sender;
@@ -194,8 +222,10 @@ function useActions(parts: Parts): CricketPadActions {
       ...start,
       record,
       setPicks,
+      run,
     }),
     [
+      run,
       home,
       undo,
       cancel,

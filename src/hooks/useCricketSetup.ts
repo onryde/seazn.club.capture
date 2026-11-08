@@ -11,7 +11,7 @@ import type { CricketStage, CricketTypes } from '@/domain/scoring/cricketTypes';
 import { TAKEN } from '@/domain/scoring/padLine';
 import type { PadSide } from '@/domain/scoring/padView';
 import type { MatchPad } from '@/domain/scoring/scoringMatchView';
-import type { Arm, Opening, Point } from '@/hooks/usePadTaps';
+import type { Arm, Choose, Opening } from '@/hooks/usePadTaps';
 import type { MatchSender } from '@/hooks/useScoringMatch';
 
 /**
@@ -52,12 +52,9 @@ export type SetupTaps = {
   readonly opening: Opening;
   readonly arm: Arm;
   readonly secondTouch: () => boolean;
-  /** A tap counted once for a repeat inside the window (the kit's double-tap rule); cricket flashes no half. */
-  readonly point: Point;
+  /** A choice kept, counted once for a repeat inside the window (the kit's double-tap rule), leaving the line as it was. */
+  readonly choose: Choose;
 };
-
-/** Cricket's taps flash no half (`ignoreFlash`): the side a counted move names is never drawn. */
-const NO_FLASH_SIDE: PadSide = 'first';
 
 type Facts = MatchPad<CricketTypes>;
 type Sender = MatchSender<CricketTypes>;
@@ -144,7 +141,7 @@ function useTossActions(held: ReturnType<typeof useHeld>, opening: Opening, tap:
 function usePickActions(
   pad: Facts | null,
   setPicks: Sender['setPicks'],
-  { arm, secondTouch, point }: SetupTaps,
+  { arm, secondTouch, choose }: SetupTaps,
   set: ReturnType<typeof useHeld>['set'],
 ) {
   const pick = useCallback(
@@ -153,7 +150,7 @@ function usePickActions(
     },
     [pad, setPicks],
   );
-  const moveBatter = useMoveBatter(pad, pick, point);
+  const moveBatter = useMoveBatter(pad, pick, choose);
   const setOpeners = useCallback(
     (pair: CreasePair) => {
       if (secondTouch()) return;
@@ -176,22 +173,22 @@ function usePickActions(
 }
 
 /**
- * ▲▼ in the batting order, each a tap of its own through the bounce memory (`point`, keyed by row and direction): the
+ * ▲▼ in the batting order, each a choice of its own through the bounce memory (`choose`, keyed by row and direction): the
  * same control again inside the window counts once and the line says so (M3: a double tap on ▲ would otherwise move the
  * batter up, then the one who slid into the row back down). Any tap inside the window of an opening one, the toss's Bat
  * or Bowl or Back, counts once too: the order list stands where those were.
  */
-function useMoveBatter(pad: Facts | null, pick: (made: CricketPick) => void, point: Point) {
+function useMoveBatter(pad: Facts | null, pick: (made: CricketPick) => void, choose: Choose) {
   return useCallback(
     (from: number, to: number) => {
       const side = pad?.display.innings?.batting;
       if (pad === null || side === undefined) return;
       const order = pad.display.battingOrder;
-      point(`move.${from}.${to}`, NO_FLASH_SIDE, () => {
+      choose(`move.${from}.${to}`, () => {
         pick({ kind: 'order', side, ids: moved(order, from, to) });
         return TAKEN;
       });
     },
-    [pad, pick, point],
+    [pad, pick, choose],
   );
 }

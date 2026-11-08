@@ -426,6 +426,15 @@ const base = {
   overStrip: 48,
   /** A delivery's chip on the over strip: one width for every chip ("·", "4", "7nb", "11p"), so the strip never shifts. */
   overChip: 32,
+  /**
+   * The cricket pad's keys (S2-4 spec §5 rows 5 to 7; plan Task 11, preflight D1), `space.sm` apart, each row a fixed
+   * height so a ball never moves a key under the thumb: the runs (two rows of three, the number in `tally`, 46), the
+   * extras (one line of `actionSecondary` in a touch-high cell), and Out, Undo, More. With the board, the last-tap line
+   * and the frame they fit the owner's phone, about 360 × 724 (the pad's height in `cricketFit.test.ts`).
+   */
+  cricketRunKey: 64,
+  cricketExtraKey: 48,
+  cricketActionKey: 56,
 } as const;
 
 /** The cells the controls half's width is made of (`base` holds the shipped ones). */

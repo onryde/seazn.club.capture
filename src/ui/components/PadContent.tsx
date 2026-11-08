@@ -72,11 +72,17 @@ export const PadContent = memo(function PadContent({
   model,
   covered,
   body,
+  lineUndo = true,
 }: {
   readonly model: PadContentModel;
   readonly covered: boolean;
   /** What stands in the halves' place, for a sport with a board of its own; the halves without it. */
   readonly body?: ReactNode;
+  /**
+   * Whether the last-tap line carries the pad's Undo (default yes). A sport whose body has its own Undo key (cricket's
+   * Out, Undo, More row, ruling 79) says no, so the pad has one Undo, never two.
+   */
+  readonly lineUndo?: boolean;
 }) {
   const { view, line, cardNote, flash, toss, actions } = model;
   const known = matchKnown(view.card);
@@ -100,7 +106,13 @@ export const PadContent = memo(function PadContent({
           actions={actions}
         />
       )}
-      <PadControls view={view} line={line} cardNote={cardNote} actions={actions} />
+      <PadControls
+        view={view}
+        line={line}
+        cardNote={cardNote}
+        actions={actions}
+        lineUndo={lineUndo}
+      />
     </View>
   );
 });
@@ -300,11 +312,13 @@ const PadControls = memo(function PadControls({
   line,
   cardNote,
   actions,
+  lineUndo,
 }: {
   readonly view: PadView<MessageKey>;
   readonly line: PadLineWords;
   readonly cardNote: MessageKey | null;
   readonly actions: PadContentActions;
+  readonly lineUndo: boolean;
 }) {
   const { t } = useT();
   const { card } = view;
@@ -321,7 +335,7 @@ const PadControls = memo(function PadControls({
   if (view.start !== null) return null;
   return (
     <>
-      <PadLine view={view} line={line} onUndo={actions.undo} />
+      <PadLine view={view} line={line} undo={lineUndo} onUndo={actions.undo} />
       <ToolRow tools={view.tools} onTool={actions.tool} />
     </>
   );
@@ -334,10 +348,12 @@ const PadControls = memo(function PadControls({
 const PadLine = memo(function PadLine({
   view,
   line,
+  undo,
   onUndo,
 }: {
   readonly view: PadView<MessageKey>;
   readonly line: PadLineWords;
+  readonly undo: boolean;
   readonly onUndo: () => void;
 }) {
   const { t } = useT();
@@ -347,7 +363,7 @@ const PadLine = memo(function PadLine({
       lastTap={view.lastTap}
       refusal={line?.kind === 'refusal' ? words : null}
       note={line?.kind === 'note' ? words : null}
-      undoCell={hasUndoCell(view.card)}
+      undoCell={undo && hasUndoCell(view.card)}
       onUndo={onUndo}
     />
   );

@@ -694,5 +694,16 @@
   "scoring.cricket.board.need": "Besoin de {runs}",
   "scoring.cricket.board.freeHit": "Free hit",
   "scoring.cricket.board.over": "Over {number}",
-  "scoring.cricket.board.onStrike": "Face au lanceur"
+  "scoring.cricket.board.onStrike": "Face au lanceur",
+  "scoring.cricket.key.wide": "Wide",
+  "scoring.cricket.key.noBall": "No-ball",
+  "scoring.cricket.key.bye": "Bye",
+  "scoring.cricket.key.legBye": "Leg-bye",
+  "scoring.cricket.key.out": "Éliminé",
+  "scoring.cricket.key.more": "Plus",
+  "scoring.cricket.extras.ran": "Courses courues",
+  "scoring.cricket.extras.bat": "Avec la batte",
+  "scoring.cricket.extras.runs": "Courses",
+  "scoring.cricket.extras.out": "+ Éliminé",
+  "scoring.cricket.wicket.how": "Éliminé comment\u00a0?"
 }

@@ -6,7 +6,7 @@ import type {
   CricketState,
 } from '@seazn/engine/sports/cricket';
 import type { MatchContext } from '@/domain/scoring/matchContext';
-import type { PadSide } from '@/domain/scoring/padView';
+import type { PadSide, PadText, PadVar } from '@/domain/scoring/padView';
 
 /**
  * Cricket on the pad: the types (S2-4 spec §4 to §6, plan Task 5). The match is the engine's cricket module; its state is a
@@ -241,6 +241,40 @@ export type CricketDisplay = {
   readonly undoable: boolean;
 };
 
+// ---------------------------------------------------------------------------------------------------------------
+// The sheets' steps
+// ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * One choice of a cricket sheet's step (S2-4 plan Task 11; preflight F12): the domain's own, which the hook maps to the
+ * kit's `StepSheetFacts`. Its id goes back to the step that offered it. A choice in a `group` is a key in that group's row
+ * (the runs of an extra: "0", "1", …), any other a full-width row (owner ruling 82: lime when it takes a tap).
+ */
+export type CricketStepOption = {
+  readonly id: string;
+  readonly label: PadVar<CricketPadKey>;
+  readonly tone: 'standard' | 'destructive';
+  /** Not offered now: greyed, with its reason (`note`). */
+  readonly disabled?: boolean;
+  readonly note?: PadVar<CricketPadKey> | null;
+  /** The pick already made, or the one suggested: the heavier lime border. */
+  readonly chosen?: boolean;
+  /** The heading of the row of keys this choice sits in; none for a full-width row. */
+  readonly group?: CricketPadKey;
+};
+
+/**
+ * A step of a cricket sheet: its title, a line under it (or none), and its choices. `name` tells one step from the next
+ * for the bounce window of a step appearing (`useJustShown`): the second touch of a double tap that moved the sheet on
+ * lands on the next step's choices and is ignored.
+ */
+export type CricketStep = {
+  readonly name: string;
+  readonly title: PadText<CricketPadKey>;
+  readonly body: PadVar<CricketPadKey> | null;
+  readonly options: readonly CricketStepOption[];
+};
+
 /** A word with a count: the `.other` key a counted text names (`PadCounted`), whose `.one` the language's rule may pick. */
 type Counted<Base extends string> = `${Base}.other`;
 
@@ -311,8 +345,15 @@ export type CricketBoardKey =
   | 'scoring.cricket.board.need'
   | 'scoring.cricket.board.freeHit';
 
+/** The pad's keys and its sheets' words (Tasks 11 to 15). */
+export type CricketSheetKey =
+  | `scoring.cricket.key.${'wide' | 'noBall' | 'bye' | 'legBye' | 'out' | 'more'}`
+  | `scoring.cricket.extras.${'ran' | 'bat' | 'runs' | 'out'}`
+  | 'scoring.cricket.wicket.how';
+
 export type CricketPadKey =
   | CricketRuleKey
+  | CricketSheetKey
   | CricketOutKey
   | CricketBallKey
   | CricketEventKey

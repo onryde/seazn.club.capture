@@ -242,3 +242,145 @@ describe.each(WIDTHS)('the toss and the setup at %i dp', (width) => {
     expect(labelWidth('M. Wolstenholme')).toBeLessThanOrEqual(orderName);
   });
 });
+
+/**
+ * S2-4 plan Task 11: the keys under the board and the extras sheets, at 320 and 360 dp in four languages. The rooms are
+ * written out from the keys' styles (`CricketKeys.tsx`): a row's cells share the column less the gaps (`space.sm`), and a
+ * cell's text has the cell less its padding (`space.xs` a side) and its border (Out's the heavier). Every label is one
+ * line (`numberOfLines` 1), so each must be no wider than its room: caps and letter-spacing as `actionSecondary` sets them.
+ */
+const keyLabelWidth = (text: string) =>
+  barlow600.width(text.toUpperCase(), typeScale.actionSecondary.fontSize) +
+  typeScale.actionSecondary.letterSpacing * [...text].length;
+const cellText = (cells: number, border: number) => (width: number) =>
+  (column(width) - (cells - 1) * space.sm) / cells - 2 * space.xs - 2 * border;
+const extraRoom = cellText(4, layout.iconBorder);
+const actionRoom = cellText(3, layout.iconBorderOn);
+
+const EXTRA_KEYS = [
+  'scoring.cricket.key.wide',
+  'scoring.cricket.key.noBall',
+  'scoring.cricket.key.bye',
+  'scoring.cricket.key.legBye',
+] as const;
+const ACTION_KEYS = [
+  'scoring.cricket.key.out',
+  'scoring.pad.undo',
+  'scoring.cricket.key.more',
+] as const;
+
+describe('the keys’ rooms', () => {
+  it('an extra’s text has 56 and 66 dp, an action’s 78.67 and 92', () => {
+    expect(WIDTHS.map(extraRoom)).toEqual([56, 66]);
+    expect(WIDTHS.map((width) => actionRoom(width).toFixed(2))).toEqual(['78.67', '92.00']);
+  });
+
+  it('each row holds its label: a run’s number at tally, an extra’s and an action’s one line', () => {
+    expect(typeScale.tally.lineHeight + 2 * layout.iconBorder).toBeLessThanOrEqual(
+      layout.cricketRunKey,
+    );
+    expect(typeScale.actionSecondary.lineHeight + 2 * layout.iconBorder).toBeLessThanOrEqual(
+      layout.cricketExtraKey,
+    );
+    expect(2 * typeScale.actionSecondary.lineHeight + 2 * layout.iconBorderOn).toBeLessThanOrEqual(
+      layout.cricketActionKey,
+    );
+    expect(layout.cricketExtraKey).toBeGreaterThanOrEqual(layout.touch);
+    expect(layout.cricketActionKey).toBeGreaterThanOrEqual(layout.touch);
+  });
+
+  /**
+   * The pad's height, portrait: the screen's padding (2 × 16), the header (48), the strip (16), the board (the score
+   * panel, three crease rows and the over strip, `space.sm` apart: 266), the keys (two run rows, the extras, the actions,
+   * `space.sm` apart: 256), the last-tap line (3 lines of 18: 54), the tool row (none: 0), and the pad's five gaps (8).
+   */
+  it('the board, the keys and the line fit the owner’s phone, about 360 × 724, with 12 dp to spare', () => {
+    const board = layout.scorePanel + 3 * layout.creaseRow + layout.overStrip + 2 * space.sm;
+    const keys =
+      2 * layout.cricketRunKey + layout.cricketExtraKey + layout.cricketActionKey + 3 * space.sm;
+    const line = layout.padLineLines * typeScale.control.lineHeight;
+    const pad =
+      2 * space.md +
+      layout.touch +
+      typeScale.metricUnit.lineHeight +
+      board +
+      space.sm +
+      keys +
+      line +
+      4 * space.sm;
+    expect([board, keys, line]).toEqual([266, 256, 54]);
+    expect(724 - pad).toBe(12);
+  });
+});
+
+describe.each(WIDTHS)('the keys at %i dp', (width) => {
+  it.each(LANGUAGES)('%s: every extra’s key holds its word on one line', (_, dictionary) => {
+    for (const key of EXTRA_KEYS) {
+      expect(keyLabelWidth(said(dictionary, key)), key).toBeLessThanOrEqual(extraRoom(width));
+    }
+  });
+
+  // Two lines at most (`numberOfLines` 2 in the 56 dp row: 2 × 19 and the heavier border), never a word broken: Dutch
+  // "Ongedaan maken" takes two at both widths.
+  it.each(LANGUAGES)(
+    '%s: Out, Undo and More each hold their words, two lines at most',
+    (_, dictionary) => {
+      for (const key of ACTION_KEYS) {
+        const text = said(dictionary, key);
+        expect(linesOf(text, actionRoom(width), keyLabelWidth), key).toBeLessThanOrEqual(2);
+        for (const word of text.split(' ')) {
+          expect(keyLabelWidth(word), word).toBeLessThanOrEqual(actionRoom(width));
+        }
+      }
+    },
+  );
+
+  it('Dutch Undo takes two lines (anti-vacuity)', () => {
+    expect(linesOf(nl['scoring.pad.undo'], actionRoom(width), keyLabelWidth)).toBe(2);
+  });
+
+  it('the widest extra’s word is No-ball, in every language (anti-vacuity: it is measured)', () => {
+    const widest = Math.max(
+      ...LANGUAGES.flatMap(([, dictionary]) =>
+        EXTRA_KEYS.map((key) => keyLabelWidth(said(dictionary, key))),
+      ),
+    );
+    expect(widest).toBe(keyLabelWidth('No-ball'));
+    expect(widest).toBeGreaterThan(40);
+  });
+});
+
+describe.each(WIDTHS)('the extras sheets at %i dp', (width) => {
+  /** The sheet's text: the screen less the sheet's padding (`space.md` a side). */
+  const sheetText = width - 2 * space.md;
+  /** A run key in the no-ball's widest row, six keys: the row less its gaps, shared. */
+  const runKey = (sheetText - 5 * space.sm) / 6;
+
+  it.each(LANGUAGES)(
+    '%s: each group’s name is one line, and + Out’s row one line',
+    (_, dictionary) => {
+      for (const key of [
+        'scoring.cricket.extras.ran',
+        'scoring.cricket.extras.bat',
+        'scoring.cricket.extras.runs',
+      ]) {
+        expect(linesOf(said(dictionary, key), sheetText, unitWidth), key).toBe(1);
+      }
+      const out = said(dictionary, 'scoring.cricket.extras.out');
+      expect(geist500.width(out, typeScale.controlInk.fontSize)).toBeLessThanOrEqual(
+        sheetText - 2 * space.md,
+      );
+    },
+  );
+
+  it('the widest run’s number (6) fits a key of a six-key row, at action', () => {
+    expect(barlow700.width('6', typeScale.action.fontSize)).toBeLessThan(runKey);
+    expect(runKey).toBeGreaterThanOrEqual(layout.touch - 8);
+  });
+
+  it.each(LANGUAGES)('%s: How out? is one line in the title', (_, dictionary) => {
+    const title = said(dictionary, 'scoring.cricket.wicket.how');
+    const titleWidth = (text: string) => barlow700.width(text, typeScale.title.fontSize);
+    expect(linesOf(title, sheetText, titleWidth)).toBe(1);
+  });
+});

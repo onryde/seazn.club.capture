@@ -550,6 +550,22 @@ owner's review**, as the rest of the cricket words.
 | {team}: first bowler           | {team}: primer lanzador           | {team} : premier lanceur          | {team}: eerste bowler          | `setup.bowler`.                                                            |
 | Next / Back                    | Siguiente / Atrás                 | Suivant / Retour                  | Volgende / Terug               | `setup.next`, `setup.back`.                                                |
 
+### Cricket keys and extras (S2-4 Task 11, 2026-11-08)
+
+The pad's keys under the board and the extras sheets (`scoring.cricket.key.*`, `scoring.cricket.extras.*`,
+`scoring.cricket.wicket.how`). _Wide_, _No-ball_, _Bye_ and _Leg-bye_ are the game's own words in all four, as the
+History words. _Out_ follows the "{batter} out" row above; _More_ is table tennis's tool word; a run key says its number,
+and a screen reader the ball's words (`ball.dot`, `ball.runs`, `ball.four`, `ball.six`). **es, fr and nl are unreviewed
+drafts, for the owner's review**, as the rest of the cricket words.
+
+| English     | Español              | Français          | Nederlands   | Notes                                                                       |
+| ----------- | -------------------- | ----------------- | ------------ | --------------------------------------------------------------------------- |
+| Out         | Eliminado            | Éliminé           | Uit          | `key.out`: the key that opens the wicket steps; `extras.out` is "+ Out".    |
+| More        | Más                  | Plus              | Meer         | `key.more`.                                                                 |
+| Runs run    | Carreras corridas    | Courses courues   | Gelopen runs | `extras.ran`: the group of runs the batters ran on a wide or a no-ball.     |
+| Off the bat | Con el bate          | Avec la batte     | Van het bat  | `extras.bat`: the no-ball's runs off the bat; `extras.runs` "Runs" a bye's. |
+| How out?    | ¿Cómo fue eliminado? | Éliminé comment ? | Hoe uit?     | `wicket.how`: the wicket's first step. fr has a no-break space before `?`.  |
+
 ## App settings (2026-11-02)
 
 The app's own Settings, from the gear in Home's top-right corner (owner, 2026-11-02: "we should have common setting in a top

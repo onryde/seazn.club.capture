@@ -694,5 +694,16 @@
   "scoring.cricket.board.need": "Nog {runs} nodig",
   "scoring.cricket.board.freeHit": "Free hit",
   "scoring.cricket.board.over": "Over {number}",
-  "scoring.cricket.board.onStrike": "Aan slag"
+  "scoring.cricket.board.onStrike": "Aan slag",
+  "scoring.cricket.key.wide": "Wide",
+  "scoring.cricket.key.noBall": "No-ball",
+  "scoring.cricket.key.bye": "Bye",
+  "scoring.cricket.key.legBye": "Leg-bye",
+  "scoring.cricket.key.out": "Uit",
+  "scoring.cricket.key.more": "Meer",
+  "scoring.cricket.extras.ran": "Gelopen runs",
+  "scoring.cricket.extras.bat": "Van het bat",
+  "scoring.cricket.extras.runs": "Runs",
+  "scoring.cricket.extras.out": "+ Uit",
+  "scoring.cricket.wicket.how": "Hoe uit?"
 }
