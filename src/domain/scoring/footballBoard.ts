@@ -153,7 +153,7 @@ export type MoreItem = { readonly id: string; readonly label: Text };
 /**
  * The More sheet's items (design §6.4), each only while the engine takes its event in this phase: a missed penalty for
  * each team, a sin-bin for each when the match has sin-bins (`cfg.sinBinMinutes`, plan decision PD1), Back from sin-bin
- * for each player in the bin, a shot for each, Correct clock while a period is in play, and Match details always.
+ * for each player in the bin, a shot for each, Correct clock once the period's Start stands, and Match details always.
  */
 export function footballMoreItems(display: FootballDisplay): readonly MoreItem[] {
   const takes = (type: string) =>
@@ -164,12 +164,17 @@ export function footballMoreItems(display: FootballDisplay): readonly MoreItem[]
     ...(bins ? perTeam(display, 'sinBin') : []),
     ...(takes('football.sinbin.end') ? backItems(display) : []),
     ...(takes('football.shot') ? perTeam(display, 'shot') : []),
-    ...(takes('football.clock') ? [{ id: 'correct', label: more('correct') }] : []),
+    ...(takes('football.clock') && display.clock.started
+      ? [{ id: 'correct', label: more('correct') }]
+      : []),
     { id: 'details', label: more('details') },
   ];
 }
 
-/** Whether Correct is offered now: while the engine takes a clock event, as More lists it (design §6.4, §7.5). */
+/**
+ * Whether Correct is offered now, as More lists it (design §6.4, §7.5): while the engine takes a clock event and the
+ * period's first Start stands (fix-round ruling e), so a break keeps its word and kick-off has no 0:00 to correct.
+ */
 export const footballTakesCorrect = (display: FootballDisplay): boolean =>
   footballMoreItems(display).some((item) => item.id === 'correct');
 

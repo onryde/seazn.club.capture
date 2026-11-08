@@ -228,9 +228,9 @@ describe('the Start screen and the clock', () => {
     expect(pad(view).readingNow()).toBe(40);
     press(view, (actions) => actions.correct());
     await wait(300);
-    expect(pad(view).sheet).toEqual({ kind: 'correct', deltaSeconds: 0, atFloor: false });
+    expect(pad(view).sheet).toEqual({ kind: 'correct', deltaSeconds: 0, floor: 30 });
     press(view, (actions) => actions.step(-60));
-    expect(pad(view).sheet).toEqual({ kind: 'correct', deltaSeconds: -10, atFloor: true });
+    expect(pad(view).sheet).toEqual({ kind: 'correct', deltaSeconds: -10, floor: 30 });
     press(view, (actions) => actions.set());
     await flush();
     expect((await lastEvent(fakes))?.payload).toEqual({
@@ -258,7 +258,7 @@ describe('Correct, More and Undo', () => {
     press(view, (actions) => actions.correct());
     await wait(300);
     press(view, (actions) => actions.step(-60));
-    expect(pad(view).sheet).toEqual({ kind: 'correct', deltaSeconds: -10, atFloor: true });
+    expect(pad(view).sheet).toEqual({ kind: 'correct', deltaSeconds: -10, floor: 30 });
     fakes.scoring.addOtherScorerEvent('football.goal', {
       by: AWAY_ENTRANT,
       at: { period: 'H1', elapsed: 35 },
@@ -302,12 +302,13 @@ describe('Correct, More and Undo', () => {
     press(view, (actions) => actions.correct());
     press(view, (actions) => actions.step(10));
     press(view, (actions) => actions.set());
-    expect(pad(view).sheet).toEqual({ kind: 'correct', deltaSeconds: 0, atFloor: false });
+    expect(pad(view).sheet).toEqual({ kind: 'correct', deltaSeconds: 0, floor: 0 });
     await flush();
     expect(await typesOf(fakes)).toEqual(['core.start', 'football.clock']);
   });
 
-  it('Correct at the break counts in the second half: the first half’s last stamp is no floor', async () => {
+  // The controller's fix-round ruling (e), superseding the Batch C behaviour: Correct waits for the period's first Start.
+  it('Correct at the break is not offered: nothing opens, nothing is recorded, and the bar keeps Half-time', async () => {
     const seed = footballSeed({
       events: [
         START,
@@ -315,12 +316,24 @@ describe('Correct, More and Undo', () => {
         { type: 'football.period', payload: { phase: 'HT', at: { period: 'H1', elapsed: 2700 } } },
       ],
     });
-    const { view } = await opened({ seed });
+    const { fakes, view } = await opened({ seed });
     expect(pad(view).display.enginePhase).toBe('H2');
     press(view, (actions) => actions.correct());
     await wait(300);
-    press(view, (actions) => actions.step(10));
-    expect(pad(view).sheet).toEqual({ kind: 'correct', deltaSeconds: 10, atFloor: false });
+    expect(pad(view).sheet).toBeNull();
+    await flush();
+    expect(await typesOf(fakes, seed)).toEqual(['core.start', 'football.clock', 'football.period']);
+    const bar = footballClockBar(pad(view).display, pad(view).readingNow());
+    expect(bar.period).toEqual({ key: 'scoring.football.break.halfTime' });
+  });
+
+  it('Correct before the first Start is not offered either: there is no 0:00 to move', async () => {
+    const { fakes, view } = await opened({ seed: STARTED });
+    press(view, (actions) => actions.correct());
+    await wait(300);
+    expect(pad(view).sheet).toBeNull();
+    await flush();
+    expect(await typesOf(fakes, STARTED)).toEqual(['core.start']);
   });
 
   it('More opens its sheet, and the console’s HT closes it', async () => {
@@ -347,7 +360,6 @@ describe('Correct, More and Undo', () => {
     await wait(1_000);
     const goal = await lastEvent(fakes);
     expect(goal?.type).toBe('football.goal');
-    expect(pad(view).display.undoPlan).toBe('plain');
     press(view, (actions) => actions.undo());
     await flush();
     await wait(1_000);
@@ -799,6 +811,26 @@ describe('the resync after a late Start (ruling 2)', () => {
     expect(words).toEqual(['start', 'resync']);
   });
 
+  it('a resync the match refuses (the organiser abandoned it meanwhile) is said in the record, and nothing is sent', async () => {
+    const { fakes, view } = await opened({ seed: STARTED });
+    fakes.scoring.dropNextAnswer();
+    press(view, (actions) => actions.clock());
+    await flush();
+    fakes.scoring.goOffline(true);
+    await wait(60_000);
+    fakes.scoring.addOtherScorerEvent('core.abandon', { reason: 'weather' });
+    fakes.scoring.goOffline(false);
+    fakes.realtime.ping();
+    await flush();
+    await wait(20_000);
+    await flush();
+    expect(lines(fakes, 'scoring.football.clock').map((line) => line.fields)).toEqual([
+      { action: 'start', phase: 'H1' },
+      { action: 'resyncRefused', phase: 'abandoned' },
+    ]);
+    expect(await clockStamps(fakes)).toEqual([0]);
+  });
+
   it('a console HT standing after the Start: no resync', async () => {
     const { fakes, view } = await opened({ seed: STARTED });
     fakes.scoring.dropNextAnswer();
@@ -822,10 +854,12 @@ describe('the resync after a late Start (ruling 2)', () => {
   });
 });
 
-// The controller's ruling 9: a resync is not a scorer action.
-describe('a resync is not a scorer action (ruling 9)', () => {
-  async function lateStart() {
-    const opened_ = await opened({ seed: STARTED });
+// The controller's fix-round ruling I1 (superseding ruling 9): a running clock event after a running one in the same
+// period is a clock correction on every screen, whoever sent it, and Undo takes it back alone.
+describe('a resync is a clock correction (ruling I1)', () => {
+  /** A Start tapped offline at 0:00 and sent 120 s later: the server records it, and the resync after it, on arrival. */
+  async function lateStart(rig: Rig = {}) {
+    const opened_ = await opened({ seed: STARTED, ...rig });
     const { fakes, view } = opened_;
     fakes.scoring.goOffline(true);
     press(view, (actions) => actions.clock());
@@ -837,24 +871,98 @@ describe('a resync is not a scorer action (ruling 9)', () => {
     return opened_;
   }
 
-  it('History after a late Start shows one Start line, and the last-tap line is the Start', async () => {
-    const { view } = await lateStart();
+  /** History's rows, oldest first, as their keys, and whether each was undone. */
+  function historyRows(view: Match) {
     press(view, (actions) => actions.history());
     const { sheet } = pad(view);
     if (sheet?.kind !== 'history') throw new Error('History did not open');
-    const keys = sheet.groups.flatMap((group) => group.rows.map((row) => row.said.key));
-    expect(keys.filter((key) => key === 'scoring.football.last.clockStart')).toHaveLength(1);
-    expect(pad(view).display.lastTap).toMatchObject({ kind: 'clock', running: true });
+    const rows = [...sheet.groups].reverse().flatMap((group) => [...group.rows].reverse());
+    press(view, (actions) => actions.cancelSheet());
+    return rows.map((row) => ({ key: row.said.key, undone: row.undone }));
+  }
+
+  const CLOCK_STARTED = 'scoring.football.last.clockStart';
+  const CORRECTED = 'scoring.football.last.clockCorrect';
+
+  /** The resync's stamp, as the server holds it: the Start's 0:00 plus the whole seconds it waited, 120 or more. */
+  async function resyncStamp(fakes: FakePorts) {
+    const clocks = (await ledger(fakes, STARTED)).filter(
+      (event) => event.type === 'football.clock',
+    );
+    expect(clocks).toHaveLength(2);
+    const stamp = (clocks[1]!.payload as { at: { period: string; elapsed: number } }).at;
+    expect(stamp.period).toBe('H1');
+    expect(stamp.elapsed).toBeGreaterThanOrEqual(120);
+    return stamp;
+  }
+
+  it('after a late Start History shows the Start, then a correction, and the last-tap line is the correction', async () => {
+    const { fakes, view } = await lateStart();
+    expect(await typesOf(fakes, STARTED)).toEqual([
+      'core.start',
+      'football.clock',
+      'football.clock',
+    ]);
+    expect(historyRows(view)).toEqual([
+      { key: 'scoring.football.last.start', undone: false },
+      { key: CLOCK_STARTED, undone: false },
+      { key: CORRECTED, undone: false },
+    ]);
+    expect(pad(view).display.lastTap).toEqual({
+      kind: 'clockCorrect',
+      at: await resyncStamp(fakes),
+    });
   });
 
-  it('Undo of a goal tapped before the resync voids the resync and the goal, and the clock reads on', async () => {
+  it('across a cold start, over the server’s copies alone, it is still the Start, then a correction', async () => {
+    const first = await lateStart();
+    first.view.unmount();
+    const fakes = createFakePorts({ clock: timerClock, scoring: first.fakes.scoring });
+    const { view } = await opened({ seed: STARTED, fakes });
+    expect(pad(view).display.clock.anchor?.base).toBe('server');
+    expect(historyRows(view)).toEqual([
+      { key: 'scoring.football.last.start', undone: false },
+      { key: CLOCK_STARTED, undone: false },
+      { key: CORRECTED, undone: false },
+    ]);
+    expect(pad(view).display.lastTap).toEqual({
+      kind: 'clockCorrect',
+      at: await resyncStamp(first.fakes),
+    });
+  });
+
+  it('Undo after a late Start voids only the correction: the Start stands and the clock runs from it', async () => {
+    const { fakes, view } = await lateStart();
+    const before = await ledger(fakes, STARTED);
+    const [start, resync] = before.filter((event) => event.type === 'football.clock');
+    press(view, (actions) => actions.undo());
+    await flush();
+    await wait(20_000);
+    const after = await ledger(fakes, STARTED);
+    expect(after.filter((event) => event.type === 'core.void').map((event) => event.voids)).toEqual(
+      [resync!.id],
+    );
+    expect(pad(view).display.clock.anchor).toMatchObject({
+      period: 'H1',
+      elapsed: 0,
+      running: true,
+    });
+    // The server recorded the Start on arrival: its anchor is the copy's, so the clock reads short by the wait again.
+    expect(Date.parse(start!.recordedAt)).toBeGreaterThanOrEqual(T0 + 120_000);
+    expect(historyRows(view)).toEqual([
+      { key: 'scoring.football.last.start', undone: false },
+      { key: CLOCK_STARTED, undone: false },
+      { key: CORRECTED, undone: true },
+    ]);
+  });
+
+  it('Undo with a goal under the resync takes back the resync alone, then the goal', async () => {
     const { fakes, view } = await opened({ seed: STARTED });
     fakes.scoring.goOffline(true);
     press(view, (actions) => actions.clock());
     await flush();
     await wait(1_000);
-    press(view, (actions) => actions.column('goal.first'));
-    await wait(300);
+    await column(view, 'goal.first');
     await pick(view, 'dontKnow');
     await wait(118_700);
     fakes.scoring.goOffline(false);
@@ -867,35 +975,45 @@ describe('a resync is not a scorer action (ruling 9)', () => {
       'football.goal',
       'football.clock',
     ]);
-    expect(pad(view).display.undoPlan).toBe('pastResync');
-    const reading = pad(view).readingNow();
     press(view, (actions) => actions.undo());
     await flush();
     await wait(20_000);
-    const after = await ledger(fakes, STARTED);
-    expect(after.filter((event) => event.type === 'core.void').map((event) => event.voids)).toEqual(
-      [before[3]!.id, before[2]!.id],
-    );
-    expect(after.at(-1)?.payload).toEqual({
-      running: true,
-      at: { period: 'H1', elapsed: reading },
-    });
+    const voids = async () =>
+      (await ledger(fakes, STARTED))
+        .filter((event) => event.type === 'core.void')
+        .map((event) => event.voids);
+    expect(await voids()).toEqual([before[3]!.id]);
+    expect(pad(view).display.goals).toEqual({ first: 1, second: 0 });
+    press(view, (actions) => actions.undo());
+    await flush();
+    await wait(20_000);
+    expect(await voids()).toEqual([before[3]!.id, before[2]!.id]);
     expect(pad(view).display.goals).toEqual({ first: 0, second: 0 });
-    expect(pad(view).readingNow()).toBe(reading + 20);
   });
 
-  it('Undo after it voids the resync, then the Start', async () => {
-    const { fakes, view } = await lateStart();
-    expect(pad(view).display.undoPlan).toBe('withStart');
-    const before = await ledger(fakes, STARTED);
-    const [start, resync] = before.filter((event) => event.type === 'football.clock');
-    press(view, (actions) => actions.undo());
+  it('a Correct while running reads as a correction too, and so does one while paused', async () => {
+    const { view } = await opened();
+    await wait(29_000);
+    press(view, (actions) => actions.correct());
+    await wait(300);
+    press(view, (actions) => actions.step(60));
+    press(view, (actions) => actions.set());
     await flush();
-    await wait(20_000);
-    const voids = (await ledger(fakes, STARTED))
-      .filter((event) => event.type === 'core.void')
-      .map((event) => event.voids);
-    expect(voids).toEqual([resync!.id, start!.id]);
-    expect(pad(view).display.clock.anchor).toBeNull();
+    await wait(1_000);
+    expect(pad(view).display.lastTap).toEqual({
+      kind: 'clockCorrect',
+      at: { period: 'H1', elapsed: 90 },
+    });
+    press(view, (actions) => actions.clock());
+    await flush();
+    await wait(1_000);
+    expect(pad(view).display.lastTap).toMatchObject({ kind: 'clock', running: false });
+    press(view, (actions) => actions.correct());
+    await wait(300);
+    press(view, (actions) => actions.step(10));
+    press(view, (actions) => actions.set());
+    await flush();
+    await wait(1_000);
+    expect(pad(view).display.lastTap).toMatchObject({ kind: 'clockCorrect' });
   });
 });

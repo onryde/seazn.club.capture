@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import type { TextProps } from 'react-native';
+import { act, render, screen } from '@testing-library/react';
+import type { TextLayoutEventData, TextProps } from 'react-native';
 import { describe, expect, it, vi } from 'vitest';
 import { NameText } from '@/ui/components/NameText';
 import { layout } from '@/ui/theme/tokens';
@@ -7,21 +7,37 @@ import { layout } from '@/ui/theme/tokens';
 // The props a name reaches React Native's Text with. react-native-web drops `adjustsFontSizeToFit` and
 // `minimumFontScale`, so the real Text cannot show them: this stands in for it and writes what it was given where a test
 // can read it. Whether a phone then shrinks the name rather than breaking it is a device check.
+// The phone's own lines after a layout (`onTextLayout`): jsdom lays nothing out, so a test hands them in by hand.
+const laidOut = vi.hoisted(() => ({ handler: undefined as TextProps['onTextLayout'] }));
 vi.mock('@/ui/components/Text', () => ({
-  Text: (props: TextProps & { variant: string }) => (
-    <span
-      data-testid="text"
-      data-variant={props.variant}
-      data-lines={String(props.numberOfLines)}
-      data-fit={String(props.adjustsFontSizeToFit)}
-      data-floor={String(props.minimumFontScale)}
-      data-ellipsis={String(props.ellipsizeMode)}
-      data-id={props.testID}
-    >
-      {props.children}
-    </span>
-  ),
+  Text: (props: TextProps & { variant: string }) => {
+    laidOut.handler = props.onTextLayout;
+    return (
+      <span
+        data-testid="text"
+        data-variant={props.variant}
+        data-lines={String(props.numberOfLines)}
+        data-fit={String(props.adjustsFontSizeToFit)}
+        data-floor={String(props.minimumFontScale)}
+        data-ellipsis={String(props.ellipsizeMode)}
+        data-id={props.testID}
+      >
+        {props.children}
+      </span>
+    );
+  },
 }));
+
+/** Android's lines for the last Text drawn, as `onTextLayout` would hand them back. */
+function linesAre(...texts: string[]) {
+  const lines = texts.map((text) => ({ text })) as unknown as TextLayoutEventData['lines'];
+  const handler = laidOut.handler;
+  if (handler === undefined || handler === null)
+    throw new Error('the Text was given no onTextLayout');
+  act(() =>
+    handler({ nativeEvent: { lines } } as Parameters<NonNullable<TextProps['onTextLayout']>>[0]),
+  );
+}
 
 const read = () => {
   const text = screen.getByTestId('text');
@@ -100,5 +116,84 @@ describe('NameText', () => {
       'short',
       'doubles',
     ]);
+  });
+  // The controller's fix-round ruling (a): a team's name shrinks to fit before its two-line ellipsis, and no word of it
+  // breaks at a letter. Whether the phone then shrinks it is the device check's; these are what it is given.
+  it('with a floor, shrinks a name with gaps to fit its lines, down to the floor, then an ellipsis', () => {
+    render(
+      <NameText variant="matchName" lines={2} floor={0.75}>
+        Wolverhampton Wanderers
+      </NameText>,
+    );
+    expect(read()).toEqual({
+      words: 'Wolverhampton Wanderers',
+      variant: 'matchName',
+      lines: '2',
+      fit: 'true',
+      floor: '0.75',
+      ellipsis: 'tail',
+      id: undefined,
+    });
+  });
+
+  it('with a floor, a name the phone broke at a letter is set again on two lines at its gap, and shrunk the same', () => {
+    render(
+      <NameText variant="matchName" lines={2} floor={0.75}>
+        Wolverhampton Wanderers
+      </NameText>,
+    );
+    linesAre('Wolverhampto', 'n Wanderers');
+    expect(read()).toMatchObject({
+      words: 'Wolverhampton\nWanderers',
+      lines: '2',
+      fit: 'true',
+      floor: '0.75',
+    });
+    linesAre('Wolverhampton\n', 'Wanderers');
+    expect(read().words).toBe('Wolverhampton\nWanderers');
+  });
+
+  it('with a floor, a name the phone broke only at its gaps stays as typed', () => {
+    render(
+      <NameText variant="matchName" lines={2} floor={0.75}>
+        Northgate United
+      </NameText>,
+    );
+    linesAre('Northgate ', 'United');
+    expect(read().words).toBe('Northgate United');
+  });
+
+  it('a new name after a split is set as typed until its own lines break a word', () => {
+    const view = render(
+      <NameText variant="matchName" lines={2} floor={0.75}>
+        Wolverhampton Wanderers
+      </NameText>,
+    );
+    linesAre('Wolverhampto', 'n Wanderers');
+    view.rerender(
+      <NameText variant="matchName" lines={2} floor={0.75}>
+        Borussia Mönchengladbach
+      </NameText>,
+    );
+    expect(read().words).toBe('Borussia Mönchengladbach');
+  });
+
+  it('with no floor, a name with gaps is never fitted and nothing asks for its lines', () => {
+    render(
+      <NameText variant="label" lines={2}>
+        Wolverhampton Wanderers
+      </NameText>,
+    );
+    expect(read()).toMatchObject({ fit: 'undefined', floor: 'undefined' });
+    expect(laidOut.handler).toBeUndefined();
+  });
+
+  it('with a floor, a name of one word keeps the one-word rule: one line, down to the name floor', () => {
+    render(
+      <NameText variant="matchName" lines={2} floor={0.75}>
+        Wolverhampton
+      </NameText>,
+    );
+    expect(read()).toMatchObject({ lines: '1', fit: 'true', floor: String(layout.nameFloor) });
   });
 });

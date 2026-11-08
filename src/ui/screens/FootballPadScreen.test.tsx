@@ -8,10 +8,11 @@ import type { FakeMatchSeed, FakeSeedEvent } from '@/services/fakeScoringPort';
 import { STORE_KEYS } from '@/services/modeStore';
 import { colour } from '@/ui/theme/tokens';
 import { TEST_NOW } from '../../../test/fakePorts';
-import { KO_11, at, clock, sinBin, start, type Spec } from '../../../test/footballLedger';
+import { KO_11, at, clock, goal, sinBin, start, type Spec } from '../../../test/footballLedger';
 import { KICK_OFF, KICKS_4_1, KICKS_4_3 } from '../../../test/footballPadFixtures';
 import { screenIsHeld, type HoldLog } from '../../../test/heldScreen';
 import { edgeOf } from '../../../test/pressState';
+import { linesAllowed } from '../../../test/linesAllowed';
 import { LINK, linkKey } from '../../../test/scoringHomeFixtures';
 import { backgroundAndBack, flush, launchApp, type LaunchedApp } from '../../../test/routedApp';
 
@@ -137,7 +138,7 @@ describe('the clock bar', () => {
     ).toBeTruthy();
   });
 
-  it('ticks alone: in 5 s of a running clock no team column renders again', async () => {
+  it('ticks alone: in 5 s of a running clock the two team columns render at most twice in all', async () => {
     const app = await open(LIVE);
     renders.columns = 0;
     for (let i = 0; i < 5; i += 1) {
@@ -233,6 +234,36 @@ describe('the clock’s Correct, the sheets and a sin-bin', () => {
     expect(within(sheet).getByText('1:08')).toBeTruthy();
   });
 
+  // Fix round 1, M1: the floor flag is judged where the time is drawn, each second, so a running clock frees the back
+  // steppers as soon as its time passes the floor.
+  it('Correct at the floor frees its back steppers as the running clock carries the time past it', async () => {
+    const scored = footballSeed({
+      events: asSeed([start(), clock(true, at('H1', 0)), goal({ by: 'H', at: at('H1', 3) })]),
+    });
+    const app = await open(scored);
+    await pass(app, 4000);
+    later(app);
+    act(() =>
+      fireEvent.click(
+        within(clockBar()).getByRole('button', {
+          name: fill(en['scoring.football.clock.said'], { time: '0:04' }),
+        }),
+      ),
+    );
+    await flush(400);
+    const sheet = screen.getByTestId('clock-correct-sheet');
+    const back = () =>
+      within(sheet).getByRole('button', { name: en['scoring.football.correct.back10'] });
+    await press(app, en['scoring.football.correct.back60'], sheet);
+    expect(within(sheet).getByText('0:03')).toBeTruthy();
+    expect(back().getAttribute('aria-disabled')).toBe('true');
+    expect(within(sheet).queryByText(en['scoring.football.correct.floor'])).not.toBeNull();
+    await pass(app, 3000);
+    expect(within(sheet).getByText('0:06')).toBeTruthy();
+    expect(back().getAttribute('aria-disabled')).not.toBe('true');
+    expect(within(sheet).queryByText(en['scoring.football.correct.floor'])).toBeNull();
+  });
+
   it('History from the top bar lists the goal; Match details opens from More', async () => {
     const app = await open(LIVE);
     await press(app, en['scoring.football.column.goal'], column('first'));
@@ -266,6 +297,8 @@ describe('the clock’s Correct, the sheets and a sin-bin', () => {
     expect(within(column('first')).getByTestId('sin-bin').textContent).toBe(
       `#4 · ${en['scoring.football.mark.sinBinOver']}`,
     );
+    // One line, cut with an ellipsis where it does not fit (fix-round ruling b), so the buttons under it never move.
+    expect(linesAllowed(within(column('first')).getByTestId('sin-bin'))).toBe(1);
   });
 });
 

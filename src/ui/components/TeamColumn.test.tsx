@@ -5,6 +5,7 @@ import { TeamColumn, type TeamAction, type TeamColumnView } from '@/ui/component
 import { colour, layout } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
 import { declaredStyle } from '../../../test/declaredStyle';
+import { layOut } from '../../../test/layOut';
 import { linesAllowed } from '../../../test/linesAllowed';
 import { edgeOf, fillOf } from '../../../test/pressState';
 import { renderWithPorts } from '../../../test/renderWithPorts';
@@ -165,5 +166,44 @@ describe('TeamColumn', () => {
     expect(declaredStyle(screen.getByText('Riverside FC'), 'min-height')).toBe(
       `${layout.padNameLines * typeScale.matchName.lineHeight}px`,
     );
+  });
+  // The controller's fix-round ruling (b): the marks' row is one line of fixed height, there with no marks too, so a
+  // card or a sin-bin tag never moves the buttons.
+  it('keeps the marks’ row one line of fixed height, marks or none', () => {
+    const none = renderColumn(VIEW);
+    const room = () => screen.getByTestId('column-marks-room');
+    expect(declaredStyle(room(), 'height')).toBe(`${typeScale.periodScore.lineHeight}px`);
+    none.rendered.unmount();
+    renderColumn({ ...VIEW, cards: { yellow: 1, red: 1 }, tags: [<Text key="bin">#6</Text>] });
+    expect(declaredStyle(room(), 'height')).toBe(`${typeScale.periodScore.lineHeight}px`);
+    expect(declaredStyle(screen.getByTestId('column-marks'), 'flex-wrap')).toBe('nowrap');
+  });
+
+  // The controller's fix-round ruling (c): a column too short for its full head and a touch target per button (336 dp
+  // for three buttons: 2 × 8 padding, a 152 head, 3 × (8 + 48)) sets its head compact, the name on one line and the
+  // score in the tally's 46 on 48, so the three buttons keep 48 each (footballFit.test.ts holds the heights).
+  it('sets its head compact below 336 dp for three buttons: the name on one line, the score a step smaller', () => {
+    renderColumn({ ...VIEW, label: 'Wanderers United Academy' });
+    const name = () => screen.getByText('Wanderers United Academy');
+    const score = () => screen.getByTestId('column-value');
+    expect(linesAllowed(name())).toBe(layout.padNameLines);
+    layOut(screen.getByTestId('team-column'), { width: 140, height: 336 });
+    expect(linesAllowed(name())).toBe(layout.padNameLines);
+    expect(getComputedStyle(score()).fontSize).toBe(`${typeScale.scoreCompact.fontSize}px`);
+    layOut(screen.getByTestId('team-column'), { width: 140, height: 335 });
+    expect(linesAllowed(name())).toBe(1);
+    expect(declaredStyle(name(), 'min-height')).toBe(`${typeScale.matchName.lineHeight}px`);
+    expect(getComputedStyle(score()).fontSize).toBe(`${typeScale.tally.fontSize}px`);
+    expect(getComputedStyle(score()).color).toBe(edgeOf(colour.lime));
+  });
+
+  it('a column with two buttons is full from 280 dp, and a trailing compact score is cream', () => {
+    renderColumn({ ...VIEW, lead: false, actions: [GOAL, CARD] });
+    const score = () => screen.getByTestId('column-value');
+    layOut(screen.getByTestId('team-column'), { width: 140, height: 280 });
+    expect(getComputedStyle(score()).fontSize).toBe(`${typeScale.scoreCompact.fontSize}px`);
+    layOut(screen.getByTestId('team-column'), { width: 140, height: 279 });
+    expect(getComputedStyle(score()).fontSize).toBe(`${typeScale.tally.fontSize}px`);
+    expect(getComputedStyle(score()).color).toBe(edgeOf(colour.ink));
   });
 });

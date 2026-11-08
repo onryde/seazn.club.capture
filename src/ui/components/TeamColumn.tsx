@@ -1,5 +1,6 @@
-import { Fragment, memo, type ReactNode, useCallback } from 'react';
+import { Fragment, memo, type ReactNode, useCallback, useState } from 'react';
 import {
+  type LayoutChangeEvent,
   type PressableStateCallbackType,
   Pressable,
   type StyleProp,
@@ -11,7 +12,7 @@ import type { PadBar } from '@/domain/scoring/padView';
 import { NameText } from '@/ui/components/NameText';
 import { Text } from '@/ui/components/Text';
 import { colour, layout, plateInk, pressedOpacity, radius, space } from '@/ui/theme/tokens';
-import { typeScale } from '@/ui/theme/type';
+import { type TypeRole, typeScale } from '@/ui/theme/type';
 
 /**
  * One button in a team's column, in the operator's words already (the sport's screen translates its own board): its id
@@ -53,34 +54,87 @@ type TeamColumnProps = {
  * sport's tags), and the team's buttons, which share the rest of the height by weight (`layout.columnPrimary`,
  * `layout.columnAction`), each at least a touch target. A kit part with no sport named (the controller's ruling 5).
  * A screen reader hears the name, the score and the marks as one, then each button.
+ *
+ * The controller's fix-round rulings: the name shrinks to fit before its ellipsis, so no word breaks at a letter (a);
+ * the marks' row is one line of fixed height, so the buttons never move (b); a column too short for its full head and a
+ * touch target per button sets the head compact, the name on one line and the score a step smaller, so the column
+ * never overflows (c); the score shrinks to fit its line and is never cut (f). footballFit.test.ts holds the numbers.
  */
 export const TeamColumn = memo(function TeamColumn({ view, onAction }: TeamColumnProps) {
+  const [height, setHeight] = useState<number | null>(null);
+  const measured = useCallback((event: LayoutChangeEvent) => {
+    setHeight(event.nativeEvent.layout.height);
+  }, []);
+  const compact = height !== null && height < fullColumn(view.actions.length);
   return (
-    <View testID="team-column" style={view.bar === 'lit' ? litColumn : dimColumn}>
-      <View
-        accessible
-        accessibilityLabel={[view.label, view.value, ...view.said].join(', ')}
-        style={styles.head}
-      >
-        <NameText variant="matchName" lines={layout.padNameLines} style={styles.name}>
-          {view.label}
-        </NameText>
-        <Text
-          testID="column-value"
-          variant="scoreCompact"
-          numberOfLines={1}
-          style={view.lead ? undefined : styles.trailing}
-        >
-          {view.value}
-        </Text>
-        <ColumnMarks cards={view.cards} tags={view.tags} />
-      </View>
+    <View
+      testID="team-column"
+      onLayout={measured}
+      style={view.bar === 'lit' ? litColumn : dimColumn}
+    >
+      <ColumnHead view={view} compact={compact} />
       {view.actions.map((action) => (
         <ColumnButton key={action.id} action={action} onAction={onAction} />
       ))}
     </View>
   );
 });
+
+/** The head: the name, the score and the marks' row, heard as one. */
+const ColumnHead = memo(function ColumnHead({
+  view,
+  compact,
+}: {
+  readonly view: TeamColumnView;
+  readonly compact: boolean;
+}) {
+  return (
+    <View
+      accessible
+      accessibilityLabel={[view.label, view.value, ...view.said].join(', ')}
+      style={styles.head}
+    >
+      <NameText
+        variant="matchName"
+        lines={compact ? 1 : layout.padNameLines}
+        floor={layout.teamNameFloor}
+        style={compact ? styles.nameCompact : styles.name}
+      >
+        {view.label}
+      </NameText>
+      <Text
+        testID="column-value"
+        variant={compact ? COMPACT_SCORE : FULL_SCORE}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={layout.scoreFloor}
+        style={view.lead ? undefined : styles.trailing}
+      >
+        {view.value}
+      </Text>
+      <View testID="column-marks-room" style={styles.marksRoom}>
+        <ColumnMarks cards={view.cards} tags={view.tags} />
+      </View>
+    </View>
+  );
+});
+
+const FULL_SCORE: TypeRole = 'scoreCompact';
+const COMPACT_SCORE: TypeRole = 'tally';
+/** The marks' row: one line of the count's role, whatever it holds (ruling b). A card icon (11 dp) sits inside it. */
+const MARKS_HEIGHT = typeScale.periodScore.lineHeight;
+
+/** A head's height: the name's lines, the score's line and the marks' row, a gap between each. */
+const headHeight = (nameLines: number, score: TypeRole) =>
+  nameLines * typeScale.matchName.lineHeight +
+  space.xs +
+  typeScale[score].lineHeight +
+  space.xs +
+  MARKS_HEIGHT;
+
+/** The least height a column holds its full head in, with a touch target per button: padding, the head, then a gap and a target each. */
+const fullColumn = (buttons: number) =>
+  2 * space.sm + headHeight(layout.padNameLines, FULL_SCORE) + buttons * (space.sm + layout.touch);
 
 /** The marks' row: a card icon per colour the team has, with its count, then the sport's tags. Nothing when none. */
 const ColumnMarks = memo(function ColumnMarks({
@@ -164,11 +218,16 @@ const styles = StyleSheet.create({
   lit: { borderLeftColor: colour.lime },
   dim: { borderLeftColor: colour.ink3 },
   head: { gap: space.xs },
-  // Two lines' room whatever the name, so the two columns' scores and buttons line up side by side (footballFit.test.ts).
+  // Two lines' room whatever the name, so the two columns' scores and buttons line up side by side (footballFit.test.ts);
+  // one line's in a compact head.
   name: { minHeight: layout.padNameLines * typeScale.matchName.lineHeight },
+  nameCompact: { minHeight: typeScale.matchName.lineHeight },
   trailing: { color: colour.ink },
-  marks: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: space.sm },
-  cardCount: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
+  // The marks' room is there with no marks too, so a card or a tag never moves the buttons, nor puts one team's under
+  // the other's out of line. One line: a tag that does not fit ends in an ellipsis (the sport's own Text), never wraps.
+  marksRoom: { height: MARKS_HEIGHT, overflow: 'hidden' },
+  marks: { flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: space.sm },
+  cardCount: { flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: space.xs },
   card: {
     width: layout.padCardWidth,
     height: layout.padCardHeight,

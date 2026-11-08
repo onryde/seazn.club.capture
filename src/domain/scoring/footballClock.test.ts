@@ -4,15 +4,16 @@ import {
   anchorBase,
   anchorOf,
   clockText,
+  correctionsIn,
   matchTime,
   minuteText,
   needsResync,
   newestStamp,
   PHASE_ORDER,
   periodLengths,
+  periodStarted,
   reading,
   restamp,
-  resyncsIn,
   resyncTap,
   stampFor,
   subStamp,
@@ -550,87 +551,148 @@ describe('the resync after a late Start (design §7.2)', () => {
   });
 });
 
-// The controller's ruling 9 (Batch C): a resync is not a scorer action. A running clock event within 2 s of what the
-// running anchor before it reads at its own time, in the same period, is one; History, the last-tap line and Undo pass it.
-describe('which clock events are resyncs (ruling 9)', () => {
+// The controller's fix-round ruling I1 (2026-11-08, superseding ruling 9): a running clock event that follows a running
+// one in the same period, with no Pause and no period marker between, is a clock correction, whoever sent it and
+// whenever it was recorded. So is a stopped one after a stopped one (a Correct while paused). Times play no part.
+describe('which clock events are corrections (ruling I1)', () => {
   const T = Date.parse('2026-11-07T14:30:00.000Z');
   const at600 = { period: 'H1', elapsed: 600 };
 
-  it('a running clock event 120 s after a running Start, stamped 120 s on, is a resync', () => {
-    const events = [
+  it('a running clock event after a running Start is a correction, at any stamp and any time', () => {
+    const resync = [
       clockEvent(true, at600, T, { base: 'device' }),
       clockEvent(true, { period: 'H1', elapsed: 720 }, T + 120_000, { base: 'device' }),
     ];
-    expect([...resyncsIn(events)]).toEqual([1]);
-  });
-
-  it('one stamped 2 s off the reading still is; 3 s off is not', () => {
-    const twoOff = [
-      clockEvent(true, at600, T),
-      clockEvent(true, { period: 'H1', elapsed: 722 }, T + 120_000),
+    // The server's copies: both recorded on arrival, half a second apart, the second stamped 2 min ahead.
+    const copies = [
+      clockEvent(true, at600, T + 120_000),
+      clockEvent(true, { period: 'H1', elapsed: 720 }, T + 120_500),
     ];
-    const threeOff = [
-      clockEvent(true, at600, T),
-      clockEvent(true, { period: 'H1', elapsed: 723 }, T + 120_000),
-    ];
-    expect([...resyncsIn(twoOff)]).toEqual([1]);
-    expect([...resyncsIn(threeOff)]).toEqual([]);
-  });
-
-  it('a Correct of +1 min while running is not a resync', () => {
-    const events = [
+    const plusMinute = [
       clockEvent(true, at600, T),
       clockEvent(true, { period: 'H1', elapsed: 690 }, T + 30_000),
     ];
-    expect([...resyncsIn(events)]).toEqual([]);
+    const back = [
+      clockEvent(true, at600, T),
+      clockEvent(true, { period: 'H1', elapsed: 540 }, T + 30_000),
+    ];
+    expect([...correctionsIn(resync)]).toEqual([1]);
+    expect([...correctionsIn(copies)]).toEqual([1]);
+    expect([...correctionsIn(plusMinute)]).toEqual([1]);
+    expect([...correctionsIn(back)]).toEqual([1]);
   });
 
-  it('a Start after a Pause at the same minute is not a resync: the clock was stopped', () => {
-    const events = [clockEvent(false, at600, T), clockEvent(true, at600, T + 30_000)];
-    expect([...resyncsIn(events)]).toEqual([]);
-  });
-
-  it('the first Start of a period is not a resync, nor a Pause, nor one in another period', () => {
-    const events = [
+  it('a stopped clock event after a stopped one is a correction; a Pause after a Start is not, nor a Start after a Pause', () => {
+    const whilePaused = [
       clockEvent(true, at600, T),
       clockEvent(false, { period: 'H1', elapsed: 630 }, T + 30_000),
-      marker('HT', T + 31_000),
-      clockEvent(true, { period: 'H2', elapsed: 0 }, T + 600_000),
+      clockEvent(false, { period: 'H1', elapsed: 660 }, T + 40_000),
+      clockEvent(true, { period: 'H1', elapsed: 660 }, T + 50_000),
     ];
-    expect([...resyncsIn(events)]).toEqual([]);
+    expect([...correctionsIn(whilePaused)]).toEqual([2]);
   });
 
-  it('a running clock event stamped in another period is no resync, even at the reading and with no marker between', () => {
+  it('every running one after the first is a correction: a second and a third', () => {
+    const events = [
+      clockEvent(true, at600, T),
+      clockEvent(true, { period: 'H1', elapsed: 700 }, T + 60_000),
+      clockEvent(true, { period: 'H1', elapsed: 800 }, T + 120_000),
+    ];
+    expect([...correctionsIn(events)]).toEqual([1, 2]);
+  });
+
+  it('an unstamped running clock event after a running one is a correction in its period', () => {
+    const events = [clockEvent(true, at600, T), clockEvent(true, null, T + 60_000)];
+    expect([...correctionsIn(events)]).toEqual([1]);
+  });
+
+  it('the first clock event of a period is no correction: a Start, or a Pause with nothing before it', () => {
+    expect([...correctionsIn([clockEvent(true, at600, T)])]).toEqual([]);
+    expect([...correctionsIn([clockEvent(false, at600, T)])]).toEqual([]);
+    expect([...correctionsIn([])]).toEqual([]);
+  });
+
+  it('a period marker ends the anchor: a running clock event after it is no correction, even in the old period', () => {
+    const events = [
+      clockEvent(true, at600, T),
+      marker('HT', T + 61_000),
+      clockEvent(true, { period: 'H1', elapsed: 2700 }, T + 120_000),
+      clockEvent(true, { period: 'H2', elapsed: 0 }, T + 600_000),
+    ];
+    expect([...correctionsIn(events)]).toEqual([]);
+  });
+
+  it('a period marker ends the anchor for an unstamped Start after it too', () => {
+    const events = [
+      clockEvent(true, at600, T),
+      marker('HT', T + 61_000),
+      clockEvent(true, null, T + 120_000),
+    ];
+    expect([...correctionsIn(events)]).toEqual([]);
+  });
+
+  it('a running clock event stamped in another period is no correction, even with no marker between', () => {
     const events = [
       clockEvent(true, at600, T),
       clockEvent(true, { period: 'H2', elapsed: 720 }, T + 120_000),
     ];
-    expect([...resyncsIn(events)]).toEqual([]);
+    expect([...correctionsIn(events)]).toEqual([]);
   });
 
-  it('a period marker ends the anchor: a running clock event after it is no resync, even at the old reading', () => {
-    const events = [
-      clockEvent(true, at600, T),
-      marker('HT', T + 60_000),
-      clockEvent(true, { period: 'H1', elapsed: 720 }, T + 120_000),
-    ];
-    expect([...resyncsIn(events)]).toEqual([]);
-  });
-
-  it('a resync undone with its Start is still one: judged against the events as they were made', () => {
+  it('a correction undone with its Start is still one: judged against the events as they were made', () => {
     const events = [
       clockEvent(true, at600, T, { standing: false }),
       clockEvent(true, { period: 'H1', elapsed: 720 }, T + 120_000, { standing: false }),
     ];
-    expect([...resyncsIn(events)]).toEqual([1]);
+    expect([...correctionsIn(events)]).toEqual([1]);
   });
 
-  it('a standing resync is judged against the standing events: a voided Start before it is passed over', () => {
+  it('a standing event is judged against the standing events: a voided Start before it is passed over', () => {
     const events = [
       clockEvent(false, at600, T - 60_000),
       clockEvent(true, at600, T, { standing: false }),
       clockEvent(true, { period: 'H1', elapsed: 720 }, T + 120_000),
     ];
-    expect([...resyncsIn(events)]).toEqual([]);
+    expect([...correctionsIn(events)]).toEqual([]);
+  });
+
+  it('a voided marker does not end the anchor: a running event after it is still a correction', () => {
+    const events = [
+      clockEvent(true, at600, T),
+      marker('HT', T + 60_000, false),
+      clockEvent(true, { period: 'H1', elapsed: 720 }, T + 120_000),
+    ];
+    expect([...correctionsIn(events)]).toEqual([2]);
+  });
+});
+
+// The controller's fix-round ruling (e): Correct is offered once the current period's first Start stands.
+describe('whether the period’s first Start stands (ruling e)', () => {
+  const T = Date.parse('2026-11-07T14:30:00.000Z');
+  const kickOff = clockEvent(true, { period: 'H1', elapsed: 0 }, T);
+
+  it('none before any clock event; one once a running clock event stands in the period, and still after a Pause', () => {
+    expect(periodStarted([], 'H1')).toBe(false);
+    expect(periodStarted([kickOff], 'H1')).toBe(true);
+    const paused = clockEvent(false, { period: 'H1', elapsed: 600 }, T + 600_000);
+    expect(periodStarted([kickOff, paused], 'H1')).toBe(true);
+  });
+
+  it('a period marker ends it: the next period has none until its own Start stands', () => {
+    const ht = marker('HT', T + 2_700_000);
+    const second = clockEvent(true, { period: 'H2', elapsed: 0 }, T + 3_600_000);
+    expect(periodStarted([kickOff, ht], 'H2')).toBe(false);
+    expect(periodStarted([kickOff, ht, second], 'H2')).toBe(true);
+    expect(periodStarted([kickOff, marker('HT', T + 60_000, false)], 'H1')).toBe(true);
+    // The whistle stops its own period's clock too: the half it ended has no Start standing either.
+    expect(periodStarted([kickOff, ht], 'H1')).toBe(false);
+  });
+
+  it('a voided Start is none, nor a Pause alone, nor a Start stamped in another period', () => {
+    expect(
+      periodStarted([clockEvent(true, { period: 'H1', elapsed: 0 }, T, { standing: false })], 'H1'),
+    ).toBe(false);
+    expect(periodStarted([clockEvent(false, { period: 'H1', elapsed: 0 }, T)], 'H1')).toBe(false);
+    expect(periodStarted([clockEvent(true, { period: 'H2', elapsed: 0 }, T)], 'H1')).toBe(false);
   });
 });

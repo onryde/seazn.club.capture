@@ -174,7 +174,8 @@ const teamAction = (
 
 /**
  * A player in the sin-bin: the shirt number, and "Sin-bin over" once the clock passes the bin's end (design §6.4). It
- * ticks only while its bin runs on a running clock; the pad sends nothing when it is over (the scorer taps Back).
+ * ticks only while its bin runs on a running clock; the pad sends nothing when it is over (the scorer taps Back). One
+ * line, cut with an ellipsis ("#99 · Expulsión cump…" at 320), so the column's buttons never move (fix-round ruling b).
  */
 const SinBinTag = memo(function SinBinTag({
   bin,
@@ -190,7 +191,13 @@ const SinBinTag = memo(function SinBinTag({
   useClockTick(running);
   const over = binOver(bin.over, { period: display.enginePhase, elapsed: readingNow() });
   return (
-    <Text testID="sin-bin" variant="periodScore" style={over ? styles.binOver : styles.bin}>
+    <Text
+      testID="sin-bin"
+      variant="periodScore"
+      numberOfLines={1}
+      ellipsizeMode="tail"
+      style={over ? styles.binOver : styles.bin}
+    >
       {over ? `${bin.label} · ${t('scoring.football.mark.sinBinOver')}` : bin.label}
     </Text>
   );
@@ -256,7 +263,8 @@ const CorrectView = memo(function CorrectView({
 }) {
   const { t } = useT();
   useClockTick(display.clock.anchor?.running === true);
-  const time = footballCorrectTime(display, readingNow() + sheet.deltaSeconds);
+  const seconds = readingNow() + sheet.deltaSeconds;
+  const time = footballCorrectTime(display, seconds);
   const words = useMemo<ClockCorrectWords>(
     () => ({
       title: t('scoring.football.correct.title'),
@@ -273,7 +281,7 @@ const CorrectView = memo(function CorrectView({
   return (
     <ClockCorrectSheet
       time={time}
-      atFloor={sheet.atFloor}
+      atFloor={seconds <= sheet.floor}
       floorLine={t('scoring.football.correct.floor')}
       words={words}
       onStep={actions.step}
@@ -288,6 +296,7 @@ const styles = StyleSheet.create({
   board: { flex: 1, gap: space.sm },
   columns: { flex: 1, flexDirection: 'row', gap: space.sm },
   side: { flex: 1, gap: space.xs },
-  bin: { color: colour.ink2 },
-  binOver: { color: colour.ink },
+  // A tag shares the marks' one line: it gives way to the cards' counts and ends in an ellipsis (ruling b).
+  bin: { flexShrink: 1, color: colour.ink2 },
+  binOver: { flexShrink: 1, color: colour.ink },
 });

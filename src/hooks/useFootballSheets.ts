@@ -51,8 +51,11 @@ export type ClockDelta = -60 | -10 | 10 | 60;
 /** What is over the pad. */
 export type FootballSheetView =
   | { readonly kind: 'step'; readonly sheet: FootballStepSheet }
-  /** Correct: the move from the reading now, and whether a step back would go before the last event. */
-  | { readonly kind: 'correct'; readonly deltaSeconds: number; readonly atFloor: boolean }
+  /**
+   * Correct: the move held, and the floor, in seconds of the period in play. Whether the time is at the floor is judged
+   * where the time is drawn, each second of a running clock, never here (fix round 1, M1: a memo goes stale).
+   */
+  | { readonly kind: 'correct'; readonly deltaSeconds: number; readonly floor: number }
   | { readonly kind: 'details'; readonly details: PadMatchDetails<FootballPadKey> }
   | { readonly kind: 'history'; readonly groups: readonly PadHistoryGroup<FootballPadKey>[] }
   | AskView;
@@ -94,7 +97,7 @@ export function useFootballSheets(
 ) {
   const [sheet, setSheet] = useState<Sheet>(null);
   const cancel = useCallback(() => setSheet(null), []);
-  const view = useMemo(() => sheetView(sheet, snapshot, clock), [sheet, snapshot, clock]);
+  const view = useMemo(() => sheetView(sheet, snapshot), [sheet, snapshot]);
   const justShown = useJustShown(guardedStep(sheet, view));
   // No match to put a sheet over, the question over it, or nothing left for it to do: no sheet stays open behind it.
   if (sheet !== null && staleSheet(sheet, snapshot)) setSheet(null);
@@ -282,11 +285,7 @@ function guardedStep(sheet: Sheet, view: FootballSheetView | null): string | nul
   return view.kind;
 }
 
-function sheetView(
-  sheet: Sheet,
-  snapshot: FootballSheetSnapshot | null,
-  clock: FootballClockRead,
-): FootballSheetView | null {
+function sheetView(sheet: Sheet, snapshot: FootballSheetSnapshot | null): FootballSheetView | null {
   if (snapshot === null) return null;
   // The reconnect question stands over everything while it stands (nothing is sent until it is answered), and its
   // confirm over it, a card or none.
@@ -296,10 +295,8 @@ function sheetView(
   switch (sheet.kind) {
     case 'step':
       return { kind: 'step', sheet: footballStep(sheet.flow, snapshot.display) };
-    case 'correct': {
-      const atFloor = clock.readingNow() + sheet.delta <= floorOf(snapshot.display);
-      return { kind: 'correct', deltaSeconds: sheet.delta, atFloor };
-    }
+    case 'correct':
+      return { kind: 'correct', deltaSeconds: sheet.delta, floor: floorOf(snapshot.display) };
     case 'details':
       return { kind: 'details', details: snapshot.details };
     case 'history':

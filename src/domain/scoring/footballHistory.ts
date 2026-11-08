@@ -103,6 +103,8 @@ export function doneSaid(words: FootballWords, did: FootballDone): Text {
       return { key: 'scoring.football.last.start' };
     case 'clock':
       return clockSaid(words, did);
+    case 'clockCorrect':
+      return { key: 'scoring.football.last.clockCorrect', vars: { at: faceAt(words.cfg, did.at) } };
     case 'goal':
       return goalSaid(words, did);
     case 'card':

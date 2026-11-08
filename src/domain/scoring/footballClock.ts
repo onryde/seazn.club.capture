@@ -78,6 +78,25 @@ function clockAnchor(
 const runningOf = (payload: unknown): boolean | null =>
   isRecord(payload) && typeof payload.running === 'boolean' ? payload.running : null;
 
+/**
+ * Whether `phase`'s first Start stands: a standing running `football.clock` in it, after the last standing period marker
+ * (the controller's fix-round ruling e). Correct waits for it, so a break keeps its word and kick-off has no 0:00 to move.
+ * A Pause after it keeps it; a Pause alone, a voided Start or one stamped in another period is none.
+ */
+export function periodStarted(events: readonly AnchorEvent[], phase: string): boolean {
+  let anchor: ClockAnchor | null = null;
+  let started = false;
+  for (const event of events) {
+    if (!event.standing) continue;
+    if (event.type === PERIOD) [anchor, started] = [null, false];
+    else if (event.type === CLOCK) {
+      anchor = clockAnchor(event, anchor, phase);
+      started = started || anchor?.running === true;
+    }
+  }
+  return started;
+}
+
 /** An anchor's reading at `atMs` on its own clock, whole seconds: frozen when stopped. */
 const projected = (anchor: ClockAnchor, atMs: number): number =>
   anchor.running
@@ -158,20 +177,19 @@ export function resyncTap(
   return { kind: 'clock', running: true, elapsed: start.elapsed + waited };
 }
 
-/** How far a running clock event may sit from the reading it re-anchors and still be a resync, in seconds (ruling 9). */
-const RESYNC_SLACK_S = 2;
-
 /**
- * Which of `events` are resyncs, by index (the controller's ruling 9, Batch C): a running `football.clock` stamped within
- * 2 s of what the running anchor before it reads at the event's own time, in the same period. A scorer never starts a
- * running clock; only a resync (or a second Start on another screen, which changes nothing) does, and a Correct moves the
- * reading by 10 s at least. A standing event is judged against the standing events before it; one a void took back,
- * against the events as they were made (a voided Start included), so a resync undone with its Start is still one. Pure:
- * nothing is stored, so a fold of the same events says the same after a cold start, as far as their times allow.
+ * Which of `events` are clock corrections, by index (the controller's fix-round ruling I1, 2026-11-08, superseding ruling
+ * 9): a `football.clock` event that keeps the clock as the one before it left it, in the same period, with no period
+ * marker between. A running one after a running one is a Correct while the clock runs, the resync after a late Start, or
+ * a second Start on another screen; whoever sent it, it moves the time and nothing else. A stopped one after a stopped
+ * one is a Correct while paused. The first clock event of a period, a Pause after a Start and a Start after a Pause are
+ * none. Times play no part, so the server's copies say the same as this phone's stand-ins, and a cold start the same as
+ * the session. A standing event is judged against the standing events before it; one a void took back, against the
+ * events as they were made (a voided Start included), so a correction undone with its Start is still one.
  */
-export function resyncsIn(events: readonly AnchorEvent[]): ReadonlySet<number> {
-  const amongStanding = resyncWalk(events, (event) => event.standing);
-  const asMade = resyncWalk(events, () => true);
+export function correctionsIn(events: readonly AnchorEvent[]): ReadonlySet<number> {
+  const amongStanding = correctionWalk(events, (event) => event.standing);
+  const asMade = correctionWalk(events, () => true);
   const found = new Set<number>();
   events.forEach((event, at) => {
     if ((event.standing ? amongStanding : asMade).has(at)) found.add(at);
@@ -179,7 +197,7 @@ export function resyncsIn(events: readonly AnchorEvent[]): ReadonlySet<number> {
   return found;
 }
 
-function resyncWalk(
+function correctionWalk(
   events: readonly AnchorEvent[],
   counts: (event: AnchorEvent) => boolean,
 ): ReadonlySet<number> {
@@ -189,18 +207,17 @@ function resyncWalk(
     if (!counts(event)) return;
     if (event.type === PERIOD) anchor = null;
     if (event.type !== CLOCK) return;
-    if (isResync(event, anchor)) found.add(at);
+    if (isCorrection(event, anchor)) found.add(at);
     const stamp = gameTimeOf(event.payload);
     anchor = clockAnchor(event, anchor, stamp?.period ?? anchor?.period ?? '');
   });
   return found;
 }
 
-function isResync(event: AnchorEvent, before: ClockAnchor | null): boolean {
-  if (before === null || !before.running || runningOf(event.payload) !== true) return false;
+function isCorrection(event: AnchorEvent, before: ClockAnchor | null): boolean {
+  if (before === null || runningOf(event.payload) !== before.running) return false;
   const stamp = gameTimeOf(event.payload);
-  if (stamp === null || stamp.period !== before.period) return false;
-  return Math.abs(stamp.elapsed - projected(before, event.atMs)) <= RESYNC_SLACK_S;
+  return stamp === null || stamp.period === before.period;
 }
 
 // ---------------------------------------------------------------------------------------------------------------

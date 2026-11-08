@@ -4,7 +4,7 @@ import es from '@/i18n/es.json';
 import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
 import { layout, space } from '@/ui/theme/tokens';
-import { typeScale } from '@/ui/theme/type';
+import { maxFontScale, typeScale } from '@/ui/theme/type';
 import { loadFont } from '../../../test/fontMetrics';
 import { linesOf } from '../../../test/textFit';
 
@@ -141,6 +141,42 @@ describe('a team’s name on its column (design §6.2: two lines, then an ellips
   });
 });
 
+// The controller's fix-round ruling (a): a team's name shrinks to fit (down to `teamNameFloor`) before its two-line
+// ellipsis, so no word breaks at a letter at 360 dp. A name with a word wider than the column is set on two lines at a
+// gap (`splitInTwo`; the lines are written out here) and shrunk until its widest line fits. Whether a phone does so is
+// the device check's (Android shrinks with no floor of its own but 4 dp).
+describe('a team’s name shrunk to fit, no word broken (ruling a)', () => {
+  /** The scale the lines need to sit in `room`: 1 when they fit as they are. */
+  const scaleFor = (lines: readonly string[], room: number) =>
+    Math.min(1, ...lines.map((line) => room / nameWidth(line)));
+  const BROKEN = [
+    ['Wolverhampton', 'Wanderers'],
+    ['Borussia', 'Mönchengladbach'],
+    ['AFC', 'Bournemouth'],
+  ] as const;
+
+  it('the long words: 145.1 and 165.6 dp, wider than the column at 360; Bournemouth 123.9, wider at 320 only', () => {
+    expect(
+      ['Wolverhampton', 'Mönchengladbach', 'Bournemouth'].map((word) => nameWidth(word).toFixed(1)),
+    ).toEqual(['145.1', '165.6', '123.9']);
+  });
+
+  it('at 360 each needs no less than the floor: 0.96, 0.85 and 1, all at least 0.75', () => {
+    expect(layout.teamNameFloor).toBe(0.75);
+    const scales = BROKEN.map((lines) => scaleFor(lines, teamText(360)));
+    expect(scales.map((scale) => scale.toFixed(2))).toEqual(['0.96', '0.85', '1.00']);
+    for (const scale of scales) expect(scale).toBeGreaterThanOrEqual(layout.teamNameFloor);
+  });
+
+  it('at 320 Wolverhampton needs 0.83 and Bournemouth 0.97; Mönchengladbach 0.72, under the floor: cut on iOS', () => {
+    expect(BROKEN.map((lines) => scaleFor(lines, teamText(320)).toFixed(2))).toEqual([
+      '0.83',
+      '0.72',
+      '0.97',
+    ]);
+  });
+});
+
 describe('the clock bar at 320 and 360 in four languages (ruling 109; the controller’s ruling 7)', () => {
   it('the longest reading, 120+15:00, is 193.2 dp of tabular digits', () => {
     expect(clockWidth('120+15:00').toFixed(1)).toBe('193.2');
@@ -155,6 +191,23 @@ describe('the clock bar at 320 and 360 in four languages (ruling 109; the contro
         );
     },
   );
+
+  // The controller's fix-round ruling (d): at the 1.15 font-scale cap (`maxFontScale.tally`) the time shrinks to fit its
+  // one line, the clock alone, down to `clockFloor`.
+  it('at the 1.15 cap 120+15:00 is 222.1 dp: en fits at 320, nl needs 0.93 there, and none goes under 0.85', () => {
+    expect(maxFontScale.tally).toBe(1.15);
+    const grown = clockWidth('120+15:00') * 1.15;
+    expect(grown.toFixed(1)).toBe('222.1');
+    expect(layout.clockFloor).toBe(0.85);
+    expect((faceRoom(320, nl) / grown).toFixed(2)).toBe('0.93');
+    expect(faceRoom(320, en) / grown).toBeGreaterThan(1);
+    for (const [lang, dictionary] of LANGUAGES)
+      for (const width of WIDTHS)
+        expect(
+          Math.min(1, faceRoom(width, dictionary) / grown),
+          `${lang} @${width}`,
+        ).toBeGreaterThanOrEqual(layout.clockFloor);
+  });
 
   // The period's line is as wide as the bar, under the time and the button; even in the time's room beside the button,
   // the longest period or break word of each language takes one line.
@@ -265,6 +318,64 @@ describe('the sheets’ rows at 320 and 360 in four languages (design §6.3)', (
   );
 });
 
+/** `scoreCompact` (64) or, in a compact head, `tally` (46): Barlow Condensed 700, tabular digits. A team's score. */
+const scoreWidth = (text: string, role: 'scoreCompact' | 'tally') =>
+  [...text].reduce(
+    (sum, char) =>
+      sum +
+      (/\d/.test(char)
+        ? barlow700.advanceOfName('zero.tf')
+        : barlow700.advance(char.codePointAt(0) ?? 0)) *
+        typeScale[role].fontSize,
+    0,
+  );
+
+// The controller's fix-round ruling (f): the score shrinks to fit its line and is never cut. "G (K)" in the shootout;
+// two figures each is the widest a youth or mini match makes (ruling 104).
+describe('a team’s score in the shootout (ruling f)', () => {
+  it('“10 (4)” is 148.2 dp, over the 140 at 360: it needs 0.94; “10 (10)” is 180.1 and needs 0.67 at 320', () => {
+    expect(scoreWidth('10 (4)', 'scoreCompact').toFixed(1)).toBe('148.2');
+    expect((teamText(360) / scoreWidth('10 (4)', 'scoreCompact')).toFixed(2)).toBe('0.94');
+    expect(scoreWidth('10 (10)', 'scoreCompact').toFixed(1)).toBe('180.1');
+    expect((teamText(320) / scoreWidth('10 (10)', 'scoreCompact')).toFixed(2)).toBe('0.67');
+  });
+
+  it('every score to two figures each, full or compact, at 320 and 360, needs no less than the floor of 0.6', () => {
+    expect(layout.scoreFloor).toBe(0.6);
+    for (const width of WIDTHS)
+      for (const score of ['5 (4)', '10 (4)', '5 (10)', '10 (10)'])
+        for (const role of ['scoreCompact', 'tally'] as const)
+          expect(
+            Math.min(1, teamText(width) / scoreWidth(score, role)),
+            `${score} ${role} @${width}`,
+          ).toBeGreaterThanOrEqual(layout.scoreFloor);
+  });
+});
+
+// The controller's fix-round ruling (b): the marks' row is one line of fixed height. A sin-bin tag that is wider than
+// the column ends in an ellipsis; it never wraps, so the buttons never move.
+describe('the marks’ row (ruling b)', () => {
+  const tagWidth = (text: string) => barlow700.width(text, typeScale.periodScore.fontSize);
+
+  it('is one line of the count’s role, 16 dp, and holds a card icon', () => {
+    expect(typeScale.periodScore.lineHeight).toBe(16);
+    expect(layout.padCardHeight).toBeLessThanOrEqual(typeScale.periodScore.lineHeight);
+  });
+
+  it('“#99 · Sin-bin over” fits at 320 in en and nl; in es and fr it is wider, and is cut, not wrapped', () => {
+    const tag = (dictionary: Dictionary) =>
+      `#99 · ${said(dictionary, 'scoring.football.mark.sinBinOver')}`;
+    expect(
+      LANGUAGES.map(([lang, dictionary]) => [lang, tagWidth(tag(dictionary)) <= teamText(320)]),
+    ).toEqual([
+      ['en', true],
+      ['es', false],
+      ['fr', false],
+      ['nl', true],
+    ]);
+  });
+});
+
 /**
  * The team columns' height, portrait (ruling 105; `pad-layout-c-v3.html` option 2, "Goal shrunk to 3/4 of its size";
  * the controller's ruling 7). The split: the buttons share what the column leaves them by weight, Goal 0.75 and Card
@@ -324,5 +435,60 @@ describe('the team columns’ height, portrait', () => {
   it('holds 3 : 2 : 2 with every button at least 48 from 662 tall; at 661 Card and Sub would be under 48', () => {
     expect(split(662)[1]).toBe(layout.touch);
     expect(split(661)[1]).toBeLessThan(layout.touch);
+  });
+
+  /*
+   * The controller's fix-round ruling (c): below 3 : 2 : 2, Card and Sub hold 48 and Goal takes the rest, never less than
+   * 48; a column too short for its full head and three targets (336 dp, so a window under 638) sets its head compact:
+   * the name on one line (30) and the score in `tally` (48), 102 in all, and the column never overflows. A window of
+   * 588 is the least the compact head holds the three targets in.
+   */
+  const COMPACT_HEAD =
+    typeScale.matchName.lineHeight +
+    space.xs +
+    typeScale.tally.lineHeight +
+    space.xs +
+    typeScale.periodScore.lineHeight;
+  const columnOf = (height: number) => height - AROUND - CLOCK;
+  const FULL_COLUMN = 2 * space.sm + HEAD + 3 * (space.sm + layout.touch);
+  /** The buttons' heights in a window `height` tall, and whether the head is compact: the screen's rule, written out. */
+  function laidOut(height: number) {
+    const compact = columnOf(height) < FULL_COLUMN;
+    const room = columnOf(height) - 2 * space.sm - (compact ? COMPACT_HEAD : HEAD) - 3 * space.sm;
+    const total = WEIGHTS.reduce((sum, weight) => sum + weight, 0);
+    const [goal, card] = WEIGHTS.map((weight) => (room * weight) / total);
+    const buttons =
+      card! < layout.touch
+        ? [room - 2 * layout.touch, layout.touch, layout.touch]
+        : [goal!, card!, card!];
+    return { compact, room, buttons };
+  }
+
+  it('a full column is 336 dp and a compact head 102: compact below a 638 window; three targets hold from 588', () => {
+    expect([FULL_COLUMN, COMPACT_HEAD]).toEqual([336, 102]);
+    expect(laidOut(638).compact).toBe(false);
+    expect(laidOut(637).compact).toBe(true);
+    expect(Math.min(...laidOut(588).buttons)).toBe(layout.touch);
+    expect(Math.min(...laidOut(587).buttons)).toBeLessThan(layout.touch);
+  });
+
+  it.each([
+    [640, false, ['50.0', '48.0', '48.0']],
+    [600, true, ['60.0', '48.0', '48.0']],
+  ] as const)(
+    'at 360 × %i: compact %s; Goal %s, Card and Sub 48, each at least 48, nothing past the column',
+    (height, compact, heights) => {
+      const laid = laidOut(height);
+      expect(laid.compact).toBe(compact);
+      expect(laid.buttons.map((each) => each.toFixed(1))).toEqual(heights);
+      for (const each of laid.buttons) expect(each).toBeGreaterThanOrEqual(layout.touch);
+      expect(laid.buttons.reduce((sum, each) => sum + each, 0)).toBeCloseTo(laid.room, 10);
+    },
+  );
+
+  it('on the owner’s phone the head stays full and the buttons stand 3 : 2 : 2', () => {
+    const laid = laidOut(724);
+    expect(laid.compact).toBe(false);
+    expect(laid.buttons.map((each) => each.toFixed(1))).toEqual(['98.6', '65.7', '65.7']);
   });
 });

@@ -78,7 +78,8 @@ type Sender = MatchSender<FootballTypes>;
 
 /**
  * The session record's lines (plan P Task 9's spec, keys on the allow-list): a clock tap, `{action: start | pause | correct
- * | resync, phase}`, and a period ended, `{phase: <its marker>}`. Never a person, a name or an id.
+ * | resync | resyncRefused, phase}`, and a period ended, `{phase: <its marker>}`. Never a person, a name or an id. A
+ * resync the sender refuses is said too, since its Start is decided and never asks again (fix round 1, M3).
  */
 export const CLOCK_EVENT = 'scoring.football.clock';
 export const PERIOD_EVENT = 'scoring.football.period';
@@ -86,7 +87,6 @@ export const PERIOD_EVENT = 'scoring.football.period';
 /** Football flashes no half: its taps are buttons in a column, not a half tapped. */
 const ignoreFlash = (): void => undefined;
 
-const NOTHING_TO_UNDO: PadOutcome = refusing('nothingToUndo');
 const NOT_NOW: PadOutcome = refusing('notNow');
 
 function useFootballPad(
@@ -99,7 +99,7 @@ function useFootballPad(
   const display = pad?.display ?? null;
   const clock = useFootballClock(display);
   const settle = useSettle(sender.say);
-  const driver = useFootballDriver(sender, display, clock);
+  const driver = useFootballDriver(sender);
   const taps = useTaps(driver, settle, sender.say, ignoreFlash);
   useResync(ports, runner, sender, display?.enginePhase ?? '');
   const sheets = useSheets(ports, sender, taps, pad, clock);
@@ -136,28 +136,11 @@ function modelOf(
 }
 
 /**
- * The taps the bounce memory drives. Football has no half to tap. Undo passes a resync (ruling 9): with the running Start
- * under it the two are taken back together, the resync first; with another tap under it, that tap is taken back and the
- * clock is re-anchored at the reading Undo was pressed at, so every screen still reads the clock right.
+ * The taps the bounce memory drives. Football has no half to tap. Undo is the one Undo: it takes this phone's last
+ * standing tap back alone, a clock correction too (the controller's fix-round ruling I1).
  */
-function useFootballDriver(
-  sender: Sender,
-  display: FootballDisplay | null,
-  clock: FootballClockRead,
-): PadTapDriver {
-  // The sender refuses an Undo the runtime has no target for (`undoTarget`), the same judgement as `undoable`: a refused
-  // first Undo refuses the second too, on the same state.
-  const undo = useCallback((): PadOutcome => {
-    if (display === null) return NOTHING_TO_UNDO;
-    if (display.undoPlan === 'plain') return sender.undo();
-    const reading = clock.readingNow();
-    sender.undo();
-    const under = sender.undo();
-    if (display.undoPlan === 'pastResync' && under.ok) {
-      sender.tap({ kind: 'clock', running: true, elapsed: reading });
-    }
-    return under;
-  }, [sender, display, clock]);
+function useFootballDriver(sender: Sender): PadTapDriver {
+  const { undo } = sender;
   return useMemo(() => ({ rally: () => NOT_NOW, undo }), [undo]);
 }
 
@@ -188,7 +171,8 @@ function useResync(
     const stepped = resyncStep(memory.current, snapshot.state, clock().getTime());
     memory.current = stepped.memory;
     for (const made of stepped.taps) {
-      if (tap(made).ok) logger.info(CLOCK_EVENT, { action: 'resync', phase });
+      const action = tap(made).ok ? 'resync' : 'resyncRefused';
+      logger.info(CLOCK_EVENT, { action, phase });
     }
     // A new phase runs the watch again over the same state: each Start is decided once, so it asks for nothing again.
   }, [snapshot, clock, logger, tap, phase]);

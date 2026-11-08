@@ -942,6 +942,7 @@
   "scoring.football.last.start": "Match commencé",
   "scoring.football.last.clockStart": "Chrono lancé{at}",
   "scoring.football.last.clockPause": "Chrono en pause{at}",
+  "scoring.football.last.clockCorrect": "Corriger le chrono{at}",
   "scoring.football.last.goal": "But · {team}{who}{at}",
   "scoring.football.last.penaltyGoal": "But sur penalty · {team}{who}{at}",
   "scoring.football.last.ownGoal": "But · {team} · contre son camp{who}{at}",

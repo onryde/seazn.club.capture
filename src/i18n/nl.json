@@ -942,6 +942,7 @@
   "scoring.football.last.start": "Wedstrijd begonnen",
   "scoring.football.last.clockStart": "Klok gestart{at}",
   "scoring.football.last.clockPause": "Klok gepauzeerd{at}",
+  "scoring.football.last.clockCorrect": "Klok corrigeren{at}",
   "scoring.football.last.goal": "Doelpunt · {team}{who}{at}",
   "scoring.football.last.penaltyGoal": "Doelpunt uit strafschop · {team}{who}{at}",
   "scoring.football.last.ownGoal": "Doelpunt · {team} · eigen doelpunt{who}{at}",

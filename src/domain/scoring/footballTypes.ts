@@ -65,6 +65,8 @@ export type FootballMarker = 'HT' | 'FT' | 'QT' | '3QT' | 'ET_HT' | 'ET_FT';
 export type FootballDone =
   | { readonly kind: 'start' }
   | { readonly kind: 'clock'; readonly running: boolean; readonly at: GameTime | null }
+  /** A clock event that moved the time and nothing else (`correctionsIn`): a Correct, a resync, a second Start. */
+  | { readonly kind: 'clockCorrect'; readonly at: GameTime | null }
   | {
       readonly kind: 'goal';
       readonly side: PadSide;
@@ -139,6 +141,8 @@ export type FootballDisplay = {
   readonly clock: {
     /** The shared clock's anchor in the current phase (design §7.2), or none: it reads 0, stopped. */
     readonly anchor: ClockAnchor | null;
+    /** The current phase's first Start stands (`periodStarted`): Correct is offered only then (fix-round ruling e). */
+    readonly started: boolean;
     /** The engine's `asOf`: the newest stamp folded, the floor a new stamp in its period may not go below. */
     readonly asOf: GameTime | null;
     /** The play phase whose ending marker stands with no clock event since (the clock bar's break word), or null. */
@@ -151,12 +155,6 @@ export type FootballDisplay = {
   readonly lastTap: FootballLastTap | null;
   /** This phone's Undo has something to take back. */
   readonly undoable: boolean;
-  /**
-   * How Undo takes it back (the controller's ruling 9: a resync is no scorer action): `plain`, as the one Undo does;
-   * `withStart`, a resync on top of the running Start it follows, the two taken back together, the resync first;
-   * `pastResync`, a resync on top of another tap, which is taken back and the clock re-anchored again.
-   */
-  readonly undoPlan: 'plain' | 'withStart' | 'pastResync';
   /** Anything stands after the start: End of period is offered only then, never tied to the clock. */
   readonly kickedOff: boolean;
 };
@@ -268,6 +266,7 @@ export type FootballLastWord =
   | 'start'
   | 'clockStart'
   | 'clockPause'
+  | 'clockCorrect'
   | 'goal'
   | 'penaltyGoal'
   | 'ownGoal'

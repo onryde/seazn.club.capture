@@ -294,7 +294,7 @@ Three rules travel with these tokens:
   own `--mk-live` already encodes. Nothing red is left for failures: a crash
   reads orange, so it can never be mistaken for a live indicator.
   The one exception is a drawing, not a status: the red card icon on a scoring
-  pad's half (`cardDismissal`, used by `ScoreHalf` alone), in a mode with no
+  pad's half (`cardDismissal`, used by `ScoreHalf` and `TeamColumn` alone), in a mode with no
   broadcast to be on air.
 - `--sport-led` aliases Tailwind's `lime-400` in sRGB (`#9ae600`), **not** the
   older `--mk-lime` hex (`#a3e635`). The web has a standing comment about this;

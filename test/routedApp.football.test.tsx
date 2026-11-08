@@ -84,7 +84,8 @@ const enabled = (side: 'first' | 'second') =>
   within(column(side))
     .getAllByRole('button')
     .map((button) => button.getAttribute('aria-disabled') !== 'true');
-const resultCard = () => screen.queryByText(en['scoring.card.resultRecorded.title']);
+const resultCard = (words: Words = en) =>
+  screen.queryByText(plain(words['scoring.card.resultRecorded.title'] ?? ''));
 const homeCard = () => within(screen.getByTestId('scoring-continue'));
 
 async function ledger(app: LaunchedApp, seed: FakeMatchSeed) {
@@ -115,13 +116,15 @@ async function opened(seed: FakeMatchSeed, languages?: readonly string[]): Promi
 }
 
 /** A shootout kick through its column and the Who kicked? sheet, the taker not known. */
-async function kick(app: LaunchedApp, side: 'first' | 'second', scored: boolean): Promise<void> {
-  await press(
-    app,
-    en[scored ? 'scoring.football.column.scored' : 'scoring.football.column.missed'],
-    column(side),
-  );
-  await press(app, en['scoring.football.sheet.dontKnow']);
+async function kick(
+  app: LaunchedApp,
+  words: Words,
+  side: 'first' | 'second',
+  scored: boolean,
+): Promise<void> {
+  const column_ = scored ? 'scoring.football.column.scored' : 'scoring.football.column.missed';
+  await press(app, words[column_] ?? column_, column(side));
+  await press(app, words['scoring.football.sheet.dontKnow'] ?? 'dontKnow');
 }
 
 async function home(app: LaunchedApp): Promise<void> {
@@ -130,6 +133,150 @@ async function home(app: LaunchedApp): Promise<void> {
   });
   await flush(400);
   expect(app.nav.current()).toBe('home');
+}
+
+/**
+ * A knockout tie played through in the phone's language, from Start match: a goal, a card and a sub, the halves, extra
+ * time and the kicks; Undo reopens the decision; Home's card reads the result. Every word from `words`, names as typed.
+ */
+async function playKnockout(app: LaunchedApp, words: Words): Promise<void> {
+  const w = (key: string): string => {
+    const text = words[key];
+    if (text === undefined) throw new Error(`no words for ${key}`);
+    return text;
+  };
+  await press(app, w('scoring.start.confirm'));
+  const kickOff = seconds + 1;
+  await press(app, w('scoring.football.clock.start'), clockBar());
+  expect(lastTap()).toBe(fill(w('scoring.football.last.clockStart'), { at: ' · 0:00' }));
+
+  // Goal → the scorer → the assist: one goal, the scorer and the assist in it, at the minute of the press.
+  await press(app, w('scoring.football.column.goal'), column('first'));
+  const goalAt = seconds - kickOff;
+  await press(app, '#9 R. Ito');
+  await press(app, '#10 R. Jansen');
+  expect(lastTap()).toBe(
+    fill(w('scoring.football.last.goal'), {
+      team: 'Riverside FC',
+      who: ' · #9 R. Ito',
+      at: " 1'",
+    }),
+  );
+  expect([value('first'), value('second')]).toEqual(['1', '0']);
+
+  // Card → the colour → the player → the reason.
+  await press(app, w('scoring.football.column.card'), column('second'));
+  await press(app, w('scoring.football.card.yellow'));
+  await press(app, '#5 N. Evans');
+  await press(app, w('scoring.football.sheet.noReason'));
+  expect(lastTap()).toBe(
+    fill(w('scoring.football.last.card'), {
+      card: w('scoring.football.card.yellow'),
+      team: 'Northgate United',
+      who: ' · #5 N. Evans',
+      at: " 1'",
+    }),
+  );
+
+  // Sub → who comes off → who comes on (the bench).
+  await press(app, w('scoring.football.column.sub'), column('first'));
+  await press(app, '#11 R. Kowalski');
+  await press(app, '#14 R. Novak');
+  expect(lastTap()).toBe(
+    fill(w('scoring.football.last.sub'), {
+      team: 'Riverside FC',
+      off: '#11',
+      on: '#14',
+      at: " 1'",
+    }),
+  );
+
+  // Half-time: the bar says it, with Start for the second half, which reads from 45:00.
+  await press(app, w('scoring.football.end.HT'));
+  expect(within(clockBar()).getByText(plain(w('scoring.football.break.halfTime')))).toBeTruthy();
+  expect(within(clockBar()).getByText('45:00')).toBeTruthy();
+  await press(app, w('scoring.football.clock.start'), clockBar());
+  expect(within(clockBar()).getByText(plain(w('scoring.football.period.H2')))).toBeTruthy();
+
+  // Level at full time: a knockout goes to extra time, from 90:00.
+  await press(app, w('scoring.football.column.goal'), column('second'));
+  await press(app, w('scoring.football.sheet.dontKnow'));
+  expect([value('first'), value('second')]).toEqual(['1', '1']);
+  await press(app, w('scoring.football.end.FT'));
+  expect(within(clockBar()).getByText('90:00')).toBeTruthy();
+  await press(app, w('scoring.football.clock.start'), clockBar());
+  expect(within(clockBar()).getByText(plain(w('scoring.football.period.ET_H1')))).toBeTruthy();
+  expect(plain(screen.getByTestId('strip-note').textContent ?? '')).toBe(
+    plain(w('scoring.football.note.extraTime')),
+  );
+  await press(app, w('scoring.football.end.ET_HT'));
+  await press(app, w('scoring.football.clock.start'), clockBar());
+  expect(within(clockBar()).getByText(plain(w('scoring.football.period.ET_H2')))).toBeTruthy();
+
+  // Still level after extra time: the kicks. Each column has Scored and Missed: live in both before the first kick (the
+  // engine leaves who kicks first to the teams), then only for the team to kick.
+  await press(app, w('scoring.football.end.ET_FT'));
+  expect(within(clockBar()).getByText(plain(w('scoring.football.period.shootout')))).toBeTruthy();
+  expect(
+    within(clockBar()).queryByRole('button', { name: w('scoring.football.clock.start') }),
+  ).toBeNull();
+  expect(enabled('first')).toEqual([true, true]);
+  expect(enabled('second')).toEqual([true, true]);
+  await kick(app, words, 'first', true);
+  expect(enabled('first')).toEqual([false, false]);
+  expect(enabled('second')).toEqual([true, true]);
+  await kick(app, words, 'second', false);
+  await kick(app, words, 'first', true);
+  await kick(app, words, 'second', false);
+  await kick(app, words, 'first', true);
+  expect(resultCard(words)).toBeNull();
+  // Home 3, away 0 with two kicks left: the third miss decides it.
+  await kick(app, words, 'second', false);
+  expect(lastTap()).toBe(
+    fill(w('scoring.football.last.kickMissed'), { team: 'Northgate United', who: '' }),
+  );
+  expect(resultCard(words)).toBeTruthy();
+  expect([value('first'), value('second')]).toEqual(['1 (3)', '1 (0)']);
+
+  // Undo takes the deciding kick back: the match is open again, away to kick.
+  await press(app, w('scoring.pad.undo'));
+  expect(resultCard(words)).toBeNull();
+  expect(enabled('second')).toEqual([true, true]);
+  expect(within(column('second')).getAllByTestId('kick-missed')).toHaveLength(2);
+  await kick(app, words, 'second', false);
+  expect(resultCard(words)).toBeTruthy();
+
+  const rows = await ledger(app, KNOCKOUT);
+  const standing = rows.filter(
+    (event) => event.type !== 'core.void' && !rows.some((other) => other.voids === event.id),
+  );
+  expect(standing.map((event) => event.type)).toEqual([
+    'core.start',
+    'football.clock',
+    'football.goal',
+    'football.card',
+    'football.sub',
+    'football.period',
+    'football.clock',
+    'football.goal',
+    'football.period',
+    'football.clock',
+    'football.period',
+    'football.clock',
+    'football.period',
+    ...Array.from({ length: 6 }, () => 'football.shootout.kick'),
+  ]);
+  const goal = standing.find((event) => event.type === 'football.goal');
+  expect(goal?.payload).toMatchObject({
+    scorer: 'ent-home-p9',
+    assist: 'ent-home-p10',
+    at: { period: 'H1', elapsed: goalAt },
+  });
+
+  await home(app);
+  expect(
+    homeCard().getByText(fill(w('home.scoring.finishedScore'), { score: '1–1 (3–0)' })),
+  ).toBeTruthy();
 }
 
 describe('a football match from the scan to the shootout', () => {
@@ -150,139 +297,7 @@ describe('a football match from the scan to the shootout', () => {
   });
 
   it('plays a knockout tie through: a goal, a card and a sub, the halves, extra time and the kicks; Undo reopens the decision', async () => {
-    const app = await scanned(KNOCKOUT);
-    await press(app, en['scoring.start.confirm']);
-    const kickOff = seconds + 1;
-    await press(app, en['scoring.football.clock.start'], clockBar());
-    expect(lastTap()).toBe(fill(en['scoring.football.last.clockStart'], { at: ' · 0:00' }));
-
-    // Goal → the scorer → the assist: one goal, the scorer and the assist in it, at the minute of the press.
-    await press(app, en['scoring.football.column.goal'], column('first'));
-    const goalAt = seconds - kickOff;
-    await press(app, '#9 R. Ito');
-    await press(app, '#10 R. Jansen');
-    expect(lastTap()).toBe(
-      fill(en['scoring.football.last.goal'], {
-        team: 'Riverside FC',
-        who: ' · #9 R. Ito',
-        at: " 1'",
-      }),
-    );
-    expect([value('first'), value('second')]).toEqual(['1', '0']);
-
-    // Card → the colour → the player → the reason.
-    await press(app, en['scoring.football.column.card'], column('second'));
-    await press(app, en['scoring.football.card.yellow']);
-    await press(app, '#5 N. Evans');
-    await press(app, en['scoring.football.sheet.noReason']);
-    expect(lastTap()).toBe(
-      fill(en['scoring.football.last.card'], {
-        card: en['scoring.football.card.yellow'],
-        team: 'Northgate United',
-        who: ' · #5 N. Evans',
-        at: " 1'",
-      }),
-    );
-
-    // Sub → who comes off → who comes on (the bench).
-    await press(app, en['scoring.football.column.sub'], column('first'));
-    await press(app, '#11 R. Kowalski');
-    await press(app, '#14 R. Novak');
-    expect(lastTap()).toBe(
-      fill(en['scoring.football.last.sub'], {
-        team: 'Riverside FC',
-        off: '#11',
-        on: '#14',
-        at: " 1'",
-      }),
-    );
-
-    // Half-time: the bar says it, with Start for the second half, which reads from 45:00.
-    await press(app, en['scoring.football.end.HT']);
-    expect(within(clockBar()).getByText(en['scoring.football.break.halfTime'])).toBeTruthy();
-    expect(within(clockBar()).getByText('45:00')).toBeTruthy();
-    await press(app, en['scoring.football.clock.start'], clockBar());
-    expect(within(clockBar()).getByText(en['scoring.football.period.H2'])).toBeTruthy();
-
-    // Level at full time: a knockout goes to extra time, from 90:00.
-    await press(app, en['scoring.football.column.goal'], column('second'));
-    await press(app, en['scoring.football.sheet.dontKnow']);
-    expect([value('first'), value('second')]).toEqual(['1', '1']);
-    await press(app, en['scoring.football.end.FT']);
-    expect(within(clockBar()).getByText('90:00')).toBeTruthy();
-    await press(app, en['scoring.football.clock.start'], clockBar());
-    expect(within(clockBar()).getByText(en['scoring.football.period.ET_H1'])).toBeTruthy();
-    expect(screen.getByTestId('strip-note').textContent).toBe(
-      en['scoring.football.note.extraTime'],
-    );
-    await press(app, en['scoring.football.end.ET_HT']);
-    await press(app, en['scoring.football.clock.start'], clockBar());
-    expect(within(clockBar()).getByText(en['scoring.football.period.ET_H2'])).toBeTruthy();
-
-    // Still level after extra time: the kicks. Each column has Scored and Missed: live in both before the first kick (the
-    // engine leaves who kicks first to the teams), then only for the team to kick.
-    await press(app, en['scoring.football.end.ET_FT']);
-    expect(within(clockBar()).getByText(en['scoring.football.period.shootout'])).toBeTruthy();
-    expect(
-      within(clockBar()).queryByRole('button', { name: en['scoring.football.clock.start'] }),
-    ).toBeNull();
-    expect(enabled('first')).toEqual([true, true]);
-    expect(enabled('second')).toEqual([true, true]);
-    await kick(app, 'first', true);
-    expect(enabled('first')).toEqual([false, false]);
-    expect(enabled('second')).toEqual([true, true]);
-    await kick(app, 'second', false);
-    await kick(app, 'first', true);
-    await kick(app, 'second', false);
-    await kick(app, 'first', true);
-    expect(resultCard()).toBeNull();
-    // Home 3, away 0 with two kicks left: the third miss decides it.
-    await kick(app, 'second', false);
-    expect(lastTap()).toBe(
-      fill(en['scoring.football.last.kickMissed'], { team: 'Northgate United', who: '' }),
-    );
-    expect(resultCard()).toBeTruthy();
-    expect([value('first'), value('second')]).toEqual(['1 (3)', '1 (0)']);
-
-    // Undo takes the deciding kick back: the match is open again, away to kick.
-    await press(app, en['scoring.pad.undo']);
-    expect(resultCard()).toBeNull();
-    expect(enabled('second')).toEqual([true, true]);
-    expect(within(column('second')).getAllByTestId('kick-missed')).toHaveLength(2);
-    await kick(app, 'second', false);
-    expect(resultCard()).toBeTruthy();
-
-    const rows = await ledger(app, KNOCKOUT);
-    const standing = rows.filter(
-      (event) => event.type !== 'core.void' && !rows.some((other) => other.voids === event.id),
-    );
-    expect(standing.map((event) => event.type)).toEqual([
-      'core.start',
-      'football.clock',
-      'football.goal',
-      'football.card',
-      'football.sub',
-      'football.period',
-      'football.clock',
-      'football.goal',
-      'football.period',
-      'football.clock',
-      'football.period',
-      'football.clock',
-      'football.period',
-      ...Array.from({ length: 6 }, () => 'football.shootout.kick'),
-    ]);
-    const goal = standing.find((event) => event.type === 'football.goal');
-    expect(goal?.payload).toMatchObject({
-      scorer: 'ent-home-p9',
-      assist: 'ent-home-p10',
-      at: { period: 'H1', elapsed: goalAt },
-    });
-
-    await home(app);
-    expect(
-      homeCard().getByText(fill(en['home.scoring.finishedScore'], { score: '1–1 (3–0)' })),
-    ).toBeTruthy();
+    await playKnockout(await scanned(KNOCKOUT), en);
   });
 
   it('5–5 after extra time, decided on the fourth round: Home’s card reads 5–5 (4–1)', async () => {
@@ -294,7 +309,7 @@ describe('a football match from the scan to the shootout', () => {
     expect([value('first'), value('second')]).toEqual(['5 (3)', '5 (1)']);
     expect(within(column('first')).getAllByTestId('kick-scored')).toHaveLength(3);
     expect(within(column('second')).getAllByTestId('kick-missed')).toHaveLength(2);
-    await kick(app, 'first', true);
+    await kick(app, en, 'first', true);
     expect(resultCard()).toBeTruthy();
     expect([value('first'), value('second')]).toEqual(['5 (4)', '5 (1)']);
     await home(app);
@@ -360,40 +375,9 @@ describe('the pad in the phone’s language', () => {
     ['fr', fr],
     ['nl', nl],
   ] as const)(
-    '%s: the clock bar, a goal, its Undo and Half-time are said in it',
+    '%s: the knockout tie played through, from Start match to the kicks and Home’s card, said in it',
     async (language, words: Words) => {
-      const seed = footballSeed({ events: asSeed(KICK_OFF) });
-      const app = await opened(seed, [language]);
-      expect(
-        within(clockBar()).getByText(plain(words['scoring.football.period.H1']!)),
-      ).toBeTruthy();
-      expect(
-        within(clockBar()).getByRole('button', {
-          name: plain(words['scoring.football.clock.pause']!),
-        }),
-      ).toBeTruthy();
-
-      await press(app, words['scoring.football.column.goal']!, column('first'));
-      await press(app, words['scoring.football.sheet.dontKnow']!);
-      const said = fill(words['scoring.football.last.goal']!, {
-        team: 'Riverside FC',
-        who: '',
-        at: " 1'",
-      });
-      expect(lastTap()).toBe(said);
-      await press(app, words['scoring.pad.undo']!);
-      expect(lastTap()).toBe(fill(words['scoring.football.last.undone']!, { what: said }));
-      expect(value('first')).toBe('0');
-
-      await press(app, words['scoring.football.end.HT']!);
-      expect(
-        within(clockBar()).getByText(plain(words['scoring.football.break.halfTime']!)),
-      ).toBeTruthy();
-      expect(
-        within(clockBar()).getByRole('button', {
-          name: plain(words['scoring.football.clock.start']!),
-        }),
-      ).toBeTruthy();
+      await playKnockout(await opened(KNOCKOUT, [language]), words);
     },
   );
 });

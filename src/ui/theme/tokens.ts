@@ -480,6 +480,22 @@ const base = {
   columnPrimary: 0.75,
   columnAction: 0.5,
   /**
+   * The least a team column's name with gaps shrinks to before its two-line ellipsis, so no word of it breaks at a letter
+   * (the controller's fix-round ruling a): "Wolverhampton" (145.1 dp of `matchName`) needs 0.96 of it at 360 and 0.83 at
+   * 320 (footballFit.test.ts). iOS keeps to it; Android sends no scale and shrinks to its own 4 dp (as `nameFloor`).
+   */
+  teamNameFloor: 0.75,
+  /**
+   * The least a team column's score shrinks to before it would be cut (ruling f: never an ellipsis): "10 (10)" in the
+   * shootout, 180.1 dp of `scoreCompact`, needs 0.67 of it at 320 (footballFit.test.ts).
+   */
+  scoreFloor: 0.6,
+  /**
+   * The least a pad's match clock shrinks to on its one line (ruling d): "120+15:00" at the 1.15 font-scale cap is 222.1
+   * dp, which needs 0.93 of it in nl's room at 320 (footballFit.test.ts).
+   */
+  clockFloor: 0.85,
+  /**
    * A step sheet's rows scroll past this height (S2-5 design §6.3: a team's players and its bench can be 16 rows and
    * more), while the title and Cancel stay put: five 48 dp rows, their gaps and half of a sixth row, so a list that
    * scrolls shows that it does.

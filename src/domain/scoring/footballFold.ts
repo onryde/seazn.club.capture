@@ -17,8 +17,9 @@ import {
   anchorBase,
   anchorOf,
   newestStamp,
+  periodStarted,
+  correctionsIn,
   restamp,
-  resyncsIn,
   subStamp,
   type AnchorEvent,
 } from '@/domain/scoring/footballClock';
@@ -109,11 +110,11 @@ export function foldFootball(input: SportFoldInput): SportFold<FootballTypes> {
   const folded = foldOf(match.engine, stream.envelopes);
   if (folded === null) return { kind: 'unfoldable', reason: 'ledger' };
   const anchors = anchorEventsOf(input, stream);
-  const resyncs = resyncIdsOf(stream, anchors);
-  const recorded = withoutResyncs(recordedOf(match, stream.envelopes, folded.facts), resyncs);
+  const corrections = correctionIdsOf(stream, anchors);
+  const recorded = withCorrections(recordedOf(match, stream.envelopes, folded.facts), corrections);
   return {
     kind: 'folded',
-    display: displayOf(match, input, { stream, folded, recorded, anchors, resyncs }),
+    display: displayOf(match, input, { stream, folded, recorded, anchors }),
     legalQueued: stream.legal,
     history: footballHistory(historyOf(match, stream, recorded), {
       names: { first: match.seats.first.name, second: match.seats.second.name },
@@ -317,18 +318,28 @@ function recordedOf(
 }
 
 /**
- * This phone's resyncs, by envelope id (the controller's ruling 9): a resync is no scorer action, so what the pad says
- * of the events (History, the last-tap line) passes it, and so does Undo (`undoPlanOf`).
+ * The clock corrections, by envelope id (the controller's fix-round ruling I1): every screen says a clock event that moved
+ * the time and nothing else as a correction, whoever sent it (`correctionsIn`). Undo takes one back alone, as any tap.
  */
-function resyncIdsOf(stream: FootballStream, anchors: readonly AnchorEvent[]): ReadonlySet<string> {
-  return new Set([...resyncsIn(anchors)].map((at) => stream.entries[at]!.envelope.id));
+function correctionIdsOf(
+  stream: FootballStream,
+  anchors: readonly AnchorEvent[],
+): ReadonlySet<string> {
+  return new Set([...correctionsIn(anchors)].map((at) => stream.entries[at]!.envelope.id));
 }
 
-const withoutResyncs = (
+/** What each event did, a correction's clock event said as one. */
+const withCorrections = (
   recorded: ReadonlyMap<string, FootballRecorded>,
-  resyncs: ReadonlySet<string>,
+  corrections: ReadonlySet<string>,
 ): ReadonlyMap<string, FootballRecorded> =>
-  new Map([...recorded].filter(([id]) => !resyncs.has(id)));
+  new Map(
+    [...recorded].map(([id, event]) =>
+      corrections.has(id) && event.did.kind === 'clock'
+        ? [id, { ...event, did: { kind: 'clockCorrect', at: event.did.at } }]
+        : [id, event],
+    ),
+  );
 
 /** A payload's field, or undefined for a payload that is not an object. */
 const field = (payload: unknown, name: string): unknown =>
@@ -439,7 +450,6 @@ type Read = {
   readonly folded: FootballFolded;
   readonly recorded: ReadonlyMap<string, FootballRecorded>;
   readonly anchors: readonly AnchorEvent[];
-  readonly resyncs: ReadonlySet<string>;
 };
 
 function displayOf(match: FootballMatch, input: SportFoldInput, read: Read): FootballDisplay {
@@ -459,7 +469,6 @@ function displayOf(match: FootballMatch, input: SportFoldInput, read: Read): Foo
     subsLeft: { first: subsLeftOf(state, sides.first), second: subsLeftOf(state, sides.second) },
     lastTap: lastTapOf(stream.envelopes, recorded, (did) => (did.kind === 'start' ? null : did)),
     undoable: undoableOf(input, stream),
-    undoPlan: undoPlanOf(stream, read.resyncs),
     kickedOff: kickedOffOf(stream.envelopes),
   };
 }
@@ -597,6 +606,7 @@ function clockOf(
 ): FootballDisplay['clock'] {
   return {
     anchor: anchorOf(anchors, folded.state.phase),
+    started: periodStarted(anchors, folded.state.phase),
     asOf: folded.state.asOf ?? null,
     justEnded: justEndedOf(stream.envelopes, voidedIn(stream.envelopes), folded.facts),
   };
@@ -644,28 +654,6 @@ function justEndedOf(
 function undoableOf(input: SportFoldInput, stream: FootballStream): boolean {
   const legalTaps = input.queued.filter((tap) => stream.legal.includes(tap.key));
   return undoTarget(input.ledger, legalTaps, input.ownEventIds, () => true).kind !== 'blocked';
-}
-
-/**
- * How this phone's Undo takes its last back (the controller's ruling 9): as the one Undo does, unless a resync is on top
- * of this phone's standing events. Then Undo passes it: with the running Start under it, the two go together, the resync
- * first (`withStart`); with any other tap under it, that tap is taken back and the clock re-anchored again (`pastResync`).
- */
-function undoPlanOf(
-  stream: FootballStream,
-  resyncs: ReadonlySet<string>,
-): FootballDisplay['undoPlan'] {
-  const voided = voidedIn(stream.envelopes);
-  const mine = stream.entries
-    .map((entry) => (entry.own ? entry.envelope : null))
-    .filter((envelope) => envelope !== null)
-    .filter((envelope) => envelope.voids === undefined && !voided.has(envelope.id));
-  const top = mine[mine.length - 1];
-  if (top === undefined || !resyncs.has(top.id)) return 'plain';
-  const under = mine[mine.length - 2];
-  return under?.type === 'football.clock' && field(under.payload, 'running') === true
-    ? 'withStart'
-    : 'pastResync';
 }
 
 /** Anything stands after the start. */

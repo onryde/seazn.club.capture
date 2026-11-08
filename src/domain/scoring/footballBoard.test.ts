@@ -331,11 +331,20 @@ describe('footballClockBar (design §6.1, §7.4)', () => {
 
 // What the pad reads of the board (plan P Task 11): what it offers but must not decide. Expected values from the design.
 describe('what the pad reads of the board', () => {
-  it('Correct is offered while a period is in play, at the break (the engine is in the next period) and not once over', () => {
+  // The controller's fix-round ruling (e): Correct waits for the period's first Start, so at a break the bar keeps its
+  // break word ("Half-time") and before kick-off there is no 0:00 to correct.
+  it('Correct is offered once the period’s first Start stands: paused after it too; not before it, at a break or once over', () => {
+    const ht = [...KICK_OFF, clock(false, at('H1', 2700)), period('HT', at('H1', 2700))];
     expect(footballTakesCorrect(displayOf(KICK_OFF))).toBe(true);
-    expect(footballTakesCorrect(displayOf([...KICK_OFF, period('HT', at('H1', 2700))]))).toBe(true);
-    expect(footballTakesCorrect(displayOf([start()]))).toBe(true);
+    expect(footballTakesCorrect(displayOf([...KICK_OFF, clock(false, at('H1', 600))]))).toBe(true);
+    expect(footballTakesCorrect(displayOf([start()]))).toBe(false);
+    expect(footballTakesCorrect(displayOf(ht))).toBe(false);
+    expect(footballTakesCorrect(displayOf([...ht, clock(true, at('H2', 0))]))).toBe(true);
     expect(footballTakesCorrect(displayOf(KICKS_4_1))).toBe(false);
+  });
+
+  it('More lists no Correct before the first Start', () => {
+    expect(footballMoreItems(displayOf([start()])).map((i) => i.id)).not.toContain('correct');
   });
 });
 

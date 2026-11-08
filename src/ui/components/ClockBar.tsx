@@ -26,7 +26,9 @@ type ClockBarProps = {
  * lilac caps under it, and one button at the right, Start while the clock is stopped and Pause while it runs. A kit part
  * with no sport named: the sport fills the view (`ClockBarView`) and the bar decides nothing. The time is a button that
  * opens Correct when the sport offers it; a screen reader hears it as the view says it ("Match clock 34:12"). The time
- * never shrinks or wraps; the period wraps under it (footballFit.test.ts holds both beside the button at 320 dp).
+ * never wraps: it shrinks to fit its one line, down to `layout.clockFloor`, where the phone's font scale would push it
+ * past the button (the controller's fix-round ruling d; the clock alone shrinks). The period wraps under it
+ * (footballFit.test.ts holds both beside the button at 320 dp).
  */
 export const ClockBar = memo(function ClockBar({ view, onAction, onCorrect }: ClockBarProps) {
   const words = usePadText();
@@ -54,7 +56,14 @@ const ClockFace = memo(function ClockFace({
   readonly onCorrect: (() => void) | null;
 }) {
   const digits = (
-    <Text variant="tally" numberOfLines={1} aria-hidden style={styles.time}>
+    <Text
+      variant="tally"
+      numberOfLines={1}
+      adjustsFontSizeToFit
+      minimumFontScale={layout.clockFloor}
+      aria-hidden
+      style={styles.time}
+    >
       {time}
     </Text>
   );
