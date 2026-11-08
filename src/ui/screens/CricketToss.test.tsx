@@ -34,8 +34,12 @@ function renderToss(winner: SetupTeam['id'] | null) {
 const half = (which: 'won' | 'chose') => screen.getByTestId(`toss-half-${which}`);
 const radio = (where: HTMLElement, name: string) => within(where).getByRole('radio', { name });
 const chose = (team: string) => en['scoring.cricket.toss.chose'].replace('{team}', team);
-/** A half never below its question's kept lines, the gap and a button (tokens, never the component's constant). */
-const HALF_MIN = `${layout.padTossAskLines * typeScale.state.lineHeight + space.sm + layout.padTossHeight}px`;
+/**
+ * A half never below its question's kept lines in `title`, the gap and its taller button: the token's, or a `tally` line
+ * with the button's padding and border (tokens, never the component's constant).
+ */
+const BIG_BUTTON = typeScale.tally.lineHeight + 2 * space.sm + 2 * layout.iconBorder;
+const HALF_MIN = `${layout.padTossAskLines * typeScale.title.lineHeight + space.sm + Math.max(layout.padTossHeight, BIG_BUTTON)}px`;
 
 describe('CricketToss (ruling 83)', () => {
   it('the toss fills the screen in two halves: both there before any tap, the bottom one disabled', () => {
@@ -67,18 +71,25 @@ describe('CricketToss (ruling 83)', () => {
     const { onElect, rerender } = renderToss(null);
     act(() => fireEvent.click(radio(half('chose'), 'Bat')));
     expect(onElect).not.toHaveBeenCalled();
-    // Greyed: the question and the words in the inert ink, and the buttons unfilled, the ground showing through.
+    // Greyed: the question, the words and the border in the inert ink, and the buttons unfilled, the ground showing
+    // through. Enabled, the border is lime (the controller's ruling on I1, Batch 3 fix round 1).
     const greyed = () => {
       const bat = radio(half('chose'), 'Bat');
       return [
         getComputedStyle(within(half('chose')).getByRole('heading')).color,
         getComputedStyle(bat.firstElementChild as HTMLElement).color,
+        getComputedStyle(bat).borderTopColor,
         getComputedStyle(bat).backgroundColor === fillOf(colour.surface),
       ];
     };
-    expect(greyed()).toEqual([edgeOf(colour.ink3), edgeOf(colour.ink3), false]);
+    expect(greyed()).toEqual([
+      edgeOf(colour.ink3),
+      edgeOf(colour.ink3),
+      edgeOf(colour.ink3),
+      false,
+    ]);
     rerender('first');
-    expect(greyed()).toEqual([edgeOf(colour.ink2), edgeOf(colour.ink), true]);
+    expect(greyed()).toEqual([edgeOf(colour.ink2), edgeOf(colour.ink), edgeOf(colour.lime), true]);
   });
 
   it('the second half names the picked team, and Bat or Bowl hands the choice back', () => {
@@ -111,6 +122,30 @@ describe('CricketToss (ruling 83)', () => {
     for (const side of screen.getAllByRole('radio')) {
       expect(getComputedStyle(side).minHeight).toBe(`${layout.padTossHeight}px`);
     }
+  });
+
+  // M7 (Batch 3 fix round 1): the preview's sizes (ruling 83), `title` for both questions and `tally` for Bat and Bowl.
+  // A team's name stays at `label`: at `tally` a club's word ("Riverside", 156 dp) is wider than a button at 320 or 360
+  // and Android breaks it at a letter (cricketFit.test.ts).
+  it('asks in title; Bat and Bowl at tally, the team names at label', () => {
+    renderToss(null);
+    const size = (element: Element) => getComputedStyle(element as HTMLElement).fontSize;
+    expect(screen.getAllByRole('heading').map(size)).toEqual([
+      `${typeScale.title.fontSize}px`,
+      `${typeScale.title.fontSize}px`,
+    ]);
+    const words = (which: 'won' | 'chose') =>
+      within(half(which))
+        .getAllByRole('radio')
+        .map((one) => size(one.firstElementChild as Element));
+    expect(words('chose')).toEqual([
+      `${typeScale.tally.fontSize}px`,
+      `${typeScale.tally.fontSize}px`,
+    ]);
+    expect(words('won')).toEqual([
+      `${typeScale.label.fontSize}px`,
+      `${typeScale.label.fontSize}px`,
+    ]);
   });
 
   it('asks in the operator’s language', () => {

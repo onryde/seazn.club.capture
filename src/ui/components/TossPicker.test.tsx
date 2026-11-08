@@ -16,7 +16,10 @@ const SIDES: readonly [TossOption<PadSide>, TossOption<PadSide>] = [
   { id: 'second', label: 'L. Chen / M. Wong' },
 ];
 
-function renderToss(picked: PadSide | null, more: { fill?: boolean; disabled?: boolean } = {}) {
+function renderToss(
+  picked: PadSide | null,
+  more: { fill?: boolean; disabled?: boolean; big?: boolean } = {},
+) {
   const onPick = vi.fn();
   renderWithPorts(
     <TossPicker
@@ -55,7 +58,9 @@ describe('TossPicker', () => {
     expect(onPick.mock.calls).toEqual([['second'], ['first']]);
   });
 
-  it('draws the picked side as the lime plate with night ink, and the other as the board', () => {
+  // Batch 3 fix round 1, the controller's ruling on I1 (rulings 83, 85): a button that takes a tap has the lime border,
+  // in every sport, at the width every look shares, so a pick or the pair enabled moves no name.
+  it('draws the picked side as the lime plate with night ink, and the other as the board with the lime border', () => {
     renderToss('second');
     const picked = radio('L. Chen / M. Wong');
     const other = radio('A. Sharma / R. Iyer');
@@ -66,7 +71,11 @@ describe('TossPicker', () => {
     expect(getComputedStyle(picked).backgroundColor).toBe(fillOf(colour.lime));
     expect(getComputedStyle(picked).borderTopColor).toBe(edgeOf(colour.lime));
     expect(getComputedStyle(other).backgroundColor).toBe(fillOf(colour.surface));
-    expect(getComputedStyle(other).borderTopColor).toBe(edgeOf(colour.ink3));
+    expect(getComputedStyle(other).borderTopColor).toBe(edgeOf(colour.lime));
+    expect([picked, other].map((side) => getComputedStyle(side).borderTopWidth)).toEqual([
+      `${layout.iconBorder}px`,
+      `${layout.iconBorder}px`,
+    ]);
     const name = (side: HTMLElement) => side.firstElementChild as HTMLElement;
     expect(getComputedStyle(name(picked)).color).toBe(edgeOf(plateInk));
     expect(getComputedStyle(name(other)).color).toBe(edgeOf(colour.ink));
@@ -136,7 +145,8 @@ describe('TossPicker, filling and disabled (ruling 83)', () => {
   const block = () => group().parentElement as HTMLElement;
   const ask = () => screen.getByRole('heading');
 
-  it('fill grows the pair, its buttons never below their token, and keeps the question two lines', () => {
+  // Batch 3 fix round 1, M7: the whole-screen toss asks in `title`, the size of the preview the owner tested (ruling 83).
+  it('fill grows the pair, its buttons never below their token, and asks in title, kept to two lines', () => {
     renderToss(null, { fill: true });
     expect([getComputedStyle(block()).flexGrow, getComputedStyle(group()).flexGrow]).toEqual([
       '1',
@@ -146,19 +156,44 @@ describe('TossPicker, filling and disabled (ruling 83)', () => {
     for (const side of screen.getAllByRole('radio')) {
       expect(getComputedStyle(side).minHeight).toBe(`${layout.padTossHeight}px`);
     }
-    expect(getComputedStyle(ask()).minHeight).toBe(
-      `${layout.padTossAskLines * typeScale.state.lineHeight}px`,
-    );
+    expect([getComputedStyle(ask()).fontSize, getComputedStyle(ask()).minHeight]).toEqual([
+      `${typeScale.title.fontSize}px`,
+      `${layout.padTossAskLines * typeScale.title.lineHeight}px`,
+    ]);
     expect(getComputedStyle(ask()).webkitLineClamp).toBe(String(layout.padTossAskLines));
   });
 
-  it('without fill the pair takes only its own height and the question is not held to lines', () => {
+  it('without fill the pair takes only its own height, and the question is the state line, not held to lines', () => {
     renderToss(null);
     expect(getComputedStyle(block()).flexGrow).toBe('0');
     expect(getComputedStyle(group()).flexGrow).toBe('0');
-    expect(getComputedStyle(ask()).minHeight).not.toBe(
-      `${layout.padTossAskLines * typeScale.state.lineHeight}px`,
-    );
+    expect([getComputedStyle(ask()).fontSize, getComputedStyle(ask()).minHeight]).toEqual([
+      `${typeScale.state.fontSize}px`,
+      'auto',
+    ]);
+  });
+
+  // M7: short words (Bat and Bowl) are drawn at `tally`, the preview's; a name never is (cricketFit.test.ts).
+  it('big draws the choices at tally, in ink on the board and night ink on the plate; without it at label', () => {
+    renderToss('second', { big: true });
+    const words = screen.getAllByRole('radio').map((side) => side.firstElementChild as HTMLElement);
+    expect(words.map((word) => getComputedStyle(word).fontSize)).toEqual([
+      `${typeScale.tally.fontSize}px`,
+      `${typeScale.tally.fontSize}px`,
+    ]);
+    expect(words.map((word) => getComputedStyle(word).color)).toEqual([
+      edgeOf(colour.ink),
+      edgeOf(plateInk),
+    ]);
+  });
+
+  it('without big the choices are at label', () => {
+    renderToss(null);
+    for (const side of screen.getAllByRole('radio')) {
+      expect(getComputedStyle(side.firstElementChild as HTMLElement).fontSize).toBe(
+        `${typeScale.label.fontSize}px`,
+      );
+    }
   });
 
   it('disabled ignores a press and says so, greyed at the same size', () => {
@@ -180,10 +215,11 @@ describe('TossPicker, filling and disabled (ruling 83)', () => {
     expect(getComputedStyle(ask()).color).toBe(edgeOf(colour.ink3));
   });
 
-  it('enabled, a side is not said disabled and its name is in ink', () => {
+  it('enabled, a side is not said disabled, has the lime border, and its name is in ink', () => {
     renderToss(null, { disabled: false });
     for (const side of screen.getAllByRole('radio')) {
       expect(side.getAttribute('aria-disabled')).not.toBe('true');
+      expect(getComputedStyle(side).borderTopColor).toBe(edgeOf(colour.lime));
     }
     expect(getComputedStyle(ask()).color).toBe(edgeOf(colour.ink2));
   });

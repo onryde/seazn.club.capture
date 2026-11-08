@@ -89,6 +89,7 @@ export function openMatch<S extends SportTypes>(held: MatchHeld<S>, now: number)
     line: null,
     saveOwed: null,
     bootOwed: null,
+    bootLanded: null,
     saving: 0,
     saveSeq: 0,
     bootstrapAskedAt: null,
@@ -217,7 +218,7 @@ function handle<S extends SportTypes>(
     case 'bootSaveFailed':
       return handled(onBootSaveFailed(state));
     case 'bootSaved':
-      return handled(onBootSaved(state));
+      return handled(onBootSaved(state, event.boot));
     case 'say':
       return handled(part({ ...state, line: event.words }));
     case 'answerAsk':

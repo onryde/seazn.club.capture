@@ -8,9 +8,10 @@ import {
   type CricketSetupView,
 } from '@/domain/scoring/cricketSetup';
 import type { CricketStage, CricketTypes } from '@/domain/scoring/cricketTypes';
+import { TAKEN } from '@/domain/scoring/padLine';
 import type { PadSide } from '@/domain/scoring/padView';
 import type { MatchPad } from '@/domain/scoring/scoringMatchView';
-import type { Arm, Opening } from '@/hooks/usePadTaps';
+import type { Arm, Opening, Point } from '@/hooks/usePadTaps';
 import type { MatchSender } from '@/hooks/useScoringMatch';
 
 /**
@@ -51,7 +52,12 @@ export type SetupTaps = {
   readonly opening: Opening;
   readonly arm: Arm;
   readonly secondTouch: () => boolean;
+  /** A tap counted once for a repeat inside the window (the kit's double-tap rule); cricket flashes no half. */
+  readonly point: Point;
 };
+
+/** Cricket's taps flash no half (`ignoreFlash`): the side a counted move names is never drawn. */
+const NO_FLASH_SIDE: PadSide = 'first';
 
 type Facts = MatchPad<CricketTypes>;
 type Sender = MatchSender<CricketTypes>;
@@ -104,11 +110,13 @@ function useSetupActions(
   const toss = useTossActions(held, taps.opening, sender.tap);
   const picks = usePickActions(pad, sender.setPicks, taps, held.set);
   const { set } = held;
-  const { arm } = taps;
+  const { arm, secondTouch } = taps;
+  // Back stands in the foot where Next was: the second touch of a double tap on Next must not land on it (M2).
   const changeOrder = useCallback(() => {
+    if (secondTouch()) return;
     set((now) => ({ ...now, back: true }));
     arm('changeOrder');
-  }, [set, arm]);
+  }, [secondTouch, set, arm]);
   return useMemo(() => ({ ...toss, ...picks, changeOrder }), [toss, picks, changeOrder]);
 }
 
@@ -136,7 +144,7 @@ function useTossActions(held: ReturnType<typeof useHeld>, opening: Opening, tap:
 function usePickActions(
   pad: Facts | null,
   setPicks: Sender['setPicks'],
-  { arm, secondTouch }: SetupTaps,
+  { arm, secondTouch, point }: SetupTaps,
   set: ReturnType<typeof useHeld>['set'],
 ) {
   const pick = useCallback(
@@ -145,7 +153,7 @@ function usePickActions(
     },
     [pad, setPicks],
   );
-  const moveBatter = useMoveBatter(pad, pick, secondTouch);
+  const moveBatter = useMoveBatter(pad, pick, point);
   const setOpeners = useCallback(
     (pair: CreasePair) => {
       if (secondTouch()) return;
@@ -168,20 +176,22 @@ function usePickActions(
 }
 
 /**
- * ▲▼ in the batting order. Ignored as the second touch of the toss's Bat or Bowl (an opening tap): the order list stands
- * where the toss was, and a double tap there must not move a batter.
+ * ▲▼ in the batting order, each a tap of its own through the bounce memory (`point`, keyed by row and direction): the
+ * same control again inside the window counts once and the line says so (M3: a double tap on ▲ would otherwise move the
+ * batter up, then the one who slid into the row back down). Any tap inside the window of an opening one, the toss's Bat
+ * or Bowl or Back, counts once too: the order list stands where those were.
  */
-function useMoveBatter(
-  pad: Facts | null,
-  pick: (made: CricketPick) => void,
-  secondTouch: () => boolean,
-) {
+function useMoveBatter(pad: Facts | null, pick: (made: CricketPick) => void, point: Point) {
   return useCallback(
     (from: number, to: number) => {
       const side = pad?.display.innings?.batting;
-      if (pad === null || side === undefined || secondTouch()) return;
-      pick({ kind: 'order', side, ids: moved(pad.display.battingOrder, from, to) });
+      if (pad === null || side === undefined) return;
+      const order = pad.display.battingOrder;
+      point(`move.${from}.${to}`, NO_FLASH_SIDE, () => {
+        pick({ kind: 'order', side, ids: moved(order, from, to) });
+        return TAKEN;
+      });
     },
-    [pad, pick, secondTouch],
+    [pad, pick, point],
   );
 }

@@ -162,6 +162,28 @@ describe('StepSheet rows (rulings 82, 85)', () => {
     expect(getComputedStyle(label(end)).color).toBe(edgeOf(colour.caution));
   });
 
+  // Batch 3 fix round 1, M1: a note is drawn whenever a row has one, not only on a disabled row (a batter retired not
+  // out can still come back in: the row takes the tap and says why it reads as it does).
+  it('a row that takes a tap and has a note shows it on a second line, and hands its id back', () => {
+    const onChoose = vi.fn();
+    renderWithPorts(
+      <StepSheet
+        title={en['scoring.sanction.title']}
+        body={null}
+        options={[{ id: 'okafor', label: 'B. Okafor', tone: 'standard', note: 'Retired' }]}
+        cancelLabel={en['scoring.sheet.cancel']}
+        onChoose={onChoose}
+        onCancel={vi.fn()}
+      />,
+    );
+    const okafor = row(/B\. Okafor/);
+    expect([...okafor.children].map((line) => line.textContent)).toEqual(['B. Okafor', 'Retired']);
+    expect(okafor.getAttribute('aria-disabled')).not.toBe('true');
+    expect(getComputedStyle(okafor).borderTopColor).toBe(edgeOf(colour.lime));
+    act(() => fireEvent.click(okafor));
+    expect(onChoose.mock.calls).toEqual([['okafor']]);
+  });
+
   it('a row with no reason has one line, and every row that takes a tap hands its id back', () => {
     const { onChoose } = renderRows();
     expect(row('M. Chen').children).toHaveLength(1);

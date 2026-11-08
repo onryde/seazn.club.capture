@@ -101,6 +101,12 @@ export type MatchState<S extends SportTypes = SportTypes> = {
    * scorer's. A boot save a later step makes anew clears it.
    */
   readonly bootOwed: 'retry' | 'said' | null;
+  /**
+   * The boot cache the last boot save that landed carried, or null before one has (S2-4 Batch 3 fix round 1, M4). The
+   * saver is serial, so it is what the disk holds: while it is the one the state holds, the scorer's choice is saved,
+   * whatever an older save's failure says.
+   */
+  readonly bootLanded: BootCache | null;
   /** Queue saves asked for and not yet answered by `saved` or `saveFailed`: while any is out, nothing new is sent. */
   readonly saving: number;
   /** The number of the last save asked for (`MatchEffect` `save`): each is numbered, one after another from 1. */
@@ -188,8 +194,8 @@ export type MatchEvent<S extends SportTypes = SportTypes> =
   | { readonly kind: 'saveFailed'; readonly key: string | null }
   /** A save's boot cache could not be written (the queue's own outcome is `saved` or `saveFailed`). */
   | { readonly kind: 'bootSaveFailed' }
-  /** A save's boot cache was written: the scorer's pick and pending picks as that save held them are on disk. */
-  | { readonly kind: 'bootSaved' }
+  /** A save's boot cache was written: the scorer's pick and pending picks as that save held them (`boot`) are on disk. */
+  | { readonly kind: 'bootSaved'; readonly boot: BootCache }
   | { readonly kind: 'say'; readonly words: PadLineWords }
   /** The scorer's answer to the reconnect question (`scoringMatchAsk.ts`): send the queued taps, or discard them. */
   | { readonly kind: 'answerAsk'; readonly answer: 'send' | 'discard' };

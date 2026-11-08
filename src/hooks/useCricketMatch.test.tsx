@@ -636,6 +636,62 @@ describe('the setup, a second touch (the bounce window)', () => {
     expect(setupOf(view).step).toBe('ready');
   });
 
+  // Batch 3 fix round 1, M2: Back stands in the same foot as Next, so the second touch of a double tap on Next lands on it.
+  it('Back on the heels of Next is the second touch: the bowler is still asked', async () => {
+    const { view } = await opened(FRESH);
+    act(() => pad(view).actions.pickTossWinner('first'));
+    act(() => pad(view).actions.recordToss('bat'));
+    await flush();
+    await wait();
+    act(() => pad(view).actions.setOpeners({ striker: home(1), nonStriker: home(2) }));
+    await flush();
+    act(() => pad(view).actions.changeOrder());
+    expect(setupOf(view).step).toBe('bowler');
+    expect(pad(view).line).toEqual({ kind: 'note', key: 'scoring.pad.countedOnce' });
+    await wait();
+    act(() => pad(view).actions.changeOrder());
+    expect(setupOf(view).step).toBe('order');
+  });
+
+  // Batch 3 fix round 1, M3: a move is a tap of its own (the kit's rule: the same tap again inside the window counts
+  // once). A double tap on ▲ of a row moves its batter up once; the second touch, on the ▲ of the batter who slid into
+  // that row, is the same control and would put them back.
+  it('a double tap on ▲ moves its batter once: the second touch is counted once, the order as the first left it', async () => {
+    const { view } = await opened(FRESH);
+    act(() => pad(view).actions.pickTossWinner('first'));
+    act(() => pad(view).actions.recordToss('bat'));
+    await flush();
+    await wait();
+    act(() => pad(view).actions.moveBatter(1, 0));
+    await flush();
+    act(() => pad(view).actions.moveBatter(1, 0));
+    await flush();
+    expect(names(setupOf(view).view.order).slice(0, 2)).toEqual(['B. Okafor', 'A. Sharma']);
+    expect(pad(view).line).toEqual({ kind: 'note', key: 'scoring.pad.countedOnce' });
+    await wait();
+    act(() => pad(view).actions.moveBatter(1, 0));
+    await flush();
+    expect(names(setupOf(view).view.order).slice(0, 2)).toEqual(['A. Sharma', 'B. Okafor']);
+  });
+
+  it('a move of another row on the heels of a move counts: it is another control', async () => {
+    const { view } = await opened(FRESH);
+    act(() => pad(view).actions.pickTossWinner('first'));
+    act(() => pad(view).actions.recordToss('bat'));
+    await flush();
+    await wait();
+    act(() => pad(view).actions.moveBatter(1, 0));
+    await flush();
+    act(() => pad(view).actions.moveBatter(3, 2));
+    await flush();
+    expect(names(setupOf(view).view.order).slice(0, 4)).toEqual([
+      'B. Okafor',
+      'A. Sharma',
+      'D. Walsh',
+      'C. Mendes',
+    ]);
+  });
+
   it('a pick on the heels of Back is the second touch: the order unchanged', async () => {
     const { view } = await opened(FRESH);
     act(() => pad(view).actions.pickTossWinner('first'));

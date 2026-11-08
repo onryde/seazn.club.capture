@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import type { BootCache } from '@/domain/scoring/queue';
 import { step } from '@/domain/scoring/scoringMatch';
+import type { MatchState } from '@/domain/scoring/scoringMatchState';
 import { SINGLES } from '../../../test/badmintonLedger';
 import { AT, NOW, ready, savesOf } from '../../../test/scoringMatchFixtures';
 
@@ -97,10 +99,17 @@ describe('the boot cache and the pending picks', () => {
 // quiet (it costs a reopen a network read, never a choice), and a boot save made anew starts the count again.
 describe('a refused boot save', () => {
   const PICKS = { 'order.first': ['p-sharma'], 'bowler.i1.1': ['p-chen'] };
+  const LATER = { 'order.first': ['p-chen'] };
   const NOT_SAVED = { kind: 'refusal', key: 'scoring.refusal.choiceNotSaved' };
 
   function picked() {
     return step(ready(), { kind: 'setPicks', picks: PICKS }, NOW).state;
+  }
+
+  /** The boot cache a state holds, as a save of it carries it (the same bootstrap, pick and picks). */
+  function holding(state: MatchState): BootCache {
+    if (state.bootstrap === null) throw new Error('expected a bootstrap');
+    return { bootstrap: state.bootstrap, toss: state.toss, picks: state.picks };
   }
 
   it('is saved again once, with the picks held, and the line is left alone', () => {
@@ -165,9 +174,36 @@ describe('a refused boot save', () => {
     const once = step(picked(), { kind: 'bootSaveFailed' }, NOW);
     const twice = step(once.state, { kind: 'bootSaveFailed' }, NOW);
     expect(twice.state.line).toEqual(NOT_SAVED);
-    const saved = step(twice.state, { kind: 'bootSaved' }, NOW);
+    const saved = step(twice.state, { kind: 'bootSaved', boot: holding(twice.state) }, NOW);
     expect(saved.state.line).toBeNull();
     expect(savesOf(saved.effects)).toEqual([]);
+  });
+
+  // Batch 3 fix round 1, M4: a landed save proves only what it carried. One that carried an older choice leaves the line.
+  it('said, a boot save that lands with an older choice leaves the line: the choice held is not on disk', () => {
+    const once = step(picked(), { kind: 'bootSaveFailed' }, NOW);
+    const twice = step(once.state, { kind: 'bootSaveFailed' }, NOW);
+    const older = { ...holding(twice.state), picks: {} };
+    const stale = step(twice.state, { kind: 'bootSaved', boot: older }, NOW);
+    expect(stale.state.line).toEqual(NOT_SAVED);
+  });
+
+  // M4: the saver is serial. S1 and S2 are asked for; S1 fails, so its retry R1 queues behind S2; S2 lands with the choice
+  // held; R1 then fails. The choice is on disk (S2's), so R1's failure says nothing and asks for no save: the latest wins.
+  it('a retry that fails after a newer save has landed says nothing and saves nothing: the latest save wins', () => {
+    const s1 = step(ready(), { kind: 'setPicks', picks: PICKS }, NOW);
+    const s2 = step(s1.state, { kind: 'setPicks', picks: LATER }, NOW);
+    const s2Boot = savesOf(s2.effects)[0]?.boot;
+    if (s2Boot == null) throw new Error('expected S2 to save the boot cache');
+    const s1Failed = step(s2.state, { kind: 'bootSaveFailed' }, NOW);
+    expect(savesOf(s1Failed.effects).map((save) => save.boot?.picks)).toEqual([LATER]);
+    const s2Landed = step(s1Failed.state, { kind: 'bootSaved', boot: s2Boot }, NOW);
+    const r1Failed = step(s2Landed.state, { kind: 'bootSaveFailed' }, NOW);
+    expect(r1Failed.state.line).toBeNull();
+    expect(savesOf(r1Failed.effects)).toEqual([]);
+    // A later choice not yet on disk is a debt again: its refusal is retried as before.
+    const s3 = step(r1Failed.state, { kind: 'setPicks', picks: PICKS }, NOW);
+    expect(savesOf(step(s3.state, { kind: 'bootSaveFailed' }, NOW).effects)).toHaveLength(1);
   });
 
   it('a boot save that lands leaves any other line alone', () => {
@@ -175,8 +211,10 @@ describe('a refused boot save', () => {
     const NOT_NOW = { kind: 'refusal', key: 'scoring.refusal.notNow' } as const;
     for (const words of [COUNTED, NOT_NOW]) {
       const said = step(picked(), { kind: 'say', words }, NOW);
-      expect(step(said.state, { kind: 'bootSaved' }, NOW).state.line).toEqual(words);
+      const landed = { kind: 'bootSaved', boot: holding(said.state) } as const;
+      expect(step(said.state, landed, NOW).state.line).toEqual(words);
     }
-    expect(step(picked(), { kind: 'bootSaved' }, NOW).state.line).toBeNull();
+    const quiet = picked();
+    expect(step(quiet, { kind: 'bootSaved', boot: holding(quiet) }, NOW).state.line).toBeNull();
   });
 });

@@ -4,6 +4,7 @@ import es from '@/i18n/es.json';
 import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
 import { layout, space } from '@/ui/theme/tokens';
+import { isOneWord } from '@/ui/components/nameFit';
 import { typeScale } from '@/ui/theme/type';
 import { loadFont } from '../../../test/fontMetrics';
 import { linesIn, linesOf } from '../../../test/textFit';
@@ -150,14 +151,21 @@ describe('the board’s regions', () => {
 });
 
 // S2-4 plan Task 10 (owner ruling 83): the two-half toss and the setup in the pad's column. The toss's question is
-// `state` caps, kept to `padTossAskLines` lines in its half whatever it says, so a long team's name must still fit in
-// them; a side's button holds a team name wrapped at its gaps, and Bat and Bowl on one line. The order row's name keeps
+// `title` caps (Batch 3 fix round 1, M7: the preview's size), kept to `padTossAskLines` lines in its half whatever it
+// says, so a long team's name must still fit in them; a side's button holds a team name at `label` wrapped at its gaps,
+// and Bat and Bowl at `tally` on one line, a word too wide shrunk (`NameText`, never broken). The order row's name keeps
 // the room left by its place and the two ▲▼ targets, and the Opener plate under it.
 describe.each(WIDTHS)('the toss and the setup at %i dp', (width) => {
-  /** `state`: Barlow Condensed 700 at 15, uppercase, letterspaced. The toss's two questions and the Opener plate. */
+  /** `state`: Barlow Condensed 700 at 15, uppercase, letterspaced. The Opener plate. */
   const stateWidth = (text: string) =>
     barlow700.width(text.toUpperCase(), typeScale.state.fontSize) +
     typeScale.state.letterSpacing * [...text].length;
+  /** `title`: Barlow Condensed 700 at 26, uppercase, letterspaced. The toss's two questions. */
+  const titleWidth = (text: string) =>
+    barlow700.width(text.toUpperCase(), typeScale.title.fontSize) +
+    typeScale.title.letterSpacing * [...text].length;
+  /** `tally`: Barlow Condensed 700 at 46, as typed. Bat and Bowl. */
+  const tallyWidth = (text: string) => barlow700.width(text, typeScale.tally.fontSize);
   /** A side's button: half the row less its gap, less its padding (`space.sm` a side) and its border (TossPicker). */
   const tossText = (column(width) - space.sm) / 2 - 2 * space.sm - 2 * layout.iconBorder;
   /** An order row: the place (`space.lg`), the name, two 48 dp targets, `space.sm` between each (CricketOrderList). */
@@ -177,25 +185,45 @@ describe.each(WIDTHS)('the toss and the setup at %i dp', (width) => {
       const chose = said(dictionary, 'scoring.cricket.toss.chose');
       const team = said(dictionary, 'scoring.cricket.toss.team');
       for (const text of [ask, fill(chose, { team }), fill(chose, { team: LONG_TEAM })]) {
-        expect(linesOf(text, column(width), stateWidth), text).toBeLessThanOrEqual(
+        expect(linesOf(text, column(width), titleWidth), text).toBeLessThanOrEqual(
           layout.padTossAskLines,
         );
-        for (const line of linesIn(text, column(width), stateWidth)) {
-          expect(stateWidth(line), line).toBeLessThanOrEqual(column(width));
+        for (const line of linesIn(text, column(width), titleWidth)) {
+          expect(titleWidth(line), line).toBeLessThanOrEqual(column(width));
         }
       }
     },
   );
 
-  it('a thirty-character name takes the question’s second line at 320, one at 360 (anti-vacuity)', () => {
+  it('a thirty-character name takes the question’s second line, the short question one (anti-vacuity)', () => {
     const chose = fill(said(en, 'scoring.cricket.toss.chose'), { team: LONG_TEAM });
-    expect(linesOf(chose, column(width), stateWidth)).toBe(width === 320 ? 2 : 1);
+    expect(linesOf(chose, column(width), titleWidth)).toBe(2);
+    expect(linesOf(said(en, 'scoring.cricket.toss.ask'), column(width), titleWidth)).toBe(1);
   });
 
-  it.each(LANGUAGES)('%s: Bat and Bowl each one line in a side’s button', (_, dictionary) => {
-    for (const key of ['scoring.cricket.toss.bat', 'scoring.cricket.toss.bowl']) {
-      expect(labelWidth(said(dictionary, key)), key).toBeLessThanOrEqual(tossText);
-    }
+  it.each(LANGUAGES)(
+    '%s: Bat and Bowl are one word each, on one line in a side’s button, shrunk no further than the name floor',
+    (_, dictionary) => {
+      for (const key of ['scoring.cricket.toss.bat', 'scoring.cricket.toss.bowl']) {
+        const word = said(dictionary, key);
+        expect(isOneWord(word), word).toBe(true);
+        expect(tallyWidth(word) * layout.nameFloor, word).toBeLessThanOrEqual(tossText);
+      }
+    },
+  );
+
+  it('the words shrunk to fit at tally are French Frapper at 320, and none at 360 (anti-vacuity)', () => {
+    const words = LANGUAGES.flatMap(([, dictionary]) =>
+      ['scoring.cricket.toss.bat', 'scoring.cricket.toss.bowl'].map((key) => said(dictionary, key)),
+    );
+    expect(words.filter((word) => tallyWidth(word) > tossText)).toEqual(
+      width === 320 ? ['Frapper'] : [],
+    );
+  });
+
+  it('a club’s word is wider than a side’s button at tally, so the names stay at label (M7)', () => {
+    expect(tallyWidth('Riverside')).toBeGreaterThan(tossText);
+    expect(labelWidth('Riverside')).toBeLessThanOrEqual(tossText);
   });
 
   it('a team’s name wraps at its gaps in a side’s button, every word whole', () => {

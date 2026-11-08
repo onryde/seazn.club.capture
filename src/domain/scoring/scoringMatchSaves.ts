@@ -59,6 +59,8 @@ const CHOICE_NOT_SAVED = 'scoring.refusal.choiceNotSaved';
  */
 export function onBootSaveFailed<S extends SportTypes>(state: MatchState<S>): Part<S> {
   const boot = bootOf(state);
+  // The latest save wins (M4): a newer save that carried the choice held has landed, so this older one's failure is moot.
+  if (onDisk(state)) return part({ ...state, bootOwed: null });
   if (state.bootOwed === null && boot !== null) {
     const again: Planned = { kind: 'save', queue: null, boot, ledger: null, tap: null };
     return part({ ...state, bootOwed: 'retry' }, [again]);
@@ -69,13 +71,29 @@ export function onBootSaveFailed<S extends SportTypes>(state: MatchState<S>): Pa
 }
 
 /**
- * A save's boot cache was written (S2-4 Batch 2 re-review N2): the line always says something true (AGENTS §6), so a
- * "Couldn't save your choice" said before it goes. Whichever save it was, a retry queued behind a newer one or a fresh
- * pick on a disk that has recovered, the scorer's choice is on disk now. Any other line is left as it is.
+ * A save's boot cache was written (S2-4 Batch 2 re-review N2; Batch 3 fix round 1, M4): it is what the disk holds now.
+ * When it carried the choice the state holds, that choice is saved: the line always says something true (AGENTS §6), so a
+ * "Couldn't save your choice" said before it goes, and nothing is owed. A save that carried an older choice proves
+ * nothing about the one held, whose own save decides. Any other line is left as it is.
  */
-export function onBootSaved<S extends SportTypes>(state: MatchState<S>): Part<S> {
+export function onBootSaved<S extends SportTypes>(state: MatchState<S>, boot: BootCache): Part<S> {
+  const landed = { ...state, bootLanded: boot };
+  if (!onDisk(landed)) return part(landed);
   const said = state.line?.kind === 'refusal' && state.line.key === CHOICE_NOT_SAVED;
-  return part(said ? { ...state, line: null } : state);
+  return part({ ...landed, bootOwed: null, line: said ? null : state.line });
+}
+
+/** Whether the boot cache the state holds is the one the last landed save carried: the same bootstrap, pick and picks. */
+function onDisk(state: MatchState): boolean {
+  const held = bootOf(state);
+  const landed = state.bootLanded;
+  return (
+    held !== null &&
+    landed !== null &&
+    held.bootstrap === landed.bootstrap &&
+    held.toss === landed.toss &&
+    held.picks === landed.picks
+  );
 }
 
 /**

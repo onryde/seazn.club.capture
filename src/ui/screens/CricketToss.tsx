@@ -15,6 +15,8 @@ type Elected = 'bat' | 'bowl';
  * toss?" over the two team names (the web asks Home/Away; spec §4.1 gap 1); the bottom asks "{team} chose to…" over Bat
  * and Bowl, greyed with "Team" in place of the name until a team is picked, so nothing moves when it is. Both are the kit's
  * `TossPicker`, filling its half. A team tap is held by the hook (a second one changes it); Bat or Bowl records the toss.
+ * The questions are `title` and Bat and Bowl `tally`, the preview's sizes (Batch 3 fix round 1, M7); a team's name stays
+ * at `label`, since at `tally` a club's word is wider than a button at 320 or 360 dp and Android would break it.
  */
 export const CricketToss = memo(function CricketToss({
   teams,
@@ -55,18 +57,24 @@ export const CricketToss = memo(function CricketToss({
           picked={null}
           onPick={onElect}
           disabled={winner === null}
+          big
         />
       </View>
     </View>
   );
 });
 
+/** Bat or Bowl's button: one `tally` line, its padding and its border (TossPicker's `box`). */
+const BIG_BUTTON = typeScale.tally.lineHeight + 2 * space.sm + 2 * layout.iconBorder;
+
 /**
- * A half never shrinks below what it draws: the question's kept lines, the gap, and a button of `padTossHeight`. The
- * two have the same flex, so they share the room equally whatever either says.
+ * A half never shrinks below what it draws: the question's kept lines in `title`, the gap, and its taller button. The two
+ * have the same flex and the same floor, so they share the room equally whatever either says.
  */
 const HALF_MIN =
-  layout.padTossAskLines * typeScale.state.lineHeight + space.sm + layout.padTossHeight;
+  layout.padTossAskLines * typeScale.title.lineHeight +
+  space.sm +
+  Math.max(layout.padTossHeight, BIG_BUTTON);
 
 const styles = StyleSheet.create({
   toss: { flex: 1, gap: space.lg },

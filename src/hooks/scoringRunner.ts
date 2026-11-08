@@ -176,7 +176,8 @@ export function createScoringRunner(ports: RunnerPorts, options: Options): Scori
     } else if (saver.unsettled() === 0 && state !== null && !stopped) {
       publish({ kind: 'ready', state });
     }
-    if (effect.boot !== null) dispatch(bootOk ? { kind: 'bootSaved' } : { kind: 'bootSaveFailed' });
+    if (effect.boot === null) return;
+    dispatch(bootOk ? { kind: 'bootSaved', boot: effect.boot } : { kind: 'bootSaveFailed' });
   };
   const saver = createSaver({ ports, fixtureId, landed });
   const reads = createReads({
