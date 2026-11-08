@@ -37,6 +37,9 @@ export type StepSheetFacts = {
     readonly note?: PadVar<MessageKey> | null;
     /** The choice made, or the one suggested: the heavier lime border (owner ruling 82). */
     readonly chosen?: boolean;
+    /** A heading between groups or a toggle; a choice when absent (`StepOption`). */
+    readonly kind?: StepOption['kind'];
+    readonly checked?: boolean;
   }[];
 };
 

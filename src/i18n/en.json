@@ -415,6 +415,7 @@
   "scoring.pad.countedOnce": "Counted once",
   "scoring.pad.otherScorerSince": "Another scorer since",
   "scoring.pad.undoWaiting": "Undo waiting to send",
+  "scoring.pad.kicks.said": "{scored} scored of {taken}",
   "scoring.card.updateNeeded.update": "Update",
   "scoring.card.updateNeeded.browser": "Score in the browser",
   "scoring.card.cantOpen": "Couldn't open it — try again.",

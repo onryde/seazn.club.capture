@@ -415,6 +415,7 @@
   "scoring.pad.countedOnce": "Eén keer geteld",
   "scoring.pad.otherScorerSince": "Andere scorer erna",
   "scoring.pad.undoWaiting": "Nog niet verstuurd",
+  "scoring.pad.kicks.said": "{scored} van {taken} raak",
   "scoring.card.updateNeeded.update": "Bijwerken",
   "scoring.card.updateNeeded.browser": "Scoren in de browser",
   "scoring.card.cantOpen": "Openen mislukt: probeer het opnieuw.",

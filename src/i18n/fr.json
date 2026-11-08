@@ -415,6 +415,7 @@
   "scoring.pad.countedOnce": "Compté une fois",
   "scoring.pad.otherScorerSince": "Autre marqueur depuis",
   "scoring.pad.undoWaiting": "Annulation en attente",
+  "scoring.pad.kicks.said": "{scored} marqués sur {taken}",
   "scoring.card.updateNeeded.update": "Mettre à jour",
   "scoring.card.updateNeeded.browser": "Saisir dans le navigateur",
   "scoring.card.cantOpen": "Ouverture impossible\u00a0: réessayez.",

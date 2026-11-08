@@ -472,6 +472,21 @@ const base = {
   cricketRunKey: 64,
   cricketExtraKey: 48,
   cricketActionKey: 56,
+  /**
+   * A team column's buttons share its height by weight (S2-5 design §6.2, ruling 105; the owner's pick of option 2 in
+   * `pad-layout-c-v3.html`, "Goal shrunk to 3/4 of its size"): the primary button 0.75, each other one 0.5, so Goal, Card
+   * and Sub stand 3 : 2 : 2. Each is at least `touch` tall (footballFit.test.ts).
+   */
+  columnPrimary: 0.75,
+  columnAction: 0.5,
+  /**
+   * A step sheet's rows scroll past this height (S2-5 design §6.3: a team's players and its bench can be 16 rows and
+   * more), while the title and Cancel stay put: five 48 dp rows, their gaps and half of a sixth row, so a list that
+   * scrolls shows that it does.
+   */
+  sheetListMax: 5 * 48 + 5 * 8 + 24,
+  /** A shootout kick's mark under its team's column (S2-5 design §6.5): a lime dot when scored, a lilac ring when not. */
+  kickMark: 12,
 } as const;
 
 /** The cells the controls half's width is made of (`base` holds the shipped ones). */
