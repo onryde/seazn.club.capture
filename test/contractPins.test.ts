@@ -11,14 +11,14 @@ import { listFiles, OURS } from '../scripts/vendor-contracts.mjs';
  * one commit, written by `pnpm contracts:vendor`, which records every file's sha256 in contracts/VENDORED.json. This
  * test holds the folder to that record, file for file.
  *
- * The other side of the pin is the web's own: its capture-contract.test.ts pins the eight schemas. Those eight values
- * and the commit are copied below BY HAND from apps/web/src/server/api-v1/__tests__/capture-contract.test.ts:51-62
- * at 1a6f5ebc9 (MD-1 Tasks 3 and 4, which added the Match Day day read and open, capture-matchday-day.v1 and
- * capture-matchday-open.v1, with their fixtures; the six before them are as web #1037 left them), so a re-vendor
- * cannot quietly move both sides at once. WEB_COMMIT is the commit actually vendored (plan D1, D-10). The web's
+ * The other side of the pin is the web's own: its capture-contract.test.ts pins the nine schemas. Those nine values
+ * and the commit are copied below BY HAND from apps/web/src/server/api-v1/__tests__/capture-contract.test.ts:51-64
+ * at 7c15a5a78 (MD-1 complete: Task 6 added the approval review and approve, capture-matchday-approval.v1, with its
+ * fixtures, and reworded the day read's and the open's descriptions; the six before them are as web #1037 left
+ * them), so a re-vendor cannot quietly move both sides at once. WEB_COMMIT is the commit actually vendored (plan D1, D-10). The web's
  * relay-job.v1 sits beside them and is not the phone's: the script takes only the capture contracts.
  */
-const WEB_COMMIT = '1a6f5ebc9efc68c0e0e6ca81a0cab68c04ce0937';
+const WEB_COMMIT = '7c15a5a780e7310c8df56d4db9f97e13acc54aea';
 const WEB_PINS: Readonly<Record<string, string>> = {
   'capture-qr.v2.json': '3292e33f84b693e5def6048012f6653ca7e31e1573fda3901da4fe67a62c5d43',
   'capture-descriptor.v1.json': '5c9b09c422b092671ad3a842b02e5c18902c92fc290cbc562c91033555955b8b',
@@ -28,9 +28,11 @@ const WEB_PINS: Readonly<Record<string, string>> = {
     'f0f1188655f3ca83b3e42ce7fedd6f6210a3a141b0bcf02fa250eb2448b1c85f',
   'capture-record.v1.json': '213f766043b7682f198cc98da13e93995b6602e46533ecf60c78bf562aebd6f8',
   'capture-matchday-day.v1.json':
-    'a926177fdeb2517337b1a4c6ac45ec3a83ef5466da10de3befc5712bb8fb772c',
+    '8d26d7efee0615eba7c0acd19e56ea5c730e6ff0bf48c28c40f975595c8b743d',
   'capture-matchday-open.v1.json':
-    '639fdcde15f06961ab705b83cb7fb7fa7e39111c6c3a83543e1500657b2644aa',
+    '760028bf99e5cf74ee033f5613fa43477677cef318ecdf739c0b62e2fc21c0c0',
+  'capture-matchday-approval.v1.json':
+    '279ff1488a1108b3667f9e2f11f559579382f83b238d91da65440c810189f69c',
 };
 
 const root = new URL('../contracts/', import.meta.url);
@@ -46,10 +48,10 @@ const vendored = JSON.parse(readFileSync(new URL('VENDORED.json', root), 'utf8')
 const onDisk = listFiles(fileURLToPath(root)).filter((path) => !OURS.includes(path));
 
 describe('the vendored contracts, pinned (plan D spec §3.1, R7)', () => {
-  it('pins 232 files: the eight schemas and 224 fixtures (moves only with a re-vendor)', () => {
+  it('pins 250 files: the nine schemas and 241 fixtures (moves only with a re-vendor)', () => {
     const pinned = Object.keys(vendored.files);
-    expect(pinned).toHaveLength(232);
-    expect(pinned.filter((path) => !path.includes('/'))).toHaveLength(8);
+    expect(pinned).toHaveLength(250);
+    expect(pinned.filter((path) => !path.includes('/'))).toHaveLength(9);
   });
 
   it('holds exactly the pinned files: none missing, none extra', () => {
@@ -72,7 +74,7 @@ describe('the vendored contracts, pinned (plan D spec §3.1, R7)', () => {
     },
   );
 
-  it('holds the same eight schemas the web pins, no more and no fewer', () => {
+  it('holds the same nine schemas the web pins, no more and no fewer', () => {
     expect(onDisk.filter((path) => !path.includes('/'))).toEqual(Object.keys(WEB_PINS).sort());
   });
 });

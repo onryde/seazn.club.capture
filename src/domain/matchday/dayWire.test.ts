@@ -11,7 +11,7 @@ import {
 } from '../../../test/matchDayContracts';
 
 /**
- * capture-matchday-day.v1 (S4 Match Day design §5, §9.3), vendored at web 1a6f5ebc9: every expected value below is
+ * capture-matchday-day.v1 (S4 Match Day design §5, §9.3), vendored at web 7c15a5a78: every expected value below is
  * typed from the contract's fixtures or its text, never computed by the parser under test.
  */
 const DAY = 'capture-matchday-day.v1';

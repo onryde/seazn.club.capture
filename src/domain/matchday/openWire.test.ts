@@ -10,7 +10,7 @@ import {
 } from '../../../test/matchDayContracts';
 
 /**
- * capture-matchday-open.v1 (S4 Match Day design §6, §9.4), vendored at web 1a6f5ebc9: the open's 200 is a link or
+ * capture-matchday-open.v1 (S4 Match Day design §6, §9.4), vendored at web 7c15a5a78: the open's 200 is a link or
  * "finished"; a match outside the code's scope is the refusal 403 MD_OUT_OF_SCOPE, never a 200 (the controller's
  * ruling, from the contract). Expected values are typed from its fixtures.
  */
