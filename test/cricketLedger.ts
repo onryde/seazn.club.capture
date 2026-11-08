@@ -1,4 +1,5 @@
 import { foldEpochOf } from '@seazn/engine/sport';
+import { isRecord } from '@/domain/credentials/wire';
 import type { QueuedEvent } from '@/domain/scoring/queue';
 import type { Bootstrap, BootstrapSide, BootstrapSlot, LedgerEvent } from '@/domain/scoring/wire';
 
@@ -286,6 +287,8 @@ export const ONE: Delivery = { bat: 1 };
 export const TWO: Delivery = { bat: 2 };
 export const FOUR: Delivery = { bat: 4, boundary: 4 };
 export const WIDE: Delivery = { extras: { kind: 'wide', runs: 1 } };
+/** A no-ball, nothing off the bat: one run, and a free hit to follow. */
+export const NO_BALL: Delivery = { extras: { kind: 'noball', runs: 1 } };
 export const OUT: Delivery = { out: true };
 
 type Crease = { striker: string; nonStriker: string; next: number; legal: number; wickets: number };
@@ -352,6 +355,24 @@ function walk(crease: Crease, d: Delivery, incoming: string | undefined): void {
   if (legal && crease.legal % BALLS_PER_OVER === 0) swapEnds(crease);
 }
 
+/**
+ * A super-over innings as balls (`cricket.superover.ball`, over 0): the same walk, one over, `bowler` bowling it. A
+ * wicket here names no `incoming` (the engine ignores it in a super over, §4.6): a script that goes on after one must
+ * name the replacement on its next ball itself, so it ends at the wicket.
+ */
+export function superOverOf(batting: Seat, bowler: string, script: readonly Delivery[]): Spec[] {
+  return inningsOf(batting, [bowler], script).map((spec) => ({
+    type: 'cricket.superover.ball',
+    payload: withoutIncoming(spec.payload),
+  }));
+}
+
+function withoutIncoming(payload: unknown): unknown {
+  if (!isRecord(payload) || !isRecord(payload.wicket)) return payload;
+  const wicket = Object.entries(payload.wicket).filter(([key]) => key !== 'incoming');
+  return { ...payload, wicket: Object.fromEntries(wicket) };
+}
+
 function swapEnds(crease: Crease): void {
   [crease.striker, crease.nonStriker] = [crease.nonStriker, crease.striker];
 }
@@ -371,7 +392,7 @@ export const HOME_BOWLERS = [player('H', 11), player('H', 10)] as const;
 /** The toss and the start: the home side won it and bats. */
 export const OPENING: readonly Spec[] = [toss('H', 'bat'), start()];
 
-/** The first over bowled: six singles, so 6/0 after one over, `H-p1` on strike again at the over's change of ends. */
+/** The first over bowled: six singles, so 6/0 after one over; the sixth single and the change of ends leave `H-p2` on strike. */
 export const OVER_ONE_DONE: readonly Spec[] = [
   ...OPENING,
   ...inningsOf('H', AWAY_BOWLERS, times(6, ONE)),
