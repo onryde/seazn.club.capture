@@ -58,7 +58,8 @@ A contract changes only through `pnpm contracts:vendor` and the pin test (R7):
 2. By hand, copy the web's commit and its schema pins (`SHA256` in the web's
    `apps/web/src/server/api-v1/__tests__/capture-contract.test.ts`) into `WEB_COMMIT` and `WEB_PINS` in
    `test/contractPins.test.ts`. The script never writes them, so a re-vendor cannot move both sides of the pin at
-   once.
+   once. A vendoring that adds or removes a schema also changes the hand list of schemas in
+   `modules/capture-engine/src/serverBodies.test.ts` ("registers the … vendored schemas"), and the table above.
 
 3. Run `pnpm check`. `test/contractPins.test.ts` holds every file here to `VENDORED.json` and the schemas to the
    web's own pins. A changed shape reds its parser's tests; the parser changes in the same pull request.

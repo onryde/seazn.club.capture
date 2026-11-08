@@ -104,7 +104,7 @@ describe('courtCards (S4 Match Day design §5: one card per court, in the order 
     expect(card).toMatchObject({ now: null, next: LEE, then: null });
   });
 
-  it('a court with no now and no next is Free', () => {
+  it('a court the server calls free, with nothing on it, is a Free card, not dropped', () => {
     const cards = courtCards(day({ courts: [court('Court 3', { state: 'free' })] }));
     expect(cards).toEqual([
       {

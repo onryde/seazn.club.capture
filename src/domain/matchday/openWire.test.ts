@@ -118,6 +118,8 @@ describe('parseOpen holds the link to the contract pattern', () => {
     ['no dl_ prefix', LINK.url.replace('/dl_', '/xx_')],
     ['a scheme in capitals', LINK.url.replace('https://', 'HTTPS://')],
     ['no host', `https:///score/${token}`],
+    ['another url before it', `http://elsewhere.example/${LINK.url}`],
+    ['a space before it', ` ${LINK.url}`],
     ['a url that is not text', 42],
   ])('refuses %s', (_, url) => {
     expect(errorOf({ ...LINK, url })).toEqual({

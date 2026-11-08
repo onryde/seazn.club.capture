@@ -374,9 +374,36 @@ describe('parseDay refuses a field of the wrong shape, naming the field', () => 
     return result.value;
   };
 
-  it('a match id that is not a uuid: it is a path segment of the open', () => {
-    refuses((data) => (data.courts[0]!.now!.fixture_id = '../../x'), 'courts[0].now.fixture_id');
+  /** valid-competition's Now and valid-approvals' Swiss stage: real uuids, so only what is around them is wrong. */
+  const NOW_ID = '7b2c3d4e-5f6a-4b7c-9d8e-0f1a2b3c4d5e';
+  const STAGE_ID = '4c9d0e1f-2a3b-4c4d-8e5f-7a8b9c0d1e2f';
+
+  it.each([
+    ['a path', '../../x'],
+    ['a uuid with a path after it', `${NOW_ID}/../x`],
+    ['a uuid with a path before it', `../${NOW_ID}`],
+    ['a uuid and a line break', `${NOW_ID}\n`],
+  ])('a match id that is %s: refused, it is a path segment of the open', (_, id) => {
+    refuses((data) => (data.courts[0]!.now!.fixture_id = id), 'courts[0].now.fixture_id');
+  });
+
+  it.each([
+    ['a path', '../../x'],
+    ['a uuid with a path after it', `${STAGE_ID}/confirm`],
+    ['a uuid with a path before it', `../${STAGE_ID}`],
+  ])('a stage id that is %s: refused, it is a path segment of the approval', (_, id) => {
+    const data = wire('valid-approvals');
+    data.approvals[1]!.stage_id = id;
+    expect(errorOf(data)).toEqual({
+      kind: 'invalid-field',
+      field: 'approvals[1].stage_id',
+      reason: expect.any(String),
+    });
+  });
+
+  it('a court or competition id that is not a uuid', () => {
     refuses((data) => (data.courts[0]!.court_id = 'court-1'), 'courts[0].court_id');
+    refuses((data) => (data.competition.id = 'not-a-uuid'), 'competition.id');
     refuses((data) => (data.competition.id = ''), 'competition.id');
   });
 
@@ -417,6 +444,10 @@ describe('parseDay refuses a field of the wrong shape, naming the field', () => 
     ['an offset', '2026-11-07T00:00:00+01:00'],
     ['a day that is not in the calendar', '2026-02-30T00:00:00Z'],
     ['hour 24', '2026-11-06T24:00:00Z'],
+    ['minute 60', '2026-11-07T10:60Z'],
+    ['second 60', '2026-11-07T10:00:60Z'],
+    ['text before it', 'x2026-11-07T10:00:00Z'],
+    ['text after it', '2026-11-07T10:00:00Zx'],
     ['a date with no time', '2026-11-06'],
     ['a date and Z with no time', '2026-11-06Z'],
     ['epoch seconds', 1_762_470_000],
@@ -449,6 +480,7 @@ describe('parseDay refuses a field of the wrong shape, naming the field', () => 
     ['a 29 February outside a leap year', '2026-02-29'],
     ['a short month', '2026-11-7'],
     ['an instant', '2026-11-07T00:00:00Z'],
+    ['text before it', 'x2026-11-07'],
   ])('a day that is %s', (_, value) => {
     refuses((data) => (data.day = value), 'day');
   });
@@ -538,6 +570,19 @@ describe('parseDay and the four questions (AGENTS §10)', () => {
     const data = wire('valid-competition');
     data.online = [copyOf(data.no_court[0]!)];
     const result = read(data);
-    expect(result.ok && result.value.online).toEqual(result.ok && result.value.noCourt);
+    if (!result.ok) throw new Error(`refused ${JSON.stringify(result.error)}`);
+    expect(result.value.online).toEqual([
+      {
+        fixtureId: '2a7b8c9d-0e1f-4a2b-ac3d-5e6f7a8b9c0d',
+        sportKey: 'badminton',
+        divisionName: "Women's singles",
+        roundLabel: 'R2',
+        home: 'Singh',
+        away: 'Murphy',
+        status: 'upcoming',
+        scheduledAt: null,
+        summary: null,
+      },
+    ]);
   });
 });
