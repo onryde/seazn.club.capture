@@ -1,4 +1,5 @@
 import type { PadRefusal } from '@/domain/scoring/padLine';
+import type { PendingPicks } from '@/domain/scoring/pendingPicks';
 import type { PadHistoryGroup, PadSide, PadSync, PadView } from '@/domain/scoring/padView';
 import type { QueuedEvent } from '@/domain/scoring/queue';
 import type { Bootstrap, LedgerEvent } from '@/domain/scoring/wire';
@@ -36,6 +37,11 @@ export type SportFoldInput = {
   readonly ownEventIds: readonly string[];
   /** The side this phone picked to serve first on the Start screen, or null. */
   readonly toss: PadSide | null;
+  /**
+   * The scorer's pending picks (S2-4 plan Task 3), which the sport reads into its display (cricket's crease and bowler
+   * before a ball carries them). Absent: none, as for every sport that keeps no picks.
+   */
+  readonly picks?: PendingPicks;
 };
 
 /** A seat with no entrant; a config the engine's schema refuses; a ledger the engine will not replay. */

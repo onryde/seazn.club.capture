@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { step } from '@/domain/scoring/scoringMatch';
+import { SINGLES } from '../../../test/badmintonLedger';
 import { AT, NOW, ready, savesOf } from '../../../test/scoringMatchFixtures';
 
 // The queue saves, numbered (plan S2-1 Task 9 review, item 4): "not recorded" is true only once a save issued AFTER
@@ -60,5 +61,33 @@ describe('a refused save’s debt', () => {
     expect(savesOf(third.effects).map((save) => save.n)).toEqual([4]);
     const paid = step(third.state, { kind: 'saved', n: 4 }, NOW);
     expect(paid.state.saveOwed).toBeNull();
+  });
+});
+
+// Pending picks (S2-4 plan Task 3, Review Focus 3) go with the boot cache, so a kill between an over's end and its first
+// ball keeps them. A second `setPicks` equal to the picks held saves nothing.
+describe('the boot cache and the pending picks', () => {
+  it('setPicks saves the boot cache once', () => {
+    const picks = { 'order.first': ['p-sharma'], 'bowler.i1.1': ['p-chen'] };
+    const one = step(ready(), { kind: 'setPicks', picks }, NOW);
+    expect(savesOf(one.effects)).toEqual([
+      {
+        kind: 'save',
+        n: 1,
+        queue: null,
+        boot: { bootstrap: SINGLES, toss: null, picks },
+        ledger: null,
+        tap: null,
+      },
+    ]);
+    const same = { 'bowler.i1.1': ['p-chen'], 'order.first': ['p-sharma'] };
+    const two = step(one.state, { kind: 'setPicks', picks: same }, NOW);
+    expect(savesOf(two.effects)).toEqual([]);
+  });
+
+  it('a sender with no screen keeps no boot cache, picks or not', () => {
+    const trusting = ready({ judge: 'trust' });
+    const result = step(trusting, { kind: 'setPicks', picks: { 'order.first': ['p-1'] } }, NOW);
+    expect(savesOf(result.effects)).toEqual([]);
   });
 });

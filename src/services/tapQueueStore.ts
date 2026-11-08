@@ -1,4 +1,5 @@
 import { isRecord } from '@/domain/credentials/wire';
+import { NO_PICKS, readPicks } from '@/domain/scoring/pendingPicks';
 import {
   QUEUE_DEAD_WORDS,
   keptStillMine,
@@ -672,7 +673,7 @@ const readNullableText = (value: unknown): string | null | undefined =>
   value === null ? null : readText(value);
 
 // ---------------------------------------------------------------------------------------------------------------
-// The boot cache: the bootstrap as the endpoint sent it, and the Start screen's pick
+// The boot cache: the bootstrap as the endpoint sent it, the Start screen's pick and the pending picks
 // ---------------------------------------------------------------------------------------------------------------
 
 /**
@@ -687,6 +688,7 @@ function encodeBoot(fixtureId: string, cache: BootCache): string {
     v: FILE_VERSION,
     fixtureId,
     toss: cache.toss,
+    picks: cache.picks,
     bootstrap: bootstrapToWire(cache.bootstrap),
   });
   if (LINK_SECRET.test(text)) throw new Error('a boot cache never carries a scoring link secret');
@@ -705,9 +707,12 @@ function decodeBoot(text: string, fixtureId: string): BootCache | null {
   if (!isRecord(raw) || raw.v !== FILE_VERSION || raw.fixtureId !== fixtureId) return null;
   const toss =
     raw.toss === 'first' || raw.toss === 'second' || raw.toss === null ? raw.toss : undefined;
+  // A file written before picks were kept has none (the file's version is unchanged); garbled picks are no cache.
+  const picks = raw.picks === undefined ? NO_PICKS : readPicks(raw.picks);
   const bootstrap = parseBootstrap(raw.bootstrap);
-  if (toss === undefined || bootstrap === null || bootstrap.fixtureId !== fixtureId) return null;
-  return { bootstrap, toss };
+  if (toss === undefined || picks === undefined) return null;
+  if (bootstrap === null || bootstrap.fixtureId !== fixtureId) return null;
+  return { bootstrap, toss, picks };
 }
 
 // ---------------------------------------------------------------------------------------------------------------

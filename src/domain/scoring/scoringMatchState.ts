@@ -5,6 +5,7 @@ import {
   refusing,
 } from '@/domain/scoring/padLine';
 import type { PadSide } from '@/domain/scoring/padView';
+import type { PendingPicks } from '@/domain/scoring/pendingPicks';
 import {
   resultStands,
   type BootCache,
@@ -78,6 +79,11 @@ export type MatchState<S extends SportTypes = SportTypes> = {
   readonly bootstrap: Bootstrap | null;
   /** The side picked to serve first (the Start screen), kept while the match's first rally may still carry it. */
   readonly toss: PadSide | null;
+  /**
+   * The scorer's pending picks (S2-4 plan Task 3), kept with the boot cache and handed to every fold. Only `setPicks`
+   * changes them, never a tap or Undo; a map equal to the one held is the same object, so nothing folds again.
+   */
+  readonly picks: PendingPicks;
   /** `fold`: the pad folds the match. `trust`: the background sender sends its queue and lets the server judge each tap. */
   readonly judge: 'fold' | 'trust';
   readonly foreground: boolean;
@@ -154,6 +160,8 @@ export type MatchEvent<S extends SportTypes = SportTypes> =
       readonly only?: 'ending';
     }
   | { readonly kind: 'pickServer'; readonly side: PadSide }
+  /** The scorer's pending picks, the whole map (S2-4 plan Task 3): taken whenever the match folds. */
+  | { readonly kind: 'setPicks'; readonly picks: PendingPicks }
   | { readonly kind: 'answered'; readonly sent: QueuedEvent; readonly answer: AppendAnswer }
   /** A send that never went (its save failed, or the app left): fed back as an answer of `offline`, so `sending` never sticks. */
   | { readonly kind: 'abandoned'; readonly key: string }
@@ -184,6 +192,8 @@ export type MatchHeld<S extends SportTypes = SportTypes> = {
   readonly ledger: readonly LedgerEvent[];
   readonly bootstrap: Bootstrap | null;
   readonly toss: PadSide | null;
+  /** The pending picks the boot cache kept; absent is none. */
+  readonly picks?: PendingPicks;
   readonly judge: 'fold' | 'trust';
   readonly foreground: boolean;
   /** The rules version to send under when no bootstrap is held: the newest a queued tap was made under. */
@@ -317,6 +327,7 @@ export function foldOfState<S extends SportTypes>(
     queued,
     ownEventIds: ownIds(state),
     toss: state.toss,
+    picks: state.picks,
   });
 }
 

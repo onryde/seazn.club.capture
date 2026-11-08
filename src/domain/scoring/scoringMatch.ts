@@ -1,3 +1,4 @@
+import { NO_PICKS } from '@/domain/scoring/pendingPicks';
 import { type SyncState, openSync } from '@/domain/scoring/sync';
 import type { Bootstrap } from '@/domain/scoring/wire';
 import type { SportTypes } from '@/domain/scoring/scoringSport';
@@ -33,7 +34,13 @@ import {
 } from '@/domain/scoring/scoringMatchState';
 import { onAnswerAsk, releaseMoot } from '@/domain/scoring/scoringMatchAsk';
 import { decidedAtAfter } from '@/domain/scoring/scoringMatchWindow';
-import { onPick, onTap, onUndo, withoutOrphanVoids } from '@/domain/scoring/scoringMatchTaps';
+import {
+  onPick,
+  onSetPicks,
+  onTap,
+  onUndo,
+  withoutOrphanVoids,
+} from '@/domain/scoring/scoringMatchTaps';
 
 /**
  * One scoring match on the phone, as ONE pure reducer (plan S2-1 Task 9): every change to what the phone holds (a tap, an
@@ -70,6 +77,7 @@ export function openMatch<S extends SportTypes>(held: MatchHeld<S>, now: number)
     sync,
     bootstrap: held.bootstrap,
     toss: held.toss,
+    picks: held.picks ?? NO_PICKS,
     judge: held.judge,
     foreground: held.foreground,
     closed: null,
@@ -172,6 +180,8 @@ function handle<S extends SportTypes>(
       return onUndo(state, event, now);
     case 'pickServer':
       return onPick(state, event.side);
+    case 'setPicks':
+      return onSetPicks(state, event.picks);
     case 'answered':
       return onAnswered(state, event.sent, event.answer, now);
     case 'abandoned':

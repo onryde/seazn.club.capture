@@ -8,6 +8,7 @@ import {
   type PadSync,
   type PadView,
 } from '@/domain/scoring/padView';
+import type { PendingPicks } from '@/domain/scoring/pendingPicks';
 import { resultStands, type QueueDead } from '@/domain/scoring/queue';
 import {
   deadOf,
@@ -59,6 +60,8 @@ export type MatchPad<S extends SportTypes = SportTypes> = {
   readonly line: PadLineWords;
   /** The Start screen's pick, while the match has not started. */
   readonly toss: PadSide | null;
+  /** The scorer's pending picks as the match holds them: a sport's pad hook writes a new pick over them (`setPicks`). */
+  readonly picks: PendingPicks;
   /** The reconnect question, while it stands: other scorers' events landed on this phone's queued taps. */
   readonly ask: PadAsk | null;
   /** When this phone's own tap decided the match, on the phone's clock (ms): the start of Undo's 45 s; null if none did. */
@@ -124,6 +127,7 @@ function padOf<S extends SportTypes>(state: MatchState<S>, fold: Folded<S>): Mat
     history: historyOf(state, fold),
     line: lineOf(state, fold),
     toss: sport.notStarted(display) ? state.toss : null,
+    picks: state.picks,
     ask: askViewOf(state),
     decidedAt: state.decidedAt,
   };

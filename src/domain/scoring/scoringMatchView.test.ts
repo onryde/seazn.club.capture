@@ -541,6 +541,16 @@ describe('the Start screen’s pick', () => {
   });
 });
 
+// A sport's pad hook writes a pick over the picks held (S2-4 plan Task 3): the pad hands them to it as they stand.
+describe('the pending picks', () => {
+  it('are the pad’s, as the match holds them, started or not', () => {
+    const picks = { 'order.first': ['p-sharma'] };
+    expect(padOf(ready({ picks }, [])).picks).toBe(picks);
+    expect(padOf(ready({ picks })).picks).toBe(picks);
+    expect(padOf(ready()).picks).toStrictEqual({});
+  });
+});
+
 describe('the match is counted once while a tap is in flight', () => {
   it('a ledger that already holds the sent tap does not score it a second time', () => {
     const read = step(

@@ -19,16 +19,18 @@ import {
  */
 
 /**
- * The save this step owes: the queue if it moved (or a failed save leaves it owed), the boot cache if the bootstrap or
- * the pick did, the ledger if it grew. The key of a tap this step added is named: if the save fails it never happened.
+ * The save this step owes: the queue if it moved (or a failed save leaves it owed), the boot cache if the bootstrap, the
+ * pick or the pending picks did, the ledger if it grew. The key of a tap this step added is named: if the save fails it
+ * never happened.
  */
 export function saveOf(prev: MatchState, next: MatchState): Omit<SaveEffect, 'n'> | null {
   const queueMoved = prev.sync.queue !== next.sync.queue;
-  const bootMoved = prev.bootstrap !== next.bootstrap || prev.toss !== next.toss;
+  const bootMoved =
+    prev.bootstrap !== next.bootstrap || prev.toss !== next.toss || prev.picks !== next.picks;
   const ledgerMoved = prev.sync.ledger !== next.sync.ledger;
   const boot =
     bootMoved && next.bootstrap !== null && next.judge === 'fold'
-      ? { bootstrap: next.bootstrap, toss: next.toss }
+      ? { bootstrap: next.bootstrap, toss: next.toss, picks: next.picks }
       : null;
   if (!queueMoved && boot === null && !ledgerMoved) return null;
   const added = next.sync.queue.pending.find(

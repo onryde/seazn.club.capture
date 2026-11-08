@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BadmintonTap } from '@/domain/scoring/badmintonPad';
-import type { MatchEvent } from '@/domain/scoring/scoringMatchState';
+import { badmintonSport } from '@/domain/scoring/badmintonSport';
+import { foldOfState, type MatchEvent } from '@/domain/scoring/scoringMatchState';
 import { createScoringRunner, type RunnerMode, type ScoringRunner } from '@/hooks/scoringRunner';
 import { SINGLES_SEED } from '@/services/fakeScoringPort';
 import { saveScoringLink } from '@/services/scoringLinkStore';
@@ -811,6 +812,24 @@ describe('caches', () => {
     const boot = await fakes.tapQueue.loadBoot(FIXTURE);
     expect(boot?.toss).toBe('second');
     expect(boot?.bootstrap.sportKey).toBe('badminton');
+  });
+
+  // Review Focus 3 (S2-4 plan Task 3): the picks a scorer made are read back from the boot cache by the next runner.
+  it('a reopened match folds with the picks it was killed with', async () => {
+    const fakes = newFakes();
+    const picks = { 'order.first': ['p-sharma'], 'bowler.i1.1': ['p-chen'] };
+    const { runner } = await rig(fakes);
+    runner.dispatch({ kind: 'setPicks', picks });
+    await runner.stop();
+    const reopened = createScoringRunner(fakes.ports, { fixtureId: FIXTURE, mode: 'focused' });
+    await reopened.start();
+    await flush();
+    const snapshot = reopened.snapshot();
+    if (snapshot.kind !== 'ready') throw new Error('the reopened match is ready');
+    expect(snapshot.state.picks).toStrictEqual(picks);
+    const fold = vi.spyOn(badmintonSport, 'fold');
+    foldOfState(snapshot.state);
+    expect(fold).toHaveBeenCalledWith(expect.objectContaining({ picks }));
   });
 });
 

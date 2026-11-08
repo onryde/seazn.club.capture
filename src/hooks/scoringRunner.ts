@@ -405,6 +405,7 @@ function heldOf(
     ledger: loaded.ledger,
     bootstrap: loaded.boot?.bootstrap ?? null,
     toss: loaded.boot?.toss ?? null,
+    picks: loaded.boot?.picks,
     judge: mode === 'focused' ? 'fold' : 'trust',
     foreground,
     rulesVersion: loaded.boot?.bootstrap.rulesVersion ?? rulesVersion,

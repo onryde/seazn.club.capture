@@ -1,6 +1,15 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { foldBadminton } from '@/domain/scoring/badmintonFold';
 import { badmintonSport } from '@/domain/scoring/badmintonSport';
-import { deadOf, foldQueue, ownIds, type MatchState } from '@/domain/scoring/scoringMatchState';
+import { NO_PICKS } from '@/domain/scoring/pendingPicks';
+import { memoFold } from '@/domain/scoring/scoringMatchFold';
+import {
+  deadOf,
+  foldOfState,
+  foldQueue,
+  ownIds,
+  type MatchState,
+} from '@/domain/scoring/scoringMatchState';
 import { openMatch, step, wakeAt } from '@/domain/scoring/scoringMatch';
 import type { QueuedEvent } from '@/domain/scoring/queue';
 import {
@@ -300,7 +309,7 @@ describe('the Start tap', () => {
         kind: 'save',
         n: 1,
         queue: null,
-        boot: { bootstrap: SINGLES, toss: 'second' },
+        boot: { bootstrap: SINGLES, toss: 'second', picks: NO_PICKS },
         ledger: null,
         tap: null,
       },
@@ -735,15 +744,16 @@ describe('reading the bootstrap', () => {
     expect(deadOf(reopened.state)).toBeNull();
   });
 
-  it('adopts a bootstrap and saves it in the boot cache with the pick', () => {
+  it('adopts a bootstrap and saves it in the boot cache with the pick and the pending picks', () => {
     const read = step(
-      ready({ toss: 'second' }),
+      ready({ toss: 'second', picks: { 'order.first': ['p-sharma'] } }),
       { kind: 'bootstrapRead', bootstrap: { ...SINGLES, screen: 'confirm' } },
       NOW,
     );
     expect(savesOf(read.effects)[0].boot).toEqual({
       bootstrap: { ...SINGLES, screen: 'confirm' },
       toss: 'second',
+      picks: { 'order.first': ['p-sharma'] },
     });
   });
 
@@ -1224,5 +1234,59 @@ describe('the line', () => {
       NOW,
     );
     expect(refused.state.line).toEqual({ kind: 'note', key: 'scoring.pad.countedOnce' });
+  });
+});
+
+// Pending picks (S2-4 plan Task 3, spec §6): choices kept on the phone until a later tap carries them. A `setPicks`
+// replaces the whole map; one equal to the map held changes nothing, so nothing folds again and nothing is saved.
+describe('pending picks', () => {
+  const ORDER = { 'order.first': ['p-sharma'] };
+
+  it('a match opens with none, or with the picks the boot cache kept', () => {
+    expect(ready().picks).toStrictEqual(NO_PICKS);
+    expect(ready({ picks: ORDER }).picks).toBe(ORDER);
+  });
+
+  it('the fold is asked again when picks change and not otherwise', () => {
+    const inner = vi.fn(foldBadminton);
+    const counted = ready({ sport: { ...badmintonSport, fold: memoFold(inner) } });
+    const picked = step(counted, { kind: 'setPicks', picks: ORDER }, NOW).state;
+    foldOfState(picked);
+    const folds = inner.mock.calls.length;
+    expect(inner.mock.calls[folds - 1][0].picks).toStrictEqual(ORDER);
+    const again = step(picked, { kind: 'setPicks', picks: { 'order.first': ['p-sharma'] } }, NOW);
+    foldOfState(again.state);
+    expect(inner.mock.calls.length).toBe(folds);
+    expect(again.state.picks).toBe(picked.picks);
+    const moved = step(
+      again.state,
+      { kind: 'setPicks', picks: { 'order.first': ['p-chen'] } },
+      NOW,
+    );
+    foldOfState(moved.state);
+    expect(inner.mock.calls.length).toBe(folds + 1);
+    expect(inner.mock.calls[folds][0].picks).toStrictEqual({ 'order.first': ['p-chen'] });
+  });
+
+  it('a pick before the match is held is nothing: no bootstrap, nothing folds', () => {
+    const loading = opened({ bootstrap: null });
+    const result = step(loading, { kind: 'setPicks', picks: ORDER }, NOW);
+    expect(result.state.picks).toStrictEqual(NO_PICKS);
+    expect(result.effects).toEqual([]);
+  });
+
+  it('Undo never changes picks: not of a queued tap, nor of the start', () => {
+    const picked = step(ready({}, []), { kind: 'setPicks', picks: ORDER }, NOW).state;
+    const started = drive(picked, [
+      { kind: 'tap', tap: { kind: 'start', server: 'first' }, key: 's1', at: AT },
+      { kind: 'saved', n: 2 },
+    ]).state;
+    const undoneStart = step(started, { kind: 'undo', key: 'u1', at: AT }, NOW);
+    expect(undoneStart.outcome).toEqual({ ok: true });
+    expect(undoneStart.state.picks).toBe(picked.picks);
+    const rallied = tappedOnce(step(ready(), { kind: 'setPicks', picks: ORDER }, NOW).state).state;
+    const undoneRally = step(rallied, { kind: 'undo', key: 'u2', at: AT }, NOW);
+    expect(undoneRally.outcome).toEqual({ ok: true });
+    expect(undoneRally.state.picks).toStrictEqual(ORDER);
   });
 });
