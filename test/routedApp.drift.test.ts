@@ -255,8 +255,15 @@ describe('every path the navigation moves to has its route file, and each Settin
     (match) => match[1] ?? '',
   );
 
-  it('reads five paths from the port (anti-vacuity)', () => {
-    expect(paths).toEqual(['/', '/stream', '/stream/settings', '/settings', '/scoring']);
+  it('reads six paths from the port (anti-vacuity)', () => {
+    expect(paths).toEqual([
+      '/',
+      '/stream',
+      '/stream/settings',
+      '/settings',
+      '/scoring',
+      '/matchday',
+    ]);
   });
 
   it('finds a file for each', () => {
@@ -266,6 +273,7 @@ describe('every path the navigation moves to has its route file, and each Settin
       'app/stream/settings.tsx',
       'app/settings.tsx',
       'app/scoring/index.tsx',
+      'app/matchday/index.tsx',
     ]);
   });
 
@@ -387,6 +395,13 @@ describe('every path the navigation moves to has its route file, and each Settin
     expect(body('app/settings.tsx', 'AppSettingsRoute')).toMatch(/return <AppSettingsScreen ?\/>;/);
     expect(body('app/stream/settings.tsx', 'StreamSettingsRoute')).toMatch(
       /return <SettingsScreen ?\/>;/,
+    );
+  });
+
+  // MD-2 Task 3: the thin route `routedApp` stands in for renders the Match Day screen, and nothing else yet.
+  it('renders the Match Day screen on its own route', () => {
+    expect(body('app/matchday/index.tsx', 'MatchDayRoute').trim()).toMatch(
+      /^function MatchDayRoute\(\) \{\s*return <MatchDayScreen ?\/>;\s*\}$/,
     );
   });
 });
