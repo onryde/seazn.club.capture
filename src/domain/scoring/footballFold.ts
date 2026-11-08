@@ -49,7 +49,12 @@ import { voidedIn, voidsAgain } from '@/domain/scoring/setBasedFold';
 import type { LedgerEntry } from '@/domain/scoring/setBasedLedgerHistory';
 import { seatsOf, type Seats } from '@/domain/scoring/setBasedSides';
 import { undoTarget } from '@/domain/scoring/undoTarget';
-import { matchContextOf, type Bootstrap, type BootstrapSide } from '@/domain/scoring/wire';
+import {
+  matchContextOf,
+  type Bootstrap,
+  type BootstrapSide,
+  type LedgerEvent,
+} from '@/domain/scoring/wire';
 
 /**
  * A football match on the pad (S2-5 design §4, §6, §7; plan P Task 6): the server's ledger with this phone's queued taps
@@ -104,6 +109,20 @@ export function foldFootball(input: SportFoldInput): SportFold<FootballTypes> {
     // History's grouping and words are the pad's (Task 8, `footballHistory`).
     history: [],
   };
+}
+
+/**
+ * The engine's phase after the server's ledger alone (no queued taps), folded with the bootstrap's config and team
+ * sheets: what a send judges its stamp against (design §7.3). Null when the bootstrap or the ledger does not fold.
+ */
+export function footballLedgerPhase(
+  bootstrap: Bootstrap,
+  ledger: readonly LedgerEvent[],
+): string | null {
+  const match = matchOf(bootstrap);
+  if (typeof match === 'string') return null;
+  const envelopes = ledger.map((event) => envelopeOf(match.engine.fixtureId, event));
+  return foldOf(match.engine, envelopes)?.state.phase ?? null;
 }
 
 // ---------------------------------------------------------------------------------------------------------------

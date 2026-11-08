@@ -31,10 +31,12 @@ export type QueuedEvent = {
    */
   readonly voidsKey?: string;
   /**
-   * The score a tap's `serving` was made at: the number of standing score events (points and game scores) in the phone's
-   * view when it was tapped, set by a sport whose `serving` is valid only at that score (`SportEvent.base`). The sport's
-   * send compares it with the ledger's count and drops `serving` if they differ. Absent on a tap that names no
-   * `serving`, on a tap of a sport that sets none, and on a queue file written before it existed.
+   * A whole number the tap's payload was made at, set by the sport (`SportEvent.base`) and read only by its send
+   * (`payloadForSend`); never sent, never rewritten. Table tennis: the score a tap's `serving` was made at, the number of
+   * standing score events in the phone's view when it was tapped; the send drops `serving` if the ledger's count
+   * differs. Football: the clock reading a Start was made at; the send adds the time it waited in the queue to it, so a
+   * retry, which re-reads this and not the payload the last send wrote, never adds it twice. Absent on a tap of a sport
+   * that sets none, on a tap that needs none, and on a queue file written before it existed.
    */
   readonly base?: number;
 };

@@ -58,8 +58,10 @@ export type SportFold<S extends SportTypes> =
   | { readonly kind: 'unfoldable'; readonly reason: Unfoldable };
 
 /**
- * A tap as the event the server records. `base` is optional and a sport's to set: the score count its payload was made
- * at, which the runtime keeps on the queued tap (`QueuedEvent.base`) for the sport's `payloadForSend` to read.
+ * A tap as the event the server records. `base` is optional and a sport's to set: a whole number the payload was made
+ * at (table tennis's score count, football's clock reading), which the runtime keeps on the queued tap
+ * (`QueuedEvent.base`) for the sport's `payloadForSend` to read. It is never sent and never rewritten, so a send that
+ * fails and is made again reads the same base as the first.
  */
 export type SportEvent = {
   readonly type: string;
@@ -90,9 +92,16 @@ export interface ScoringSport<S extends SportTypes> {
   /**
    * The payload a queued tap is sent with now, given the ledger (a send may drop what is stale). `copied` is whether the
    * ledger holds the server's copy of the tap (the match's `copiesOf`): a tap sent before keeps what it was first sent
-   * with only while it does, since the server matches a resend by its key and never its payload.
+   * with only while it does, since the server matches a resend by its key and never its payload. `send` is when the send
+   * is made and the bootstrap the match holds (`SportSendContext`). What it returns is written back into the queue, so
+   * a payload that depends on `send.now` must be made from the tap's own fields (`base`), never from the last payload.
    */
-  payloadForSend(queued: QueuedEvent, ledger: readonly LedgerEvent[], copied: boolean): unknown;
+  payloadForSend(
+    queued: QueuedEvent,
+    ledger: readonly LedgerEvent[],
+    copied: boolean,
+    send: SportSendContext,
+  ): unknown;
 
   // A tap.
   /** The side a tap picks to serve first (the Start tap's), which the match keeps; null for every other tap. */
@@ -120,6 +129,15 @@ export interface ScoringSport<S extends SportTypes> {
   /** The pad the kit draws for the display; `sync` is the transport's word, not the match's. */
   pad(display: S['display'], sync: PadSync): PadView<S['padKey']>;
 }
+
+/**
+ * When a send is made: `now` is the runtime's clock (epoch ms, the clock a tap's `createdAt` is written on), and
+ * `bootstrap` the one the match holds, or null before one is.
+ */
+export type SportSendContext = {
+  readonly now: number;
+  readonly bootstrap: Bootstrap | null;
+};
 
 /** What a tap is made on: the match, and the display the scorer saw. */
 export type SportEventContext<S extends SportTypes> = {
