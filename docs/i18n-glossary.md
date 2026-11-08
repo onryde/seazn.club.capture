@@ -527,6 +527,9 @@ all four. A counted word (`.one` / `.other`) is picked by the language's plural 
 | Match tied / Match drawn / No result | Empate / Partido inconcluso / Sin resultado | Égalité / Match nul / Aucun résultat | Gelijkspel / Onbeslist / Geen resultaat | `result.tie` / `.draw` / `.no_result`: no winner named.                                           |
 | Unlimited                            | Sin límite                                  | Illimité                             | Onbeperkt                               | `rules.overs.unlimited`: a format with no overs limit (two innings a side).                       |
 | Team sheet changed                   | Alineación cambiada                         | Composition modifiée                 | Opstelling gewijzigd                    | `event.lineup`: every `core.lineup.*` event's row.                                                |
+| Need {runs} off {count} balls        | Faltan {runs} en {count} bolas              | Besoin de {runs} en {count} balles   | Nog {runs} nodig uit {count} ballen     | `board.chase` (counted); `board.need` "Need {runs}" with no ball limit.                           |
+| On strike                            | Al bate                                     | Face au lanceur                      | Aan slag                                | `board.onStrike`: the striker's dot, as a screen reader names it.                                 |
+| Free hit / Over {number}             | Free hit / Over {number}                    | Free hit / Over {number}             | Free hit / Over {number}                | `board.freeHit`, `board.over`: the game's own words in all four.                                  |
 
 ## App settings (2026-11-02)
 

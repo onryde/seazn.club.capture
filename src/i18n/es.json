@@ -672,5 +672,12 @@
   "scoring.cricket.result.no_result": "Sin resultado",
   "scoring.cricket.result.double_walkover": "Doble incomparecencia",
   "scoring.cricket.tallySaid": "Marcador: {score}",
-  "scoring.cricket.tallyNone": "Sin marcador aún"
+  "scoring.cricket.tallyNone": "Sin marcador aún",
+  "scoring.cricket.board.overs": "({overs} ov)",
+  "scoring.cricket.board.chase.one": "Faltan {runs} en {count} bola",
+  "scoring.cricket.board.chase.other": "Faltan {runs} en {count} bolas",
+  "scoring.cricket.board.need": "Faltan {runs}",
+  "scoring.cricket.board.freeHit": "Free hit",
+  "scoring.cricket.board.over": "Over {number}",
+  "scoring.cricket.board.onStrike": "Al bate"
 }

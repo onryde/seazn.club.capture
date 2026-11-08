@@ -672,5 +672,12 @@
   "scoring.cricket.result.no_result": "No result",
   "scoring.cricket.result.double_walkover": "Double walkover",
   "scoring.cricket.tallySaid": "Score: {score}",
-  "scoring.cricket.tallyNone": "No score yet"
+  "scoring.cricket.tallyNone": "No score yet",
+  "scoring.cricket.board.overs": "({overs} ov)",
+  "scoring.cricket.board.chase.one": "Need {runs} off {count} ball",
+  "scoring.cricket.board.chase.other": "Need {runs} off {count} balls",
+  "scoring.cricket.board.need": "Need {runs}",
+  "scoring.cricket.board.freeHit": "Free hit",
+  "scoring.cricket.board.over": "Over {number}",
+  "scoring.cricket.board.onStrike": "On strike"
 }

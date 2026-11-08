@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, type ReactNode } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import {
   cardPlacement,
@@ -60,16 +60,21 @@ export type PadContentModel = {
  * Undo, and the tools. A card that replaces the score stands where the halves were; one that goes with it (a recorded
  * result, view only) stands above them; the update banner stands where the last-tap line and the tools were
  * (`cardPlacement`). Until the match starts, the Start screen stands where the halves are, with no last-tap line and no
- * tools (owner, 2026-11-01, option A). `covered` hides the pad from a screen reader while a sheet shows. Lifted from
+ * tools (owner, 2026-11-01, option A). `covered` hides the pad from a screen reader while a sheet shows. A sport that
+ * draws its own board (cricket; football's the same interface) hands it in as `body`: drawn in the halves' place, under a
+ * card that goes with the score, and never over a card that stands instead of it or over the Start screen. Lifted from
  * badminton's screen for table tennis's (plan S2-2 Task 8, design §6); the screen of each sport keeps its own frame (what
  * holds the screen on) and its own sheets.
  */
 export const PadContent = memo(function PadContent({
   model,
   covered,
+  body,
 }: {
   readonly model: PadContentModel;
   readonly covered: boolean;
+  /** What stands in the halves' place, for a sport with a board of its own; the halves without it. */
+  readonly body?: ReactNode;
 }) {
   const { view, line, cardNote, flash, toss, actions } = model;
   const known = matchKnown(view.card);
@@ -83,7 +88,7 @@ export const PadContent = memo(function PadContent({
       <PadHeader sync={view.sync} tally={view.tally} known={known} actions={actions} />
       <PadStrip items={view.strip} />
       {view.start === null ? (
-        <PadBody view={view} flash={flash} onTap={actions.tapHalf} />
+        <PadBody view={view} flash={flash} onTap={actions.tapHalf} body={body} />
       ) : (
         <StartPanel start={view.start} details={view.details} toss={toss} actions={actions} />
       )}
@@ -176,10 +181,12 @@ const PadBody = memo(function PadBody({
   view,
   flash,
   onTap,
+  body,
 }: {
   readonly view: PadView<MessageKey>;
   readonly flash: HalfFlash;
   readonly onTap: (side: PadSide) => void;
+  readonly body: ReactNode;
 }) {
   const card = view.card?.kind === 'updateNeeded' ? null : view.card;
   if (card !== null && cardPlacement(card) === 'instead') {
@@ -194,11 +201,28 @@ const PadBody = memo(function PadBody({
   return (
     <View style={styles.body}>
       {card === null ? null : <PadStateCard card={card} />}
-      <ScoreHalf half={view.halves[0]} flash={flashCue(flash, 'first')} onTap={onTap} />
-      <ScoreHalf half={view.halves[1]} flash={flashCue(flash, 'second')} onTap={onTap} />
+      {body === undefined ? <Halves view={view} flash={flash} onTap={onTap} /> : body}
     </View>
   );
 });
+
+/** The two halves, the first side's on top: a tap on one gives that side the rally, and a tap that counted flashes it. */
+function Halves({
+  view,
+  flash,
+  onTap,
+}: {
+  readonly view: PadView<MessageKey>;
+  readonly flash: HalfFlash;
+  readonly onTap: (side: PadSide) => void;
+}) {
+  return (
+    <>
+      <ScoreHalf half={view.halves[0]} flash={flashCue(flash, 'first')} onTap={onTap} />
+      <ScoreHalf half={view.halves[1]} flash={flashCue(flash, 'second')} onTap={onTap} />
+    </>
+  );
+}
 
 /**
  * The Start screen (owner, 2026-11-01, option A), in the halves' place until the match starts: the match card, who

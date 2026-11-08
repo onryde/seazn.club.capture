@@ -408,6 +408,18 @@ const base = {
    * where it has 94 dp a line (padFit.test.ts).
    */
   padMatchPlateMax: 112,
+  /**
+   * The cricket board's regions (S2-4 spec §5 rows 2 to 4; plan Task 8, preflight D1), `space.sm` apart: each a fixed
+   * height, so nothing moves as an over fills, a wicket falls or a chase starts. The score panel is the score in
+   * `scoreCompact` (68), then the innings line and the chase line in `control` (18 each), `space.xs` between them.
+   */
+  scorePanel: 112,
+  /** A crease row (a batter, or the bowler): one line of `label` (22) with `space.xs` above and below. */
+  creaseRow: 30,
+  /** This over: its label in `metricUnit` (16), `space.xs`, then the row of chips, each `overStrip` less those two tall. */
+  overStrip: 48,
+  /** A delivery's chip on the over strip: one width for every chip ("·", "4", "7nb", "11p"), so the strip never shifts. */
+  overChip: 32,
 } as const;
 
 /** The cells the controls half's width is made of (`base` holds the shipped ones). */

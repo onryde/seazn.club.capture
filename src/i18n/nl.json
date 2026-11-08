@@ -672,5 +672,12 @@
   "scoring.cricket.result.no_result": "Geen resultaat",
   "scoring.cricket.result.double_walkover": "Dubbel forfait",
   "scoring.cricket.tallySaid": "Stand: {score}",
-  "scoring.cricket.tallyNone": "Nog geen stand"
+  "scoring.cricket.tallyNone": "Nog geen stand",
+  "scoring.cricket.board.overs": "({overs} ov)",
+  "scoring.cricket.board.chase.one": "Nog {runs} nodig uit {count} bal",
+  "scoring.cricket.board.chase.other": "Nog {runs} nodig uit {count} ballen",
+  "scoring.cricket.board.need": "Nog {runs} nodig",
+  "scoring.cricket.board.freeHit": "Free hit",
+  "scoring.cricket.board.over": "Over {number}",
+  "scoring.cricket.board.onStrike": "Aan slag"
 }

@@ -1,4 +1,5 @@
 import { fireEvent, screen, within } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { badmintonPad, type BadmintonDisplay } from '@/domain/scoring/badmintonPad';
 import type { PadSide, PadStart, PadStartSide, PadView } from '@/domain/scoring/padView';
@@ -6,6 +7,7 @@ import type { MessageKey } from '@/i18n/messages';
 import dutch from '@/i18n/nl.json';
 import en from '@/i18n/en.json';
 import { PadContent, type PadContentActions } from '@/ui/components/PadContent';
+import { Text } from '@/ui/components/Text';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
 // The Start screen of the set-based kit (plan S2-3 Task 2): a sport with a serve pick asks who serves first and keeps
@@ -230,5 +232,56 @@ describe('PadContent: the Start screen shows the sides’ plates when there is n
       dutch['scoring.sanction.penalty'],
     );
     expect(dutch['scoring.sanction.penalty']).not.toBe(en['scoring.sanction.penalty']);
+  });
+});
+
+/**
+ * A sport that draws its own board (cricket, S2-4 plan Task 8; football's the same interface): `body` stands in the halves'
+ * place, under a card that goes with the score; never over a card that stands instead of it, nor over the Start screen.
+ */
+describe('PadContent: a body in the halves’ place', () => {
+  const BODY = <Text variant="body">The board</Text>;
+  const LIVE: PadView<MessageKey> = { ...badmintonPad({ ...SINGLES, phase: 'live' }), start: null };
+
+  function renderBody(view: PadView<MessageKey>, body?: ReactNode) {
+    const { actions } = actionsOf();
+    renderWithPorts(
+      <PadContent
+        model={{ view, line: null, cardNote: null, flash: null, toss: null, actions }}
+        covered={false}
+        body={body}
+      />,
+    );
+  }
+
+  it('PadContent draws body in the halves’ place, and not over an instead card or the Start screen', () => {
+    renderBody(LIVE, BODY);
+    expect(screen.getByText('The board')).toBeTruthy();
+    expect(screen.queryByTestId('half-first')).toBeNull();
+    expect(screen.queryByTestId('half-second')).toBeNull();
+  });
+
+  it('draws the halves without one, as every set-based sport', () => {
+    renderBody(LIVE);
+    expect(screen.getByTestId('half-first')).toBeTruthy();
+    expect(screen.getByTestId('half-second')).toBeTruthy();
+  });
+
+  it('keeps a card that goes with the score above the body', () => {
+    renderBody({ ...LIVE, card: { kind: 'resultRecorded', undoLeft: null } }, BODY);
+    expect(screen.getByText('The board')).toBeTruthy();
+    expect(screen.getByText(en['scoring.card.resultRecorded.title'])).toBeTruthy();
+  });
+
+  it('draws no body under a card that stands instead of the score', () => {
+    renderBody({ ...LIVE, card: { kind: 'linkInvalid' } }, BODY);
+    expect(screen.queryByText('The board')).toBeNull();
+    expect(screen.getByTestId('pad-card-scroll')).toBeTruthy();
+  });
+
+  it('draws no body under the Start screen', () => {
+    renderBody(viewNeeding(false), BODY);
+    expect(screen.queryByText('The board')).toBeNull();
+    expect(screen.getByTestId('start-screen')).toBeTruthy();
   });
 });

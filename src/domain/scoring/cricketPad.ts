@@ -1,7 +1,20 @@
-import { doneSaid, undoneSaid, type CricketWords } from '@/domain/scoring/cricketHistory';
+import {
+  doneSaid,
+  headingOf,
+  oversText,
+  undoneSaid,
+  type CricketWords,
+} from '@/domain/scoring/cricketHistory';
 import { cricketResultWords } from '@/domain/scoring/cricketResult';
 import { cricketRuleRows } from '@/domain/scoring/cricketRules';
-import type { CricketDisplay, CricketPadKey } from '@/domain/scoring/cricketTypes';
+import type {
+  BatterLine,
+  CricketBowler,
+  CricketDisplay,
+  CricketInnings,
+  CricketPadKey,
+  OverChip,
+} from '@/domain/scoring/cricketTypes';
 import {
   withCard,
   type PadHalf,
@@ -10,6 +23,7 @@ import {
   type PadStateCard,
   type PadSync,
   type PadTally,
+  type PadText,
   type PadView,
 } from '@/domain/scoring/padView';
 import { padMarks } from '@/domain/scoring/setBasedPad';
@@ -127,4 +141,70 @@ function lastTapOf(display: CricketDisplay): PadLastTap<CricketPadKey> | null {
   const words = wordsOf(display);
   if (did.kind === 'undone') return { text: undoneSaid(did.tap, words), undo: false };
   return { text: doneSaid(did, words), undo: display.undoable };
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The board (plan Task 8): what the screen draws in the halves' place
+// ---------------------------------------------------------------------------------------------------------------
+
+/** A batter at the crease as the board lists them, and whether they face the next ball (the board's lime dot). */
+export type CreaseLine = BatterLine & { readonly striker: boolean };
+
+/** The score panel: runs/wickets, the overs bowled ("1.5"), the innings and the side batting, and the chase while one stands. */
+export type BoardScore = {
+  readonly runs: number;
+  readonly wickets: number;
+  readonly overs: string;
+  readonly innings: PadText<CricketPadKey>;
+  readonly chase: PadText<CricketPadKey> | null;
+};
+
+/**
+ * The cricket board (S2-4 spec §5 rows 2 to 4), read only: the score of the innings now, the crease (striker first,
+ * marked), the bowler with O-M-R-W, this over's deliveries, and a free hit when one is due. No score before an innings
+ * is due; no crease or bowler until they are picked. Every fact is the display's, which is the engine's fold.
+ */
+export type CricketBoardView = {
+  readonly score: BoardScore | null;
+  readonly crease: readonly [CreaseLine, CreaseLine] | null;
+  readonly bowler: CricketBowler | null;
+  readonly over: { readonly number: number; readonly chips: readonly OverChip[] };
+  readonly status: PadText<CricketPadKey> | null;
+};
+
+export function cricketBoard(display: CricketDisplay): CricketBoardView {
+  const { crease } = display;
+  return {
+    score: display.innings === null ? null : scoreOfInnings(display, display.innings),
+    crease:
+      crease === null
+        ? null
+        : [
+            { ...crease.striker, striker: true },
+            { ...crease.nonStriker, striker: false },
+          ],
+    bowler: display.bowler,
+    over: display.over,
+    status: display.freeHit ? { key: 'scoring.cricket.board.freeHit' } : null,
+  };
+}
+
+function scoreOfInnings(display: CricketDisplay, innings: CricketInnings): BoardScore {
+  const words = wordsOf(display);
+  return {
+    runs: innings.runs,
+    wickets: innings.wickets,
+    overs: oversText(innings.legalBalls, display.cfg.ballsPerOver),
+    innings: headingOf({ ordinal: innings.ordinal, batting: innings.batting }, words),
+    chase: display.stage === 'decided' ? null : chaseOf(innings),
+  };
+}
+
+/** "Need 9 off 12 balls", or "Need 9" in an innings with no ball limit; nothing when no chase stands. */
+function chaseOf(innings: CricketInnings): PadText<CricketPadKey> | null {
+  const { chase } = innings;
+  if (chase === null) return null;
+  const runs = chase.need;
+  if (chase.balls === null) return { key: 'scoring.cricket.board.need', vars: { runs } };
+  return { key: 'scoring.cricket.board.chase.other', count: chase.balls, vars: { runs } };
 }
