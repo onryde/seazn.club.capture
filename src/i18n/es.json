@@ -724,5 +724,19 @@
   "scoring.cricket.wicket.isFielder": "Ya es el jugador de campo",
   "scoring.cricket.wicket.retired": "Retirado, no eliminado",
   "scoring.cricket.wicket.nonStriker": "Al otro extremo",
-  "scoring.cricket.wicket.nextInOrder": "Siguiente en el orden"
+  "scoring.cricket.wicket.nextInOrder": "Siguiente en el orden",
+  "scoring.cricket.bowling.title": "Over {number}: lanzador",
+  "scoring.cricket.bowling.body": "{team} lanza · cifras O-M-R-W",
+  "scoring.cricket.bowling.lastOver": "Lanzó el último over",
+  "scoring.cricket.bowling.outOfOvers": "Sin overs ({max})",
+  "scoring.cricket.bowling.none": "Nadie puede lanzar este over. Pregunta al organizador.",
+  "scoring.cricket.bowling.totals": "Introducir totales por over",
+  "scoring.cricket.bowling.undo": "Deshacer la última bola",
+  "scoring.cricket.change.title": "¿Quién termina el over?",
+  "scoring.cricket.change.why": "¿Por qué el cambio?",
+  "scoring.cricket.change.reason.incapacitated": "Lesionado o enfermo",
+  "scoring.cricket.change.reason.suspended": "Suspendido",
+  "scoring.cricket.change.reason.other": "Otro",
+  "scoring.cricket.more.change": "Cambiar lanzador (lesión)",
+  "scoring.cricket.more.swap": "Intercambiar bateadores"
 }

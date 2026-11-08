@@ -36,7 +36,7 @@ export function CricketPadScreen({ model }: { readonly model: CricketPadModel })
         body={<CricketBody model={model} keys={keys} />}
         lineUndo={!keys}
       />
-      <PadSheet sheet={sheet} actions={model.actions} />
+      <PadSheet sheet={sheet} undo={view.lastTap?.undo === true} actions={model.actions} />
     </View>
   );
 }
@@ -53,7 +53,7 @@ function CricketBody({ model, keys }: { readonly model: CricketPadModel; readonl
         <CricketKeys
           undo={view.lastTap?.undo === true}
           undoCell={hasUndoCell(view.card)}
-          onMore={null}
+          onMore={model.more ? actions.openMore : null}
           disabled={sheet !== null}
           actions={actions}
         />
@@ -62,12 +62,17 @@ function CricketBody({ model, keys }: { readonly model: CricketPadModel; readonl
   );
 }
 
-/** The sheet over the pad: Match details, History, a step, or the reconnect question and its confirm. */
+/**
+ * The sheet over the pad: Match details, History, a step, or the reconnect question and its confirm. The over-end sheet
+ * stands by itself: its way back is Undo of this phone's last ball, when there is one (the owner-tested preview's).
+ */
 const PadSheet = memo(function PadSheet({
   sheet,
+  undo,
   actions,
 }: {
   readonly sheet: CricketSheetView | null;
+  readonly undo: boolean;
   readonly actions: CricketPadActions;
 }) {
   if (sheet === null) return null;
@@ -79,7 +84,14 @@ const PadSheet = memo(function PadSheet({
     case 'ask':
       return <AskSheet ask={sheet.ask} onSend={actions.sendTaps} onDiscard={actions.askDiscard} />;
     case 'step':
-      return (
+      return sheet.standing ? (
+        <CricketStepSheet
+          step={sheet.step}
+          onChoose={actions.choose}
+          onCancel={undo ? actions.undo : null}
+          cancelKey="scoring.cricket.bowling.undo"
+        />
+      ) : (
         <CricketStepSheet step={sheet.step} onChoose={actions.choose} onCancel={actions.dismiss} />
       );
     case 'discard':

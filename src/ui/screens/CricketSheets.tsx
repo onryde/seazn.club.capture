@@ -16,23 +16,27 @@ import { colour, space } from '@/ui/theme/tokens';
  * pad. Choices in a group (an extra's runs: "Runs run", "Off the bat") are a row of keys under the group's name; any
  * other is a full-width row (the kit's `StepRow`, rulings 82 and 85). The choices scroll when they are taller than the
  * room (eleven fielders), and Cancel stays under them. Cancel, the dim and Back close it with nothing recorded; there is
- * no timer. Modal to a screen reader: native reads `accessibilityViewIsModal`, react-native-web `aria-modal`.
+ * no timer. A sheet that stands by itself (the over-end sheet) names its own way back (`cancelKey`: "Undo last ball"),
+ * or has none (`onCancel` null), and then the dim takes no tap. Modal to a screen reader: native reads
+ * `accessibilityViewIsModal`, react-native-web `aria-modal`.
  */
 export const CricketStepSheet = memo(function CricketStepSheet({
   step,
   onChoose,
   onCancel,
+  cancelKey = 'scoring.sheet.cancel',
 }: {
   readonly step: CricketStep;
   readonly onChoose: (id: string) => void;
-  readonly onCancel: () => void;
+  readonly onCancel: (() => void) | null;
+  readonly cancelKey?: MessageKey;
 }) {
   const { t } = useT();
   const words = usePadText();
   const parts = useMemo(() => partsOf(step.options), [step.options]);
   return (
     <View style={padSheet.overlay}>
-      <Pressable aria-hidden onPress={onCancel} style={padSheet.dim} />
+      <Pressable aria-hidden onPress={onCancel ?? undefined} style={padSheet.dim} />
       <View
         testID="step-sheet"
         accessibilityViewIsModal
@@ -48,7 +52,7 @@ export const CricketStepSheet = memo(function CricketStepSheet({
             <StepPart key={part.key} part={part} onChoose={onChoose} />
           ))}
         </ScrollView>
-        <GhostButton label={t('scoring.sheet.cancel')} onPress={onCancel} />
+        {onCancel === null ? null : <GhostButton label={t(cancelKey)} onPress={onCancel} />}
       </View>
     </View>
   );

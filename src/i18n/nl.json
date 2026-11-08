@@ -724,5 +724,19 @@
   "scoring.cricket.wicket.isFielder": "Is al de veldspeler",
   "scoring.cricket.wicket.retired": "Teruggetrokken, niet uit",
   "scoring.cricket.wicket.nonStriker": "Aan de overkant",
-  "scoring.cricket.wicket.nextInOrder": "Volgende in de volgorde"
+  "scoring.cricket.wicket.nextInOrder": "Volgende in de volgorde",
+  "scoring.cricket.bowling.title": "Over {number}: bowler",
+  "scoring.cricket.bowling.body": "{team} bowlt · cijfers O-M-R-W",
+  "scoring.cricket.bowling.lastOver": "Bowlde de vorige over",
+  "scoring.cricket.bowling.outOfOvers": "Geen overs meer ({max})",
+  "scoring.cricket.bowling.none": "Niemand mag deze over bowlen. Vraag het de organisator.",
+  "scoring.cricket.bowling.totals": "Overtotalen invoeren",
+  "scoring.cricket.bowling.undo": "Laatste bal ongedaan maken",
+  "scoring.cricket.change.title": "Wie maakt de over af?",
+  "scoring.cricket.change.why": "Waarom de wissel?",
+  "scoring.cricket.change.reason.incapacitated": "Geblesseerd of ziek",
+  "scoring.cricket.change.reason.suspended": "Geschorst",
+  "scoring.cricket.change.reason.other": "Anders",
+  "scoring.cricket.more.change": "Bowler wisselen (blessure)",
+  "scoring.cricket.more.swap": "Slag wisselen"
 }

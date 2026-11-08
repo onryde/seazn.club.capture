@@ -1,6 +1,13 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { SheetExtra } from '@/domain/scoring/cricketExtras';
-import { flowChoice, flowStep, outFlow, type CricketFlow } from '@/domain/scoring/cricketFlow';
+import {
+  flowChoice,
+  flowStep,
+  moreFlow,
+  outFlow,
+  standingFlow,
+  type CricketFlow,
+} from '@/domain/scoring/cricketFlow';
 import type { CricketPick } from '@/domain/scoring/cricketPicks';
 import type {
   CricketDisplay,
@@ -33,11 +40,14 @@ export type CricketSheetSnapshot = AskFacts & {
   readonly display: CricketDisplay;
 };
 
-/** What is over the pad: a step is the domain's, which the screen draws (`CricketStepSheet`). */
+/**
+ * What is over the pad: a step is the domain's, which the screen draws (`CricketStepSheet`). A standing step (the
+ * over-end sheet) was opened by no key and has no Cancel: it goes when its choice is made or the last ball is undone.
+ */
 export type CricketSheetView =
   | { readonly kind: 'details'; readonly details: PadMatchDetails<CricketPadKey> }
   | { readonly kind: 'history'; readonly groups: readonly PadHistoryGroup<CricketPadKey>[] }
-  | { readonly kind: 'step'; readonly step: CricketStep }
+  | { readonly kind: 'step'; readonly step: CricketStep; readonly standing: boolean }
   | AskView;
 
 type Sheet =
@@ -109,10 +119,11 @@ export function useCricketSheets(
     [openFlow],
   );
   const openOut = useCallback(() => openFlow(outFlow()), [openFlow]);
+  const openMore = useCallback(() => openFlow(moreFlow()), [openFlow]);
   const choose = useChoose({ sheet, snapshot, justShown, taps, send, setSheet });
   const actions = useMemo(
-    () => ({ details, history, dismiss, askDiscard, openExtras, openOut, choose }),
-    [details, history, dismiss, askDiscard, openExtras, openOut, choose],
+    () => ({ details, history, dismiss, askDiscard, openExtras, openOut, openMore, choose }),
+    [details, history, dismiss, askDiscard, openExtras, openOut, openMore, choose],
   );
   return { open: sheet !== null, cancel, actions, view, justShown };
 }
@@ -134,8 +145,15 @@ function useChoose({ sheet, snapshot, justShown, taps, send, setSheet }: ChooseP
   const { opening, choose } = taps;
   return useCallback(
     (id: string) => {
-      if (sheet?.kind !== 'flow' || snapshot === null || justShown()) return;
-      const outcome = flowChoice(sheet.flow, snapshot.display, id);
+      if (snapshot === null || justShown()) return;
+      const flow =
+        sheet?.kind === 'flow'
+          ? sheet.flow
+          : sheet === null
+            ? standingFlow(snapshot.display)
+            : null;
+      if (flow === null) return;
+      const outcome = flowChoice(flow, snapshot.display, id);
       if (outcome === null) return;
       if (outcome.kind === 'next') {
         setSheet({ kind: 'flow', flow: outcome.flow });
@@ -170,7 +188,12 @@ function sheetView(sheet: Sheet, snapshot: CricketSheetSnapshot | null): Cricket
   // The reconnect question stands over everything while it stands, and its confirm over it.
   const asked = askedView(sheet?.kind, snapshot);
   if (asked !== null) return asked;
-  if (sheet === null) return null;
+  if (sheet === null) {
+    const standing = standingFlow(snapshot.display);
+    return standing === null
+      ? null
+      : { kind: 'step', step: flowStep(standing, snapshot.display), standing: true };
+  }
   switch (sheet.kind) {
     case 'details':
       return { kind: 'details', details: snapshot.details };
@@ -179,6 +202,6 @@ function sheetView(sheet: Sheet, snapshot: CricketSheetSnapshot | null): Cricket
     case 'discard':
       return null;
     case 'flow':
-      return { kind: 'step', step: flowStep(sheet.flow, snapshot.display) };
+      return { kind: 'step', step: flowStep(sheet.flow, snapshot.display), standing: false };
   }
 }

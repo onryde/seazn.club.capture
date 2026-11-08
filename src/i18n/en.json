@@ -724,5 +724,19 @@
   "scoring.cricket.wicket.isFielder": "Already the fielder",
   "scoring.cricket.wicket.retired": "Retired not out",
   "scoring.cricket.wicket.nonStriker": "Non-striker",
-  "scoring.cricket.wicket.nextInOrder": "Next in order"
+  "scoring.cricket.wicket.nextInOrder": "Next in order",
+  "scoring.cricket.bowling.title": "Over {number} — next bowler",
+  "scoring.cricket.bowling.body": "{team} bowling · figures O-M-R-W",
+  "scoring.cricket.bowling.lastOver": "Bowled the last over",
+  "scoring.cricket.bowling.outOfOvers": "Out of overs ({max})",
+  "scoring.cricket.bowling.none": "Nobody can bowl this over. Ask the organiser.",
+  "scoring.cricket.bowling.totals": "Enter over totals",
+  "scoring.cricket.bowling.undo": "Undo last ball",
+  "scoring.cricket.change.title": "Who finishes the over?",
+  "scoring.cricket.change.why": "Why the change?",
+  "scoring.cricket.change.reason.incapacitated": "Injured or ill",
+  "scoring.cricket.change.reason.suspended": "Suspended",
+  "scoring.cricket.change.reason.other": "Other",
+  "scoring.cricket.more.change": "Change bowler (injury)",
+  "scoring.cricket.more.swap": "Swap strike"
 }

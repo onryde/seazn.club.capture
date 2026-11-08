@@ -1,7 +1,13 @@
 import { act, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import en from '@/i18n/en.json';
-import { liveCricketSeed } from '@/services/fakeCricketPad';
+import {
+  AWAY_ENTRANT,
+  HOME_ENTRANT,
+  LIVE_EVENTS,
+  liveCricketSeed,
+  playerOf,
+} from '@/services/fakeCricketPad';
 import type { FakeMatchSeed } from '@/services/fakeScoringPort';
 import { layout } from '@/ui/theme/tokens';
 import { FAKE_SCORING_SECRET } from '../../../test/fakeScoringLinkPort';
@@ -332,5 +338,154 @@ describe('the wicket steps (plan Task 12)', () => {
     });
     expect(await lastPayload(app)).not.toHaveProperty('wicket.fielderAssist');
     expect(runs()).toBe('6/1');
+  });
+});
+
+describe('the next bowler, a mid-over change, a strike swap (plan Task 13)', () => {
+  const idOf = (name: string) =>
+    [...LIVE.sides.home.members, ...LIVE.sides.away.members].find((one) => one.fullName === name)
+      ?.personId;
+  const heading = () => within(screen.getByTestId('step-sheet')).getByRole('heading').textContent;
+  const row = (name: string) =>
+    within(screen.getByTestId('step-sheet')).getByRole('button', { name: new RegExp(name) });
+  const overOut = async (app: LaunchedApp) => {
+    for (let i = 0; i < 3; i += 1) await press(app, en['scoring.cricket.ball.dot']);
+  };
+  const over2 = en['scoring.cricket.bowling.title'].replace('{number}', '2').toUpperCase();
+
+  it('an over’s end stands the next-bowler sheet: the last over’s bowler greyed with why, no Cancel', async () => {
+    const app = await scanned();
+    await overOut(app);
+    expect(heading()?.toUpperCase()).toBe(over2);
+    const murphy = row('W. Murphy');
+    expect(murphy.getAttribute('aria-disabled')).toBe('true');
+    expect(within(murphy).getByText(en['scoring.cricket.bowling.lastOver'])).toBeTruthy();
+    expect(
+      within(screen.getByTestId('step-sheet')).queryByRole('button', {
+        name: en['scoring.sheet.cancel'],
+      }),
+    ).toBeNull();
+    // The keys are under the sheet: hidden from a screen reader, and disabled.
+    const one = screen.getByLabelText('1 run');
+    expect(one.getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it('a bowler picked is held, recording nothing, and the over’s first ball names them', async () => {
+    const app = await scanned();
+    await overOut(app);
+    const before = await count(app);
+    await press(app, /V\. Kaur/);
+    expect(sheet()).toBeNull();
+    expect(await count(app)).toBe(before);
+    expect(screen.getByTestId('board-crease').textContent).toContain('V. Kaur');
+    await press(app, '1 run');
+    expect(await lastPayload(app)).toMatchObject({
+      over: 1,
+      ballInOver: 1,
+      bowler: idOf('V. Kaur'),
+    });
+  });
+
+  it('Undo last ball on the sheet takes the over’s last ball back, and the sheet goes', async () => {
+    const app = await scanned();
+    await overOut(app);
+    await press(app, en['scoring.cricket.bowling.undo']);
+    expect(sheet()).toBeNull();
+    expect((await ledger(app)).at(-1)?.type).toBe('core.void');
+    expect(screen.getByTestId('board-overs').textContent).toContain('0.5');
+  });
+
+  it('More, Change bowler (injury), a bowler, why: cricket.bowler.change; both are greyed for the next over', async () => {
+    const app = await scanned();
+    await press(app, en['scoring.cricket.key.more']);
+    expect(heading()).toBe(en['scoring.cricket.key.more']);
+    await press(app, en['scoring.cricket.more.change']);
+    expect(heading()).toBe(en['scoring.cricket.change.title']);
+    expect(
+      within(screen.getByTestId('step-sheet')).queryByRole('button', { name: /W\. Murphy/ }),
+    ).toBeNull();
+    await press(app, /V\. Kaur/);
+    expect(heading()).toBe(en['scoring.cricket.change.why']);
+    await press(app, en['scoring.cricket.change.reason.incapacitated']);
+    expect(sheet()).toBeNull();
+    const change = (await ledger(app)).at(-1);
+    expect([change?.type, change?.payload]).toEqual([
+      'cricket.bowler.change',
+      { bowler: idOf('V. Kaur'), reason: 'incapacitated' },
+    ]);
+    await overOut(app);
+    for (const name of ['W. Murphy', 'V. Kaur']) {
+      expect(within(row(name)).getByText(en['scoring.cricket.bowling.lastOver'])).toBeTruthy();
+    }
+  });
+
+  it('an over the console finished has no way back on the sheet: nothing of this phone’s to undo', async () => {
+    const dot = (ballInOver: number) => ({
+      type: 'cricket.ball',
+      payload: {
+        over: 0,
+        ballInOver,
+        striker: playerOf(HOME_ENTRANT, 2),
+        nonStriker: playerOf(HOME_ENTRANT, 1),
+        bowler: playerOf(AWAY_ENTRANT, 11),
+        runs: { bat: 0 },
+      },
+    });
+    await scanned(liveCricketSeed({ events: [...LIVE_EVENTS, dot(4), dot(5), dot(6)] }));
+    expect(heading()?.toUpperCase()).toBe(over2);
+    const words = within(screen.getByTestId('step-sheet'))
+      .getAllByRole('button')
+      .map((one) => one.textContent);
+    expect(words).not.toContain(en['scoring.cricket.bowling.undo']);
+    expect(words).not.toContain(en['scoring.sheet.cancel']);
+  });
+
+  it('in a super over More is greyed: no change, no swap (ruling 84)', async () => {
+    const home = (n: number) => playerOf(HOME_ENTRANT, n);
+    const away = (n: number) => playerOf(AWAY_ENTRANT, n);
+    const dots = (
+      type: string,
+      bat: (n: number) => string,
+      bowlers: readonly string[],
+      overs: number,
+    ) =>
+      Array.from({ length: overs * 6 }, (_, i) => {
+        const over = Math.floor(i / 6);
+        const [striker, nonStriker] = over % 2 === 0 ? [bat(1), bat(2)] : [bat(2), bat(1)];
+        return {
+          type,
+          payload: {
+            over,
+            ballInOver: (i % 6) + 1,
+            striker,
+            nonStriker,
+            bowler: bowlers[over],
+            runs: { bat: 0 },
+          },
+        };
+      });
+    const events = [
+      ...LIVE_EVENTS.slice(0, 2),
+      ...dots('cricket.ball', home, [away(11), away(10)], 2),
+      ...dots('cricket.ball', away, [home(11), home(10)], 2),
+      ...dots('cricket.superover.ball', away, [home(11)], 1).slice(0, 1),
+    ];
+    await scanned(liveCricketSeed({ events }));
+    expect(screen.getByTestId('board-innings').textContent).toMatch(/super/i);
+    expect(key(en['scoring.cricket.key.more']).getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it('Swap strike records nothing; the next ball names the pair reversed', async () => {
+    const app = await scanned();
+    const before = await count(app);
+    await press(app, en['scoring.cricket.key.more']);
+    await press(app, en['scoring.cricket.more.swap']);
+    expect(sheet()).toBeNull();
+    expect(await count(app)).toBe(before);
+    await press(app, en['scoring.cricket.ball.dot']);
+    expect(await lastPayload(app)).toMatchObject({
+      striker: idOf('A. Sharma'),
+      nonStriker: idOf('B. Okafor'),
+    });
   });
 });

@@ -723,6 +723,20 @@
   "scoring.cricket.wicket.noAssist": "Pas de second joueur",
   "scoring.cricket.wicket.isFielder": "Déjà le joueur de champ",
   "scoring.cricket.wicket.retired": "Retiré, non éliminé",
-  "scoring.cricket.wicket.nonStriker": "À l’autre bout",
-  "scoring.cricket.wicket.nextInOrder": "Suivant dans l’ordre"
+  "scoring.cricket.wicket.nonStriker": "À l'autre bout",
+  "scoring.cricket.wicket.nextInOrder": "Suivant dans l'ordre",
+  "scoring.cricket.bowling.title": "Over {number}\u00a0: lanceur",
+  "scoring.cricket.bowling.body": "{team} au lancer · chiffres O-M-R-W",
+  "scoring.cricket.bowling.lastOver": "A lancé le dernier over",
+  "scoring.cricket.bowling.outOfOvers": "Plus d'overs ({max})",
+  "scoring.cricket.bowling.none": "Personne ne peut lancer cet over. Demandez à l'organisateur.",
+  "scoring.cricket.bowling.totals": "Saisir les totaux par over",
+  "scoring.cricket.bowling.undo": "Annuler la dernière balle",
+  "scoring.cricket.change.title": "Qui termine l'over\u00a0?",
+  "scoring.cricket.change.why": "Pourquoi ce changement\u00a0?",
+  "scoring.cricket.change.reason.incapacitated": "Blessé ou malade",
+  "scoring.cricket.change.reason.suspended": "Suspendu",
+  "scoring.cricket.change.reason.other": "Autre",
+  "scoring.cricket.more.change": "Changer de lanceur (blessure)",
+  "scoring.cricket.more.swap": "Échanger les batteurs"
 }

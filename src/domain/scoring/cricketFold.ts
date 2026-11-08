@@ -458,13 +458,21 @@ function bowlerOf(
   turn: CricketTurn,
   id: string,
 ): CricketBowler {
+  return { id, name: nameOf(match, id), figures: figuresIn(scorecard, state, turn, id) };
+}
+
+/** A bowler's O-M-R-W in the turn's innings, off the scorecard; 0-0-0-0 for one who has not bowled in it. */
+export function figuresIn(
+  scorecard: CricketScorecard,
+  state: CricketState,
+  turn: CricketTurn,
+  id: string,
+): string {
   const card = scorecard.innings[turn.superOver ? state.innings.length + turn.index : turn.index];
   const line = card?.bowling.find((one) => one.person === id);
-  const figures =
-    line === undefined
-      ? NO_FIGURES
-      : `${line.overs}-${line.maidens ?? 0}-${line.runs}-${line.wickets}`;
-  return { id, name: nameOf(match, id), figures };
+  return line === undefined
+    ? NO_FIGURES
+    : `${line.overs}-${line.maidens ?? 0}-${line.runs}-${line.wickets}`;
 }
 
 const NO_FIGURES = '0-0-0-0';

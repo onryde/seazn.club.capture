@@ -97,6 +97,31 @@ describe('CricketStepSheet', () => {
     expect(onChoose).not.toHaveBeenCalled();
   });
 
+  it('a sheet that stands by itself names its own way back, or has none, and then its dim takes no tap', () => {
+    const onChoose = vi.fn();
+    const onUndo = vi.fn();
+    const { unmount } = renderWithPorts(
+      <CricketStepSheet
+        step={STEP}
+        onChoose={onChoose}
+        onCancel={onUndo}
+        cancelKey="scoring.cricket.bowling.undo"
+      />,
+    );
+    expect(screen.queryByRole('button', { name: en['scoring.sheet.cancel'] })).toBeNull();
+    act(() =>
+      fireEvent.click(screen.getByRole('button', { name: en['scoring.cricket.bowling.undo'] })),
+    );
+    expect(onUndo).toHaveBeenCalledTimes(1);
+    unmount();
+    renderWithPorts(<CricketStepSheet step={STEP} onChoose={onChoose} onCancel={null} />);
+    const buttons = within(sheet())
+      .getAllByRole('button')
+      .map((one) => one.textContent);
+    expect(buttons).not.toContain(en['scoring.sheet.cancel']);
+    expect(buttons).not.toContain(en['scoring.cricket.bowling.undo']);
+  });
+
   it('a step with a line under its title draws it', () => {
     renderSheet({ ...STEP, body: { key: 'scoring.cricket.wicket.how' } });
     expect(within(sheet()).getByText(en['scoring.cricket.wicket.how'])).toBeTruthy();

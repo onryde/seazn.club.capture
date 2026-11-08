@@ -27,6 +27,7 @@ const WIDTHS = [320, 360] as const;
 const barlow600 = loadFont('barlow-condensed-600');
 const barlow700 = loadFont('barlow-condensed-700');
 const geist500 = loadFont('geist-500');
+const geist400 = loadFont('geist-400');
 const mono = loadFont('geist-mono-400');
 
 const said = (dictionary: Dictionary, key: string): string => {
@@ -446,4 +447,61 @@ it('the widest wicket title is wider than half the sheet at 320 (anti-vacuity: t
     ),
   );
   expect(widest).toBeGreaterThan((320 - 2 * space.md) / 2);
+});
+
+/**
+ * S2-4 plan Task 13: the over-end sheet, More, and the change's steps, at 320 and 360 dp in four languages. Titles one
+ * line (the title with the widest over number a format has, 50); each row's label and note one line; the sheet's own way
+ * back ("Undo last ball") one line at `control`; the line under the title (`body`) at most two.
+ */
+const BOWLING_TITLES = ['scoring.cricket.change.title', 'scoring.cricket.change.why'];
+const BOWLING_ROWS = [
+  'scoring.cricket.bowling.totals',
+  'scoring.cricket.more.change',
+  'scoring.cricket.more.swap',
+  'scoring.cricket.change.reason.incapacitated',
+  'scoring.cricket.change.reason.suspended',
+  'scoring.cricket.change.reason.other',
+];
+const LONG_CLUB = 'Bishops Stortford Cricket Club';
+
+describe.each(WIDTHS)('the next bowler and More at %i dp', (width) => {
+  const sheetText = width - 2 * space.md;
+  const rowText = sheetText - 2 * space.md;
+  const rowWidth = (text: string) => geist500.width(text, typeScale.controlInk.fontSize);
+  const bodyWidth = (text: string) => geist400.width(text, typeScale.body.fontSize);
+
+  it.each(LANGUAGES)(
+    '%s: titles one line, rows and notes one line, Undo last ball one line',
+    (_, dictionary) => {
+      const over = fill(said(dictionary, 'scoring.cricket.bowling.title'), { number: 50 });
+      for (const title of [over, ...BOWLING_TITLES.map((key) => said(dictionary, key))]) {
+        expect(linesOf(title, sheetText, sheetTitleWidth), title).toBe(1);
+      }
+      for (const key of BOWLING_ROWS) {
+        expect(rowWidth(said(dictionary, key)), key).toBeLessThanOrEqual(rowText);
+      }
+      const notes = [
+        said(dictionary, 'scoring.cricket.bowling.lastOver'),
+        fill(said(dictionary, 'scoring.cricket.bowling.outOfOvers'), { max: 10 }),
+        '10.0-10-100-10',
+      ];
+      for (const note of notes) expect(unitWidth(note), note).toBeLessThanOrEqual(rowText);
+      const undo = said(dictionary, 'scoring.cricket.bowling.undo');
+      expect(geist500.width(undo, typeScale.control.fontSize)).toBeLessThanOrEqual(rowText);
+    },
+  );
+
+  it.each(LANGUAGES)('%s: the line under the title is at most two lines', (_, dictionary) => {
+    const body = fill(said(dictionary, 'scoring.cricket.bowling.body'), { team: LONG_CLUB });
+    const none = said(dictionary, 'scoring.cricket.bowling.none');
+    for (const text of [body, none])
+      expect(linesOf(text, sheetText, bodyWidth), text).toBeLessThanOrEqual(2);
+  });
+});
+
+it('the thirty-character club takes the bowling line’s second line at 320 (anti-vacuity)', () => {
+  const body = fill(said(en, 'scoring.cricket.bowling.body'), { team: LONG_CLUB });
+  const width = (text: string) => geist400.width(text, typeScale.body.fontSize);
+  expect(linesOf(body, 320 - 2 * space.md, width)).toBe(2);
 });

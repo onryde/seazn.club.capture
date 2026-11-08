@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { runBall, type SheetExtra } from '@/domain/scoring/cricketExtras';
+import { moreOffered } from '@/domain/scoring/cricketMore';
 import { cricketBoard, type CricketBoardView } from '@/domain/scoring/cricketPad';
 import { withPick, type CricketPick } from '@/domain/scoring/cricketPicks';
 import { cricketSport } from '@/domain/scoring/cricketSport';
@@ -62,6 +63,8 @@ export type CricketPadActions = PadActions &
     readonly openExtras: (extra: SheetExtra) => void;
     /** Out: the wicket steps for a fair ball. */
     readonly openOut: () => void;
+    /** More: what the pad records less often than a ball, as much of it as the engine would take now (Task 13). */
+    readonly openMore: () => void;
     /** A choice on the step on screen (`useCricketSheets`). */
     readonly choose: (id: string) => void;
   };
@@ -74,6 +77,8 @@ export type CricketPadModel = PadScreenModel<CricketPadKey, CricketSheetView> & 
   readonly toss: PadSide | null;
   /** The setup in the board's place before the first ball (the toss, the order, the bowler); none once play is on. */
   readonly setup: CricketSetupModel | null;
+  /** More has something to offer now: the key is greyed when it has not. */
+  readonly more: boolean;
   readonly actions: CricketPadActions;
 };
 
@@ -147,6 +152,7 @@ function modelOf(
     board,
     display: pad.display,
     setup,
+    more: moreOffered(pad.display),
     actions,
   };
 }
