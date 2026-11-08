@@ -151,6 +151,12 @@ export type FootballDisplay = {
   readonly lastTap: FootballLastTap | null;
   /** This phone's Undo has something to take back. */
   readonly undoable: boolean;
+  /**
+   * How Undo takes it back (the controller's ruling 9: a resync is no scorer action): `plain`, as the one Undo does;
+   * `withStart`, a resync on top of the running Start it follows, the two taken back together, the resync first;
+   * `pastResync`, a resync on top of another tap, which is taken back and the clock re-anchored again.
+   */
+  readonly undoPlan: 'plain' | 'withStart' | 'pastResync';
   /** Anything stands after the start: End of period is offered only then, never tied to the clock. */
   readonly kickedOff: boolean;
 };

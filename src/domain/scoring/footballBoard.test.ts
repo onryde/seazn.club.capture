@@ -3,6 +3,7 @@ import {
   footballBoard,
   footballClockBar,
   footballMoreItems,
+  footballTakesCorrect,
   parseFootballAction,
 } from '@/domain/scoring/footballBoard';
 import type { ClockBarView } from '@/domain/scoring/clockBarView';
@@ -322,5 +323,15 @@ describe('footballClockBar (design §6.1, §7.4)', () => {
     expect(word('scoring.football.column.noSheet')).toBe('No team sheet');
     expect(word('scoring.football.clock.start')).toBe('Start');
     expect(word('scoring.football.clock.pause')).toBe('Pause');
+  });
+});
+
+// What the pad reads of the board (plan P Task 11): what it offers but must not decide. Expected values from the design.
+describe('what the pad reads of the board', () => {
+  it('Correct is offered while a period is in play, at the break (the engine is in the next period) and not once over', () => {
+    expect(footballTakesCorrect(displayOf(KICK_OFF))).toBe(true);
+    expect(footballTakesCorrect(displayOf([...KICK_OFF, period('HT', at('H1', 2700))]))).toBe(true);
+    expect(footballTakesCorrect(displayOf([start()]))).toBe(true);
+    expect(footballTakesCorrect(displayOf(KICKS_4_1))).toBe(false);
   });
 });

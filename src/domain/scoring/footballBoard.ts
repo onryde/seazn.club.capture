@@ -169,6 +169,10 @@ export function footballMoreItems(display: FootballDisplay): readonly MoreItem[]
   ];
 }
 
+/** Whether Correct is offered now: while the engine takes a clock event, as More lists it (design §6.4, §7.5). */
+export const footballTakesCorrect = (display: FootballDisplay): boolean =>
+  footballMoreItems(display).some((item) => item.id === 'correct');
+
 type MoreWord = 'penalty' | 'sinBin' | 'sinBinEnd' | 'shot' | 'correct' | 'details';
 
 const more = (word: MoreWord, vars?: Readonly<Record<string, string>>): Text => ({

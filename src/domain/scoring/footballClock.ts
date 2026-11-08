@@ -121,6 +121,8 @@ export type OwnClockTap = {
   readonly createdAtMs: number;
   readonly running: boolean;
   readonly period: string;
+  /** The match time it was stamped at (its own `at.elapsed`). */
+  readonly elapsed: number;
 };
 
 /**
@@ -142,14 +144,63 @@ export function needsResync(
 }
 
 /**
- * The resync tap: the clock running at the phone's reading now, a normal clock tap made through `footballEventFor` (it
- * is stamped in the fold's phase there), so the phone's own reading does not move and every screen re-anchors on it.
+ * The resync tap: the clock running at the Start's own stamp plus the whole seconds it waited, from its tap to the moment
+ * it left the queue (`leftQueueAtMs`, the phone's clock: accepted, or its copy read back). It is built from the Start's
+ * own tap, never from the display's anchor: once the server's copy is read, that anchor is the copy's, recorded at its
+ * arrival, and reads short by the wait (the controller's ruling 2, Batch C). A normal clock tap made through
+ * `footballEventFor` (stamped in the fold's phase there), so every screen re-anchors on it.
  */
 export function resyncTap(
-  anchor: ClockAnchor | null,
-  now: { readonly deviceMs: number; readonly offsetMs: number },
+  start: OwnClockTap,
+  leftQueueAtMs: number,
 ): Extract<FootballTap, { readonly kind: 'clock' }> {
-  return { kind: 'clock', running: true, elapsed: reading(anchor, now) };
+  const waited = Math.max(0, Math.floor((leftQueueAtMs - start.createdAtMs) / 1000));
+  return { kind: 'clock', running: true, elapsed: start.elapsed + waited };
+}
+
+/** How far a running clock event may sit from the reading it re-anchors and still be a resync, in seconds (ruling 9). */
+const RESYNC_SLACK_S = 2;
+
+/**
+ * Which of `events` are resyncs, by index (the controller's ruling 9, Batch C): a running `football.clock` stamped within
+ * 2 s of what the running anchor before it reads at the event's own time, in the same period. A scorer never starts a
+ * running clock; only a resync (or a second Start on another screen, which changes nothing) does, and a Correct moves the
+ * reading by 10 s at least. A standing event is judged against the standing events before it; one a void took back,
+ * against the events as they were made (a voided Start included), so a resync undone with its Start is still one. Pure:
+ * nothing is stored, so a fold of the same events says the same after a cold start, as far as their times allow.
+ */
+export function resyncsIn(events: readonly AnchorEvent[]): ReadonlySet<number> {
+  const amongStanding = resyncWalk(events, (event) => event.standing);
+  const asMade = resyncWalk(events, () => true);
+  const found = new Set<number>();
+  events.forEach((event, at) => {
+    if ((event.standing ? amongStanding : asMade).has(at)) found.add(at);
+  });
+  return found;
+}
+
+function resyncWalk(
+  events: readonly AnchorEvent[],
+  counts: (event: AnchorEvent) => boolean,
+): ReadonlySet<number> {
+  const found = new Set<number>();
+  let anchor: ClockAnchor | null = null;
+  events.forEach((event, at) => {
+    if (!counts(event)) return;
+    if (event.type === PERIOD) anchor = null;
+    if (event.type !== CLOCK) return;
+    if (isResync(event, anchor)) found.add(at);
+    const stamp = gameTimeOf(event.payload);
+    anchor = clockAnchor(event, anchor, stamp?.period ?? anchor?.period ?? '');
+  });
+  return found;
+}
+
+function isResync(event: AnchorEvent, before: ClockAnchor | null): boolean {
+  if (before === null || !before.running || runningOf(event.payload) !== true) return false;
+  const stamp = gameTimeOf(event.payload);
+  if (stamp === null || stamp.period !== before.period) return false;
+  return Math.abs(stamp.elapsed - projected(before, event.atMs)) <= RESYNC_SLACK_S;
 }
 
 // ---------------------------------------------------------------------------------------------------------------

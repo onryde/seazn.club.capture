@@ -12,6 +12,7 @@ import {
   periodLengths,
   reading,
   restamp,
+  resyncsIn,
   resyncTap,
   stampFor,
   subStamp,
@@ -484,7 +485,7 @@ describe('restamp (design §7.3, ruling 3)', () => {
 // true at its arrival. The Start's own payload is never changed.
 describe('the resync after a late Start (design §7.2)', () => {
   const TAPPED = Date.parse('2026-11-07T14:30:00.000Z');
-  const start = { createdAtMs: TAPPED, running: true, period: 'H1' };
+  const start = { createdAtMs: TAPPED, running: true, period: 'H1', elapsed: 600 };
 
   it('not when the Start is accepted 2999 ms after it was tapped', () => {
     expect(needsResync(start, TAPPED + 2999, false)).toBe(false);
@@ -510,28 +511,126 @@ describe('the resync after a late Start (design §7.2)', () => {
     expect(needsResync(start, TAPPED - 60_000, false)).toBe(false);
   });
 
-  it('the resync tap is a running clock tap at the phone’s reading at that moment', () => {
-    const own: ClockAnchor = {
-      period: 'H1',
-      elapsed: 600,
+  it('the resync tap is the Start’s own stamp plus the whole seconds it waited until it left the queue', () => {
+    expect(resyncTap(start, TAPPED + 120_000)).toEqual({
+      kind: 'clock',
       running: true,
-      atMs: TAPPED,
-      base: 'device',
-    };
-    const accepted = { deviceMs: TAPPED + 120_000, offsetMs: 300_000 };
-    expect(resyncTap(own, accepted)).toEqual({ kind: 'clock', running: true, elapsed: 720 });
+      elapsed: 720,
+    });
+    expect(resyncTap(start, TAPPED + 120_999)).toEqual({
+      kind: 'clock',
+      running: true,
+      elapsed: 720,
+    });
   });
 
-  it('the resync tap reads a server anchor through the offset, as the screen does', () => {
+  // The probe of the controller's ruling 2 (N1): a Start tapped at 0:00, written at the server 60 s later and its copy
+  // read back 63 s after the tap. The display's anchor is then the copy's, recorded at its arrival, and reads 3; the
+  // resync is built from the Start's own tap and reads 63.
+  it('the probe: the server’s copy fetched reads 3, and the resync built from the Start’s own tap reads 63', () => {
+    const kickOff = { createdAtMs: TAPPED, running: true, period: 'H1', elapsed: 0 };
     const copy: ClockAnchor = {
       period: 'H1',
-      elapsed: 600,
+      elapsed: 0,
       running: true,
-      atMs: TAPPED,
+      atMs: TAPPED + 60_000,
       base: 'server',
     };
-    // The server's clock is 5 s ahead of the phone's: 120 s on the phone's clock is 125 s on the server's.
-    const accepted = { deviceMs: TAPPED + 120_000, offsetMs: 5_000 };
-    expect(resyncTap(copy, accepted)).toEqual({ kind: 'clock', running: true, elapsed: 725 });
+    const leftAt = TAPPED + 63_000;
+    expect(reading(copy, { deviceMs: leftAt, offsetMs: 0 })).toBe(3);
+    expect(resyncTap(kickOff, leftAt)).toEqual({ kind: 'clock', running: true, elapsed: 63 });
+  });
+
+  it('a phone clock set back before the tap waits no time: the resync is the Start’s own stamp', () => {
+    expect(resyncTap(start, TAPPED - 60_000)).toEqual({
+      kind: 'clock',
+      running: true,
+      elapsed: 600,
+    });
+  });
+});
+
+// The controller's ruling 9 (Batch C): a resync is not a scorer action. A running clock event within 2 s of what the
+// running anchor before it reads at its own time, in the same period, is one; History, the last-tap line and Undo pass it.
+describe('which clock events are resyncs (ruling 9)', () => {
+  const T = Date.parse('2026-11-07T14:30:00.000Z');
+  const at600 = { period: 'H1', elapsed: 600 };
+
+  it('a running clock event 120 s after a running Start, stamped 120 s on, is a resync', () => {
+    const events = [
+      clockEvent(true, at600, T, { base: 'device' }),
+      clockEvent(true, { period: 'H1', elapsed: 720 }, T + 120_000, { base: 'device' }),
+    ];
+    expect([...resyncsIn(events)]).toEqual([1]);
+  });
+
+  it('one stamped 2 s off the reading still is; 3 s off is not', () => {
+    const twoOff = [
+      clockEvent(true, at600, T),
+      clockEvent(true, { period: 'H1', elapsed: 722 }, T + 120_000),
+    ];
+    const threeOff = [
+      clockEvent(true, at600, T),
+      clockEvent(true, { period: 'H1', elapsed: 723 }, T + 120_000),
+    ];
+    expect([...resyncsIn(twoOff)]).toEqual([1]);
+    expect([...resyncsIn(threeOff)]).toEqual([]);
+  });
+
+  it('a Correct of +1 min while running is not a resync', () => {
+    const events = [
+      clockEvent(true, at600, T),
+      clockEvent(true, { period: 'H1', elapsed: 690 }, T + 30_000),
+    ];
+    expect([...resyncsIn(events)]).toEqual([]);
+  });
+
+  it('a Start after a Pause at the same minute is not a resync: the clock was stopped', () => {
+    const events = [clockEvent(false, at600, T), clockEvent(true, at600, T + 30_000)];
+    expect([...resyncsIn(events)]).toEqual([]);
+  });
+
+  it('the first Start of a period is not a resync, nor a Pause, nor one in another period', () => {
+    const events = [
+      clockEvent(true, at600, T),
+      clockEvent(false, { period: 'H1', elapsed: 630 }, T + 30_000),
+      marker('HT', T + 31_000),
+      clockEvent(true, { period: 'H2', elapsed: 0 }, T + 600_000),
+    ];
+    expect([...resyncsIn(events)]).toEqual([]);
+  });
+
+  it('a running clock event stamped in another period is no resync, even at the reading and with no marker between', () => {
+    const events = [
+      clockEvent(true, at600, T),
+      clockEvent(true, { period: 'H2', elapsed: 720 }, T + 120_000),
+    ];
+    expect([...resyncsIn(events)]).toEqual([]);
+  });
+
+  it('a period marker ends the anchor: a running clock event after it is no resync, even at the old reading', () => {
+    const events = [
+      clockEvent(true, at600, T),
+      marker('HT', T + 60_000),
+      clockEvent(true, { period: 'H1', elapsed: 720 }, T + 120_000),
+    ];
+    expect([...resyncsIn(events)]).toEqual([]);
+  });
+
+  it('a resync undone with its Start is still one: judged against the events as they were made', () => {
+    const events = [
+      clockEvent(true, at600, T, { standing: false }),
+      clockEvent(true, { period: 'H1', elapsed: 720 }, T + 120_000, { standing: false }),
+    ];
+    expect([...resyncsIn(events)]).toEqual([1]);
+  });
+
+  it('a standing resync is judged against the standing events: a voided Start before it is passed over', () => {
+    const events = [
+      clockEvent(false, at600, T - 60_000),
+      clockEvent(true, at600, T, { standing: false }),
+      clockEvent(true, { period: 'H1', elapsed: 720 }, T + 120_000),
+    ];
+    expect([...resyncsIn(events)]).toEqual([]);
   });
 });
