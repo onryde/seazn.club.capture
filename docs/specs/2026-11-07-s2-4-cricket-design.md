@@ -37,7 +37,8 @@ with the console agreeing ball for ball (§8).
 - A team-only path when the players are not entered: over-by-over totals (ruling 66, §4.10).
 - A third sport behind the S2-1 runtime: a module set behind `ScoringSport`, a row in `sports.ts`, its own screen (S2
   ruling 38). Three generic changes are needed and recorded in §6 (the lineup's slot shape, `lineupOf`, the boot cache
-  for pending picks); any other is a finding to record, not a quiet edit.
+  for pending picks); any other is a finding to record, not a quiet edit. The plans' further changes are listed in §6
+  (amended 2026-11-08).
 - Every S2-1 behaviour holds: the durable queue, sync, Realtime, History, Undo and its 45 s window on the result, the send
   badge, the Continue and Finished cards, the Update needed path.
 
@@ -70,30 +71,35 @@ with the console agreeing ball for ball (§8).
 
 ## 3. The owner's rulings (S2-4)
 
-| #   | Ruling |
-| --- | ------ |
-| 64  | Player-level detail as well as the team score: "both. it should popup the players and choose the order and pick the player if out and pick the blower etc.," (2026-11-07). |
-| 65  | One scorer per match is the design case: "Assume that one person" (2026-11-07). |
-| 66  | Players not entered → a card "Players not entered — ask the organiser" and over-by-over totals (`cricket.innings.summary`, `partial: true`): "Over totals (Recommended)", then "allow option to over by over if no player like that" (2026-11-07). |
-| 67  | The eight web-pad gaps (§9) are fixed on the phone, and on the web: "Yes and need to fix if anything in web" (2026-11-07). |
-| 68  | The flow of §4, played back in plain words, is agreed: "ok" (2026-11-07). |
-| 69  | More holds Retire, Penalty runs, Declare / close innings and Rain: revised target, and "try to match and see possible action from engine" (2026-11-07): every live action the engine records and the format allows (§4.8). |
-| 70  | Sign-off is a throwaway preview on the phone plus this document ("1 and 3", 2026-11-07). The preview has no tests and no mutation testing ("don't do any mutation/test in preview"). It is never merged. |
-| 71  | Engine changes before cricket ships on the phone (2026-11-07): export the wide and no-ball dismissal sets and `orderFromLineup`; a mid-over bowler change; a hand strike swap. A fielding-side penalty was not chosen. (§7.3) |
-| 72  | The web pad's gaps (§7.2) are fixed by this session in a `seazn.club` worktree, on staging before the phone's exit bar ("This session (Recommended)", 2026-11-07). |
-| 73  | A 4 or 6 that was run, not a boundary, goes under the 5+ key ("ran 4", "ran 6"); the 4 and 6 keys are boundaries ("Under 5+ (Recommended)", 2026-11-07). |
-| 74  | A tie with no players entered: "Tied — the organiser decides the super over" ("Say so, organiser decides (Recommended)", 2026-11-07). |
-| 75  | A mid-over bowler change follows the Laws ("Follow the Laws (Recommended)", 2026-11-07): neither bowler may bowl the next over (Law 17.7); the part over counts as a full over toward each bowler's max-overs limit (ICC limited-overs conditions); neither is credited a maiden for it; each bowler's figures get the balls they bowled. For the engine to record as its own ruling. |
-| 76  | The strike swap reverses the pair only: the same two batters, swapped ends; no separate swap event ("Reverse the pair only (Recommended)", 2026-11-07). Additive; for the engine to record as its own ruling. |
+| #   | Ruling                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 64  | Player-level detail as well as the team score: "both. it should popup the players and choose the order and pick the player if out and pick the blower etc.," (2026-11-07).                                                                                                                                                                                                                                                             |
+| 65  | One scorer per match is the design case: "Assume that one person" (2026-11-07).                                                                                                                                                                                                                                                                                                                                                        |
+| 66  | Players not entered → a card "Players not entered — ask the organiser" and over-by-over totals (`cricket.innings.summary`, `partial: true`): "Over totals (Recommended)", then "allow option to over by over if no player like that" (2026-11-07).                                                                                                                                                                                     |
+| 67  | The eight web-pad gaps (§9) are fixed on the phone, and on the web: "Yes and need to fix if anything in web" (2026-11-07).                                                                                                                                                                                                                                                                                                             |
+| 68  | The flow of §4, played back in plain words, is agreed: "ok" (2026-11-07).                                                                                                                                                                                                                                                                                                                                                              |
+| 69  | More holds Retire, Penalty runs, Declare / close innings and Rain: revised target, and "try to match and see possible action from engine" (2026-11-07): every live action the engine records and the format allows (§4.8).                                                                                                                                                                                                             |
+| 70  | Sign-off is a throwaway preview on the phone plus this document ("1 and 3", 2026-11-07). The preview has no tests and no mutation testing ("don't do any mutation/test in preview"). It is never merged.                                                                                                                                                                                                                               |
+| 71  | Engine changes before cricket ships on the phone (2026-11-07): export the wide and no-ball dismissal sets and `orderFromLineup`; a mid-over bowler change; a hand strike swap. A fielding-side penalty was not chosen. (§7.3)                                                                                                                                                                                                          |
+| 72  | The web pad's gaps (§7.2) are fixed by this session in a `seazn.club` worktree, on staging before the phone's exit bar ("This session (Recommended)", 2026-11-07).                                                                                                                                                                                                                                                                     |
+| 73  | A 4 or 6 that was run, not a boundary, goes under the 5+ key ("ran 4", "ran 6"); the 4 and 6 keys are boundaries ("Under 5+ (Recommended)", 2026-11-07).                                                                                                                                                                                                                                                                               |
+| 74  | A tie with no players entered: "Tied — the organiser decides the super over" ("Say so, organiser decides (Recommended)", 2026-11-07).                                                                                                                                                                                                                                                                                                  |
+| 75  | A mid-over bowler change follows the Laws ("Follow the Laws (Recommended)", 2026-11-07): neither bowler may bowl the next over (Law 17.7); the part over counts as a full over toward each bowler's max-overs limit (ICC limited-overs conditions); neither is credited a maiden for it; each bowler's figures get the balls they bowled. For the engine to record as its own ruling.                                                  |
+| 76  | The strike swap reverses the pair only: the same two batters, swapped ends; no separate swap event ("Reverse the pair only (Recommended)", 2026-11-07). Additive; for the engine to record as its own ruling.                                                                                                                                                                                                                          |
 | 77  | A Players sheet during the match, opened by a tap on the score panel (the owner, on the preview, 2026-11-07: "how do I see list of player batter/bowler after match started and choose the order between overs?"; then "Tap the score panel (Recommended)"). Batting tab: out (how, runs (balls)), at the crease, yet to bat. Bowling tab: figures, overs left, who can't bowl next and why; a tap sets the next bowler between overs. |
-| 78  | The yet-to-bat order can be changed at any time; it is the phone's own and only changes the suggested next batter ("Any time (Recommended)", 2026-11-07). |
-| 79  | No 5+ key on the pad: "canwe remove 5+ add it in more ? like penalty or something use that space for 3 equal button" (the owner, on the preview, 2026-11-07). The bottom row is Out, Undo, More, three equal buttons. More's first row is "Other runs and penalty": 5, 7, all-run 4 or 6, and +5 penalty on a fair ball. Supersedes ruling 73's 5+ key and §4.2's "+ Penalty" on a legal ball's sheet. |
-| 80  | Extras open a sheet that asks the runs (A), as on the preview ("Keep the sheet (Recommended)", 2026-11-07). |
-| 81  | Undo of this phone's last ball only; an older mistake is the organiser's on the web ("Undo last only (Recommended)", 2026-11-07). |
-| 82  | In every sheet a row that takes a tap has a lime border; a row that can't is greyed with its reason ("player tap is not clear or visiable so better to have a lime boder?", the owner on the preview, 2026-11-07). The chosen row is a heavier lime border on `surface`. |
-| 83  | The toss uses the whole screen ("in toss, choose team and bat or bow, can we use more space on that screen?", the owner on the preview, 2026-11-07): two halves, "Who won the toss?" over the two team names and "{team} chose to…" over Bat and Bowl, each a pair of big buttons; the second half shows greyed until the first is answered, so nothing moves. |
-| 84  | The strike swap and the mid-over bowler change are in More ("In More", 2026-11-07): "Swap strike" between balls of a main innings, "Change bowler (injury)" mid-over only. Web pad likewise for the change (its More is the engine padSpec's drawer). |
-| 85  | Ruling 82's lime border on tappable sheet rows applies to every sport's sheets, not cricket alone ("Every sport (Recommended)", 2026-11-07). |
+| 78  | The yet-to-bat order can be changed at any time; it is the phone's own and only changes the suggested next batter ("Any time (Recommended)", 2026-11-07).                                                                                                                                                                                                                                                                              |
+| 79  | No 5+ key on the pad: "canwe remove 5+ add it in more ? like penalty or something use that space for 3 equal button" (the owner, on the preview, 2026-11-07). The bottom row is Out, Undo, More, three equal buttons. More's first row is "Other runs and penalty": 5, 7, all-run 4 or 6, and +5 penalty on a fair ball. Supersedes ruling 73's 5+ key and §4.2's "+ Penalty" on a legal ball's sheet.                                 |
+| 80  | Extras open a sheet that asks the runs (A), as on the preview ("Keep the sheet (Recommended)", 2026-11-07).                                                                                                                                                                                                                                                                                                                            |
+| 81  | Undo of this phone's last ball only; an older mistake is the organiser's on the web ("Undo last only (Recommended)", 2026-11-07).                                                                                                                                                                                                                                                                                                      |
+| 82  | In every sheet a row that takes a tap has a lime border; a row that can't is greyed with its reason ("player tap is not clear or visiable so better to have a lime boder?", the owner on the preview, 2026-11-07). The chosen row is a heavier lime border on `surface`.                                                                                                                                                               |
+| 83  | The toss uses the whole screen ("in toss, choose team and bat or bow, can we use more space on that screen?", the owner on the preview, 2026-11-07): two halves, "Who won the toss?" over the two team names and "{team} chose to…" over Bat and Bowl, each a pair of big buttons; the second half shows greyed until the first is answered, so nothing moves.                                                                         |
+| 84  | The strike swap and the mid-over bowler change are in More ("In More", 2026-11-07): "Swap strike" between balls of a main innings, "Change bowler (injury)" mid-over only. Web pad likewise for the change (its More is the engine padSpec's drawer).                                                                                                                                                                                  |
+| 85  | Ruling 82's lime border on tappable sheet rows applies to every sport's sheets, not cricket alone ("Every sport (Recommended)", 2026-11-07).                                                                                                                                                                                                                                                                                           |
+
+Ruling 82, as read (_the controller's, 2026-11-08, preflight F29_): destructive sheet rows (Undo, Remove, End) keep the
+caution border, and every other row that takes a tap is lime. §5's caution means failure or danger, and an orange
+border warns before a destructive tap. The owner's words name only lime, so this is the controller's reading, open to
+the owner's correction (§12).
 
 ## 4. How a scorer meets it
 
@@ -190,6 +196,11 @@ super over and before an over's first ball (engine ruling 278); More hides it th
 No fielder eligible to bowl (a short side under a strict quota): the web shows "noEligible" (`cricket.tsx:705-713`); the
 phone's sheet says the same and offers over totals for the rest of the innings (_the controller's_, §11).
 
+Amended (_the controller's, 2026-11-08, preflight F5_): over totals are offered only while the open innings has no
+ball. The engine refuses a summary for an innings already recorded ball by ball ("recorded ball-by-ball — summaries are
+not allowed", `cricket.ts:1842-1844`), and opens a coarse innings only when none is open (`:1845-1854`). Once a ball is
+recorded, the sheet says no bowler can bowl and to ask the organiser, as the web's `noEligible` does.
+
 ### 4.5 Innings break
 
 The engine closes the innings (all out, overs done, target reached). A card: "{team} {runs}/{wkts} ({overs} ov) ·
@@ -223,18 +234,22 @@ Every live action the engine records, shown only when the engine would accept it
 `cfg` and the fold, never a list per screen. "Innings open" means live with an innings in progress, so not at the
 innings break (2177-2179, 1050). In a super over More is empty (3144-3150).
 
-| More item | Event | Shown when |
-| --- | --- | --- |
-| Retire (hurt / out / other) | `cricket.retire {person, reason, incoming}` | innings open |
-| Declare | `cricket.innings.declare` | two innings a side, innings open (3965) |
-| Close innings (time / weather / other) | `cricket.innings.close {reason}` | innings open |
-| Rain or bad light | `cricket.interruption {kind, oversLostEstimate}` | before Start or live (3994) |
-| Revised overs / target | `cricket.revise {oversPerSide?, target?}` | one innings a side, limited overs, before Start or live (1115-1119); the target is entered, never computed |
-| New ball | `cricket.newball` | innings open |
-| Powerplay start / end | `cricket.powerplay {kind, phase}` | limited overs, innings open |
-| Follow-on | `cricket.followon` | `cfg.followOn.enabled`, between innings 2 and 3, with the lead (4010-4017) |
-| Match close (draw) | `cricket.match.close` | two innings a side |
-| Review | `cricket.review {by, kind, outcome, …}` | innings open. Recordable without `cfg.reviews` (91-95, 2279), which only caps them |
+| More item                              | Event                                            | Shown when                                                                                                                                                    |
+| -------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Retire (hurt / out / other)            | `cricket.retire {person, reason, incoming}`      | innings open                                                                                                                                                  |
+| Declare                                | `cricket.innings.declare`                        | two innings a side, innings open (3965)                                                                                                                       |
+| Close innings (time / weather / other) | `cricket.innings.close {reason}`                 | innings open                                                                                                                                                  |
+| Rain or bad light                      | `cricket.interruption {kind, oversLostEstimate}` | live on the phone; the engine also takes it before Start (3994; amended below)                                                                                |
+| Revised overs / target                 | `cricket.revise {oversPerSide?, target?}`        | one innings a side, limited overs, live on the phone; the engine also takes it before Start (1115-1119; amended below); the target is entered, never computed |
+| New ball                               | `cricket.newball`                                | innings open                                                                                                                                                  |
+| Powerplay start / end                  | `cricket.powerplay {kind, phase}`                | limited overs, innings open                                                                                                                                   |
+| Follow-on                              | `cricket.followon`                               | `cfg.followOn.enabled`, between innings 2 and 3, with the lead (4010-4017)                                                                                    |
+| Match close (draw)                     | `cricket.match.close`                            | two innings a side                                                                                                                                            |
+| Review                                 | `cricket.review {by, kind, outcome, …}`          | innings open. Recordable without `cfg.reviews` (91-95, 2279), which only caps them                                                                            |
+
+Amended (_the controller's, 2026-11-08, preflight F20_): Rain or bad light and Revised overs / target are live only on
+the phone. More opens only from the pad, and the setup screen has no More. The engine takes both before Start too, and
+the organiser records them there on the web.
 
 More's first row is always "Other runs and penalty" (ruling 79): 5, 7, all-run 4 or 6, +5 penalty on a fair ball. Left out, _the controller's_: `cricket.player.line`
 (post-match, §2). The toss, the balls, the super-over balls and the over totals are in the main flow. The plan reads each
@@ -305,14 +320,34 @@ ellipsis, the numbers never do.
   because the bootstrap drops `slot`, `order_no` and `role`. For cricket the bench and coaches become local batters and
   bowlers the server refuses (1502-1504, 1372-1374), and the all-out count differs when the starters are fewer than
   `playersPerSide` (651). **It needs the web change of §7.1 first.** The model the phone builds to is the server's
-  `engine-db/lineups.ts`: rows ordered `order_no nulls last, person_id`, with `i+1` as the fallback `orderNo` (47, 77). The
-  bootstrap sends rows ordered `order_no nulls last, full_name` (`fixtures.ts:896`), so the phone re-sorts; a mismatch
-  there changes who bats next.
+  `engine-db/lineups.ts` (`buildLineup`, 47), with `i+1` as the fallback `orderNo`.
+  - Amended (_the controller's, 2026-11-08, preflight F1_): **the phone keeps the bootstrap's row order and never
+    re-sorts it, and numbers a null `orderNo` i+1 in that order, per side.** Web PR #1135 (2026-11-07) changed the
+    server's loaders to order `order_no nulls last, full_name, person_id` (`lineups.ts:87, 122`). The bootstrap sends
+    `order_no nulls last, full_name` (`fixtures.ts:896`), the same order but for a full tie on the name, which the
+    football web session closes by adding `l.person_id` there. This replaces "rows ordered
+    `order_no nulls last, person_id` … so the phone re-sorts", which froze the server's rule from before #1135. A
+    mismatch still changes who bats next, and the next ball is refused.
 - **Generic changes** (contrary to "nothing generic", §2; recorded here, not made quietly): the bootstrap's lineup slot
   shape (`wire.ts:15, 210-212, 343`); `lineupOf` in a generic file; and the boot cache, which keeps only `toss` today
   (`tapQueueStore.ts:706-710`, `queue.ts:136`), grows to hold cricket's **pending picks** (the batting order, openers,
   the next bowler, the next batter). They're kept with the queue so a process death between an over's end and its first
   ball doesn't lose the pick (_the controller's_).
+  - Amended (_the controller's, 2026-11-08, preflight F18_): the plans make more generic changes than these three. Each
+    is listed here before it is built, and again in the results:
+    1. The lineup builder is a team-sheet builder in a generic file (`teamSheet.ts`), one for cricket and football
+       (preflight F2); set-based `lineupOf` is left as it is, and aligning it with the server is a separate item (F3).
+    2. The pending picks reach the match state and the fold, beside the boot cache: `SportFoldInput.picks?`,
+       `MatchState.picks` and a `setPicks` event.
+    3. One engine refusal reader, `engineRefusalOf(module, match, events)`, returning `{code, reason}` (D6), shared with
+       football.
+    4. The fake's `FakeSport` keeps main's `{module, cfg, refusalOf}` and gains a cricket row and football's `lineupsOf`
+       (F10).
+    5. `PadContent.body`, to football's interface (F9).
+    6. The kit's sheet rows (rulings 82, 85): `StepOption` gains `disabled`, `note` and `chosen`; `StepRow` (and so
+       chess's tie-break sheet) and chess's `HowSheet` rows take the borders.
+    7. `TossPicker` takes generic options, `fill` and `disabled` (ruling 83).
+    8. Match details takes a sport's block (§4.9).
 - **The fake's cfg** must be a full `CricketCfg`: a short format is refused without `minOversForResult` (the
   preview's finding). The real cfg comes from the bootstrap and is already whole.
 - **Rules version and epoch**: from the bootstrap and the rules read; `foldEpochOf('cricket')` (3 from the engine major of §7.3; 2 in
@@ -341,18 +376,31 @@ bootstrap's `cfg` is already the effective one: it comes from `resolveFixtureCfg
 Fixed in the web pad (`apps/web/src/components/v2/scorepad/v3/skins/cricket.tsx`), so the browser and the phone record
 the same things:
 
-| # | Gap (seen on staging, 2026-11-07) | Fix |
-| --- | --- | --- |
-| 1 | No setup step; toss asks Home/Away; a toss before the tournament starts is refused with "That action doesn't apply at this point in the match" | Team names on the toss; openers and bowler asked before the first ball; a toss refusal that says the tournament isn't started |
-| 2 | Next bowler picked silently at the end of an over | Ask, with the ineligible greyed and the reason |
-| 3 | A wide is always one run | Runs run off a wide |
-| 4 | The no-ball / bye / leg-bye runs strip vanishes in ~7 s, and the ball is stored PARTIAL | No timer. The timer is the shared chassis's (`pad-host.tsx:1458`), so the fix touches every sport's strip on the web |
-| 5 | No runs completed on a run out | Ask, run out only |
-| 6 | Stumped offers the whole side, the bowler included | The keeper, else the side without the bowler |
-| 7 | "Who walks in?" after an innings-ending wicket (seen on the super over's second) | Not asked |
-| 8 | The layout jumps after every ball | Fixed-height regions |
+| #   | Gap (seen on staging, 2026-11-07)                                                                                                              | Fix                                                                                                                           |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| 1   | No setup step; toss asks Home/Away; a toss before the tournament starts is refused with "That action doesn't apply at this point in the match" | Team names on the toss; openers and bowler asked before the first ball; a toss refusal that says the tournament isn't started |
+| 2   | Next bowler picked silently at the end of an over                                                                                              | Ask, with the ineligible greyed and the reason                                                                                |
+| 3   | A wide is always one run                                                                                                                       | Runs run off a wide                                                                                                           |
+| 4   | The no-ball / bye / leg-bye runs strip vanishes in ~7 s, and the ball is stored PARTIAL                                                        | No timer. The timer is the shared chassis's (`pad-host.tsx:1458`), so the fix touches every sport's strip on the web          |
+| 5   | No runs completed on a run out                                                                                                                 | Ask, run out only                                                                                                             |
+| 6   | Stumped offers the whole side, the bowler included                                                                                             | The keeper, else the side without the bowler                                                                                  |
+| 7   | "Who walks in?" after an innings-ending wicket (seen on the super over's second)                                                               | Not asked                                                                                                                     |
+| 8   | The layout jumps after every ball                                                                                                              | Fixed-height regions                                                                                                          |
 
 This session builds it in a `seazn.club` worktree, deployed to staging before the phone's exit bar (ruling 72).
+
+Amended (_the controller's, 2026-11-08, preflight F13_; the web's W7): **a no-ball's 4 or 6 off the bat sends
+`boundary` on both apps**, as the 4 and 6 keys do (ruling 73). An all-run 4 or 6 carries none. One rule, stated in both
+plans.
+
+The web's kept deviations (_the controller's note, 2026-11-08, preflight W5, W6, W8_; the owner's "Keep them",
+2026-11-07). The web pad differs from this design in four places, by the owner's word:
+
+- The timer fix is cricket's alone: the chassis's PARTIAL store stays for the other sports (gap 4 above says every
+  sport).
+- "+ Out" is on the web's Wide and No-ball sheets only (§4.2 puts it on all four).
+- The web keeps Retired and Timed out on a ball (§4.3 drops them).
+- The web's strike swap is a tap on the striker chip, not a More item (ruling 84).
 
 ### 7.3 Engine changes (ruling 71)
 
@@ -369,11 +417,11 @@ In `seazn.club.engine`, released as a version both the web and the phone take:
 What each costs (engine recon, 2026-11-07; engine `AGENTS.md` "Releasing", `src/sport/fold-epoch.ts:5-25`,
 `rules/README.md`, `src/testkit/GOLDEN-POLICY.md`):
 
-| Change | Kind | Why |
-| --- | --- | --- |
-| 1. Exports | additive, minor release | two fields on `CricketPadRules` (`pad/types.ts:62-67`), `orderFromLineup` into `sports/cricket/index.ts`; already inside the phone subpaths, so no closure re-pin; proved like CK-FH-1 (`pad/cricket.test.ts:242, 289`) under rows CK-NB-1 and CK-WD-1 |
-| 2. Mid-over change | **fold epoch bump** (major) | the fold holds one `currentBowler` and one `prevOverBowler` (`cricket.ts:481-482, 1742`), and the scorecard gives an over one bowler (`scorecard-types.ts:47-50`). It needs an explicit event or flag, never "credit whoever is named", which would re-credit stored ledgers. A cricket epoch bump makes the web refuse cricket writes from older clients (`scoring.ts:804`, 426); no phone scores cricket yet, so this costs the phone nothing |
-| 3. Strike swap | additive if it accepts exactly the reversed pair | on replay the ledger's pair is already adopted (`cricket.ts:1546-1547`), so old engines fold it the same; the strict check (1524-1548) is a rule, pinned by `cricket.test.ts:194` and DOMAIN.md:79, so it needs an engine ruling and a rules row. A separate swap event would be a bump |
+| Change             | Kind                                             | Why                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------------------ | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Exports         | additive, minor release                          | two fields on `CricketPadRules` (`pad/types.ts:62-67`), `orderFromLineup` into `sports/cricket/index.ts`; already inside the phone subpaths, so no closure re-pin; proved like CK-FH-1 (`pad/cricket.test.ts:242, 289`) under rows CK-NB-1 and CK-WD-1                                                                                                                                                                                          |
+| 2. Mid-over change | **fold epoch bump** (major)                      | the fold holds one `currentBowler` and one `prevOverBowler` (`cricket.ts:481-482, 1742`), and the scorecard gives an over one bowler (`scorecard-types.ts:47-50`). It needs an explicit event or flag, never "credit whoever is named", which would re-credit stored ledgers. A cricket epoch bump makes the web refuse cricket writes from older clients (`scoring.ts:804`, 426); no phone scores cricket yet, so this costs the phone nothing |
+| 3. Strike swap     | additive if it accepts exactly the reversed pair | on replay the ledger's pair is already adopted (`cricket.ts:1546-1547`), so old engines fold it the same; the strict check (1524-1548) is a rule, pinned by `cricket.test.ts:194` and DOMAIN.md:79, so it needs an engine ruling and a rules row. A separate swap event would be a bump                                                                                                                                                         |
 
 The web pad changes with them: `cricket.tsx` `bowlerIsReadOnly` (287-292), `bowlerBlockReason` (728-734),
 `creaseEndLocked` (293-299), and a wide/no-ball narrowing beside 2268. The scorecard's readers (`overlay-cricket.ts:96`,
