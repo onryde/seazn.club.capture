@@ -182,11 +182,13 @@ function savedStream(store: ModeStore): SavedCode | null {
  * Home's behaviour (spec §3): tap, scan, recognise, then open or explain.
  */
 export function useHome(): { view: HomeView; actions: HomeActions } {
-  const { modeStore } = usePorts();
+  const { modeStore, homeNews } = usePorts();
   const snapshot = useSyncExternalStore(modeStore.subscribe, modeStore.getSnapshot);
   const [panel, setPanel] = useState<HomePanel | null>(null);
   useUnpairedPanel(panel, setPanel);
-  const [statusKey, setStatusKey] = useState<HomeNews | null>(null);
+  // S4 design §4: a screen that sent the operator Home with news (the Match Day list, when its code went) left the line.
+  const [statusKey, setStatusKey] = useState<HomeNews | null>(homeNews.peek);
+  useEffect(() => homeNews.clear(), [homeNews]);
   const saveFailed = useSaveFailed(setStatusKey);
   const openCode = useOpenCode(setStatusKey, saveFailed, setPanel);
   const day = useMemo(

@@ -25,13 +25,14 @@ type Home = {
 const CHECKING: HomePanel = { kind: 'checking', tapped: 'matchday' };
 
 /**
- * What a day answer comes to on Home (S4 design §3, §4): the day, to open; not open yet, kept with its opening on the
- * line; one of the three words that end a code (each with its own line); or no answer the phone can act on.
+ * What a day answer comes to, on Home and on Match Day's list (S4 design §3, §4, §5): the day, to open; not open yet,
+ * kept with its opening on the line; one of the three words that end a code (each with its own line); or no answer the
+ * phone can act on. The two refusals carry the server's word.
  */
-type Verdict =
+export type Verdict =
   | { readonly kind: 'open'; readonly day: MatchDay }
-  | { readonly kind: 'notYet'; readonly news: HomeNews }
-  | { readonly kind: 'stop'; readonly line: MessageKey }
+  | { readonly kind: 'notYet'; readonly news: HomeNews; readonly refusal: 'MD_NOT_OPEN' }
+  | { readonly kind: 'stop'; readonly line: MessageKey; readonly refusal: MatchDayRefusal }
   | { readonly kind: 'offline' };
 
 const OFFLINE: Verdict = { kind: 'offline' };
@@ -49,17 +50,18 @@ function verdictOf(answer: PortAnswer<MatchDay>): Verdict {
     return {
       kind: 'notYet',
       news: opensAt === undefined ? 'matchday.notOpen' : { key: 'matchday.opens', at: opensAt },
+      refusal: answer.refusal,
     };
   }
   const line = STOP_LINE[answer.refusal];
-  return line === undefined ? OFFLINE : { kind: 'stop', line };
+  return line === undefined ? OFFLINE : { kind: 'stop', line, refusal: answer.refusal };
 }
 
 /**
  * The day, asked of the server. A code this build cannot address (`dayCodeOf` null), and a port that throws, are no
  * answer; a throw is recorded, never with the token. The port protects the token before it asks.
  */
-async function askDay(ports: Ports, code: SavedDayCode | null): Promise<Verdict> {
+export async function askDay(ports: Ports, code: SavedDayCode | null): Promise<Verdict> {
   if (code === null) return OFFLINE;
   try {
     return verdictOf(await ports.matchDay.day(code));
@@ -70,7 +72,7 @@ async function askDay(ports: Ports, code: SavedDayCode | null): Promise<Verdict>
 }
 
 /** The day's last good copy, for its code; a write the phone refuses is recorded, and the day still opens. */
-async function keepCopy(ports: Ports, code: SavedDayCode, day: MatchDay): Promise<void> {
+export async function keepCopy(ports: Ports, code: SavedDayCode, day: MatchDay): Promise<void> {
   await ports.matchDayStore
     .writeCache(code, day, ports.clock())
     .catch(() => ports.logger.warn('matchday.cache-refused', { op: 'write' }));
@@ -205,19 +207,24 @@ async function stop(
   line: MessageKey,
   scan: () => Promise<void>,
 ): Promise<void> {
-  let forgot: boolean;
   try {
-    forgot = await ports.modeStore.forget(saved);
+    await forgetWithCopy(ports, saved);
   } catch {
     return home.saveFailed('forget');
   }
-  if (forgot) {
-    await ports.matchDayStore
-      .clearCache()
-      .catch(() => ports.logger.warn('matchday.cache-refused', { op: 'clear' }));
-  }
   home.setStatusKey(line);
   return scan();
+}
+
+/**
+ * A day code that is over goes with its copy (S4 design §4), if the store still holds it; the opened matches stay, as
+ * their links outlive the code. A refused forget rejects, and nothing is cleared; a refused clear is recorded.
+ */
+export async function forgetWithCopy(ports: Ports, saved: SavedCode): Promise<void> {
+  if (!(await ports.modeStore.forget(saved))) return;
+  await ports.matchDayStore
+    .clearCache()
+    .catch(() => ports.logger.warn('matchday.cache-refused', { op: 'clear' }));
 }
 
 /**

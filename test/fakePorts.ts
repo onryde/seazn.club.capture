@@ -18,6 +18,7 @@ import type {
   SplashPort,
 } from '@/services/devicePorts';
 import { createEndedNotice } from '@/services/endedNotice';
+import { createMailbox } from '@/services/mailbox';
 import { createFakeCodePort, type FakeCodePort } from '@/services/fakeCodePort';
 import { createFakeMatchDayPort, type FakeMatchDayPort } from '@/services/fakeMatchDayPort';
 import { createFakeRealtimePort, type FakeRealtimePort } from '@/services/fakeRealtimePort';
@@ -201,6 +202,7 @@ export function createFakePorts(overrides: FakePortsOverrides = {}): FakePorts {
     scanFlight: createScanFlight(),
     probeFlight: createProbeFlight(),
     endedNotice: createEndedNotice(),
+    homeNews: createMailbox(),
     streamSettings: createStreamSettingsStore(kv, logger),
     clock: () => now,
     hosts: ['stg.seazn.club'],

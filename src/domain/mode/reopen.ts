@@ -19,6 +19,7 @@ export type SavedState = {
 export type ReopenTarget =
   | { readonly go: 'stream' }
   | { readonly go: 'scoring' }
+  | { readonly go: 'matchday' }
   | {
       readonly go: 'home';
       /** `venueTz` is the saved waiting fields' zone, so the notice reads in venue time (spec §2). */
@@ -40,7 +41,9 @@ export type ReopenTarget =
  * code; the viewfinder then leaves for Home with the card (spec §5), and the
  * operator's Stop goes Home. A fatal end over a code the server ended forgets it, so it lands on the `home` branch
  * above once the follow has written. Remote Scoring (plan S2-1 Task 10) reopens after those, when `scoring` says the
- * cold start found its match saved and the mode active (`reopensScoring`); S4 widens the union again.
+ * cold start found its match saved and the mode active (`reopensScoring`); Match Day (S4 design §4 "Reopen after a
+ * kill"; MD-2 Task 4) after it, when `matchday` says the cold start found the day code saved and the mode active
+ * (`reopensMatchDay`).
  */
 export function reopenTarget(input: {
   engine: EngineStatus;
@@ -49,6 +52,8 @@ export function reopenTarget(input: {
   resumed: boolean;
   /** `reopensScoring` for this decision; left out, Remote Scoring is not reopened. */
   scoring?: boolean;
+  /** `reopensMatchDay` for this decision; left out, Match Day is not reopened. */
+  matchday?: boolean;
 }): ReopenTarget {
   const { engine, saved, now } = input;
   const code = saved.codes.stream;
@@ -56,6 +61,7 @@ export function reopenTarget(input: {
   if (engine === 'paired') return { go: code === undefined ? 'home' : 'stream' };
   if (input.resumed) return { go: 'stream' };
   if (input.scoring === true) return { go: 'scoring' };
+  if (input.matchday === true) return { go: 'matchday' };
   if (saved.active !== 'stream' || code === undefined) return { go: 'home' };
   if (code.expiresAt !== null && isExpired(code, now)) {
     return {
@@ -99,6 +105,16 @@ export function orphanedSession(input: {
 export function reopensScoring(input: { saved: SavedState; coldStart: boolean }): boolean {
   const { saved } = input;
   return input.coldStart && saved.active === 'scoring' && saved.codes.scoring?.scoring != null;
+}
+
+/**
+ * Match Day reopens at a cold start only (S4 design §4 "Reopen after a kill"), as Remote Scoring does, and only while
+ * its day code is saved and it was the last mode. A visit to Home, or a return to the foreground from it, never pulls
+ * the operator back in. A day code that has ended is found by the list's own read, which forgets it and goes Home.
+ */
+export function reopensMatchDay(input: { saved: SavedState; coldStart: boolean }): boolean {
+  const { saved } = input;
+  return input.coldStart && saved.active === 'matchday' && saved.codes.matchday !== undefined;
 }
 
 /** The cold-start re-pair's conditions, on an Idle engine (amendment, Process death and reopen). */

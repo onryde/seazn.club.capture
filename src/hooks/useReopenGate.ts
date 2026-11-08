@@ -3,6 +3,7 @@ import {
   expiredModes,
   orphanedSession,
   reopenTarget,
+  reopensMatchDay,
   reopensScoring,
   resumesAtColdStart,
   type ReopenTarget,
@@ -81,6 +82,7 @@ function useSettingsLoaded(): boolean {
  * foreground never pairs: closing the permission dialog reads as one. Remote
  * Scoring reopens its match the same way, at cold start only and with nothing
  * to pair; a foreground on the pad, or on Home, stays where the scorer is.
+ * Match Day reopens its list the same way (S4 design §4).
  *
  * N4 and I1 (final review): the gate clears a session no saved code owns
  * (`orphanedSession`): an ended one is reset, a paired one unpaired
@@ -106,7 +108,9 @@ function useSettle(): (coldStart: boolean) => void {
       if (resumed) pair(stream, 'resume');
       // Remote Scoring (plan S2-1 Task 10): at a cold start only, into the match saved, as the last mode.
       const scoring = reopensScoring({ saved: current.saved, coldStart });
-      const target = reopenTarget({ ...facts, now, resumed, scoring });
+      // Match Day (S4 design §4 "Reopen after a kill"): the same, into the day's list.
+      const matchday = reopensMatchDay({ saved: current.saved, coldStart });
+      const target = reopenTarget({ ...facts, now, resumed, scoring, matchday });
       // N4, I1: a session whose code is gone is cleared on the way Home. F-S4-2: not the dev probe's,
       // whose made-up code no saved code owns; its own clean-up unpairs it.
       if (orphanedSession({ ...facts, now }) && !probeFlight.active()) unpair('orphan');

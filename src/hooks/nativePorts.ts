@@ -15,6 +15,7 @@ import { scoringPortFor } from '@/hooks/scoringPortWiring';
 import type { Ports } from '@/hooks/usePorts';
 import { createNativeCodeScanner } from '@/scanner/nativeCodeScanner';
 import { createEndedNotice } from '@/services/endedNotice';
+import { createMailbox } from '@/services/mailbox';
 import { withTimeout } from '@/services/kvTimeout';
 import { createLogger } from '@/services/logger';
 import { createModeStore } from '@/services/modeStore';
@@ -123,6 +124,7 @@ export function createNativePorts(
     scanFlight: createScanFlight(),
     probeFlight: createProbeFlight(),
     endedNotice: createEndedNotice(),
+    homeNews: createMailbox(),
     streamSettings: createStreamSettingsStore(kv, logger),
     motion: createNativeMotion(),
     orientationLock: createNativeOrientationLock(),

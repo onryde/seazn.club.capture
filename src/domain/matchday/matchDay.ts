@@ -130,3 +130,58 @@ export function bannerFor(day: MatchDay): Banner | null {
   const approval = day.approvals[0];
   return approval === undefined ? null : { approval, canApprove: day.canApprove };
 }
+
+/**
+ * The venue chips (S4 design §5): only on a code scoped to the whole competition whose courts are in two venues or
+ * more. Each venue once, in the order its first court comes; none otherwise.
+ */
+export function venuesOf(day: MatchDay): readonly string[] {
+  if (day.scope.kind !== 'competition') return [];
+  const venues = [...new Set(day.courts.map((court) => court.venueName))];
+  return venues.length > 1 ? venues : [];
+}
+
+/** The cards a venue chip leaves, in the server's order: all of them with no venue picked, or one no longer the day's. */
+export function courtCardsAt(day: MatchDay, venue: string | null): readonly CourtCard[] {
+  const cards = courtCards(day);
+  if (venue === null || !venuesOf(day).includes(venue)) return cards;
+  return cards.filter((card) => card.venueName === venue);
+}
+
+/**
+ * "Sending N" (S4 design §5): each court's unsent taps, from the matches on it only (now, its whole queue and its
+ * finished ones), keyed by court. `unsent` is a count per match.
+ */
+export function sendingByCourt(
+  day: MatchDay,
+  unsent: ReadonlyMap<string, number>,
+): ReadonlyMap<string, number> {
+  return new Map(day.courts.map((court) => [court.courtId, sendingOn(court, unsent)]));
+}
+
+function sendingOn(court: Court, unsent: ReadonlyMap<string, number>): number {
+  const rows = [...(court.now === null ? [] : [court.now]), ...court.next, ...court.finished];
+  return rows.reduce((sum, row) => sum + (unsent.get(row.fixtureId) ?? 0), 0);
+}
+
+/** What a row shows at its right: a match not started, its planned time; in play or over, its score. */
+export type RowDetail =
+  | { readonly kind: 'time'; readonly at: Date }
+  | { readonly kind: 'score'; readonly text: string }
+  | null;
+
+export function rowDetail(row: Row): RowDetail {
+  if (row.status === 'upcoming')
+    return row.scheduledAt === null ? null : { kind: 'time', at: row.scheduledAt };
+  return row.summary === null ? null : { kind: 'score', text: row.summary };
+}
+
+/** The code's calendar day (`YYYY-MM-DD`) at noon UTC: said in UTC, it is that day whatever the phone's zone. */
+export function noonOf(day: string): Date {
+  return new Date(`${day}T12:00:00.000Z`);
+}
+
+/** Nothing in the code's scope today: no court, no match without one and no online board. */
+export function isEmptyDay(day: MatchDay): boolean {
+  return day.courts.length === 0 && day.noCourt.length === 0 && day.online.length === 0;
+}

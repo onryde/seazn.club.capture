@@ -6,6 +6,7 @@ import {
   leaveRule,
   orphanedSession,
   reopenTarget,
+  reopensMatchDay,
   reopensScoring,
   resumesAtColdStart,
   tapToPairMark,
@@ -140,6 +141,69 @@ describe('reopening Remote Scoring', () => {
     expect(
       reopenTarget({ engine: 'idle', saved: both, now: NOW, resumed: true, scoring: true }),
     ).toEqual({ go: 'stream' });
+  });
+});
+
+const dayCode: SavedCode = {
+  mode: 'matchday',
+  raw: 'https://stg.seazn.club/day/md_Fake-Day_0123456789abcdefghijklmnopqrstuvwx',
+  slot: null,
+  savedAt: NOW,
+  expiresAt: null,
+  stream: null,
+  scoring: null,
+};
+const inMatchDay: SavedState = { active: 'matchday', codes: { matchday: dayCode } };
+
+/**
+ * S4 design §4 "Reopen after a kill" (MD-2 Task 4; Review Focus 2, first half): into Match Day, at a cold start only, as
+ * Remote Scoring reopens, with the day code saved and Match Day the last mode. A visit to Home is not pulled back in.
+ */
+describe('reopening Match Day', () => {
+  it('reopens at a cold start with the day code saved and the mode active', () => {
+    expect(reopensMatchDay({ saved: inMatchDay, coldStart: true })).toBe(true);
+  });
+
+  it.each<[string, Parameters<typeof reopensMatchDay>[0]]>([
+    ['this is a return to the foreground', { saved: inMatchDay, coldStart: false }],
+    ['another mode is active', { saved: { ...inMatchDay, active: 'scoring' }, coldStart: true }],
+    ['no mode is active', { saved: { ...inMatchDay, active: null }, coldStart: true }],
+    ['no day code is saved', { saved: { active: 'matchday', codes: {} }, coldStart: true }],
+  ])('does not reopen when %s', (_why, input) => {
+    expect(reopensMatchDay(input)).toBe(false);
+  });
+
+  it('is where the app lands, when no engine holds Live Stream', () => {
+    expect(
+      reopenTarget({ engine: 'idle', saved: inMatchDay, now: NOW, resumed: false, matchday: true }),
+    ).toEqual({ go: 'matchday' });
+  });
+
+  it('is Home without it: a foreground stays where the operator is', () => {
+    expect(
+      reopenTarget({
+        engine: 'idle',
+        saved: inMatchDay,
+        now: NOW,
+        resumed: false,
+        matchday: false,
+      }),
+    ).toEqual({ go: 'home' });
+    expect(reopenTarget({ engine: 'idle', saved: inMatchDay, now: NOW, resumed: false })).toEqual({
+      go: 'home',
+    });
+  });
+
+  it('yields to a held or paired broadcast, and to the cold-start re-pair', () => {
+    const both: SavedState = {
+      active: 'matchday',
+      codes: { matchday: dayCode, stream: streamCode },
+    };
+    const at = (engine: EngineStatus, resumed: boolean) =>
+      reopenTarget({ engine, saved: both, now: NOW, resumed, matchday: true });
+    expect(at('live', false)).toEqual({ go: 'stream' });
+    expect(at('paired', false)).toEqual({ go: 'stream' });
+    expect(at('idle', true)).toEqual({ go: 'stream' });
   });
 });
 

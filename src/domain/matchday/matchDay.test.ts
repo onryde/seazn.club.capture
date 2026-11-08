@@ -3,6 +3,12 @@ import { parseDay } from '@/domain/matchday/dayWire';
 import {
   bannerFor,
   courtCards,
+  courtCardsAt,
+  isEmptyDay,
+  noonOf,
+  rowDetail,
+  sendingByCourt,
+  venuesOf,
   type Approval,
   type Court,
   type MatchDay,
@@ -186,5 +192,142 @@ describe('bannerFor (S4 Match Day design §7: a banner only when an approval wai
       },
       canApprove: true,
     });
+  });
+});
+
+/** Three courts in two halls, each with its own id (the helper's are not unique enough for a map keyed by court). */
+const C1 = court('Court 1', { courtId: '11111111-1111-4111-8111-111111111111', now: NG });
+const C2 = court('Court 2', {
+  courtId: '22222222-2222-4222-8222-222222222222',
+  next: [PATEL, LEE],
+  finished: [DONE],
+});
+const C3 = court('Court 3', {
+  courtId: '33333333-3333-4333-8333-333333333333',
+  venueName: 'Hall B',
+  next: [SINGH],
+});
+
+describe('venuesOf (S4 design §5: the venue filter, only on a whole-competition code over two venues or more)', () => {
+  const whole = { kind: 'competition', label: 'SAFE Open 2026' } as const;
+
+  it('lists each venue once, in the order its first court comes', () => {
+    expect(venuesOf(day({ scope: whole, courts: [C3, C1, C2] }))).toEqual(['Hall B', 'Hall A']);
+  });
+
+  it('shows none for a competition code whose courts are all in one venue', () => {
+    expect(venuesOf(day({ scope: whole, courts: [C1, C2] }))).toEqual([]);
+  });
+
+  it('shows none for a venue code or a courts code, whatever venues their courts name', () => {
+    expect(venuesOf(day({ scope: { kind: 'venue', label: 'Hall A' }, courts: [C1, C3] }))).toEqual(
+      [],
+    );
+    expect(
+      venuesOf(day({ scope: { kind: 'courts', label: 'Court 1, Court 3' }, courts: [C1, C3] })),
+    ).toEqual([]);
+  });
+
+  it('shows none for a day with no courts', () => {
+    expect(venuesOf(day({ scope: whole }))).toEqual([]);
+  });
+});
+
+describe('courtCardsAt (the cards a venue chip leaves)', () => {
+  const both = day({
+    scope: { kind: 'competition', label: 'SAFE Open 2026' },
+    courts: [C1, C2, C3],
+  });
+  const names = (venue: string | null) => courtCardsAt(both, venue).map((card) => card.name);
+
+  it('keeps every card when no venue is picked', () => {
+    expect(names(null)).toEqual(['Court 1', 'Court 2', 'Court 3']);
+  });
+
+  it('keeps only the picked venue’s cards, in the server’s order', () => {
+    expect(names('Hall A')).toEqual(['Court 1', 'Court 2']);
+    expect(names('Hall B')).toEqual(['Court 3']);
+  });
+
+  it('keeps every card when the picked venue is no longer one of the day’s (a poll moved its courts)', () => {
+    expect(names('Hall C')).toEqual(['Court 1', 'Court 2', 'Court 3']);
+  });
+});
+
+describe('sendingByCourt (S4 design §5: "Sending N" on a court with unsent taps)', () => {
+  const both = day({ courts: [C1, C2, C3] });
+
+  it('adds the unsent taps of the court’s own matches: now, its whole queue and its finished ones', () => {
+    const unsent = new Map([
+      [NG.fixtureId, 2],
+      [LEE.fixtureId, 3],
+      [DONE.fixtureId, 1],
+    ]);
+    expect(Object.fromEntries(sendingByCourt(both, unsent))).toEqual({
+      [C1.courtId]: 2,
+      [C2.courtId]: 4,
+      [C3.courtId]: 0,
+    });
+  });
+
+  it('counts nothing for a match on no court, and nothing at all with no unsent taps', () => {
+    const unsent = new Map([[SINGH.fixtureId, 5]]);
+    expect(Object.fromEntries(sendingByCourt(day({ courts: [C1, C2] }), unsent))).toEqual({
+      [C1.courtId]: 0,
+      [C2.courtId]: 0,
+    });
+    expect(Object.fromEntries(sendingByCourt(both, new Map()))).toEqual({
+      [C1.courtId]: 0,
+      [C2.courtId]: 0,
+      [C3.courtId]: 0,
+    });
+  });
+});
+
+describe('rowDetail (what a row shows at its right)', () => {
+  it('a match not started shows its planned time, or nothing without one', () => {
+    expect(rowDetail(PATEL)).toEqual({ kind: 'time', at: new Date('2026-11-07T09:40:00.000Z') });
+    expect(rowDetail({ ...PATEL, scheduledAt: null })).toBeNull();
+  });
+
+  it('a match in play shows its short score, never its planned time; nothing before the first point', () => {
+    expect(rowDetail({ ...NG, summary: '14-9' })).toEqual({ kind: 'score', text: '14-9' });
+    expect(rowDetail({ ...NG, summary: null })).toBeNull();
+  });
+
+  it('a finished match shows its result', () => {
+    expect(rowDetail({ ...DONE, summary: '21-15 21-18' })).toEqual({
+      kind: 'score',
+      text: '21-15 21-18',
+    });
+    expect(rowDetail({ ...DONE, summary: null })).toBeNull();
+  });
+
+  it('an upcoming match with a summary still shows its time (the summary is a score, and it has none)', () => {
+    expect(rowDetail({ ...PATEL, summary: '0-0' })).toEqual({
+      kind: 'time',
+      at: new Date('2026-11-07T09:40:00.000Z'),
+    });
+  });
+});
+
+describe('noonOf (the code’s calendar day, to say in the header)', () => {
+  it('is that day at noon UTC, so the day is the same in any zone the header could be read in', () => {
+    expect(noonOf('2026-11-07').toISOString()).toBe('2026-11-07T12:00:00.000Z');
+    expect(noonOf('2026-02-28').toISOString()).toBe('2026-02-28T12:00:00.000Z');
+  });
+});
+
+describe('isEmptyDay (a day with nothing in the code’s scope)', () => {
+  it('is empty with no courts, no matches without one and no online boards', () => {
+    expect(isEmptyDay(day())).toBe(true);
+  });
+
+  it.each([
+    ['a court, even a free one', { courts: [court('Court 9')] }],
+    ['a match on no court', { noCourt: [SINGH] }],
+    ['an online board', { online: [SINGH] }],
+  ])('is not empty with %s', (_what, change: Partial<MatchDay>) => {
+    expect(isEmptyDay(day(change))).toBe(false);
   });
 });

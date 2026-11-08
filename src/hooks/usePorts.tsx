@@ -17,11 +17,13 @@ import type {
   SharePort,
   SplashPort,
 } from '@/services/devicePorts';
+import type { HomeNews } from '@/hooks/useHome';
 import type { EndedNotice } from '@/services/endedNotice';
 import type { KeyValueStore } from '@/services/KeyValueStore';
 import type { Logger } from '@/services/logger';
 import type { ModeStore } from '@/services/modeStore';
 import type { LinkPort } from '@/services/linkPort';
+import type { Mailbox } from '@/services/mailbox';
 import type { PhotoPort } from '@/services/photoPort';
 import type { ProbeFlight } from '@/services/probeFlight';
 import type { MatchDayPort } from '@/services/matchDayPort';
@@ -64,6 +66,8 @@ export type Ports = {
   readonly probeFlight: ProbeFlight;
   /** The "Stream ended" card the viewfinder hands to Home (spec §5). In memory only. */
   readonly endedNotice: EndedNotice;
+  /** S4: the line Home shows when another screen sends it there with news (the Match Day list: why its code went). */
+  readonly homeNews: Mailbox<HomeNews>;
   /** Controls left or right, and automatic start (spec §4 Settings, D23, A4). */
   readonly streamSettings: StreamSettingsStore;
   readonly motion: MotionPort;
