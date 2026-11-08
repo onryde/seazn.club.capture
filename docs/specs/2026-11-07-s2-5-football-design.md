@@ -313,7 +313,11 @@ its reading at that moment: a normal tap, created then, so every screen re-ancho
 does not move. The first tap's payload is never changed after it is queued (a changed payload would count the wait
 twice on the phone and stop the phone recognising the server's copy after a lost answer; the phone review's finding)
 (_the controller's_, 2026-11-08, from the owner's "what if [the server is] down for 2 mins"; no schema change). If play
-was really stopped while the Start waited, the phone cannot know; the next Pause re-anchors every screen.
+was really stopped while the Start waited, the phone cannot know; the next Pause re-anchors every screen. The resync carries the Start's own time moved on by its wait, never the
+screen's reading (which reads short once the server's copy has been fetched). It is not a scorer action: a running
+clock event within 2 s of the reading it re-anchors is hidden from History and the last-tap line, Undo skips it, and
+Undo of the Start voids both. If the app dies between the Start's acceptance and the resync, none is made, and other
+screens are off by the wait until the next clock tap (_the controller's_, 2026-11-08).
 
 The anchor's `recorded_at` is the clock of the web server that wrote the event (`append-event.ts:418`), and each
 screen's offset is measured against whichever web server answers it. Every screen agrees within the offset's
