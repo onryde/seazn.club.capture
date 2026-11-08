@@ -61,7 +61,7 @@ export const FAKE_DAY: MatchDay = {
 
 /** A made-up scoring link on the staging host: `dl_` and 43 base64url characters, never a real one. */
 export const FAKE_OPEN_URL =
-  'https://stg.seazn.club/score/dl_Fake-Open_0123456789abcdefghijklmnopqrstuvwx';
+  'https://stg.seazn.club/score/dl_Fake-Open_0123456789abcdefghijklmnopqrstuvw';
 
 export type FakeMatchDayCall = {
   readonly op: 'day' | 'open' | 'review' | 'approve';
@@ -77,6 +77,8 @@ export type FakeMatchDayPort = MatchDayPort & {
   /** Pends every later call until `release()`, which settles them with the answer standing then. */
   hold(): void;
   release(): void;
+  /** The next call throws instead of answering, once: a port broken in a way its own code never says. */
+  throwNext(): void;
   /** Every call, in order, with the code it carried. */
   readonly calls: readonly FakeMatchDayCall[];
 };
@@ -92,10 +94,15 @@ export function createFakeMatchDayPort(): FakeMatchDayPort {
   };
   let gate: Promise<void> | null = null;
   let lift = (): void => undefined;
+  let throwing = false;
   const calls: FakeMatchDayCall[] = [];
   const answer = async <T>(call: FakeMatchDayCall, read: () => T): Promise<T> => {
     calls.push(call);
     if (gate !== null) await gate;
+    if (throwing) {
+      throwing = false;
+      throw new Error('the Match Day port threw');
+    }
     return read();
   };
   return {
@@ -117,6 +124,9 @@ export function createFakeMatchDayPort(): FakeMatchDayPort {
     release: () => {
       gate = null;
       lift();
+    },
+    throwNext: () => {
+      throwing = true;
     },
     calls,
   };

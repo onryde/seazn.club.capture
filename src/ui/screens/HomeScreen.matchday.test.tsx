@@ -1,5 +1,5 @@
 import { act, fireEvent, renderHook, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { MatchDay } from '@/domain/matchday/matchDay';
 import { decodeSavedCode, encodeSavedCode, type SavedCode } from '@/domain/mode/savedCode';
 import { useHome } from '@/hooks/useHome';
@@ -10,14 +10,18 @@ import nl from '@/i18n/nl.json';
 import type { Lang } from '@/i18n/language';
 import { FAKE_DAY } from '@/services/fakeMatchDayPort';
 import { createMemoryKeyValueStore } from '@/services/KeyValueStore';
-import { createMatchDayStore, MATCHDAY_KEYS } from '@/services/matchDayStore';
+import { createLogger } from '@/services/logger';
+import { createMatchDayStore } from '@/services/matchDayStore';
+import { createRingRecord } from '@/services/sessionRecord';
 import { createModeStore, STORE_KEYS } from '@/services/modeStore';
 import { HomeScreen } from '@/ui/screens/HomeScreen';
-import { createFakePorts, TEST_NOW, type FakePorts } from '../../../test/fakePorts';
+import { createFakePorts, readRecord, TEST_NOW, type FakePorts } from '../../../test/fakePorts';
 import { dayLink, FIXTURE_DAY_TOKEN } from '../../../test/fixtures/dayCode';
 import { savedStreamCode } from '../../../test/fixtures/savedStream';
 import { pairCode } from '../../../test/pairCode';
+import { refusingStore } from '../../../test/refusingStore';
 import { renderWithPorts, wrapperFor } from '../../../test/renderWithPorts';
+import { createMemoryQueueFiles } from '../../../test/memoryQueueFiles';
 import { FAKE_MATCH, RAW } from '../../../test/scoringHomeFixtures';
 
 async function renderHome(options?: Parameters<typeof renderWithPorts>[1]) {
@@ -57,18 +61,28 @@ const SAVED_DAY: SavedCode = {
   scoring: null,
 };
 
-/** The store's contents with the day code saved and, unless `day` is null, the day's last good copy beside it. */
-async function savedDay(
-  options: { day?: MatchDay | null; active?: boolean } = {},
+/** Match Day's folder holding a copy of `day` for `code`, as the real store writes it. */
+async function dayCopy(
+  code: typeof DAY_CODE,
+  day: MatchDay = FAKE_DAY,
 ): Promise<Record<string, string>> {
-  const kv = createMemoryKeyValueStore();
-  if (options.day !== null) {
-    await createMatchDayStore(kv).writeCache(DAY_CODE, options.day ?? FAKE_DAY, TEST_NOW);
-  }
+  const files = createMemoryQueueFiles();
+  const logger = createLogger({ record: createRingRecord(), now: () => 0 });
+  const store = createMatchDayStore({ kv: createMemoryKeyValueStore(), files, logger });
+  await store.writeCache(code, day, TEST_NOW);
+  return Object.fromEntries(files.files);
+}
+
+type Seed = { kvSeed: Record<string, string>; dayFilesSeed: Record<string, string> };
+
+/** The phone with the day code saved and, unless `day` is null, the day's last good copy in its folder. */
+async function savedDay(options: { day?: MatchDay | null; active?: boolean } = {}): Promise<Seed> {
   return {
-    ...Object.fromEntries(kv.entries),
-    [STORE_KEYS.code('matchday')]: encodeSavedCode(SAVED_DAY),
-    ...(options.active === false ? {} : { [STORE_KEYS.active]: 'matchday' }),
+    kvSeed: {
+      [STORE_KEYS.code('matchday')]: encodeSavedCode(SAVED_DAY),
+      ...(options.active === false ? {} : { [STORE_KEYS.active]: 'matchday' }),
+    },
+    dayFilesSeed: options.day === null ? {} : await dayCopy(DAY_CODE, options.day),
   };
 }
 
@@ -76,7 +90,7 @@ async function savedDay(
 function keptNothing(home: FakePorts): void {
   expect(home.kv.entries.has(STORE_KEYS.code('matchday'))).toBe(false);
   expect(home.kv.entries.has(STORE_KEYS.active)).toBe(false);
-  expect(home.kv.entries.has(MATCHDAY_KEYS.cache)).toBe(false);
+  expect(home.dayFiles.files.size).toBe(0);
   const stored = [...home.kv.entries.values()];
   expect(stored.some((value) => value.includes(FIXTURE_DAY_TOKEN))).toBe(false);
 }
@@ -255,7 +269,7 @@ describe('Home: the Match Day tile, with no code saved', () => {
     expect(savedCodeIn(home)).toEqual(SAVED_DAY);
     // Kept, not opened: the last mode is still the last mode.
     expect(home.kv.entries.has(STORE_KEYS.active)).toBe(false);
-    expect(home.kv.entries.has(MATCHDAY_KEYS.cache)).toBe(false);
+    expect(home.dayFiles.files.size).toBe(0);
     expect(screen.queryByText('Checking code…')).toBeNull();
   });
 
@@ -355,7 +369,7 @@ describe('Home: the Match Day tile, with no code saved', () => {
 
 describe('Home: the Match Day tile, with a code saved', () => {
   it('the matchday tile with a saved code opens the day without calling the scanner', async () => {
-    const home = await renderHome({ kvSeed: await savedDay() });
+    const home = await renderHome(await savedDay());
     fireEvent.click(matchDayTile());
     await waitFor(() => expect(home.navigation.current()).toBe('matchday'));
     expect(home.scanner.scans).toBe(0);
@@ -364,7 +378,7 @@ describe('Home: the Match Day tile, with a code saved', () => {
   });
 
   it('a code kept before its day opens once the server answers it, and its day is kept', async () => {
-    const home = await renderHome({ kvSeed: await savedDay({ day: null, active: false }) });
+    const home = await renderHome(await savedDay({ day: null, active: false }));
     fireEvent.click(matchDayTile());
     await waitFor(() => expect(home.navigation.current()).toBe('matchday'));
     expect(home.scanner.scans).toBe(0);
@@ -377,7 +391,7 @@ describe('Home: the Match Day tile, with a code saved', () => {
     ['offline', { ok: false, offline: true }],
     ['gone', { ok: false, gone: true }],
   ] as const)('%s: the tile still opens the day, and keeps the code', async (_, answer) => {
-    const home = await renderHome({ kvSeed: await savedDay() });
+    const home = await renderHome(await savedDay());
     home.matchDay.answerDay(answer);
     fireEvent.click(matchDayTile());
     await waitFor(() => expect(home.navigation.current()).toBe('matchday'));
@@ -388,7 +402,7 @@ describe('Home: the Match Day tile, with a code saved', () => {
 
   // S4 design §4 "The day ends": past the code's expiry, known from the last copy, so no server is asked.
   it('the tile with an ended code shows the scanner with "Match Day ended" and forgets the code', async () => {
-    const home = await renderHome({ kvSeed: await savedDay() });
+    const home = await renderHome(await savedDay());
     act(() => home.setNow(FAKE_DAY.expiresAt));
     fireEvent.click(matchDayTile());
     await waitFor(() => expect(home.scanner.scans).toBe(1));
@@ -399,7 +413,7 @@ describe('Home: the Match Day tile, with a code saved', () => {
   });
 
   it('one millisecond before its end, the day still opens', async () => {
-    const home = await renderHome({ kvSeed: await savedDay() });
+    const home = await renderHome(await savedDay());
     act(() => home.setNow(new Date(FAKE_DAY.expiresAt.getTime() - 1)));
     fireEvent.click(matchDayTile());
     await waitFor(() => expect(home.navigation.current()).toBe('matchday'));
@@ -414,7 +428,7 @@ describe('Home: the Match Day tile, with a code saved', () => {
   ] as const)(
     'the tile with a code the server calls %s shows the scanner with "%s" and forgets the code',
     async (refusal, line) => {
-      const home = await renderHome({ kvSeed: await savedDay() });
+      const home = await renderHome(await savedDay());
       home.matchDay.answerDay({ ok: false, refusal });
       fireEvent.click(matchDayTile());
       await waitFor(() => expect(home.scanner.scans).toBe(1));
@@ -425,7 +439,7 @@ describe('Home: the Match Day tile, with a code saved', () => {
   );
 
   it('the scan after an ended day takes the code scanned, checked as a first scan is', async () => {
-    const home = await renderHome({ kvSeed: await savedDay() });
+    const home = await renderHome(await savedDay());
     home.matchDay.answerDay({ ok: false, refusal: 'MD_ENDED' });
     home.scanner.queue({ outcome: 'scanned', raw: dayLink() });
     fireEvent.click(matchDayTile());
@@ -437,7 +451,7 @@ describe('Home: the Match Day tile, with a code saved', () => {
   });
 
   it('the tile before opens_at shows "Match Day opens Sat 7 Nov" and keeps the code', async () => {
-    const home = await renderHome({ kvSeed: await savedDay({ day: null, active: false }) });
+    const home = await renderHome(await savedDay({ day: null, active: false }));
     home.matchDay.answerDay({ ok: false, refusal: 'MD_NOT_OPEN', opensAt: OPENS_AT });
     fireEvent.click(matchDayTile());
     await screen.findByText('Match Day opens Sat 7 Nov');
@@ -450,7 +464,7 @@ describe('Home: the Match Day tile, with a code saved', () => {
 
   // Question 1: one check at a time, under the same flight as a scan.
   it('a second tap while the saved day is being checked asks nothing more', async () => {
-    const home = await renderHome({ kvSeed: await savedDay() });
+    const home = await renderHome(await savedDay());
     home.matchDay.hold();
     fireEvent.click(matchDayTile());
     await screen.findByText('Checking code…');
@@ -463,7 +477,8 @@ describe('Home: the Match Day tile, with a code saved', () => {
 
   it('asks first while Live Stream is paired', async () => {
     const { stream, seed } = pairedStream();
-    const home = await renderHome({ kvSeed: { ...(await savedDay({ active: false })), ...seed } });
+    const day = await savedDay({ active: false });
+    const home = await renderHome({ ...day, kvSeed: { ...day.kvSeed, ...seed } });
     pairCode(home.engine, stream);
     fireEvent.click(matchDayTile());
     await screen.findByRole('button', { name: 'Unpair & open' });
@@ -474,7 +489,7 @@ describe('Home: the Match Day tile, with a code saved', () => {
   // Review Focus 4 (S4 design §4: "Another kind of code scanned while Match Day is saved").
   it('a scoring code scanned while Match Day is saved opens Remote Scoring and leaves code.matchday in place', async () => {
     const seed = await savedDay();
-    const home = await renderHome({ kvSeed: seed });
+    const home = await renderHome(seed);
     home.scanner.queue({ outcome: 'scanned', raw: RAW });
     fireEvent.click(scoringTile());
     await waitFor(() => expect(home.navigation.current()).toBe('scoring'));
@@ -482,16 +497,174 @@ describe('Home: the Match Day tile, with a code saved', () => {
     const scoring = decodeSavedCode(home.kv.entries.get(STORE_KEYS.code('scoring')) ?? '');
     expect(scoring?.scoring?.fixtureId).toBe(FAKE_MATCH);
     expect(home.kv.entries.get(STORE_KEYS.code('matchday'))).toBe(
-      seed[STORE_KEYS.code('matchday')],
+      seed.kvSeed[STORE_KEYS.code('matchday')],
     );
-    expect(home.kv.entries.get(MATCHDAY_KEYS.cache)).toBe(seed[MATCHDAY_KEYS.cache]);
+    expect(Object.fromEntries(home.dayFiles.files)).toEqual(seed.dayFilesSeed);
     expect(dayCalls(home)).toEqual([]);
+  });
+});
+
+/** A second day code, made up: `md_` and 43 characters, as the web mints them. */
+const OTHER_TOKEN = 'md_Other-Day_0123456789abcdefghijklmnopqrstuvw';
+const OTHER_DAY_CODE = { origin: DAY_CODE.origin, token: OTHER_TOKEN };
+const SAVE_FAILED = en['store.saveFailed'];
+const savedModeCodes = (home: FakePorts) => {
+  const snapshot = home.ports.modeStore.getSnapshot();
+  return snapshot.status === 'ready' ? snapshot.saved.codes : null;
+};
+
+describe('Home: Match Day when the phone or the port lets it down (questions 2 and 3)', () => {
+  const rejections: unknown[] = [];
+  const onRejection = (reason: unknown) => rejections.push(reason);
+  beforeEach(() => {
+    rejections.length = 0;
+    process.on('unhandledRejection', onRejection);
+  });
+  afterEach(() => {
+    process.off('unhandledRejection', onRejection);
+  });
+  const every = () => true;
+
+  // Review I1: a port that throws is no answer. "Checking code…" never stays (its Close is refused while it shows).
+  it('a port that throws at the first scan is no connection: the check’s panel goes, Close closes, nothing is kept', async () => {
+    const home = await renderHome();
+    home.matchDay.throwNext();
+    scanDay(home);
+    await screen.findByText('No connection');
+    expect(screen.queryByText('Checking code…')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.queryByText('No connection')).toBeNull();
+    keptNothing(home);
+    expect(readRecord(home.record)).toContainEqual(
+      expect.objectContaining({
+        event: 'matchday.answer',
+        fields: { op: 'day', kind: 'offline', problem: 'port-threw' },
+      }),
+    );
+    expect(rejections).toEqual([]);
+  });
+
+  it('a port that throws on the tile opens the day anyway, as no connection does', async () => {
+    const home = await renderHome(await savedDay());
+    home.matchDay.throwNext();
+    fireEvent.click(matchDayTile());
+    await waitFor(() => expect(home.navigation.current()).toBe('matchday'));
+    expect(screen.queryByText('Checking code…')).toBeNull();
+    expect(home.scanner.scans).toBe(0);
+    expect(rejections).toEqual([]);
+  });
+
+  // A refused forget says so and scans nothing: the code stays, so the next tap tries again.
+  it.each([
+    ['ended by its copy', null],
+    ['ended by the server', 'MD_ENDED'],
+  ] as const)(
+    'a code %s that the phone refuses to forget says so, keeps the code and its copy, and scans nothing',
+    async (_, refusal) => {
+      const seed = await savedDay();
+      const home = await renderHome({ ...seed, modeStore: refusingStore(seed.kvSeed, every) });
+      if (refusal === null) act(() => home.setNow(FAKE_DAY.expiresAt));
+      else home.matchDay.answerDay({ ok: false, refusal });
+      fireEvent.click(matchDayTile());
+      await screen.findByText(SAVE_FAILED);
+      expect(home.scanner.scans).toBe(0);
+      expect(savedModeCodes(home)?.matchday?.raw).toBe(dayLink());
+      expect(Object.fromEntries(home.dayFiles.files)).toEqual(seed.dayFilesSeed);
+      expect(readRecord(home.record)).toContainEqual(
+        expect.objectContaining({ event: 'store.write-refused', fields: { action: 'forget' } }),
+      );
+      expect(rejections).toEqual([]);
+    },
+  );
+
+  it('a code scanned before its day that the phone refuses to keep says so, and keeps nothing', async () => {
+    const home = await renderHome({ modeStore: refusingStore({}, every) });
+    home.matchDay.answerDay({ ok: false, refusal: 'MD_NOT_OPEN', opensAt: OPENS_AT });
+    scanDay(home);
+    await screen.findByText(SAVE_FAILED);
+    expect(screen.queryByText('Match Day opens Sat 7 Nov')).toBeNull();
+    expect(savedModeCodes(home)).toEqual({});
+    expect(home.navigation.current()).toBe('home');
+    expect(readRecord(home.record)).toContainEqual(
+      expect.objectContaining({ event: 'store.write-refused', fields: { action: 'open' } }),
+    );
+    expect(rejections).toEqual([]);
+  });
+
+  // The copy is a convenience: a disk that refuses it never stops the day.
+  it('a copy the disk refuses to write is recorded, and the day still opens', async () => {
+    const home = await renderHome();
+    home.dayFiles.failNext('write');
+    scanDay(home);
+    await waitFor(() => expect(home.navigation.current()).toBe('matchday'));
+    expect(savedCodeIn(home)?.raw).toBe(dayLink());
+    await waitFor(() =>
+      expect(readRecord(home.record)).toContainEqual(
+        expect.objectContaining({ event: 'matchday.cache-refused', fields: { op: 'write' } }),
+      ),
+    );
+    expect(home.dayFiles.files.size).toBe(0);
+    expect(rejections).toEqual([]);
+  });
+
+  it('a copy the disk refuses to clear is recorded, and the code still goes and the scanner still opens', async () => {
+    const home = await renderHome(await savedDay());
+    home.matchDay.answerDay({ ok: false, refusal: 'MD_ENDED' });
+    home.dayFiles.failNext('remove');
+    fireEvent.click(matchDayTile());
+    await waitFor(() => expect(home.scanner.scans).toBe(1));
+    await screen.findByText('Match Day ended');
+    expect(home.kv.entries.has(STORE_KEYS.code('matchday'))).toBe(false);
+    expect(readRecord(home.record)).toContainEqual(
+      expect.objectContaining({ event: 'matchday.cache-refused', fields: { op: 'clear' } }),
+    );
+    expect(rejections).toEqual([]);
+  });
+});
+
+describe('Home: a second day code while one is saved', () => {
+  // Review M1: a code's copy is written only once the code is saved, so a scan that goes no further never costs the
+  // saved code its copy (its card and its offline list).
+  it('a scanned code B never writes over saved code A’s copy when A7 is cancelled', async () => {
+    const { stream, seed } = pairedStream();
+    const day = await savedDay({ active: false });
+    const home = await renderHome({ ...day, kvSeed: { ...day.kvSeed, ...seed } });
+    pairCode(home.engine, stream);
+    home.scanner.queue({ outcome: 'scanned', raw: dayLink('stg.seazn.club', OTHER_TOKEN) });
+    fireEvent.click(liveStreamTile());
+    fireEvent.click(await screen.findByRole('button', { name: 'Open Match Day' }));
+    await screen.findByRole('button', { name: 'Unpair & open' });
+    expect(dayCalls(home).map((call) => call.code)).toEqual([OTHER_DAY_CODE]);
+    const [, cancel] = screen.getAllByRole('button', { name: 'Cancel' });
+    if (cancel === undefined) throw new Error('the sheet has its own Cancel');
+    fireEvent.click(cancel);
+    await act(async () => undefined);
+    expect(savedCodeIn(home)?.raw).toBe(dayLink());
+    expect(Object.fromEntries(home.dayFiles.files)).toEqual(day.dayFilesSeed);
+    expect((await home.ports.matchDayStore.readCache(DAY_CODE))?.day).toEqual(FAKE_DAY);
+  });
+
+  // Review M3: the button says Scan again, so it scans, even with another day code saved.
+  it('Scan again on a refused code B scans, and never opens saved code A’s day', async () => {
+    const home = await renderHome(await savedDay());
+    home.scanner.queue({ outcome: 'scanned', raw: dayLink('stg.seazn.club', OTHER_TOKEN) });
+    home.matchDay.answerDay({ ok: false, refusal: 'MD_WITHDRAWN' });
+    fireEvent.click(liveStreamTile());
+    fireEvent.click(await screen.findByRole('button', { name: 'Open Match Day' }));
+    await screen.findByText('Match Day code withdrawn');
+    home.matchDay.answerDay({ ok: true, value: FAKE_DAY });
+    fireEvent.click(screen.getByRole('button', { name: 'Scan again' }));
+    await waitFor(() => expect(home.scanner.scans).toBe(2));
+    await act(async () => undefined);
+    expect(home.navigation.current()).toBe('home');
+    expect(dayCalls(home).map((call) => call.code)).toEqual([OTHER_DAY_CODE]);
+    expect(savedCodeIn(home)?.raw).toBe(dayLink());
   });
 });
 
 describe('Home: the Match Day Continue card', () => {
   it('the Home Continue card reads "Match Day · SAFE Open · Hall A", and Continue opens the day with no scan', async () => {
-    const home = await renderHome({ kvSeed: await savedDay() });
+    const home = await renderHome(await savedDay());
     const card = await screen.findByTestId('continue-card');
     expect(within(card).getByText('Match Day · SAFE Open · Hall A')).toBeTruthy();
     // Exit is under ⋯ on the day's own bar, with a confirm (S4 design §4): the card has no Forget.
@@ -503,27 +676,25 @@ describe('Home: the Match Day Continue card', () => {
 
   it('a code for the whole competition names the competition alone', async () => {
     const whole: MatchDay = { ...FAKE_DAY, scope: { kind: 'competition', label: 'SAFE Open' } };
-    await renderHome({ kvSeed: await savedDay({ day: whole }) });
+    await renderHome(await savedDay({ day: whole }));
     const card = await screen.findByTestId('continue-card');
     expect(within(card).getByText('Match Day · SAFE Open')).toBeTruthy();
   });
 
   // Question 2: nothing to say, no card. The day's copy belongs to its code: a new code never shows an old day.
   it('shows no card with no code, no copy of its day, a copy of another code’s day, or a day that has ended', async () => {
-    const other = createMemoryKeyValueStore();
     const elsewhere = {
       origin: DAY_CODE.origin,
       token: 'md_Other-Day_0123456789abcdefghijklmnopqrstuv',
     };
-    await createMatchDayStore(other).writeCache(elsewhere, FAKE_DAY, TEST_NOW);
-    const cases: Record<string, string>[] = [
-      {},
+    const cases: Seed[] = [
+      { kvSeed: {}, dayFilesSeed: {} },
       await savedDay({ day: null }),
-      { ...(await savedDay({ day: null })), ...Object.fromEntries(other.entries) },
+      { ...(await savedDay({ day: null })), dayFilesSeed: await dayCopy(elsewhere) },
       await savedDay({ day: { ...FAKE_DAY, expiresAt: TEST_NOW } }),
     ];
-    for (const kvSeed of cases) {
-      const home = await renderHome({ kvSeed });
+    for (const seed of cases) {
+      const home = await renderHome(seed);
       await act(async () => undefined);
       expect(screen.queryByTestId('continue-card')).toBeNull();
       home.unmount();
@@ -532,7 +703,7 @@ describe('Home: the Match Day Continue card', () => {
   });
 
   it('goes with the code: a day the server ends forgets it, and the card leaves', async () => {
-    const home = await renderHome({ kvSeed: await savedDay() });
+    const home = await renderHome(await savedDay());
     await screen.findByTestId('continue-card');
     home.matchDay.answerDay({ ok: false, refusal: 'MD_ENDED' });
     fireEvent.click(matchDayTile());
@@ -546,7 +717,7 @@ describe('Home: the Match Day Continue card', () => {
     ['fr', 'Jour de match · SAFE Open · Hall A'],
     ['nl', 'Speeldag · SAFE Open · Hall A'],
   ])('reads in %s', async (lang, title) => {
-    await renderHome({ kvSeed: await savedDay(), deviceLanguages: [lang] });
+    await renderHome({ ...(await savedDay()), deviceLanguages: [lang] });
     const card = await screen.findByTestId('continue-card');
     expect(within(card).getByText(title)).toBeTruthy();
     const open = word(lang, 'home.continue.open');

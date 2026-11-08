@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { parseOpen } from '@/domain/matchday/openWire';
+import { recognise } from '@/domain/mode/recognise';
 import { FAKE_DAY, FAKE_OPEN_URL } from '@/services/fakeMatchDayPort';
 import { TABLE_TENNIS_SINGLES_SEED } from '@/services/fakeTableTennisPad';
 import { createFakePorts, disposeFakePorts } from './fakePorts';
@@ -54,10 +56,41 @@ describe('fake Match Day', () => {
     expect(await pending).toEqual({ ok: false, refusal: 'MD_ENDED' });
   });
 
-  it('the store is the real one over the ports’ key-value store', async () => {
-    const { ports, kv } = createFakePorts();
+  it('throws once when told to, then answers again', async () => {
+    const { matchDay } = createFakePorts();
+    matchDay.throwNext();
+    await expect(matchDay.day(CODE)).rejects.toThrow('threw');
+    expect((await matchDay.day(CODE)).ok).toBe(true);
+  });
+
+  // Review M2: Task 5 opens matches on a laptop through this fake, so its link is one the real port can hand on.
+  it('hands out a link the contract admits and a scan reads as a scoring code on the build’s host', () => {
+    const read = parseOpen({
+      ok: true,
+      data: { kind: 'link', url: FAKE_OPEN_URL, sport_key: 'badminton' },
+    });
+    expect(read).toEqual({
+      ok: true,
+      value: { kind: 'link', url: FAKE_OPEN_URL, sportKey: 'badminton' },
+    });
+    const scanned = recognise(FAKE_OPEN_URL, new Date(0), ['stg.seazn.club']);
+    expect(scanned.outcome === 'code' && scanned.code.mode).toBe('scoring');
+  });
+
+  it('the store is the real one: the opened matches in the key-value store, the day’s copy in its own folder', async () => {
+    const { ports, kv, dayFiles } = createFakePorts();
     await ports.matchDayStore.addOpened('f1');
     expect(kv.entries.get('matchday.opened')).toBe('["f1"]');
+    await ports.matchDayStore.writeCache(CODE, FAKE_DAY, new Date(0));
+    expect([...dayFiles.files.keys()]).toEqual(['day.json']);
+    expect([...kv.entries.keys()]).toEqual(['matchday.opened']);
+  });
+
+  it('starts from the folder a test seeds', async () => {
+    const first = createFakePorts();
+    await first.ports.matchDayStore.writeCache(CODE, FAKE_DAY, new Date(0));
+    const { ports } = createFakePorts({ dayFilesSeed: Object.fromEntries(first.dayFiles.files) });
+    expect((await ports.matchDayStore.readCache(CODE))?.day).toEqual(FAKE_DAY);
   });
 });
 

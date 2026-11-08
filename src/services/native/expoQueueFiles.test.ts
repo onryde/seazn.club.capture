@@ -95,7 +95,7 @@ beforeEach(() => {
 
 describe('the queue folder over expo-file-system', () => {
   it('lives in the document directory, which the system never clears, and makes itself before first use', async () => {
-    const files = createExpoQueueFiles();
+    const files = createExpoQueueFiles('scoring');
     expect(disk.calls).toEqual([]);
     await files.write('a.json.tmp', 'text');
     expect(disk.calls[0]).toBe(`create ${FOLDER} intermediates=true idempotent=true`);
@@ -103,7 +103,7 @@ describe('the queue folder over expo-file-system', () => {
   });
 
   it('makes the folder once, not before every call', async () => {
-    const files = createExpoQueueFiles();
+    const files = createExpoQueueFiles('scoring');
     await files.write('a.json.tmp', 'one');
     await files.write('b.json.tmp', 'two');
     await files.names();
@@ -111,14 +111,14 @@ describe('the queue folder over expo-file-system', () => {
   });
 
   it('reads a file’s text, and null for one that is not there', async () => {
-    const files = createExpoQueueFiles();
+    const files = createExpoQueueFiles('scoring');
     await files.write('a.json', 'hello');
     expect(await files.read('a.json')).toBe('hello');
     expect(await files.read('missing.json')).toBeNull();
   });
 
   it('names the files in the folder, and no sub-folder', async () => {
-    const files = createExpoQueueFiles();
+    const files = createExpoQueueFiles('scoring');
     await files.write('a.json', '1');
     await files.write('b.json.tmp', '2');
     disk.dirs.add(`${FOLDER}/nested`);
@@ -126,11 +126,11 @@ describe('the queue folder over expo-file-system', () => {
   });
 
   it('is empty before anything is written', async () => {
-    expect(await createExpoQueueFiles().names()).toEqual([]);
+    expect(await createExpoQueueFiles('scoring').names()).toEqual([]);
   });
 
   it('moves a file over another, replacing it: the platform’s move with overwrite, nothing else', async () => {
-    const files = createExpoQueueFiles();
+    const files = createExpoQueueFiles('scoring');
     await files.write('a.json', 'old');
     await files.write('a.json.tmp', 'new');
     await files.move('a.json.tmp', 'a.json');
@@ -140,7 +140,7 @@ describe('the queue folder over expo-file-system', () => {
   });
 
   it('removes a file, and one that is not there is not a failure', async () => {
-    const files = createExpoQueueFiles();
+    const files = createExpoQueueFiles('scoring');
     await files.write('a.json', '1');
     await files.remove('a.json');
     await files.remove('a.json');
@@ -148,13 +148,13 @@ describe('the queue folder over expo-file-system', () => {
   });
 
   it('lets a failure through, so the store can say so: a write the disk refuses rejects', async () => {
-    const files = createExpoQueueFiles();
+    const files = createExpoQueueFiles('scoring');
     disk.fail.add('write');
     await expect(files.write('a.json.tmp', 'x')).rejects.toThrow('refused');
   });
 
   it('lets a move the disk refuses reject, the old file whole', async () => {
-    const files = createExpoQueueFiles();
+    const files = createExpoQueueFiles('scoring');
     await files.write('a.json', 'old');
     await files.write('a.json.tmp', 'new');
     disk.fail.add('move');
@@ -162,8 +162,23 @@ describe('the queue folder over expo-file-system', () => {
     expect(disk.files.get(`${FOLDER}/a.json`)).toBe('old');
   });
 
+  // MD-2 Task 3 fix round 1: Match Day's copy of its day has a folder of its own. In the tap queue's, `day.json` would
+  // read as a garbled queue for a match called "day" (`tapQueueStore`'s file pattern).
+  it('keeps each folder to itself: Match Day’s is documentDirectory/matchday, never the tap queue’s', async () => {
+    const scoring = createExpoQueueFiles('scoring');
+    const matchDay = createExpoQueueFiles('matchday');
+    await matchDay.write('day.json', 'the day');
+    expect(disk.files.get('file:///data/user/0/app/files/matchday/day.json')).toBe('the day');
+    expect(disk.calls[0]).toBe(
+      'create file:///data/user/0/app/files/matchday intermediates=true idempotent=true',
+    );
+    expect(await scoring.names()).toEqual([]);
+    expect(await scoring.read('day.json')).toBeNull();
+    expect(await matchDay.names()).toEqual(['day.json']);
+  });
+
   it('takes a name as a name: nothing that climbs out of the folder', async () => {
-    const files = createExpoQueueFiles();
+    const files = createExpoQueueFiles('scoring');
     await expect(files.write('../escape.json', 'x')).rejects.toThrow();
     await expect(files.read('../escape.json')).rejects.toThrow();
     await expect(files.remove('a/b.json')).rejects.toThrow();

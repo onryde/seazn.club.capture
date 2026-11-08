@@ -201,10 +201,10 @@ export function useHome(): { view: HomeView; actions: HomeActions } {
   );
   const { openOrCheck, retryCheck } = useCodeCheck(openCode, panel, setPanel, useDayCheck(day));
   const handle = useHandleScan(openOrCheck, setPanel, setStatusKey);
-  const tapTile = useTapTile(handle, setPanel, setStatusKey, useOpenSavedDay(day));
+  const { tapTile, scanFrom } = useTapTile(handle, setPanel, setStatusKey, useOpenSavedDay(day));
   const { rows, finish, refresh } = useScoringRows(savedMatchId(snapshot));
   const view = useHomeView(snapshot, panel, statusKey, rows, finish);
-  const panelActions = usePanelActions(panel, tapTile, openOrCheck, setPanel);
+  const panelActions = usePanelActions(panel, scanFrom, openOrCheck, setPanel);
   const continueStream = useContinue(setStatusKey, saveFailed);
   const forgetStream = useForget(setStatusKey, saveFailed);
   const pasteRaw = usePaste(handle);
@@ -404,16 +404,31 @@ function useHandleScan(
  * and while its code is being saved. The same flight holds the reopen gate off
  * the return from the scanner (I2). It ends on every outcome, a broken scanner
  * included, so Home can never be left with no way to scan.
+ *
+ * `tapTile` is a tile's tap: with a Match Day code saved, the Match Day tile
+ * opens its day. `scanFrom` always scans: a panel's Scan again (review M3).
  */
 function useTapTile(
   handle: HandleScan,
   setPanel: SetPanel,
   setStatusKey: SetStatusKey,
   openSavedDay: (saved: SavedCode, scan: () => Promise<void>) => Promise<void>,
-): (mode: Mode) => void {
+): { tapTile: (mode: Mode) => void; scanFrom: (mode: Mode) => void } {
+  const start = useScanFlight(handle, setPanel, setStatusKey, openSavedDay);
+  const tapTile = useCallback((mode: Mode) => start(mode, true), [start]);
+  const scanFrom = useCallback((mode: Mode) => start(mode, false), [start]);
+  return { tapTile, scanFrom };
+}
+
+function useScanFlight(
+  handle: HandleScan,
+  setPanel: SetPanel,
+  setStatusKey: SetStatusKey,
+  openSavedDay: (saved: SavedCode, scan: () => Promise<void>) => Promise<void>,
+): (mode: Mode, openDay: boolean) => void {
   const { modeStore, scanner, scanFlight, endedNotice } = usePorts();
   return useCallback(
-    (mode: Mode) => {
+    (mode: Mode, openDay: boolean) => {
       // Ready first: a tap on a loading store must not raise the flag.
       if (!isReady(modeStore)) return;
       if (!scanFlight.begin()) return;
@@ -424,7 +439,7 @@ function useTapTile(
       modeStore.dismissNotices();
       const scan = () => scanSafely(scanner).then((result) => handle(mode, result));
       // S4 design §4: with a Match Day code saved, the tile opens its day, and scans only once the code has gone.
-      const day = mode === 'matchday' ? savedDay(modeStore) : null;
+      const day = openDay && mode === 'matchday' ? savedDay(modeStore) : null;
       void (day === null ? scan() : openSavedDay(day, scan))
         .catch(ignoreUnexpected)
         .finally(() => scanFlight.end());
@@ -567,20 +582,20 @@ function statusText(
 type FormatAt = (at: Date, zone: string | null) => string;
 
 /**
- * The panel's buttons: open the code it named, scan again from the same tile,
- * or close. Open closes the panel first, so a refused save replaces it. A
+ * The panel's buttons: open the code it named, scan again from the same tile
+ * (a scan, even with a Match Day code saved), or close. Open closes the panel first, so a refused save replaces it. A
  * stream code opened here is checked like a scanned one. "Checking code…"
  * never closes (D27): the fetch's own deadline ends it.
  */
 function usePanelActions(
   panel: HomePanel | null,
-  tapTile: (mode: Mode) => void,
+  scanFrom: (mode: Mode) => void,
   openOrCheck: OpenOrCheck,
   setPanel: SetPanel,
 ): Pick<HomeActions, 'scanAgain' | 'openFromPanel' | 'closePanel'> {
   const scanAgain = useCallback(() => {
-    if (panel !== null) tapTile(panel.tapped);
-  }, [panel, tapTile]);
+    if (panel !== null) scanFrom(panel.tapped);
+  }, [panel, scanFrom]);
   const openFromPanel = useCallback(
     (code: ModeCode) => {
       setPanel(null);

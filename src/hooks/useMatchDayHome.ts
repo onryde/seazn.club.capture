@@ -82,13 +82,16 @@ async function keepCopy(ports: Ports, code: SavedDayCode, day: MatchDay): Promis
  * reopen. Answered, the day's copy is kept and the code opens (A7 first while Live Stream is paired). Before its day it
  * is kept and nothing opens: the line says when it opens. A code that has ended, been withdrawn or is unknown saves
  * nothing and says which. No answer saves nothing and offers Try again. One check at a time: a second call while one
- * is in flight asks and saves nothing more. A store that is not ready is not asked (R12).
+ * is in flight asks and saves nothing more. A store that is not ready is not asked (R12). The day's copy is kept only
+ * once its code is saved.
  */
 export function useDayCheck(home: Home): (code: DayCode) => Promise<void> {
   const ports = usePorts();
   const checking = useRef(false);
   return useCallback(
     async (code: DayCode) => {
+      // R12: a store that is not ready is not asked. Unreachable from Home today, whose every way here is behind the
+      // tile's own ready check (an equivalent mutant), and kept so the rule does not rest on its callers.
       if (ports.modeStore.getSnapshot().status !== 'ready' || checking.current) return;
       checking.current = true;
       try {
@@ -113,8 +116,11 @@ async function afterScan(
   switch (verdict.kind) {
     case 'open':
       home.setPanel(null);
-      if (dayCode !== null) await keepCopy(ports, dayCode, verdict.day);
-      return home.openCode(code, null);
+      await home.openCode(code, null);
+      // Review M1: the copy only once its code is saved. A7's Cancel, a refused save or a process death before the save
+      // then writes nothing, so a code already saved never loses its own copy to one that went no further.
+      if (dayCode !== null && isSaved(ports, code)) await keepCopy(ports, dayCode, verdict.day);
+      return;
     case 'notYet':
       home.setPanel(null);
       return keepUnopened(ports, home, code, verdict.news);
@@ -128,6 +134,12 @@ async function afterScan(
         code,
       });
   }
+}
+
+/** The store holds this very code as Match Day's. */
+function isSaved(ports: Ports, code: DayCode): boolean {
+  const snapshot = ports.modeStore.getSnapshot();
+  return snapshot.status === 'ready' && snapshot.saved.codes.matchday?.raw === code.raw;
 }
 
 /** Saved, not opened: the active mode stays (`ModeStore.keep`), and the line says when the day opens. */

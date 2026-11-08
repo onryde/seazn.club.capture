@@ -144,7 +144,6 @@ const DAY: MatchDay = {
 };
 const DURING = new Date('2026-11-07T10:42:00.000Z');
 
-/** S4 design §4: "Match Day · {competition} · {scope}", from the day's last good copy. */
 // S4 design §3: the code expires at the end of its day; the server answers MD_ENDED from that instant (the contract).
 describe('dayHasEnded', () => {
   it('ends at its expiry, not a millisecond before', () => {
@@ -155,6 +154,7 @@ describe('dayHasEnded', () => {
   });
 });
 
+/** S4 design §4: "Match Day · {competition} · {scope}", from the day's last good copy. */
 describe('matchDayCard', () => {
   it('names the competition and the code’s scope', () => {
     expect(matchDayCard({ day: DAY }, DURING)).toEqual({

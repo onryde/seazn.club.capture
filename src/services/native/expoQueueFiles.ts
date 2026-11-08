@@ -5,15 +5,18 @@ import type { QueueFiles } from '@/services/tapQueueStore';
 const NAME = /^[A-Za-z0-9_-][A-Za-z0-9._-]*$/;
 
 /**
- * The tap queue's folder, `documentDirectory/scoring` (design §6.3): the document directory is safe from the system
- * clearing it, unlike the cache. Over expo-file-system's `File` and `Directory`. `move` is the platform's own, with
+ * The app's own folders in the document directory, each to itself: the tap queue's `scoring` (S2 design §6.3) and
+ * Match Day's `matchday` (MD-2 Task 3, the day's last good copy). Never one folder for both: the tap queue reads every
+ * file in its folder as a match's queue. The document directory is safe from the system clearing it, unlike the cache,
+ * and Android's Auto Backup leaves it alone (the secure store's backup rules include only shared preferences:
+ * `test/androidBackup.test.ts`). Over expo-file-system's `File` and `Directory`. `move` is the platform's own, with
  * `overwrite`, and is NOT atomic over an existing file: on Android it deletes the target and then renames
  * (`CopyMoveStrategy.LocalFile.prepareAsDestination` and `tryNativeMove`, expo-file-system 57.0.7), so a kill between
  * the two leaves only the source. The store reads for that (`tapQueueStore`: a temp file that decodes is promoted).
  * What a phone does is a device claim.
  */
-export function createExpoQueueFiles(): QueueFiles {
-  const folder = new Directory(Paths.document, 'scoring');
+export function createExpoQueueFiles(name: 'scoring' | 'matchday'): QueueFiles {
+  const folder = new Directory(Paths.document, name);
   let ready = false;
   const open = (): Directory => {
     if (!ready) {
