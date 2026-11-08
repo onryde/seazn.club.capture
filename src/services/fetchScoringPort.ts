@@ -93,7 +93,9 @@ const CAP: Readonly<Record<Op, number>> = {
 
 export function createFetchScoringPort(deps: Deps): ScoringPort {
   const say = reporter(deps.logger);
-  const ask = (link: ScoringLink, op: Op, build: Build) => send(deps, link, op, build);
+  const serverTime = clockApart(deps);
+  const own: Deps = { ...deps, ...(serverTime === undefined ? {} : { serverTime }) };
+  const ask = (link: ScoringLink, op: Op, build: Build) => send(own, link, op, build);
   const get =
     (path: () => string): Build =>
     () => ({ method: 'GET', path: path() });
@@ -137,6 +139,27 @@ export function createFetchScoringPort(deps: Deps): ScoringPort {
       const grant = read(say, 'realtimeToken', reply, parseRealtimeGrant);
       return 'kind' in grant ? null : grant;
     },
+  };
+}
+
+/**
+ * The clock's feed, held apart from the answer (Batch A review, M3; the web's transport measures the same way): a feed
+ * that throws (a subscriber of the server clock, say) costs that one sample, never the answer, which would otherwise
+ * read `unexpected` and send an accepted tap to the retry path. The record says `scoring.clock.failed` once for the
+ * port, not once per answer.
+ */
+function clockApart(deps: Deps): ((sampleMs: number) => void) | undefined {
+  const feed = deps.serverTime;
+  if (feed === undefined) return undefined;
+  let said = false;
+  return (sampleMs) => {
+    try {
+      feed(sampleMs);
+    } catch {
+      if (said) return;
+      said = true;
+      deps.logger.warn('scoring.clock.failed');
+    }
   };
 }
 

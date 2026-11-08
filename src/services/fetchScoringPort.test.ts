@@ -457,6 +457,25 @@ describe('the server’s time, from each answer’s Date header', () => {
     const unfed = portOver(answering(respond(201, CREATED, { Date: SERVER_DATE })));
     expect(await unfed.port.append(LINK, FIXTURE, BODY)).toMatchObject({ kind: 'accepted' });
   });
+
+  // The Batch A review's M3: the measurement is held apart from the answer, as the web's transport holds it. A clock that
+  // throws (a subscriber of the server clock, say) costs that sample only: the answer is the server's, never `unexpected`,
+  // so an accepted tap is not sent to the retry path. The record says so once for the port, not once per answer.
+  it('a clock that throws never turns an answer into a failure, and is said once', async () => {
+    let fed = 0;
+    const { port, entries } = sampling(respond(201, CREATED, { Date: SERVER_DATE }), {
+      serverTime: () => {
+        fed += 1;
+        throw new Error('a listener threw');
+      },
+    });
+    expect(await port.append(LINK, FIXTURE, BODY)).toMatchObject({ kind: 'accepted' });
+    expect(await port.append(LINK, FIXTURE, BODY)).toMatchObject({ kind: 'accepted' });
+    expect(fed).toBe(2);
+    expect(entries().filter((entry) => entry.event === 'scoring.clock.failed')).toEqual([
+      { atMs: 0, level: 'warn', event: 'scoring.clock.failed', fields: {} },
+    ]);
+  });
 });
 
 describe('what is no answer from the server: offline, so a tap stays queued', () => {

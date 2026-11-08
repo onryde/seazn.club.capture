@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import ts from 'typescript';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { scoringPortFor } from '@/hooks/scoringPortWiring';
 import type { ScoringFetch } from '@/services/fetchScoringPort';
@@ -67,5 +70,114 @@ describe('which clock the composition root’s scoring port feeds', () => {
     expect(serverClock.offsetMs()).toBe(0);
     await port.rules({ origin: 'https://stg.seazn.club', token: FAKE_SCORING_SECRET }, FIXTURE);
     expect(serverClock.offsetMs()).toBe(60_500);
+  });
+});
+
+/**
+ * The Batch A review's M1, the inert seam's other half: `scoringPortFor` feeds the clock it is given (above), so the
+ * football clock reads the server only if `createNativePorts` gives it the very clock it hands the app as
+ * `Ports.serverClock`. A second `createServerClock` on either side would be fed and never read, or read and never fed.
+ * `createNativePorts` runs in no test, so its source is read, as `photoPortWiring.test.ts` reads it.
+ */
+type ClockWiring = {
+  /** What `const serverClock` is bound to. */
+  readonly binding: string | null;
+  /** The returned `serverClock` property's value, as written. */
+  readonly property: string | null;
+  /** What the returned `scoring` property's `scoringPortFor` is given for `serverClock`. */
+  readonly scoringClock: string | null;
+  /** How many server clocks the function builds. */
+  readonly clocks: number;
+};
+
+function clockWiringOf(source: string): ClockWiring {
+  const file = ts.createSourceFile('nativePorts.ts', source, ts.ScriptTarget.Latest, true);
+  const roots: ts.FunctionDeclaration[] = [];
+  const find = (node: ts.Node) => {
+    if (ts.isFunctionDeclaration(node) && node.name?.text === 'createNativePorts') roots.push(node);
+    ts.forEachChild(node, find);
+  };
+  find(file);
+  const [root] = roots;
+  if (root === undefined) throw new Error('no createNativePorts');
+  const wiring = { binding: null, property: null, scoringClock: null, clocks: 0 } as {
+    -readonly [K in keyof ClockWiring]: ClockWiring[K];
+  };
+  const visit = (node: ts.Node) => {
+    if (ts.isCallExpression(node) && node.expression.getText(file) === 'createServerClock')
+      wiring.clocks += 1;
+    if (ts.isVariableDeclaration(node) && node.name.getText(file) === 'serverClock')
+      wiring.binding = node.initializer?.getText(file) ?? null;
+    if (
+      ts.isReturnStatement(node) &&
+      node.expression &&
+      ts.isObjectLiteralExpression(node.expression)
+    )
+      for (const property of node.expression.properties) readPort(property);
+    ts.forEachChild(node, visit);
+  };
+  const valueOf = (property: ts.ObjectLiteralElementLike) =>
+    ts.isShorthandPropertyAssignment(property)
+      ? property.name.text
+      : ts.isPropertyAssignment(property)
+        ? property.initializer
+        : null;
+  const readPort = (property: ts.ObjectLiteralElementLike) => {
+    const name = property.name?.getText(file);
+    const value = valueOf(property);
+    if (name === 'serverClock')
+      wiring.property = typeof value === 'string' ? value : (value?.getText(file) ?? null);
+    if (name !== 'scoring' || value === null || typeof value === 'string') return;
+    if (!ts.isCallExpression(value) || value.expression.getText(file) !== 'scoringPortFor') return;
+    const [deps] = value.arguments;
+    if (deps === undefined || !ts.isObjectLiteralExpression(deps)) return;
+    const clock = deps.properties.find((one) => one.name?.getText(file) === 'serverClock');
+    const given = clock === undefined ? null : valueOf(clock);
+    wiring.scoringClock = typeof given === 'string' ? given : (given?.getText(file) ?? null);
+  };
+  visit(root);
+  return wiring;
+}
+
+const CLOCK_SKELETON = (scoring: string, property = 'serverClock') => `
+  export function createNativePorts() {
+    const logger = createLogger({ record, now: Date.now });
+    const serverClock = createServerClock({ logger });
+    return { scoring: ${scoring}, serverClock: ${property} };
+  }`;
+const SCORING = 'scoringPortFor({ fetch, logger, hosts, serverClock })';
+
+describe('createNativePorts feeds the clock it hands the app (Batch A review, M1)', () => {
+  it('reads the wiring, and tells a second clock on either side apart', () => {
+    expect(clockWiringOf(CLOCK_SKELETON(SCORING))).toEqual({
+      binding: 'createServerClock({ logger })',
+      property: 'serverClock',
+      scoringClock: 'serverClock',
+      clocks: 1,
+    });
+    expect(
+      clockWiringOf(
+        CLOCK_SKELETON(
+          SCORING.replace('serverClock }', 'serverClock: createServerClock({ logger }) }'),
+        ),
+      ),
+    ).toMatchObject({ scoringClock: 'createServerClock({ logger })', clocks: 2 });
+    expect(clockWiringOf(CLOCK_SKELETON(SCORING, 'createServerClock({ logger })'))).toMatchObject({
+      property: 'createServerClock({ logger })',
+      clocks: 2,
+    });
+    expect(
+      clockWiringOf(CLOCK_SKELETON('createFetchScoringPort({ fetch })')).scoringClock,
+    ).toBeNull();
+  });
+
+  it('the real createNativePorts: one server clock, fed by the scoring port and handed out as Ports.serverClock', () => {
+    const source = readFileSync(join(__dirname, 'nativePorts.ts'), 'utf8');
+    expect(clockWiringOf(source)).toEqual({
+      binding: 'createServerClock({ logger })',
+      property: 'serverClock',
+      scoringClock: 'serverClock',
+      clocks: 1,
+    });
   });
 });
