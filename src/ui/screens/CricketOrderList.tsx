@@ -86,8 +86,11 @@ function BatterName({ batter }: { readonly batter: SetupBatter }) {
   );
 }
 
-/** ▲ (or ▼, the same glyph turned over), with the lime border; at the end of the order, greyed and pressless. */
-function MoveButton({
+/**
+ * ▲ (or ▼, the same glyph turned over), with the lime border; at the end of the order, greyed and pressless. The Players
+ * sheet's yet-to-bat rows move with it too (`CricketPlayersSheet`).
+ */
+export function MoveButton({
   label,
   down,
   disabled,

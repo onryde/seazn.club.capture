@@ -142,7 +142,8 @@ function bowlerOption(row: BowlerRow, display: CricketDisplay): CricketStepOptio
   };
 }
 
-function reasonText(row: BowlerRow, display: CricketDisplay): PadVar<CricketPadKey> {
+/** Why one may not bowl the next over, in words: the last over's bowler, or out of the format's overs. */
+export function reasonText(row: BowlerRow, display: CricketDisplay): PadVar<CricketPadKey> {
   if (row.reason === 'lastOver') return { key: 'scoring.cricket.bowling.lastOver' };
   return {
     key: 'scoring.cricket.bowling.outOfOvers',

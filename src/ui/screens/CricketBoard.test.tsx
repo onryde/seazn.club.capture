@@ -154,4 +154,13 @@ describe('CricketBoard', () => {
     renderWithPorts(<CricketBoard view={BOARD} />);
     expect(screen.queryByRole('button')).toBeNull();
   });
+
+  it('a tap on the score opens Players too; a screen reader still reads the score, and names one button', () => {
+    const open = vi.fn<() => void>();
+    renderWithPorts(<CricketBoard view={BOARD} onOpenPlayers={open} />);
+    fireEvent.click(screen.getByTestId('board-runs'));
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+    expect(screen.getByTestId('board-score').getAttribute('role')).toBeNull();
+  });
 });

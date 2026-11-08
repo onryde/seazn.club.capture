@@ -359,7 +359,9 @@ export type CricketSheetKey =
   | `scoring.cricket.bowling.${'title' | 'body' | 'lastOver' | 'outOfOvers' | 'none' | 'totals' | 'undo'}`
   | `scoring.cricket.change.${'title' | 'why'}`
   | `scoring.cricket.change.reason.${CricketChangeReason}`
-  | `scoring.cricket.more.${'change' | 'swap'}`;
+  | `scoring.cricket.more.${'change' | 'swap'}`
+  | `scoring.cricket.players.${'in' | 'out' | 'outPlain' | 'retired' | 'yet' | 'cannot'}`
+  | Counted<'scoring.cricket.players.figures'>;
 
 export type CricketPadKey =
   | CricketRuleKey

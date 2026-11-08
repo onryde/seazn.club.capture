@@ -611,6 +611,25 @@ the board. **es, fr and nl are unreviewed drafts, for the owner's review**, as t
 | Change bowler (injury)                        | Cambiar lanzador (lesión)                              | Changer de lanceur (blessure)                                | Bowler wisselen (blessure)                              | `more.change`: ruling 84's words.                                                                                                              |
 | Swap strike                                   | Intercambiar bateadores                                | Échanger les batteurs                                        | Slag wisselen                                           | `more.swap`: the crease reversed for the next ball.                                                                                            |
 
+### Cricket's Players sheet (S2-4 Task 14, 2026-11-08)
+
+The sheet from a tap on the board (`scoring.cricket.players.*`; rulings 77 and 78). Its ▲▼ say the setup's words
+(`setup.up`, `setup.down`); Close is `panel.close`. **es, fr and nl are unreviewed drafts, for the owner's review**, as
+the rest of the cricket words.
+
+| English                            | Español                                   | Français                               | Nederlands                                  | Notes                                                                                              |
+| ---------------------------------- | ----------------------------------------- | -------------------------------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Players                            | Jugadores                                 | Joueurs                                | Spelers                                     | `players.title`: the sheet from a tap on the board.                                                |
+| Batting                            | Bateo                                     | Frappe                                 | Batten                                      | `players.batting`: a tab.                                                                          |
+| Bowling                            | Lanzamiento                               | Lancer                                 | Bowlen                                      | `players.bowling`: a tab.                                                                          |
+| Not out · {runs} ({balls})         | No eliminado · {runs} ({balls})           | Non éliminé · {runs} ({balls})         | Niet uit · {runs} ({balls})                 | `players.in`: a batter at the crease.                                                              |
+| Out, {how} · {runs} ({balls})      | Eliminado, {how} · {runs} ({balls})       | Éliminé, {how} · {runs} ({balls})      | Uit, {how} · {runs} ({balls})               | `players.out`: `{how}` is `out.kind.*`, the engine's word, English in all four. Two lines at most. |
+| Out · {runs} ({balls})             | Eliminado · {runs} ({balls})              | Éliminé · {runs} ({balls})             | Uit · {runs} ({balls})                      | `players.outPlain`: a dismissal the scorecard does not name.                                       |
+| Retired not out · {runs} ({balls}) | Retirado, no eliminado · {runs} ({balls}) | Retiré, non éliminé · {runs} ({balls}) | Teruggetrokken, niet uit · {runs} ({balls}) | `players.retired`: as `wicket.retired`.                                                            |
+| Yet to bat                         | Por batear                                | En attente                             | Moet nog batten                             | `players.yet`: fr "waiting", short enough beside ▲▼ at 320 dp.                                     |
+| {figures} · {why}                  | {figures} · {why}                         | {figures} · {why}                      | {figures} · {why}                           | `players.cannot`: O-M-R-W, then `bowling.lastOver` or `bowling.outOfOvers`.                        |
+| {figures} · {count} over(s) left   | {figures} · le queda(n) {count} over(s)   | {figures} · {count} over(s) restant(s) | {figures} · nog {count} over(s)             | `players.figures.one` / `.other`: O-M-R-W and the overs left of the quota.                         |
+
 ## App settings (2026-11-02)
 
 The app's own Settings, from the gear in Home's top-right corner (owner, 2026-11-02: "we should have common setting in a top

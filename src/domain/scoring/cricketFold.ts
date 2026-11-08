@@ -461,6 +461,10 @@ function bowlerOf(
   return { id, name: nameOf(match, id), figures: figuresIn(scorecard, state, turn, id) };
 }
 
+/** The turn's innings on the scorecard (the super over's after the main innings), or none before it opens. */
+export const cardIn = (scorecard: CricketScorecard, state: CricketState, turn: CricketTurn) =>
+  scorecard.innings[turn.superOver ? state.innings.length + turn.index : turn.index];
+
 /** A bowler's O-M-R-W in the turn's innings, off the scorecard; 0-0-0-0 for one who has not bowled in it. */
 export function figuresIn(
   scorecard: CricketScorecard,
@@ -468,8 +472,7 @@ export function figuresIn(
   turn: CricketTurn,
   id: string,
 ): string {
-  const card = scorecard.innings[turn.superOver ? state.innings.length + turn.index : turn.index];
-  const line = card?.bowling.find((one) => one.person === id);
+  const line = cardIn(scorecard, state, turn)?.bowling.find((one) => one.person === id);
   return line === undefined
     ? NO_FIGURES
     : `${line.overs}-${line.maidens ?? 0}-${line.runs}-${line.wickets}`;

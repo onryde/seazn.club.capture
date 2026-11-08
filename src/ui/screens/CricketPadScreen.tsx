@@ -9,6 +9,7 @@ import { PadContent } from '@/ui/components/PadContent';
 import { DiscardAsk, MatchDetailsView, MatchHistory } from '@/ui/components/PadSheets';
 import { CricketBoard } from '@/ui/screens/CricketBoard';
 import { CricketKeys } from '@/ui/screens/CricketKeys';
+import { CricketPlayersSheet } from '@/ui/screens/CricketPlayersSheet';
 import { CricketSetup } from '@/ui/screens/CricketSetup';
 import { CricketStepSheet } from '@/ui/screens/CricketSheets';
 import { colour, space } from '@/ui/theme/tokens';
@@ -18,7 +19,7 @@ import { colour, space } from '@/ui/theme/tokens';
  * `useCricketMatch`, portrait. Its frame is the kit's (`PadContent`): the top bar (Home, the sync status, Match details and
  * History), the strip (the result once one stands), the last-tap line (the status line: the last ball, or a refusal in
  * caution). In the halves' place stands cricket's board (`CricketBoard`): the score, the crease and the bowler, this
- * over with a free hit when one is due; under it, while an innings is being scored, the keys (`CricketKeys`: the runs,
+ * over with a free hit when one is due, which opens Players on a tap (Task 14); under it, while an innings is being scored, the keys (`CricketKeys`: the runs,
  * the extras, and Out, Undo and More, which carries the pad's one Undo, so the line has none). Before the first ball the
  * setup stands there instead (`CricketSetup`: the toss on the whole screen, the batting order, the first bowler, Start),
  * and the line keeps Undo, which takes the toss back. The screen is held on while the pad is (`holdsScreen`). Sheets and
@@ -48,7 +49,7 @@ function CricketBody({ model, keys }: { readonly model: CricketPadModel; readonl
     return <CricketSetup setup={setup} details={view.details} actions={actions} />;
   return (
     <View style={styles.body}>
-      <CricketBoard view={board} />
+      <CricketBoard view={board} onOpenPlayers={actions.openPlayers} />
       {keys ? (
         <CricketKeys
           undo={view.lastTap?.undo === true}
@@ -63,7 +64,7 @@ function CricketBody({ model, keys }: { readonly model: CricketPadModel; readonl
 }
 
 /**
- * The sheet over the pad: Match details, History, a step, or the reconnect question and its confirm. The over-end sheet
+ * The sheet over the pad: Match details, History, a step, Players, or the reconnect question and its confirm. The over-end sheet
  * stands by itself: its way back is Undo of this phone's last ball, when there is one (the owner-tested preview's).
  */
 const PadSheet = memo(function PadSheet({
@@ -93,6 +94,17 @@ const PadSheet = memo(function PadSheet({
         />
       ) : (
         <CricketStepSheet step={sheet.step} onChoose={actions.choose} onCancel={actions.dismiss} />
+      );
+    case 'players':
+      return (
+        <CricketPlayersSheet
+          tab={sheet.tab}
+          players={sheet.players}
+          onTab={actions.playersTab}
+          onMove={actions.moveYet}
+          onBowler={actions.pickBowler}
+          onClose={actions.dismiss}
+        />
       );
     case 'discard':
       return (

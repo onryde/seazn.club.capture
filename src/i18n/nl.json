@@ -738,5 +738,16 @@
   "scoring.cricket.change.reason.suspended": "Geschorst",
   "scoring.cricket.change.reason.other": "Anders",
   "scoring.cricket.more.change": "Bowler wisselen (blessure)",
-  "scoring.cricket.more.swap": "Slag wisselen"
+  "scoring.cricket.more.swap": "Slag wisselen",
+  "scoring.cricket.players.title": "Spelers",
+  "scoring.cricket.players.batting": "Batten",
+  "scoring.cricket.players.bowling": "Bowlen",
+  "scoring.cricket.players.in": "Niet uit · {runs} ({balls})",
+  "scoring.cricket.players.out": "Uit, {how} · {runs} ({balls})",
+  "scoring.cricket.players.outPlain": "Uit · {runs} ({balls})",
+  "scoring.cricket.players.retired": "Teruggetrokken, niet uit · {runs} ({balls})",
+  "scoring.cricket.players.yet": "Moet nog batten",
+  "scoring.cricket.players.cannot": "{figures} · {why}",
+  "scoring.cricket.players.figures.one": "{figures} · nog {count} over",
+  "scoring.cricket.players.figures.other": "{figures} · nog {count} overs"
 }

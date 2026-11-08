@@ -738,5 +738,16 @@
   "scoring.cricket.change.reason.suspended": "Suspendu",
   "scoring.cricket.change.reason.other": "Autre",
   "scoring.cricket.more.change": "Changer de lanceur (blessure)",
-  "scoring.cricket.more.swap": "Échanger les batteurs"
+  "scoring.cricket.more.swap": "Échanger les batteurs",
+  "scoring.cricket.players.title": "Joueurs",
+  "scoring.cricket.players.batting": "Frappe",
+  "scoring.cricket.players.bowling": "Lancer",
+  "scoring.cricket.players.in": "Non éliminé · {runs} ({balls})",
+  "scoring.cricket.players.out": "Éliminé, {how} · {runs} ({balls})",
+  "scoring.cricket.players.outPlain": "Éliminé · {runs} ({balls})",
+  "scoring.cricket.players.retired": "Retiré, non éliminé · {runs} ({balls})",
+  "scoring.cricket.players.yet": "En attente",
+  "scoring.cricket.players.cannot": "{figures} · {why}",
+  "scoring.cricket.players.figures.one": "{figures} · {count} over restant",
+  "scoring.cricket.players.figures.other": "{figures} · {count} overs restants"
 }

@@ -9,6 +9,13 @@ import {
   type CricketFlow,
 } from '@/domain/scoring/cricketFlow';
 import type { CricketPick } from '@/domain/scoring/cricketPicks';
+import {
+  playersBowler,
+  playersView,
+  yetMoved,
+  type CricketPlayersView,
+  type PlayersTab,
+} from '@/domain/scoring/cricketPlayers';
 import type {
   CricketDisplay,
   CricketPadKey,
@@ -28,8 +35,8 @@ import type { Arm, Choose, Opening } from '@/hooks/usePadTaps';
 
 /**
  * The sheets over the cricket pad (S2-4 plan Tasks 8 and 11 to 15): Match details, History, the reconnect question over
- * them both, and the sheets that go step by step (an extra's runs, the wicket steps, …), each step the domain's
- * (`cricketFlow.ts`). Chess's twin is `useChessSheets`; what the sports share (the bounce window of a sheet appearing,
+ * them both, Players (a tap on the board), and the sheets that go step by step (an extra's runs, the wicket steps, …),
+ * each step the domain's (`cricketFlow.ts`). Chess's twin is `useChessSheets`; what the sports share (the bounce window of a sheet appearing,
  * the question) is `usePadSheetParts`.
  */
 
@@ -48,6 +55,7 @@ export type CricketSheetView =
   | { readonly kind: 'details'; readonly details: PadMatchDetails<CricketPadKey> }
   | { readonly kind: 'history'; readonly groups: readonly PadHistoryGroup<CricketPadKey>[] }
   | { readonly kind: 'step'; readonly step: CricketStep; readonly standing: boolean }
+  | { readonly kind: 'players'; readonly tab: PlayersTab; readonly players: CricketPlayersView }
   | AskView;
 
 type Sheet =
@@ -55,11 +63,13 @@ type Sheet =
   | { readonly kind: 'history' }
   | { readonly kind: 'discard' }
   | { readonly kind: 'flow'; readonly flow: CricketFlow }
+  | { readonly kind: 'players'; readonly tab: PlayersTab }
   | null;
 
 const DETAILS: Sheet = { kind: 'details' };
 const HISTORY: Sheet = { kind: 'history' };
 const DISCARD: Sheet = { kind: 'discard' };
+const PLAYERS: Sheet = { kind: 'players', tab: 'batting' };
 
 /** The name a sheet's close has in the bounce memory. */
 const CLOSE_TAP = 'close';
@@ -121,9 +131,20 @@ export function useCricketSheets(
   const openOut = useCallback(() => openFlow(outFlow()), [openFlow]);
   const openMore = useCallback(() => openFlow(moreFlow()), [openFlow]);
   const choose = useChoose({ sheet, snapshot, justShown, taps, send, setSheet });
+  const players = usePlayersActions({ snapshot, justShown, taps, send, setSheet });
   const actions = useMemo(
-    () => ({ details, history, dismiss, askDiscard, openExtras, openOut, openMore, choose }),
-    [details, history, dismiss, askDiscard, openExtras, openOut, openMore, choose],
+    () => ({
+      details,
+      history,
+      dismiss,
+      askDiscard,
+      openExtras,
+      openOut,
+      openMore,
+      choose,
+      ...players,
+    }),
+    [details, history, dismiss, askDiscard, openExtras, openOut, openMore, choose, players],
   );
   return { open: sheet !== null, cancel, actions, view, justShown };
 }
@@ -136,6 +157,55 @@ type ChooseParts = {
   readonly send: SheetSender;
   readonly setSheet: (sheet: Sheet) => void;
 };
+
+/**
+ * Players (S2-4 spec §4.8a; rulings 77 and 78): a tap on the board opens it on Batting (ignored as the second touch of a
+ * tap that left the screen). ▲▼ on one yet to bat, and between overs a tap on one who may bowl the next, keep a pick,
+ * recording nothing; each is one choice in the bounce memory (▲▼ keyed by row and direction: the second touch of a
+ * double tap lands on the same row's button, now another batter's), and nothing on the heels of the sheet appearing.
+ */
+function usePlayersActions({
+  snapshot,
+  justShown,
+  taps,
+  send,
+  setSheet,
+}: Omit<ChooseParts, 'sheet'>) {
+  const { secondTouch, choose } = taps;
+  const openPlayers = useCallback(() => {
+    if (snapshot !== null && !secondTouch()) setSheet(PLAYERS);
+  }, [snapshot, secondTouch, setSheet]);
+  const playersTab = useCallback(
+    (tab: PlayersTab) => setSheet({ kind: 'players', tab }),
+    [setSheet],
+  );
+  const keep = useCallback(
+    (name: string, made: CricketPick | null) => {
+      if (made === null || justShown()) return;
+      choose(name, () => {
+        send.pick(made);
+        return TAKEN;
+      });
+    },
+    [justShown, choose, send],
+  );
+  const moveYet = useCallback(
+    (from: number, to: number) => {
+      if (snapshot !== null) keep(`move.${from}.${to}`, yetMoved(snapshot.display, from, to));
+    },
+    [snapshot, keep],
+  );
+  const pickBowler = useCallback(
+    (id: string) => {
+      if (snapshot !== null) keep(`bowler.${id}`, playersBowler(snapshot.display, id));
+    },
+    [snapshot, keep],
+  );
+  return useMemo(
+    () => ({ openPlayers, playersTab, moveYet, pickBowler }),
+    [openPlayers, playersTab, moveYet, pickBowler],
+  );
+}
 
 /**
  * A choice on the step on screen: the next step, or the sheet closes and the choice is recorded (an opening tap, once for
@@ -203,5 +273,7 @@ function sheetView(sheet: Sheet, snapshot: CricketSheetSnapshot | null): Cricket
       return null;
     case 'flow':
       return { kind: 'step', step: flowStep(sheet.flow, snapshot.display), standing: false };
+    case 'players':
+      return { kind: 'players', tab: sheet.tab, players: playersView(snapshot.display) };
   }
 }

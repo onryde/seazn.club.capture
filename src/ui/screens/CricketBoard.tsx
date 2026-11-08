@@ -24,7 +24,7 @@ export const CricketBoard = memo(function CricketBoard({
 }) {
   return (
     <View testID="cricket-board" style={styles.board}>
-      <ScorePanel score={view.score} />
+      <ScorePanel score={view.score} onOpenPlayers={onOpenPlayers} />
       <Crease crease={view.crease} bowler={view.bowler} onOpenPlayers={onOpenPlayers} />
       <OverStrip over={view.over} status={view.status} />
     </View>
@@ -32,12 +32,36 @@ export const CricketBoard = memo(function CricketBoard({
 });
 
 /** Runs/wickets large in lime with the overs beside them, then the innings and the chase: nothing before an innings is due. */
-const ScorePanel = memo(function ScorePanel({ score }: { readonly score: BoardScore | null }) {
+/**
+ * The score; with Players offered, a tap on it opens Players too (spec §4.8a: "the score, the crease, the bowler line").
+ * Only the crease is the button a screen reader names "Players", so the score is still read as the score.
+ */
+const ScorePanel = memo(function ScorePanel({
+  score,
+  onOpenPlayers,
+}: {
+  readonly score: BoardScore | null;
+  readonly onOpenPlayers?: () => void;
+}) {
+  if (score === null) return <View testID="board-score" style={styles.score} />;
+  if (onOpenPlayers === undefined)
+    return (
+      <View testID="board-score" style={styles.score}>
+        <ScoreLines score={score} />
+      </View>
+    );
+  return (
+    <Pressable testID="board-score" accessible={false} onPress={onOpenPlayers} style={styles.score}>
+      <ScoreLines score={score} />
+    </Pressable>
+  );
+});
+
+function ScoreLines({ score }: { readonly score: BoardScore }) {
   const words = usePadText();
   const { t } = useT();
-  if (score === null) return <View testID="board-score" style={styles.score} />;
   return (
-    <View testID="board-score" style={styles.score}>
+    <>
       <View style={styles.scoreLine}>
         <Text variant="scoreCompact" testID="board-runs">{`${score.runs}/${score.wickets}`}</Text>
         <Text variant="label" testID="board-overs" style={styles.overs}>
@@ -50,9 +74,9 @@ const ScorePanel = memo(function ScorePanel({ score }: { readonly score: BoardSc
       <Text variant="control" testID="board-chase" numberOfLines={1} style={styles.chase}>
         {score.chase === null ? '' : words(score.chase)}
       </Text>
-    </View>
+    </>
   );
-});
+}
 
 /** The two batters (striker first) and the bowler, a fixed row each, empty until they are picked. */
 const Crease = memo(function Crease({

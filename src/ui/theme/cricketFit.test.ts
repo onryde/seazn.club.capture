@@ -505,3 +505,80 @@ it('the thirty-character club takes the bowling line’s second line at 320 (ant
   const width = (text: string) => geist400.width(text, typeScale.body.fontSize);
   expect(linesOf(body, 320 - 2 * space.md, width)).toBe(2);
 });
+
+/**
+ * S2-4 plan Task 14: the Players sheet, at 320 and 360 dp in four languages. The title one line; each tab's word one line
+ * in half the sheet less the gap, its padding and the chosen border; a batter's name column is the row less the place
+ * (`space.lg`), the striker's mark (`space.md`) and their gaps, and, yet to bat, less ▲▼ (48 dp each, a gap before
+ * each). How a batter stands, at the longest numbers, is one line, but out with the longest dismissal's words at most two
+ * (es "Eliminado, obstructing the field"); a bowler's note is one line in a row's text width (the kit's step row, or the
+ * read-only line, both `space.md` in from the sheet's).
+ */
+const DISMISSALS = [
+  'bowled',
+  'caught',
+  'lbw',
+  'runout',
+  'stumped',
+  'hitwicket',
+  'retired',
+  'obstructed',
+  'timedout',
+  'hitballtwice',
+].map((kind) => `scoring.cricket.out.kind.${kind}`);
+const INNINGS_FIGURES = { runs: 199, balls: 120 };
+
+describe.each(WIDTHS)('the Players sheet at %i dp', (width) => {
+  const sheetText = width - 2 * space.md;
+  const rowText = sheetText - 2 * space.md;
+  const nameColumn = sheetText - space.lg - space.md - 2 * space.sm;
+  const yetColumn = nameColumn - 2 * (space.sm + layout.touch);
+  const tabText = (sheetText - space.sm) / 2 - 2 * space.sm - 2 * layout.iconBorderOn;
+  const tabWidth = (text: string) => geist500.width(text, typeScale.controlInk.fontSize);
+
+  it.each(LANGUAGES)(
+    '%s: title and tabs one line; batters and bowlers in their rooms',
+    (_, dictionary) => {
+      const title = said(dictionary, 'scoring.cricket.players.title');
+      expect(linesOf(title, sheetText, sheetTitleWidth), title).toBe(1);
+      for (const tab of ['batting', 'bowling']) {
+        const word = said(dictionary, `scoring.cricket.players.${tab}`);
+        expect(tabWidth(word), word).toBeLessThanOrEqual(tabText);
+      }
+      for (const key of ['in', 'outPlain', 'retired']) {
+        const note = fill(said(dictionary, `scoring.cricket.players.${key}`), INNINGS_FIGURES);
+        expect(unitWidth(note), note).toBeLessThanOrEqual(nameColumn);
+      }
+      for (const how of DISMISSALS) {
+        const out = said(dictionary, 'scoring.cricket.players.out');
+        const note = fill(out, { ...INNINGS_FIGURES, how: said(dictionary, how) });
+        expect(linesOf(note, nameColumn, unitWidth), note).toBeLessThanOrEqual(2);
+      }
+      const yet = said(dictionary, 'scoring.cricket.players.yet');
+      expect(unitWidth(yet), yet).toBeLessThanOrEqual(yetColumn);
+      const cannot = said(dictionary, 'scoring.cricket.players.cannot');
+      const why = [
+        said(dictionary, 'scoring.cricket.bowling.lastOver'),
+        fill(said(dictionary, 'scoring.cricket.bowling.outOfOvers'), { max: 10 }),
+      ];
+      const bowling = [
+        ...why.map((reason) => fill(cannot, { figures: SPELL, why: reason })),
+        fill(said(dictionary, 'scoring.cricket.players.figures.other'), {
+          figures: SPELL,
+          count: 10,
+        }),
+        fill(said(dictionary, 'scoring.cricket.players.figures.one'), { figures: SPELL, count: 1 }),
+      ];
+      for (const note of bowling) expect(unitWidth(note), note).toBeLessThanOrEqual(rowText);
+    },
+  );
+});
+
+it('Players’ out note takes its second line in es at 320 (anti-vacuity: the two-line allowance is used)', () => {
+  const note = fill(said(es, 'scoring.cricket.players.out'), {
+    ...INNINGS_FIGURES,
+    how: said(es, 'scoring.cricket.out.kind.obstructed'),
+  });
+  const column = 320 - 2 * space.md - space.lg - space.md - 2 * space.sm;
+  expect(linesOf(note, column, unitWidth)).toBe(2);
+});

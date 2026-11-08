@@ -3,6 +3,7 @@ import { runBall, type SheetExtra } from '@/domain/scoring/cricketExtras';
 import { moreOffered } from '@/domain/scoring/cricketMore';
 import { cricketBoard, type CricketBoardView } from '@/domain/scoring/cricketPad';
 import { withPick, type CricketPick } from '@/domain/scoring/cricketPicks';
+import type { PlayersTab } from '@/domain/scoring/cricketPlayers';
 import { cricketSport } from '@/domain/scoring/cricketSport';
 import type {
   CricketDisplay,
@@ -67,6 +68,13 @@ export type CricketPadActions = PadActions &
     readonly openMore: () => void;
     /** A choice on the step on screen (`useCricketSheets`). */
     readonly choose: (id: string) => void;
+    /** Players (Task 14): a tap on the board opens it on Batting; its tabs. */
+    readonly openPlayers: () => void;
+    readonly playersTab: (tab: PlayersTab) => void;
+    /** ▲▼ on the batting tab's row `from` to row `to`, both yet to bat: the order pick, nothing recorded (ruling 78). */
+    readonly moveYet: (from: number, to: number) => void;
+    /** Between overs, a tap on one who may bowl the next: the over's pick, nothing recorded. */
+    readonly pickBowler: (id: string) => void;
   };
 
 /** What the cricket pad screen is drawn from: the shared model, the board and the display it is read from. */

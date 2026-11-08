@@ -304,9 +304,11 @@ describe('every path the navigation moves to has its route file, and each Settin
       'src/ui/screens/CricketBoard.tsx',
       // The keys under the board (S2-4 Task 11): no pad either.
       'src/ui/screens/CricketKeys.tsx',
-      // The setup in the board's place before the first ball (S2-4 Task 10), and its two parts: no pads either.
-      'src/ui/screens/CricketSetup.tsx',
+      // Players, from a tap on the board (S2-4 Task 14), with the setup's ▲▼ (its order list): no pads either.
+      'src/ui/screens/CricketPlayersSheet.tsx',
       'src/ui/screens/CricketOrderList.tsx',
+      // The setup in the board's place before the first ball (S2-4 Task 10), and its toss: no pads either.
+      'src/ui/screens/CricketSetup.tsx',
       'src/ui/screens/CricketToss.tsx',
       // The sheets' steps over the pad (S2-4 Task 11): no pad.
       'src/ui/screens/CricketSheets.tsx',

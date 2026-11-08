@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useCricketMatch } from '@/hooks/useCricketMatch';
-import { liveCricketSeed } from '@/services/fakeCricketPad';
+import { AWAY_ENTRANT, HOME_ENTRANT, liveCricketSeed, playerOf } from '@/services/fakeCricketPad';
 import { saveScoringLink } from '@/services/scoringLinkStore';
 import { FAKE_SCORING_SECRET } from '../../test/fakeScoringLinkPort';
 import { createFakePorts, timerClock, type FakePorts } from '../../test/fakePorts';
@@ -158,5 +158,54 @@ describe('useCricketSheets', () => {
     await wait();
     act(() => pad(view).actions.openOut());
     expect(stepName(view)).toBe('wicket.kind');
+  });
+});
+
+describe('Players (plan Task 14)', () => {
+  const home = (n: number) => playerOf(HOME_ENTRANT, n);
+  const order = (view: View) => pad(view).display.battingOrder.slice(2, 5);
+
+  it('a tap on the board on the heels of a recorded ball is its second touch: Players does not open', async () => {
+    const { view } = await opened();
+    act(() => pad(view).actions.openExtras('wide'));
+    await wait();
+    act(() => pad(view).actions.choose('ran.0'));
+    act(() => pad(view).actions.openPlayers());
+    await flush();
+    expect(pad(view).sheet).toBeNull();
+    await wait();
+    act(() => pad(view).actions.openPlayers());
+    expect(pad(view).sheet).toMatchObject({ kind: 'players', tab: 'batting' });
+    act(() => pad(view).actions.playersTab('bowling'));
+    expect(pad(view).sheet).toMatchObject({ kind: 'players', tab: 'bowling' });
+  });
+
+  it('▲▼ on the heels of Players appearing does nothing; later it keeps the order, once for a double tap, recording nothing', async () => {
+    const { fakes, view } = await opened();
+    const before = await count(fakes);
+    act(() => pad(view).actions.openPlayers());
+    act(() => pad(view).actions.moveYet(2, 3));
+    expect(order(view)).toEqual([home(3), home(4), home(5)]);
+    await wait();
+    act(() => pad(view).actions.moveYet(2, 3));
+    await flush();
+    act(() => pad(view).actions.moveYet(2, 3));
+    await flush();
+    expect(order(view)).toEqual([home(4), home(3), home(5)]);
+    expect(pad(view).sheet?.kind).toBe('players');
+    expect(await count(fakes)).toBe(before);
+  });
+
+  it('▲▼ on a batter in, and a bowler tapped mid-over, keep nothing', async () => {
+    const { view } = await opened();
+    act(() => pad(view).actions.openPlayers());
+    await wait();
+    const order = pad(view).display.battingOrder;
+    const bowler = pad(view).display.bowler?.id;
+    act(() => pad(view).actions.moveYet(1, 2));
+    act(() => pad(view).actions.pickBowler(playerOf(AWAY_ENTRANT, 9)));
+    await flush();
+    expect(pad(view).display.battingOrder).toEqual(order);
+    expect(pad(view).display.bowler?.id).toBe(bowler);
   });
 });
