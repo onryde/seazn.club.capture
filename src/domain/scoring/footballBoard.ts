@@ -2,7 +2,7 @@ import type { GameTime } from '@seazn/engine/core';
 import { footballPadRules } from '@seazn/engine/pad';
 import type { FootballCfg } from '@seazn/engine/sports/football';
 import type { ClockBarView } from '@/domain/scoring/clockBarView';
-import { clockText, matchTime } from '@/domain/scoring/footballClock';
+import { clockText, matchTime, PHASE_ORDER } from '@/domain/scoring/footballClock';
 import { periodWordOf } from '@/domain/scoring/footballHistory';
 import {
   playerLabel,
@@ -197,6 +197,25 @@ const backItems = (display: FootballDisplay): MoreItem[] =>
     })),
   );
 
+/**
+ * Whether `side` leads (design §6.2: its score is the LED lime): more goals, or level on goals, more kicks scored in the
+ * shootout. Level, neither does.
+ */
+export function footballLeads(display: FootballDisplay, side: PadSide): boolean {
+  const other: PadSide = side === 'first' ? 'second' : 'first';
+  const { goals, shootout } = display;
+  if (goals[side] !== goals[other]) return goals[side] > goals[other];
+  return shootout !== null && shootout.scored[side] > shootout.scored[other];
+}
+
+/** Whether a sin-bin ending at `over` is over at `now`: its end reached in its period, or any later period under way. */
+export function binOver(over: GameTime | null, now: GameTime): boolean {
+  if (over === null) return false;
+  const rank = (period: string) => PHASE_ORDER.indexOf(period);
+  if (now.period !== over.period) return rank(now.period) > rank(over.period);
+  return now.elapsed >= over.elapsed;
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // The clock bar
 // ---------------------------------------------------------------------------------------------------------------
@@ -231,6 +250,12 @@ export function footballClockBar(
         }
       : null,
   };
+}
+
+/** Correct's time (design §7.5): `seconds` into the period in play, counted the way the match counts (`matchTime` reads a negative as 0:00 of it). */
+export function footballCorrectTime(display: FootballDisplay, seconds: number): string {
+  const at = { period: display.enginePhase, elapsed: seconds };
+  return clockText(matchTime(at, display.cfg));
 }
 
 function periodOf(display: FootballDisplay): Text | null {

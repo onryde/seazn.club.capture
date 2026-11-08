@@ -3,6 +3,7 @@ import { Text } from 'react-native';
 import { describe, expect, it, vi } from 'vitest';
 import { TeamColumn, type TeamAction, type TeamColumnView } from '@/ui/components/TeamColumn';
 import { colour, layout } from '@/ui/theme/tokens';
+import { typeScale } from '@/ui/theme/type';
 import { declaredStyle } from '../../../test/declaredStyle';
 import { linesAllowed } from '../../../test/linesAllowed';
 import { edgeOf, fillOf } from '../../../test/pressState';
@@ -155,5 +156,14 @@ describe('TeamColumn', () => {
     renderColumn({ ...VIEW, label: 'Riverside Athletic Football Club Reserves' });
     const name = screen.getByText('Riverside Athletic Football Club Reserves');
     expect(linesAllowed(name)).toBe(layout.padNameLines);
+  });
+
+  // Two columns stand side by side (plan P Task 12's fit): a name of one line keeps the room of two, so the two scores
+  // and the two rows of buttons line up whatever each team is called (footballFit.test.ts).
+  it('keeps two lines’ room for a name of one, so the score and the buttons sit where a long name puts them', () => {
+    renderColumn({ ...VIEW, label: 'Riverside FC' });
+    expect(declaredStyle(screen.getByText('Riverside FC'), 'min-height')).toBe(
+      `${layout.padNameLines * typeScale.matchName.lineHeight}px`,
+    );
   });
 });

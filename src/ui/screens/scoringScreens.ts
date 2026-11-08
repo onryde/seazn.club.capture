@@ -2,10 +2,12 @@ import type { ComponentType } from 'react';
 import { badmintonSport } from '@/domain/scoring/badmintonSport';
 import { chessSport } from '@/domain/scoring/chessSport';
 import { cricketSport } from '@/domain/scoring/cricketSport';
+import { footballSport } from '@/domain/scoring/footballSport';
 import { tableTennisSport } from '@/domain/scoring/tableTennisSport';
 import { BadmintonMatchScreen } from '@/ui/screens/BadmintonMatchScreen';
 import { ChessMatchScreen } from '@/ui/screens/ChessMatchScreen';
 import { CricketMatchScreen } from '@/ui/screens/CricketMatchScreen';
+import { FootballMatchScreen } from '@/ui/screens/FootballMatchScreen';
 import { TableTennisMatchScreen } from '@/ui/screens/TableTennisMatchScreen';
 
 /** A sport's screen for a match it scores: its pad, and whatever it needs of the states every sport shares. */
@@ -22,6 +24,7 @@ const SCREENS: ReadonlyMap<string, SportScreen> = new Map<string, SportScreen>([
   [tableTennisSport.key, TableTennisMatchScreen],
   [chessSport.key, ChessMatchScreen],
   [cricketSport.key, CricketMatchScreen],
+  [footballSport.key, FootballMatchScreen],
 ]);
 
 export function screenFor(sportKey: string): SportScreen | null {

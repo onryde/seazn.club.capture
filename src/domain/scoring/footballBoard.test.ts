@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  binOver,
   footballBoard,
   footballClockBar,
+  footballCorrectTime,
+  footballLeads,
   footballMoreItems,
   footballTakesCorrect,
   parseFootballAction,
@@ -333,5 +336,39 @@ describe('what the pad reads of the board', () => {
     expect(footballTakesCorrect(displayOf([...KICK_OFF, period('HT', at('H1', 2700))]))).toBe(true);
     expect(footballTakesCorrect(displayOf([start()]))).toBe(true);
     expect(footballTakesCorrect(displayOf(KICKS_4_1))).toBe(false);
+  });
+});
+
+// The pad screen's small readers (plan P Task 12): what it draws but must not decide. Expected values from the design.
+describe('what the pad screen reads of the board', () => {
+  it('the leading side is the one with more goals; level, the one with more kicks scored; level and no kicks, neither', () => {
+    const homeAhead = displayOf([...KICK_OFF, goal({ by: 'H', at: at('H1', 60) })]);
+    expect([footballLeads(homeAhead, 'first'), footballLeads(homeAhead, 'second')]).toEqual([
+      true,
+      false,
+    ]);
+    const level = displayOf(KICK_OFF);
+    expect([footballLeads(level, 'first'), footballLeads(level, 'second')]).toEqual([false, false]);
+    const kicked = displayOf(KICKS_4_1);
+    expect([footballLeads(kicked, 'first'), footballLeads(kicked, 'second')]).toEqual([
+      true,
+      false,
+    ]);
+  });
+
+  it('a sin-bin is over once the reading reaches its end in its period, or in any later period', () => {
+    const end = { period: 'H1', elapsed: 1200 };
+    expect(binOver(end, { period: 'H1', elapsed: 1199 })).toBe(false);
+    expect(binOver(end, { period: 'H1', elapsed: 1200 })).toBe(true);
+    expect(binOver(end, { period: 'H2', elapsed: 0 })).toBe(true);
+    expect(binOver({ period: 'H2', elapsed: 60 }, { period: 'H1', elapsed: 2800 })).toBe(false);
+    expect(binOver(null, { period: 'ET_H2', elapsed: 900 })).toBe(false);
+  });
+
+  it('Correct’s time is counted the way the match counts, and never below the period’s start', () => {
+    const second = displayOf([...KICK_OFF, period('HT', at('H1', 2700)), clock(true, at('H2', 0))]);
+    expect(footballCorrectTime(second, 600)).toBe('55:00');
+    expect(footballCorrectTime(second, -30)).toBe('45:00');
+    expect(footballCorrectTime(displayOf(KICK_OFF), 2760)).toBe('45+1:00');
   });
 });

@@ -19,6 +19,12 @@ import {
   ledgerOf as tableTennisLedgerOf,
   type Spec as TableTennisSpec,
 } from '../../../test/tableTennisLedger';
+import {
+  MATCH as FOOTBALL_MATCH,
+  ledgerOf as footballLedgerOf,
+  type Spec as FootballSpec,
+} from '../../../test/footballLedger';
+import { KICKS_4_1, KICKS_4_3 } from '../../../test/footballPadFixtures';
 import { pressIn, pressOut } from '../../../test/press';
 import { edgeOf, fillOf } from '../../../test/pressState';
 import { wrapperFor } from '../../../test/renderWithPorts';
@@ -574,6 +580,37 @@ describe('a table tennis match on Home', () => {
 
   it('says Continue for a match still in play, whatever games are over', async () => {
     await homeWith((fakes) => tableTennisOnDisk(fakes, GAME_ONE_11_7), { kvSeed: inMatch() });
+    expect(within(card()).getByText('Continue Remote Scoring')).toBeTruthy();
+    expect(within(card()).queryByText(/^Finished/)).toBeNull();
+  });
+});
+
+// Plan S2-5 P Task 12: a football match is read with football's fold and words. A shootout's result is the goals, then
+// the kicks in brackets (design §6.7).
+describe('a football match on Home', () => {
+  /** A football match left on the phone: its link naming the sport, its ledger and bootstrap as the pad left them. */
+  async function footballOnDisk(fakes: FakePorts, specs: readonly FootballSpec[]) {
+    await leave(fakes, queueHolding(FAKE_MATCH, 0));
+    await fakes.kv.set(
+      linkKey(FAKE_MATCH),
+      JSON.stringify({ ...LINK_RECORD, sportKey: 'football' }),
+    );
+    await fakes.tapQueue.saveLedger(FAKE_MATCH, footballLedgerOf(specs));
+    await fakes.tapQueue.saveBoot(FAKE_MATCH, {
+      bootstrap: { ...FOOTBALL_MATCH, fixtureId: FAKE_MATCH },
+      toss: null,
+    });
+  }
+
+  it('says Finished with the goals and the shootout’s kicks, 5–5 (4–1), and offers Close alone', async () => {
+    await homeWith((fakes) => footballOnDisk(fakes, KICKS_4_1), { kvSeed: inMatch() });
+    expect(within(card()).getByText('Finished · 5–5 (4–1)')).toBeTruthy();
+    expect(within(card()).queryByText('Continue Remote Scoring')).toBeNull();
+    expect(closeButton()).toBeTruthy();
+  });
+
+  it('says Continue for a shootout not yet decided', async () => {
+    await homeWith((fakes) => footballOnDisk(fakes, KICKS_4_3), { kvSeed: inMatch() });
     expect(within(card()).getByText('Continue Remote Scoring')).toBeTruthy();
     expect(within(card()).queryByText(/^Finished/)).toBeNull();
   });

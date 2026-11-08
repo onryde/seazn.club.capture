@@ -747,6 +747,26 @@ of es, fr and nl is wanted (the owner, 2026-11-10: "No need").
 | Extras {total}                                       | Extras {total}                                           | Extras {total}                                              | Extra's {total}                                         | `board.summary.extrasNone`: an innings with no extras reads "Extras 0" (fix 11); `card.extras` adds the letters when there were some.           |
 | Tied — super over / Tied again — super over {number} | Empate — super over / Nuevo empate — super over {number} | Égalité — super over / Encore égalité · super over {number} | Gelijk — super over / Weer gelijk — super over {number} | `break.tied`, `break.tiedAgain`: the tie card names which super over comes next (D12). fr uses a middle dot for the second dash, to fit 320 dp. |
 
+### Football pad words (S2-5 Task 8, 2026-11-08)
+
+The words for the football pad, its columns, the More sheet and the clock bar (`scoring.football.*`).
+
+| English                              | Español                                              | Français                                       | Nederlands                          | Notes                                                      |
+| ------------------------------------ | ---------------------------------------------------- | ---------------------------------------------- | ----------------------------------- | ---------------------------------------------------------- |
+| Goal                                 | Gol                                                  | But                                            | Doelpunt                            | `column.goal`: the lime plate.                             |
+| Card / Yellow card / Red card        | Tarjeta / Tarjeta amarilla / Tarjeta roja            | Carton / Carton jaune / Carton rouge           | Kaart / Gele kaart / Rode kaart     | `column.card`, `card.yellow`, `card.red`.                  |
+| Sub                                  | Cambio                                               | Remplacement                                   | Wissel                              | `column.sub`.                                              |
+| No team sheet / No subs left         | Sin alineación / Sin cambios                         | Pas de feuille de match / Plus de remplacement | Geen opstelling / Geen wissels meer | The one line under a disabled Sub.                         |
+| Scored / Missed                      | Marcado / Fallado                                    | Marqué / Manqué                                | Raak / Mis                          | The shootout's two buttons.                                |
+| Penalties                            | Tanda de penaltis                                    | Tirs au but                                    | Strafschoppenreeks                  | `period.shootout`: the shootout, never a penalty in play.  |
+| Missed penalty                       | Penalti fallado                                      | Penalty manqué                                 | Gemiste strafschop                  | `more.penalty`: a penalty in play that did not go in.      |
+| Half-time / Full time / Quarter-time | Descanso / Final / Pausa                             | Mi-temps / Fin du match / Pause                | Rust / Einde wedstrijd / Pauze      | `break.*`, and `end.HT`/`end.FT`.                          |
+| Extra time / End of extra time       | Prórroga / Fin de la prórroga                        | Prolongation / Fin de la prolongation          | Verlenging / Einde verlenging       | `note.extraTime`, `end.ET_FT`.                             |
+| Sin-bin / Back from sin-bin          | Expulsión temporal / Vuelve de la expulsión temporal | Exclusion temporaire / Retour d'exclusion      | Tijdstraf / Terug uit tijdstraf     | `more.sinBin`, `more.sinBinEnd`.                           |
+| Own goal                             | Autogol                                              | Contre son camp                                | Eigen doelpunt                      | In `last.ownGoal`: credited to the team it counts for.     |
+| Correct clock / Match clock          | Corregir el reloj / Reloj del partido                | Corriger le chrono / Chrono du match           | Klok corrigeren / Wedstrijdklok     | `more.correct`, `clock.said`.                              |
+| Rolling                              | Libres                                               | Libres                                         | Doorlopend                          | `rules.subsRolling`: a player who came off may go back on. |
+
 ## App settings (2026-11-02)
 
 The app's own Settings, from the gear in Home's top-right corner (owner, 2026-11-02: "we should have common setting in a top

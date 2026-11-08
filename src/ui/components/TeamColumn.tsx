@@ -11,6 +11,7 @@ import type { PadBar } from '@/domain/scoring/padView';
 import { NameText } from '@/ui/components/NameText';
 import { Text } from '@/ui/components/Text';
 import { colour, layout, plateInk, pressedOpacity, radius, space } from '@/ui/theme/tokens';
+import { typeScale } from '@/ui/theme/type';
 
 /**
  * One button in a team's column, in the operator's words already (the sport's screen translates its own board): its id
@@ -61,7 +62,7 @@ export const TeamColumn = memo(function TeamColumn({ view, onAction }: TeamColum
         accessibilityLabel={[view.label, view.value, ...view.said].join(', ')}
         style={styles.head}
       >
-        <NameText variant="matchName" lines={layout.padNameLines}>
+        <NameText variant="matchName" lines={layout.padNameLines} style={styles.name}>
           {view.label}
         </NameText>
         <Text
@@ -163,6 +164,8 @@ const styles = StyleSheet.create({
   lit: { borderLeftColor: colour.lime },
   dim: { borderLeftColor: colour.ink3 },
   head: { gap: space.xs },
+  // Two lines' room whatever the name, so the two columns' scores and buttons line up side by side (footballFit.test.ts).
+  name: { minHeight: layout.padNameLines * typeScale.matchName.lineHeight },
   trailing: { color: colour.ink },
   marks: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: space.sm },
   cardCount: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
