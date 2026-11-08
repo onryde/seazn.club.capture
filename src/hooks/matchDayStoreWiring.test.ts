@@ -80,4 +80,16 @@ describe('the Match Day store the composition root wires', () => {
     ]);
     expect(source).not.toMatch(/createMatchDayStore/);
   });
+
+  // Task 3 re-review N1: the folder is a parameter, so 'matchday' compiles there too. Swapped, the tap queue would read
+  // day.json as a broken queue and leave every unsent tap in scoring/ behind.
+  it('leaves the tap queue its own folder, scoring/, apart from the day’s copy', () => {
+    const source = readFileSync(join(__dirname, 'nativePorts.ts'), 'utf8');
+    expect(source.match(/tapQueue: [^\n]*/g)).toEqual([
+      "tapQueue: createTapQueueStore({ files: createExpoQueueFiles('scoring'), logger }),",
+    ]);
+    expect(source.match(/createExpoQueueFiles\([^)]*\)/g)).toEqual([
+      "createExpoQueueFiles('scoring')",
+    ]);
+  });
 });

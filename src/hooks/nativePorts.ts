@@ -158,7 +158,8 @@ export function createNativePorts(
     realtime: realtimePortFor({ logger }),
     // S4: plain fetch (AGENTS §8), the code's token to the build's host only. Home's tile and Match Day's list call it.
     matchDay: matchDayPortFor({ fetch: (url, init) => fetch(url, init), logger, hosts }),
-    // S4: beside the mode store's `code.matchday`, in the same secure store: the day's last good copy and the opened list.
+    // S4: the day's last good copy is a file in documentDirectory/matchday, never the tap queue's scoring/; the opened
+    // list is in the secure store, beside the mode store's `code.matchday`.
     matchDayStore: matchDayStoreFor({ kv, logger }),
     power: createNativePower({
       native,
