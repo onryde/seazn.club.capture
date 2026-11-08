@@ -40,8 +40,8 @@ importers:
         specifier: 0.3.2
         version: 0.3.2(react-native@0.86.3(@babel/core@7.29.7)(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)
       '@seazn/engine':
-        specifier: npm:@onryde/seazn-engine@2.0.0
-        version: '@onryde/seazn-engine@2.0.0(fast-check@3.23.2)(vitest@5.1.0(@types/node@22.20.2)(jsdom@30.1.1)(vite@8.3.0(@types/node@22.20.2)(terser@5.51.2)(yaml@2.9.0)))(zod@4.6.7)'
+        specifier: npm:@onryde/seazn-engine@0.0.0-pr28.44699f16400a367a87747b8390c40fe16e1ff8f2
+        version: '@onryde/seazn-engine@0.0.0-pr28.44699f16400a367a87747b8390c40fe16e1ff8f2(fast-check@3.23.2)(vitest@5.1.0(@types/node@22.20.2)(jsdom@30.1.1)(vite@8.3.0(@types/node@22.20.2)(terser@5.51.2)(yaml@2.9.0)))(zod@4.6.7)'
       '@supabase/realtime-js':
         specifier: 2.118.0
         version: 2.118.0
@@ -1127,8 +1127,8 @@ packages:
     resolution: {integrity: sha512-5CRpSH9FNub2IwAej2PxR6GEbQNLCy0XTzp/KqpZh6U4qiCTLPz20IXcUx9luarJBKRe2qu1cy1acHggo2MMcQ==}
     engines: {node: '>=22.0.0'}
 
-  '@onryde/seazn-engine@2.0.0':
-    resolution: {integrity: sha512-HC9La3/xZHSAyDG4g6qSQkAAOiFwqiaK8cIyv27H//s6KXKUlkc3EzmI6sbPwHvP0usnTJOARw4mq58D0Ki82A==, tarball: https://npm.pkg.github.com/download/@onryde/seazn-engine/2.0.0/fa4e522a125662960f43c164814b7ed56d81896c}
+  '@onryde/seazn-engine@0.0.0-pr28.44699f16400a367a87747b8390c40fe16e1ff8f2':
+    resolution: {integrity: sha512-isaU5sQV78uaT6Wlid6gKbMHKWN61lzs4KHav9r4dArgdKXSRMY2mvJC9+Mv832jeWHhsf8ycollmf5m9QxpwQ==, tarball: https://npm.pkg.github.com/download/@onryde/seazn-engine/0.0.0-pr28.44699f16400a367a87747b8390c40fe16e1ff8f2/4c2f547e0e9e092232559104cc0d4b06426115d5}
     peerDependencies:
       fast-check: ^3
       vitest: ^4.1.11
@@ -6617,7 +6617,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@onryde/seazn-engine@2.0.0(fast-check@3.23.2)(vitest@5.1.0(@types/node@22.20.2)(jsdom@30.1.1)(vite@8.3.0(@types/node@22.20.2)(terser@5.51.2)(yaml@2.9.0)))(zod@4.6.7)':
+  '@onryde/seazn-engine@0.0.0-pr28.44699f16400a367a87747b8390c40fe16e1ff8f2(fast-check@3.23.2)(vitest@5.1.0(@types/node@22.20.2)(jsdom@30.1.1)(vite@8.3.0(@types/node@22.20.2)(terser@5.51.2)(yaml@2.9.0)))(zod@4.6.7)':
     dependencies:
       fast-check: 3.23.2
       vitest: 5.1.0(@types/node@22.20.2)(jsdom@30.1.1)(vite@8.3.0(@types/node@22.20.2)(terser@5.51.2)(yaml@2.9.0))
@@ -6964,9 +6964,7 @@ snapshots:
       metro-runtime: 0.84.5
     transitivePeerDependencies:
       - '@babel/core'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/normalize-colors@0.74.89': {}
 
