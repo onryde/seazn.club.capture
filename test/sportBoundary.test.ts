@@ -248,3 +248,57 @@ describe('a generic scoring file names no chess module either', { timeout: 180_0
     expect(await refusals(CHESS_VALUE, 'src/domain/scoring/chessFold.test.ts')).toEqual([]);
   });
 });
+
+/**
+ * Cricket is held the same way (S2-4 plan Task 7): its modules are `cricket*` (domain, services) and `*Cricket*` (hooks,
+ * screens), both case spellings since the globs are case sensitive. Its sport key, `cricket`, is its file names' word.
+ */
+const CRICKET_VALUE =
+  "import { cricketPad } from '@/domain/scoring/cricketPad';\nexport const p = cricketPad;\n";
+const CRICKET_TYPE =
+  "import type { CricketDisplay } from '@/domain/scoring/cricketTypes';\nexport type D = CricketDisplay;\n";
+const CRICKET_CAPITAL =
+  "import { useCricketMatch } from '@/hooks/useCricketMatch';\nexport const h = useCricketMatch;\n";
+
+const CRICKET_OWN = [
+  'src/domain/scoring/cricketFold.ts',
+  'src/domain/scoring/cricketHistory.ts',
+  'src/domain/scoring/cricketPad.ts',
+  'src/domain/scoring/cricketSport.ts',
+  'src/hooks/useCricketMatch.ts',
+  'src/ui/screens/CricketPadScreen.tsx',
+  'src/ui/components/CricketBoard.tsx',
+  'src/services/fakeCricketPad.ts',
+  // held by `usePad*` and exempt only by `*Cricket*`
+  'src/hooks/usePadCricketProbe.ts',
+] as const;
+
+describe('a generic scoring file names no cricket module either', { timeout: 180_000 }, () => {
+  it('a generic file importing cricketPad fails lint, by value and by type, from a path of every glob', async () => {
+    const byValue = await Promise.all(
+      GENERIC.map(async (file) => (await refusals(CRICKET_VALUE, file)).length),
+    );
+    const byType = await Promise.all(
+      GENERIC.map(async (file) => (await refusals(CRICKET_TYPE, file)).length),
+    );
+    expect(byValue).toEqual(GENERIC.map(() => 1));
+    expect(byType).toEqual(GENERIC.map(() => 1));
+  });
+
+  it('refuses the capitalised spelling too (a hook or a screen)', async () => {
+    const counts = await Promise.all(
+      GENERIC.map(async (file) => (await refusals(CRICKET_CAPITAL, file)).length),
+    );
+    expect(counts).toEqual(GENERIC.map(() => 1));
+  });
+
+  it('stays silent in cricket’s own files, and in a test', async () => {
+    const own = await Promise.all(
+      CRICKET_OWN.flatMap((file) =>
+        [CRICKET_VALUE, CRICKET_CAPITAL].map(async (src) => (await refusals(src, file)).length),
+      ),
+    );
+    expect(own).toEqual(CRICKET_OWN.flatMap(() => [0, 0]));
+    expect(await refusals(CRICKET_VALUE, 'src/domain/scoring/cricketFold.test.ts')).toEqual([]);
+  });
+});

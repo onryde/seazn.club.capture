@@ -501,6 +501,33 @@ its rung. es, fr and nl start from the web's own words (`matchCentre.result.sett
 | ------- | ---------- | ------------------ | ---------- | -------------------------------------------------------------------------------------------------------------- |
 | by lot  | por sorteo | par tirage au sort | na loting  | `tiebreak.rung.lots`: the second half of "{name} advances · {how}" after a lot; never a rung the sheet offers. |
 
+### Cricket words (S2-4 Task 7, 2026-11-08)
+
+The words for the cricket pad's Match details, its last-tap line, History and the result (`scoring.cricket.*`). The terms
+are the web's own (`apps/web/src/dictionaries`): its cricket vocabulary, its console ribbon words for each event type, and
+the match centre's result sentences (`matchCentre.result.*`), with the winner as the side's name. **es, fr and nl are
+unreviewed drafts, for the owner's review**. Committed without a `_review` marker, as the rest of S2's copy on this
+branch. Dismissal kinds (_bowled, caught, LBW, run out, stumped_…) stay in English in every language, as the web's
+scorecards write them; _over_, _wicket_, _wide_, _no-ball_, _bye_, _leg-bye_ and _super over_ are the game's own words in
+all four. A counted word (`.one` / `.other`) is picked by the language's plural rule.
+
+| English                              | Español                                     | Français                             | Nederlands                              | Notes                                                                                             |
+| ------------------------------------ | ------------------------------------------- | ------------------------------------ | --------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| run / runs                           | carrera / carreras                          | course / courses                     | run / runs                              | `ball.runs`, and every count of runs.                                                             |
+| innings                              | entrada                                     | manche                               | innings                                 | `rules.*.value` ("{overs} an innings"); the web's es and fr. History's heading keeps the number.  |
+| bowler                               | lanzador                                    | lanceur                              | bowler                                  | `rules.bowler.label`, `last.bowlerChange`.                                                        |
+| toss                                 | sorteo                                      | tirage au sort                       | toss                                    | `last.toss.bat` / `.bowl`: "{name} won the toss and chose to bat"; bat / bowl as the web's verbs. |
+| Dot ball                             | Bola sin carrera                            | Balle sans course                    | Bal zonder run                          | `ball.dot`: a ball with nothing scored.                                                           |
+| {batter} out · {how}                 | {batter} eliminado · {how}                  | {batter} éliminé · {how}             | {batter} uit · {how}                    | `out`; `{how}` is the kind, with its fielder in brackets ("caught (Away Player 5)").              |
+| Over recorded · {runs}/{wickets}     | Over registrado · {runs}/{wickets}          | Over enregistré · {runs}/{wickets}   | Over vastgelegd · {runs}/{wickets}      | `last.summary`: over totals for a side with no players (ruling 66), with the overs bowled.        |
+| Undone — {what}                      | Deshecho: {what}                            | Annulé : {what}                      | Ongedaan gemaakt: {what}                | `last.undone`. fr has a no-break space before the colon.                                          |
+| Innings {number} · {side}            | Entrada {number} · {side}                   | Manche {number} · {side}             | Innings {number} · {side}               | `history.innings`; `history.superOver` the same; `history.before` "Before play".                  |
+| {name} won by {count} runs           | {name} ganó por {count} carreras            | {name} a gagné par {count} courses   | {name} won met {count} runs             | `result.runs`; `.wickets` and `.innings_and_runs` the same, as the match centre.                  |
+| {name} won on the super over         | {name} ganó en el super over                | {name} a gagné au super over         | {name} won de super over                | `result.super_over`; `.boundary_count` "won on boundary count".                                   |
+| Match tied / Match drawn / No result | Empate / Partido inconcluso / Sin resultado | Égalité / Match nul / Aucun résultat | Gelijkspel / Onbeslist / Geen resultaat | `result.tie` / `.draw` / `.no_result`: no winner named.                                           |
+| Unlimited                            | Sin límite                                  | Illimité                             | Onbeperkt                               | `rules.overs.unlimited`: a format with no overs limit (two innings a side).                       |
+| Team sheet changed                   | Alineación cambiada                         | Composition modifiée                 | Opstelling gewijzigd                    | `event.lineup`: every `core.lineup.*` event's row.                                                |
+
 ## App settings (2026-11-02)
 
 The app's own Settings, from the gear in Home's top-right corner (owner, 2026-11-02: "we should have common setting in a top

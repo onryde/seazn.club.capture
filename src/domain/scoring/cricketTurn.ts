@@ -60,6 +60,19 @@ function dueSide(state: CricketState, superOver: boolean, count: number): Engine
 export const ordinalOf = (turn: CricketTurn): CricketOrdinal =>
   turn.superOver ? `s${turn.index + 1}` : `i${turn.index + 1}`;
 
+/** Above any main innings' rank (there are four at most). */
+const SUPER_OVER_RANK = 100;
+
+/**
+ * An innings' place in the match from its ordinal: the main innings by number, every super-over innings after them; null
+ * for a word that names no innings (an order's side).
+ */
+export function rankOfOrdinal(ordinal: string): number | null {
+  const found = /^([is])(\d+)$/.exec(ordinal);
+  if (found === null) return null;
+  return (found[1] === 's' ? SUPER_OVER_RANK : 0) + Number(found[2]);
+}
+
 /** The legal balls bowled in the innings now: none in one not yet opened. */
 export const legalBallsOf = (turn: CricketTurn): number => turn.innings?.legalBalls ?? 0;
 

@@ -1,5 +1,6 @@
 import { badmintonSport } from '@/domain/scoring/badmintonSport';
 import { chessSport } from '@/domain/scoring/chessSport';
+import { cricketSport } from '@/domain/scoring/cricketSport';
 import type { AnySport } from '@/domain/scoring/scoringSport';
 import { tableTennisSport } from '@/domain/scoring/tableTennisSport';
 
@@ -12,6 +13,7 @@ const SPORTS: ReadonlyMap<string, AnySport> = new Map<string, AnySport>([
   [badmintonSport.key, badmintonSport],
   [tableTennisSport.key, tableTennisSport],
   [chessSport.key, chessSport],
+  [cricketSport.key, cricketSport],
 ]);
 
 /** The sport a bootstrap's `sport_key` names, or null for one this build does not score. Own rows only. */

@@ -8,6 +8,7 @@ import {
   ordinalOf,
   otherSide,
   overOf,
+  rankOfOrdinal,
   turnOf,
   type CricketTurn,
 } from '@/domain/scoring/cricketTurn';
@@ -196,18 +197,9 @@ function swapEntry(
 }
 
 /** An innings's place in the match's order: the main innings, then the super over's. */
-function rankOf(ordinal: string): number | null {
-  const found = /^([is])(\d+)$/.exec(ordinal);
-  if (found === null) return null;
-  return (found[1] === 's' ? SUPER_OVER_RANK : 0) + Number(found[2]);
-}
-
-/** Above any main innings' rank (there are four at most). */
-const SUPER_OVER_RANK = 100;
-
 /** The picks without those of an innings before the turn's, or of an over or a ball already bowled in it. */
 function withoutPast(picks: PendingPicks, turn: CricketTurn, ballsPerOver: number): PendingPicks {
-  const now = rankOf(ordinalOf(turn)) ?? 0;
+  const now = rankOfOrdinal(ordinalOf(turn)) ?? 0;
   const over = overOf(turn, ballsPerOver);
   const legal = legalBallsOf(turn);
   return Object.fromEntries(
@@ -218,7 +210,7 @@ function withoutPast(picks: PendingPicks, turn: CricketTurn, ballsPerOver: numbe
 function isPast(key: string, now: number, over: number, legal: number): boolean {
   const [kind, ordinal, at] = key.split('.');
   // An order's key names a side, not an innings (`order.first`): it has no rank, and is never past.
-  const rank = ordinal === undefined ? null : rankOf(ordinal);
+  const rank = ordinal === undefined ? null : rankOfOrdinal(ordinal);
   if (rank === null) return false;
   if (rank !== now) return rank < now;
   if (kind === 'bowler') return Number(at) < over;

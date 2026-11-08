@@ -210,11 +210,83 @@ export type CricketDisplay = {
   readonly undoable: boolean;
 };
 
+/** A word with a count: the `.other` key a counted text names (`PadCounted`), whose `.one` the language's rule may pick. */
+type Counted<Base extends string> = `${Base}.other`;
+
+/** The rules table's keys (`cricketRules.ts`): a label and a value a row. */
+export type CricketRuleKey =
+  | `scoring.cricket.rules.${'overs' | 'over' | 'players' | 'bowler' | 'superOver' | 'followOn' | 'reviews'}.label`
+  | `scoring.cricket.rules.${'overs' | 'over' | 'players' | 'followOn' | 'reviews'}.value`
+  | 'scoring.cricket.rules.overs.unlimited'
+  | Counted<'scoring.cricket.rules.bowler.value'>
+  | 'scoring.cricket.rules.bowler.none'
+  | `scoring.cricket.rules.superOver.${'on' | 'off'}`;
+
+/** How a batter was out, in the scorebook's words (the engine's kinds; the web keeps them in English in every language). */
+export type CricketOutKey =
+  | 'scoring.cricket.out'
+  | `scoring.cricket.out.kind.${CricketWicketKind}`
+  | 'scoring.cricket.out.fielder'
+  | 'scoring.cricket.out.fielders';
+
+/** What a ball did: a dot, runs, a boundary, an extra with its runs, joined. */
+export type CricketBallKey =
+  | 'scoring.cricket.ball.dot'
+  | 'scoring.cricket.ball.four'
+  | 'scoring.cricket.ball.six'
+  | 'scoring.cricket.ball.and'
+  | Counted<`scoring.cricket.ball.${'runs' | CricketExtra['kind']}`>;
+
+/** The words of an event no tap of the pad's reads back (and of one whose payload the pad cannot read), by its type. */
+export type CricketEventKey = `scoring.cricket.event.${
+  | 'toss'
+  | 'ball'
+  | 'superOverBall'
+  | 'summary'
+  | 'declare'
+  | 'close'
+  | 'matchClose'
+  | 'interruption'
+  | 'revise'
+  | 'followOn'
+  | 'playerLine'
+  | 'retire'
+  | 'newBall'
+  | 'powerplay'
+  | 'review'
+  | 'bowlerChange'
+  | 'forfeit'
+  | 'abandon'
+  | 'finalize'
+  | 'note'
+  | 'award'
+  | 'suspend'
+  | 'resume'
+  | 'settle'
+  | 'lineup'}`;
+
+/** How a decided match was decided (`cricketResult.ts`): a key for every margin kind and every outcome kind. */
+export type CricketResultKey =
+  | Counted<`scoring.cricket.result.${'runs' | 'wickets' | 'innings_and_runs'}`>
+  | `scoring.cricket.result.${'super_over' | 'boundary_count' | 'win' | 'award' | 'tie' | 'draw' | 'no_result' | 'double_walkover'}`;
+
 /**
- * Every dictionary key the cricket pad and its History words name (Task 7 writes them, with the dictionaries). The kit
- * translates them as `MessageKey`, so each must exist in en.json.
+ * Every dictionary key the cricket pad and its History words name. The kit translates them as `MessageKey`, so each must
+ * exist in en.json (`cricketPadWords.test.ts` holds it to that at compile time).
  */
-export type CricketPadKey = never;
+export type CricketPadKey =
+  | CricketRuleKey
+  | CricketOutKey
+  | CricketBallKey
+  | CricketEventKey
+  | CricketResultKey
+  | `scoring.cricket.last.${'start' | 'summary' | 'bowlerChange' | 'undone'}`
+  | `scoring.cricket.last.toss.${'bat' | 'bowl'}`
+  | `scoring.cricket.last.retire.${'hurt' | 'out' | 'plain'}`
+  | `scoring.cricket.history.${'innings' | 'superOver' | 'before'}`
+  | 'scoring.cricket.tallySaid'
+  | 'scoring.cricket.tallyNone'
+  | 'scoring.pad.tap';
 
 /** The types cricket's pad works in. */
 export type CricketTypes = {

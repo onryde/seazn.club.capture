@@ -7,6 +7,7 @@ import {
   type CricketBallEv,
   type CricketScorecard,
   type CricketState,
+  type InningsState,
 } from '@seazn/engine/sports/cricket';
 import {
   BALL,
@@ -15,6 +16,13 @@ import {
   SUPER_OVER_BALL,
   undoneTap,
 } from '@/domain/scoring/cricketDone';
+import {
+  cricketLedgerHistory,
+  historyDoneOf,
+  type CricketGroup,
+  type CricketHistoryEntry,
+} from '@/domain/scoring/cricketHistory';
+import { wordsOf } from '@/domain/scoring/cricketPad';
 import {
   cricketMatchOf,
   cricketRefusalOf,
@@ -37,6 +45,7 @@ import type {
   CricketDisplay,
   CricketExtra,
   CricketInnings,
+  CricketPadKey,
   CricketPlayer,
   CricketResult,
   CricketStage,
@@ -45,11 +54,11 @@ import type {
   OverChip,
 } from '@/domain/scoring/cricketTypes';
 import type { MatchContext } from '@/domain/scoring/matchContext';
-import type { PadSide } from '@/domain/scoring/padView';
+import type { PadHistoryGroup, PadSide } from '@/domain/scoring/padView';
 import { NO_PICKS } from '@/domain/scoring/pendingPicks';
 import type { SportFold, SportFoldInput, Unfoldable } from '@/domain/scoring/scoringSport';
 import { lastTapOf } from '@/domain/scoring/setBasedBoard';
-import { streamOf, voidsAgain, type SetBasedStream } from '@/domain/scoring/setBasedFold';
+import { streamOf, voidedIn, voidsAgain, type SetBasedStream } from '@/domain/scoring/setBasedFold';
 import type { Recorded } from '@/domain/scoring/setBasedLedgerHistory';
 import { seatsOf, type Seats } from '@/domain/scoring/setBasedSides';
 import { undoTarget } from '@/domain/scoring/undoTarget';
@@ -84,10 +93,15 @@ type BallSeen = {
   readonly ball: CricketBallEv;
 };
 
+/** What History says of an event the fold took: the innings it belongs to, and that innings' score after a ball or totals. */
+type CricketFacts = { readonly group: CricketGroup; readonly score: string | null };
+
 type CricketFolded = {
   readonly state: CricketState;
   readonly balls: readonly BallSeen[];
   readonly scorecard: CricketScorecard;
+  /** By envelope id: every event still standing (a voided one is not folded, so has none). */
+  readonly facts: ReadonlyMap<string, CricketFacts>;
 };
 
 export function foldCricket(input: SportFoldInput): SportFold<CricketTypes> {
@@ -98,12 +112,12 @@ export function foldCricket(input: SportFoldInput): SportFold<CricketTypes> {
   );
   const folded = foldOf(match.engine, stream.envelopes);
   if (folded === null) return { kind: 'unfoldable', reason: 'ledger' };
+  const display = displayOf(match, input, stream, folded);
   return {
     kind: 'folded',
-    display: displayOf(match, input, stream, folded),
+    display,
     legalQueued: stream.legal,
-    // History's words are Task 7's (`cricketHistory.ts`).
-    history: [],
+    history: historyOf(match, stream, folded, display),
   };
 }
 
@@ -137,12 +151,19 @@ function foldOf(
   envelopes: readonly EventEnvelope[],
 ): CricketFolded | null {
   const balls: BallSeen[] = [];
+  const facts = new Map<string, CricketFacts>();
+  // The innings now before each event: the one the last event left (none before the first).
+  let before: CricketTurn | null = null;
   try {
     const state = foldMatch(cricket, engine.cfg, engine.lineups, envelopes, {
-      onFolded: (after, event) => seeBall(balls, after, event),
+      onFolded: (after, event) => {
+        seeBall(balls, after, event);
+        facts.set(event.id, factsOf(before, after, event));
+        before = turnOf(after);
+      },
     });
     const scorecard = deriveCricketScorecard({ events: envelopes, ...engine });
-    return { state, balls, scorecard };
+    return { state, balls, scorecard, facts };
   } catch (error) {
     if (EngineError.is(error)) return null;
     throw error;
@@ -157,6 +178,71 @@ function seeBall(balls: BallSeen[], state: Readonly<CricketState>, event: EventE
   if (!ball.success) return;
   const list = superOver ? (state.superOver?.innings ?? []) : state.innings;
   balls.push({ superOver, index: list.length - 1, ball: ball.data });
+}
+
+/**
+ * Where History files an event: a ball, or over totals, under the innings it went into, with that innings' score after it;
+ * any other event under the innings under way when it came (a declaration, a retirement), else the one it leads to (the
+ * toss and the start under the first innings, a follow-on under the third), or before play when none is named yet.
+ */
+function factsOf(
+  before: CricketTurn | null,
+  after: Readonly<CricketState>,
+  event: EventEnvelope,
+): CricketFacts {
+  const scored = scoredIn(after, event.type);
+  if (scored !== null) {
+    return { group: groupOf(scored), score: `${scored.innings.runs}/${scored.innings.wickets}` };
+  }
+  const underWay = before?.innings?.closed === false ? before : null;
+  const turn = underWay ?? turnOf(after);
+  return { group: turn === null ? null : groupOf(turn), score: null };
+}
+
+/** The innings a ball or over totals went into: the last of its list, the super over's for a super-over ball. */
+function scoredIn(
+  state: Readonly<CricketState>,
+  type: string,
+): (CricketTurn & { readonly innings: InningsState }) | null {
+  const superOver = type === SUPER_OVER_BALL;
+  if (!superOver && type !== BALL && type !== SUMMARY) return null;
+  const list = superOver ? (state.superOver?.innings ?? []) : state.innings;
+  const innings = list[list.length - 1];
+  if (innings === undefined) return null;
+  return { superOver, index: list.length - 1, innings, battingSide: innings.battingSide };
+}
+
+const SUMMARY = 'cricket.innings.summary';
+
+const groupOf = (turn: CricketTurn): CricketGroup => ({
+  ordinal: ordinalOf(turn),
+  batting: padSideOf(turn.battingSide),
+});
+
+/**
+ * History's rows: every event of the stream with words, in order, this phone's queued taps on top as sending, an event a
+ * void took back struck in its place under the innings it was recorded in (the one before it, since the fold no longer
+ * holds it).
+ */
+function historyOf(
+  match: CricketMatch,
+  stream: SetBasedStream,
+  folded: CricketFolded,
+  display: CricketDisplay,
+): readonly PadHistoryGroup<CricketPadKey>[] {
+  const voided = voidedIn(stream.envelopes);
+  let group: CricketGroup = null;
+  const entries = stream.entries.flatMap((entry): CricketHistoryEntry[] => {
+    const { envelope } = entry;
+    const facts = folded.facts.get(envelope.id);
+    group = facts === undefined ? group : facts.group;
+    const did = historyDoneOf(envelope, match.seats);
+    if (did === null) return [];
+    const { own, sending } = entry;
+    const undone = voided.has(envelope.id);
+    return [{ did, group, score: facts?.score ?? null, own, undone, sending }];
+  });
+  return cricketLedgerHistory(entries, wordsOf(display));
 }
 
 // ---------------------------------------------------------------------------------------------------------------
