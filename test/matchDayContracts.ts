@@ -7,7 +7,8 @@ import addFormats from 'ajv-formats';
  * contractPins.test.ts. Each contract's root is the v1 envelope's `data`, and its `$defs.refusal` is the envelope's
  * `error` (the contracts' own descriptions), so a test wraps a fixture in the envelope the server sends it in.
  */
-export type MatchDayContract = 'capture-matchday-day.v1' | 'capture-matchday-open.v1';
+export type MatchDayContract =
+  'capture-matchday-day.v1' | 'capture-matchday-open.v1' | 'capture-matchday-approval.v1';
 
 const CONTRACTS = new URL('../contracts/', import.meta.url);
 
@@ -39,15 +40,22 @@ export function schemaOf(contract: MatchDayContract): {
 
 const ajv = new Ajv2020({ allErrors: true, strict: true });
 addFormats(ajv);
-for (const contract of ['capture-matchday-day.v1', 'capture-matchday-open.v1'] as const) {
+for (const contract of [
+  'capture-matchday-day.v1',
+  'capture-matchday-open.v1',
+  'capture-matchday-approval.v1',
+] as const) {
   ajv.addSchema(schemaOf(contract) as object);
 }
 
-/** Whether the contract admits a value: at its root (the envelope's `data`) or at `/$defs/refusal` (its `error`). */
+/**
+ * Whether the contract admits a value: at its root (the envelope's `data`), at `/$defs/refusal` (its `error`), or, in
+ * the approval contract, at `/$defs/request` (the approve's body) or `/$defs/ok` (the approve's `data`).
+ */
 export function contractAdmits(
   contract: MatchDayContract,
   value: unknown,
-  pointer: '' | '/$defs/refusal' = '',
+  pointer: '' | '/$defs/refusal' | '/$defs/request' | '/$defs/ok' = '',
 ): boolean {
   const id = schemaOf(contract).$id;
   const validate = ajv.getSchema(pointer === '' ? id : `${id}#${pointer}`);

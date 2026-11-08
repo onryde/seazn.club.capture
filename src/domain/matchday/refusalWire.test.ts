@@ -13,12 +13,14 @@ import {
 
 /**
  * Every md_ route refuses in one shape, the v1 envelope's `error`: `{ok: false, error: {code, message, opens_at?}}`,
- * the code one of a closed list of nine (`$defs.refusal` of capture-matchday-day.v1 and capture-matchday-open.v1).
- * The envelope's own answers (429 RATE_LIMITED, 404 NOT_FOUND) are not md_ refusals: the port reads them by status.
+ * the code one of a closed list of nine (`$defs.refusal` of capture-matchday-day.v1, capture-matchday-open.v1 and
+ * capture-matchday-approval.v1). The envelope's own answers (429 RATE_LIMITED, 404 NOT_FOUND, 422) are not md_
+ * refusals: the port reads them by status.
  */
 const CONTRACTS: readonly MatchDayContract[] = [
   'capture-matchday-day.v1',
   'capture-matchday-open.v1',
+  'capture-matchday-approval.v1',
 ];
 
 /** Each refusal fixture, its status from its contract's text, and the word the phone reads, or null. */
@@ -37,6 +39,11 @@ const EXPECTED: Readonly<
     'refusal-invalid-not-found': [404, null],
     'refusal-valid-not-open': [403, 'MD_NOT_OPEN'],
     'refusal-valid-out-of-scope': [403, 'MD_OUT_OF_SCOPE'],
+  },
+  'capture-matchday-approval.v1': {
+    'refusal-invalid-seeding-word': [409, null],
+    'refusal-valid-no-approve': [403, 'MD_NO_APPROVE'],
+    'refusal-valid-ties': [409, 'MD_TIES'],
   },
 };
 
@@ -75,10 +82,7 @@ describe('parseRefusal reads the nine words, and only them', () => {
     expect(MATCHDAY_REFUSALS).toEqual(NINE);
   });
 
-  /**
-   * The first five at the statuses the contracts' refusal descriptions give. The approval contract is not vendored
-   * yet, so the last four are read at a 4xx this test picks: parseRefusal pairs no word with one status.
-   */
+  /** Each at the status its contract's refusal description gives (the approval contract's for the last four). */
   it.each([
     [401, 'MD_UNKNOWN'],
     [410, 'MD_WITHDRAWN'],
