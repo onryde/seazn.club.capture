@@ -18,6 +18,7 @@ import {
 } from '@/services/native/expoRouterNavigation';
 import { OrientationGate } from '@/ui/components/OrientationGate';
 import { HomeScreen } from '@/ui/screens/HomeScreen';
+import { MatchDayScreen } from '@/ui/screens/MatchDayScreen';
 import { ScoringMatchScreen } from '@/ui/screens/ScoringMatchScreen';
 import { AppSettingsScreen } from '@/ui/screens/AppSettingsScreen';
 import { SettingsScreen } from '@/ui/screens/SettingsScreen';
@@ -53,6 +54,7 @@ const ROUTE_OF: Readonly<Record<Path, Route>> = {
   '/stream/settings': 'streamSettings',
   '/settings': 'settings',
   '/scoring': 'scoring',
+  '/matchday': 'matchday',
 };
 
 function routerDouble(): RouterDouble {
@@ -125,6 +127,7 @@ function Screens({ route }: { route: Route }) {
       {route === 'home' ? <HomeScreen /> : null}
       {route === 'settings' ? <AppSettingsScreen /> : null}
       {route === 'scoring' ? <ScoringRouted /> : null}
+      {route === 'matchday' ? <MatchDayScreen /> : null}
       {route === 'stream' || route === 'streamSettings' ? <StreamScreen /> : null}
       {route === 'streamSettings' ? <SettingsScreen /> : null}
     </>

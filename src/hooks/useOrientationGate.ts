@@ -18,11 +18,11 @@ import type { Logger } from '@/services/logger';
  * inside it) follow the phone. `/stream/settings` is `free` even though it sits inside Live Stream: while a
  * broadcast is held the gate keeps the viewfinder's lock under it (D9). Remote Scoring's pad is portrait (decision
  * record ruling 4; owner layout A, 2026-10-31): held sideways its two halves would get about 1 dp each, so the
- * turn-upright card covers it until the phone is upright.
+ * turn-upright card covers it until the phone is upright. Match Day's list is portrait too (S4 design §7).
  */
 export function routeTarget(pathname: string): Target {
   if (pathname === '/stream') return 'landscape';
-  return pathname === '/scoring' ? 'portrait' : 'free';
+  return pathname === '/scoring' || pathname === '/matchday' ? 'portrait' : 'free';
 }
 
 /**

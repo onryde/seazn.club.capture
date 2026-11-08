@@ -480,6 +480,17 @@ describe('Continue alone, or the ended card alone, leaves the tiles room at 800 
   });
 });
 
+/**
+ * A long day as `formatDay` writes it in each language (Node's ICU for 30 September 2026), by hand: a two-digit day in
+ * September, among the longest short months in all four. The line holds three lines with room to spare.
+ */
+const WIDEST_DAY: Readonly<Record<Lang, string>> = {
+  en: 'Wed 30 Sept',
+  es: 'mié, 30 sept',
+  fr: 'mer. 30 sept.',
+  nl: 'wo 30 sep',
+};
+
 describe('the top row’s status holds its three lines, in four languages (spec §7)', () => {
   /** Every sentence Home's status line can say (useHome's `statusText`): the idle one, the store's, the scanner's, the expiry's. */
   const keys = [
@@ -490,6 +501,12 @@ describe('the top row’s status holds its three lines, in four languages (spec 
     'scanner.installing',
     'scanner.failed',
     'reopen.expired',
+    // MD-2 Task 3 (S4 design §3, §4): why a Match Day code went, and when its day opens.
+    'matchday.ended',
+    'matchday.withdrawn',
+    'matchday.unknown',
+    'matchday.opens',
+    'matchday.notOpen',
   ] as const;
   let checked = 0;
 
@@ -507,7 +524,10 @@ describe('the top row’s status holds its three lines, in four languages (spec 
         .map((key) => word(lang, key))
         .reduce((a, b) => (b.length > a.length ? b : a));
       for (const key of keys) {
-        const text = word(lang, key).replace('{mode}', longest).replace('{time}', '18:40 CEST');
+        const text = word(lang, key)
+          .replace('{mode}', longest)
+          .replace('{time}', '18:40 CEST')
+          .replace('{date}', WIDEST_DAY[lang]);
         const lines = linesOf(text, status, (line) =>
           geist400.width(line, typeScale.status.fontSize),
         );
@@ -523,7 +543,7 @@ describe('the top row’s status holds its three lines, in four languages (spec 
   });
 
   it('checked every sentence in every language at every width (anti-vacuity)', () => {
-    expect(keys).toHaveLength(7);
+    expect(keys).toHaveLength(12);
     expect(checked).toBe(GEOMETRIES.length * LANGS.length * keys.length);
   });
 });

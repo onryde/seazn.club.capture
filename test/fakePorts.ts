@@ -19,6 +19,7 @@ import type {
 } from '@/services/devicePorts';
 import { createEndedNotice } from '@/services/endedNotice';
 import { createFakeCodePort, type FakeCodePort } from '@/services/fakeCodePort';
+import { createFakeMatchDayPort, type FakeMatchDayPort } from '@/services/fakeMatchDayPort';
 import { createFakeRealtimePort, type FakeRealtimePort } from '@/services/fakeRealtimePort';
 import {
   SINGLES_SEED,
@@ -28,6 +29,7 @@ import {
 } from '@/services/fakeScoringPort';
 import { createMemoryKeyValueStore, type MemoryKeyValueStore } from '@/services/KeyValueStore';
 import { createLogger } from '@/services/logger';
+import { createMatchDayStore } from '@/services/matchDayStore';
 import { createModeStore } from '@/services/modeStore';
 import { createProbeFlight } from '@/services/probeFlight';
 import { createRecordSendFlight } from '@/services/recordSendFlight';
@@ -111,6 +113,11 @@ export type FakePorts = {
    * channel, `ping()` is another scorer's tap; `subscriptions` lists each grant and whether it is still open.
    */
   readonly realtime: FakeRealtimePort;
+  /**
+   * S4: the made-up day (`FAKE_DAY`) and a link to `FAKE_OPEN_URL` until `answerDay`/`answerOpen`; `hold()`/`release()`
+   * pend calls; `calls` lists each with its code. The store beside it is the real one over `kv` (`ports.matchDayStore`).
+   */
+  readonly matchDay: FakeMatchDayPort;
   /** The battery mode (R5): Unrestricted until `set`; `opened` counts App info's opens. */
   readonly power: FakePower;
   /** R4: no credential until `give`; the real store's own tests are `uploadCredentialStore.test.ts`. */
@@ -172,6 +179,7 @@ export function createFakePorts(overrides: FakePortsOverrides = {}): FakePorts {
     tapQueue: createTapQueueStore({ files: queueFiles, logger }),
     queueFiles,
     realtime: createFakeRealtimePort(),
+    matchDay: createFakeMatchDayPort(),
     power: createFakePower(),
     uploadCredential: createFakeUploadCredential(),
     recordUpload: createFakeRecordUpload(),
@@ -181,6 +189,7 @@ export function createFakePorts(overrides: FakePortsOverrides = {}): FakePorts {
     devEngine: engine,
     nativeEngine: null,
     modeStore: createModeStore(kv),
+    matchDayStore: createMatchDayStore(kv),
     scanFlight: createScanFlight(),
     probeFlight: createProbeFlight(),
     endedNotice: createEndedNotice(),

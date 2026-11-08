@@ -45,5 +45,5 @@ export function parseOpen(body: unknown): Read<OpenAnswer> {
 
 /** A refused open: MD_OUT_OF_SCOPE is the open's own answer; any other word is the code's, and is null here. */
 export function openRefused(status: number, body: unknown): OpenAnswer | null {
-  return parseRefusal(status, body) === 'MD_OUT_OF_SCOPE' ? OUT_OF_SCOPE : null;
+  return parseRefusal(status, body)?.code === 'MD_OUT_OF_SCOPE' ? OUT_OF_SCOPE : null;
 }

@@ -90,6 +90,9 @@ function panelCopy(outcome: HomePanel, translator: Translator, time: string | nu
       return withDismiss(codeCopy(outcome.error, t, outcome.tapped), outcome.dismiss, t);
     case 'unpaired':
       return settled(t(UNPAIRED[outcome.reason].title), t(UNPAIRED[outcome.reason].body));
+    // S4 design §4: one line, "Match Day code withdrawn", then Scan again.
+    case 'dayRefused':
+      return settled(t(outcome.line), null);
     // A7's sheet has the spec's two answers and no others (review C5 I-3): no
     // Scan again, and the dim (and Back) mean Cancel, which sends nothing.
     case 'unpairConfirm': {

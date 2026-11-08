@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { FAKE_DAY, FAKE_OPEN_URL } from '@/services/fakeMatchDayPort';
 import { TABLE_TENNIS_SINGLES_SEED } from '@/services/fakeTableTennisPad';
 import { createFakePorts, disposeFakePorts } from './fakePorts';
 import { FAKE_SCORING_SECRET, FAKE_SCORING_URL } from './fakeScoringLinkPort';
@@ -21,6 +22,42 @@ describe('fake back', () => {
     leaveSecond();
     expect(back.press()).toBe(true);
     expect(pressed).toEqual(['first']);
+  });
+});
+
+describe('fake Match Day', () => {
+  const CODE = { origin: 'https://stg.seazn.club', token: 'md_made-up' };
+
+  it('answers the made-up day by default, lists each call, and review and approve are offline', async () => {
+    const { matchDay } = createFakePorts();
+    const day = await matchDay.day(CODE);
+    expect(day.ok && day.value).toBe(FAKE_DAY);
+    expect(await matchDay.open(CODE, 'f1')).toEqual({
+      ok: true,
+      value: { kind: 'link', url: FAKE_OPEN_URL, sportKey: 'badminton' },
+    });
+    expect(await matchDay.review(CODE, 'swiss', 's1')).toEqual({ ok: false, offline: true });
+    expect(await matchDay.approve(CODE, 'swiss', 's1', 'h', 4)).toEqual({
+      ok: false,
+      offline: true,
+    });
+    expect(matchDay.calls.map((call) => call.op)).toEqual(['day', 'open', 'review', 'approve']);
+    expect(matchDay.calls[1]).toEqual({ op: 'open', code: CODE, fixtureId: 'f1' });
+  });
+
+  it('a held call answers what stands at release', async () => {
+    const { matchDay } = createFakePorts();
+    matchDay.hold();
+    const pending = matchDay.day(CODE);
+    matchDay.answerDay({ ok: false, refusal: 'MD_ENDED' });
+    matchDay.release();
+    expect(await pending).toEqual({ ok: false, refusal: 'MD_ENDED' });
+  });
+
+  it('the store is the real one over the ports’ key-value store', async () => {
+    const { ports, kv } = createFakePorts();
+    await ports.matchDayStore.addOpened('f1');
+    expect(kv.entries.get('matchday.opened')).toBe('["f1"]');
   });
 });
 

@@ -1169,5 +1169,14 @@
   "scoring.tennis.setScore.tiebreak": "Tie-break : {side}",
   "mode.matchday": "Jour de match",
   "home.tile.matchday.purpose": "Tenez le score de tous les matchs du jour.",
-  "home.tile.matchday.hint": "Scannez le code Jour de match"
+  "home.tile.matchday.hint": "Scannez le code Jour de match",
+  "matchday.ended": "Jour de match terminé",
+  "matchday.withdrawn": "Code Jour de match retiré",
+  "matchday.unknown": "Code Jour de match non reconnu",
+  "matchday.opens": "Le Jour de match ouvre le {date}",
+  "matchday.notOpen": "Le Jour de match n'est pas encore ouvert",
+  "matchday.continue": "Jour de match · {competition} · {scope}",
+  "matchday.continueWhole": "Jour de match · {competition}",
+  "matchday.loading.title": "Ouverture du Jour de match",
+  "matchday.loading.body": "Chargement des matchs du jour depuis Seazn."
 }

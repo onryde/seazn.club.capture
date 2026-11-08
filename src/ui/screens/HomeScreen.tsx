@@ -111,6 +111,7 @@ function HomeContent({
       )}
       <EndedSlot shape={shape} />
       <ContinueSlot view={view} actions={actions} shape={shape} />
+      <MatchDaySlot view={view} actions={actions} shape={shape} />
       <ScoringSlot view={view} actions={actions} shape={shape} />
       <ModeTiles onPress={actions.tapTile} layout={layout} />
       {devTools ? <DevPaste onUse={actions.useRaw} /> : null}
@@ -189,6 +190,27 @@ function ContinueSlot({
       layout={shape}
       onContinue={actions.continueStream}
       onForget={actions.forgetStream}
+    />
+  );
+}
+
+/** The Match Day card (S4 design §4): "Match Day · SAFE Open · Hall A", while the saved code's day is on. */
+function MatchDaySlot({
+  view,
+  actions,
+  shape,
+}: {
+  view: HomeView;
+  actions: HomeActions;
+  shape: CardShape;
+}) {
+  if (view.matchDay === null) return null;
+  return (
+    <ContinueCard
+      mode="matchday"
+      copy={view.matchDay}
+      layout={shape}
+      onContinue={actions.continueMatchDay}
     />
   );
 }

@@ -1169,5 +1169,14 @@
   "scoring.tennis.setScore.tiebreak": "Tiebreak: {side}",
   "mode.matchday": "Speeldag",
   "home.tile.matchday.purpose": "Scoor alle wedstrijden van de dag.",
-  "home.tile.matchday.hint": "Scan de speeldagcode"
+  "home.tile.matchday.hint": "Scan de speeldagcode",
+  "matchday.ended": "Speeldag afgelopen",
+  "matchday.withdrawn": "Speeldagcode ingetrokken",
+  "matchday.unknown": "Speeldagcode niet herkend",
+  "matchday.opens": "Speeldag opent {date}",
+  "matchday.notOpen": "Speeldag is nog niet geopend",
+  "matchday.continue": "Speeldag · {competition} · {scope}",
+  "matchday.continueWhole": "Speeldag · {competition}",
+  "matchday.loading.title": "Speeldag openen",
+  "matchday.loading.body": "Wedstrijden van de dag ophalen bij Seazn."
 }

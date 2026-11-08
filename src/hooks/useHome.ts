@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type { CodeError } from '@/domain/credentials/waitingFields';
-import { continueCard, type ContinueCopy } from '@/domain/mode/continueCard';
+import { continueCard, type ContinueCopy, type MatchDayCopy } from '@/domain/mode/continueCard';
 import type { Mode, ModeCode } from '@/domain/mode/Mode';
 import { asksBeforeOpening } from '@/domain/mode/otherMode';
 import { recognise } from '@/domain/mode/recognise';
@@ -42,7 +42,7 @@ import {
 } from '@/hooks/useCodeCheck';
 import type { ScoringCode } from '@/hooks/useScoringCheck';
 import { useUnpair } from '@/hooks/useUnpair';
-import { useFormatTime } from '@/hooks/useFormatTime';
+import { useFormatDay, useFormatTime } from '@/hooks/useFormatTime';
 import { useT } from '@/hooks/useLanguage';
 import { usePairing } from '@/hooks/usePairing';
 import {
@@ -57,6 +57,12 @@ import {
   useDismissScoring,
   useScoringRows,
 } from '@/hooks/useScoringHome';
+import {
+  useDayCheck,
+  useMatchDayCard,
+  useOpenSavedDay,
+  type DayCode,
+} from '@/hooks/useMatchDayHome';
 import { usePorts, type Ports } from '@/hooks/usePorts';
 import type { MessageKey } from '@/i18n/messages';
 import { MODE_NAME } from '@/i18n/modeNames';
@@ -85,11 +91,13 @@ export type HomePanel =
       readonly kind: 'codeError';
       readonly tapped: Mode;
       readonly error: CodeError;
-      readonly code: StreamCode | ScoringCode;
+      readonly code: StreamCode | ScoringCode | DayCode;
       /** A dead scoring link that a queue of unsent taps is stuck on: the match Dismiss lets go (design §4.3). */
       readonly dismiss?: string;
     }
   | { readonly kind: 'unpaired'; readonly tapped: 'stream'; readonly reason: PanelUnpairReason }
+  /** S4 design §4: a Match Day code the server has ended, withdrawn or does not know; `line` says which. */
+  | { readonly kind: 'dayRefused'; readonly tapped: 'matchday'; readonly line: MessageKey }
   /** Owner ruling B: a Dismiss that discards taps asks first; `unsent` is null for a queue that cannot be read. */
   | {
       readonly kind: 'dismissConfirm';
@@ -114,6 +122,8 @@ export type HomeView = {
   readonly continueCode: SavedCode | null;
   /** What the Continue card says (amendment §2, Home); null with no card. */
   readonly continueCopy: ContinueCopy | null;
+  /** The Match Day card (S4 design §4), from the saved code's copy of its day; null with no card. */
+  readonly matchDay: MatchDayCopy | null;
   /** Remote Scoring's cards (design §5): the saved match, and every other match whose taps are still queued. */
   readonly scoring: ScoringHome;
 };
@@ -129,6 +139,8 @@ export type HomeActions = {
   forgetStream(): void;
   /** The saved match's Continue: opens the pad (A7 first while Live Stream holds a pairing). */
   continueScoring(): void;
+  /** The Match Day card's Continue: the Match Day tile's own tap, which opens the saved day. */
+  continueMatchDay(): void;
   /** Development builds only: a pasted code, handled as if scanned from Live Stream. */
   useRaw(raw: string): void;
   /** A7's sheet: unpair, forget the stream code, then open the other mode. */
@@ -141,8 +153,12 @@ export type HomeActions = {
   askDismiss(fixtureId: string): void;
 };
 
-/** Home's own line of news: a scanner reason, or a refused save. Cleared by the next tap. */
-export type SetStatusKey = (key: MessageKey | null) => void;
+/**
+ * Home's own line of news: a scanner reason, a refused save, why a Match Day code went, or when its day opens (S4
+ * design §3), which is a date to format in the operator's language. Cleared by the next tap.
+ */
+export type HomeNews = MessageKey | { readonly key: 'matchday.opens'; readonly at: Date };
+export type SetStatusKey = (key: HomeNews | null) => void;
 type HandleScan = (tapped: Mode, result: ScanResult) => Promise<void>;
 type ReadyStore = Extract<ModeStoreSnapshot, { status: 'ready' }>;
 /** Which of Home's writes the phone refused, as the record names it. */
@@ -170,18 +186,22 @@ export function useHome(): { view: HomeView; actions: HomeActions } {
   const snapshot = useSyncExternalStore(modeStore.subscribe, modeStore.getSnapshot);
   const [panel, setPanel] = useState<HomePanel | null>(null);
   useUnpairedPanel(panel, setPanel);
-  const [statusKey, setStatusKey] = useState<MessageKey | null>(null);
+  const [statusKey, setStatusKey] = useState<HomeNews | null>(null);
   const saveFailed = useSaveFailed(setStatusKey);
   const openCode = useOpenCode(setStatusKey, saveFailed, setPanel);
+  const day = useMemo(
+    () => ({ openCode, setPanel, setStatusKey, saveFailed }),
+    [openCode, setPanel, setStatusKey, saveFailed],
+  );
   const { confirm: confirmUnpair, cancel: cancelUnpair } = useUnpairConfirm(
     panel,
     setPanel,
     openCode,
     saveFailed,
   );
-  const { openOrCheck, retryCheck } = useCodeCheck(openCode, panel, setPanel);
+  const { openOrCheck, retryCheck } = useCodeCheck(openCode, panel, setPanel, useDayCheck(day));
   const handle = useHandleScan(openOrCheck, setPanel, setStatusKey);
-  const tapTile = useTapTile(handle, setPanel, setStatusKey);
+  const tapTile = useTapTile(handle, setPanel, setStatusKey, useOpenSavedDay(day));
   const { rows, finish, refresh } = useScoringRows(savedMatchId(snapshot));
   const view = useHomeView(snapshot, panel, statusKey, rows, finish);
   const panelActions = usePanelActions(panel, tapTile, openOrCheck, setPanel);
@@ -191,6 +211,7 @@ export function useHome(): { view: HomeView; actions: HomeActions } {
   const dismissScoring = useDismissScoring(setPanel, saveFailed, refresh);
   const askDismiss = useAskDismiss(setPanel, dismissScoring);
   const continueScoring = useContinueScoring(setStatusKey, saveFailed, setPanel);
+  const continueMatchDay = useCallback(() => tapTile('matchday'), [tapTile]);
   const actions = {
     tapTile,
     ...panelActions,
@@ -203,6 +224,7 @@ export function useHome(): { view: HomeView; actions: HomeActions } {
     dismissScoring,
     askDismiss,
     continueScoring,
+    continueMatchDay,
   };
   return { view, actions };
 }
@@ -266,7 +288,8 @@ function useOpenCode(
       setStatusKey(null);
       if (code.mode === 'scoring')
         return openScoring(ports, replaced, scoring?.match ?? null, logger);
-      if (code.mode !== 'stream') return;
+      // S4 design §4: a day code opens the day, never a mode with nothing on screen.
+      if (code.mode === 'matchday') return navigation.go('matchday');
       navigation.go('stream');
       pair(saved, 'new');
     },
@@ -386,6 +409,7 @@ function useTapTile(
   handle: HandleScan,
   setPanel: SetPanel,
   setStatusKey: SetStatusKey,
+  openSavedDay: (saved: SavedCode, scan: () => Promise<void>) => Promise<void>,
 ): (mode: Mode) => void {
   const { modeStore, scanner, scanFlight, endedNotice } = usePorts();
   return useCallback(
@@ -398,13 +422,20 @@ function useTapTile(
       // A new scan clears the Stream ended card (spec §5).
       endedNotice.clear();
       modeStore.dismissNotices();
-      void scanSafely(scanner)
-        .then((result) => handle(mode, result))
+      const scan = () => scanSafely(scanner).then((result) => handle(mode, result));
+      // S4 design §4: with a Match Day code saved, the tile opens its day, and scans only once the code has gone.
+      const day = mode === 'matchday' ? savedDay(modeStore) : null;
+      void (day === null ? scan() : openSavedDay(day, scan))
         .catch(ignoreUnexpected)
         .finally(() => scanFlight.end());
     },
-    [modeStore, scanner, scanFlight, endedNotice, handle, setPanel, setStatusKey],
+    [modeStore, scanner, scanFlight, endedNotice, handle, setPanel, setStatusKey, openSavedDay],
   );
+}
+
+function savedDay(store: ModeStore): SavedCode | null {
+  const snapshot = store.getSnapshot();
+  return snapshot.status === 'ready' ? (snapshot.saved.codes.matchday ?? null) : null;
 }
 
 /**
@@ -422,13 +453,14 @@ async function scanSafely(scanner: CodeScannerPort): Promise<ScanResult> {
 function useHomeView(
   snapshot: ModeStoreSnapshot,
   panel: HomePanel | null,
-  statusKey: MessageKey | null,
+  statusKey: HomeNews | null,
   rows: readonly QueueRow[],
   finish: MatchFinish | null,
 ): HomeView {
   const { t } = useT();
   const { clock } = usePorts();
   const format = useFormatTime();
+  const formatDay = useFormatDay();
   const ready = snapshot.status === 'ready' ? snapshot : null;
   const stream = ready?.saved.codes.stream ?? null;
   const continueCode = stream !== null && !isExpired(stream, clock()) ? stream : null;
@@ -437,12 +469,14 @@ function useHomeView(
   const continueCopy = useContinueCopy(continueCode);
   const match = ready?.saved.codes.scoring ?? null;
   const scoring = useMemo(() => scoringHome(match, rows, finish), [match, rows, finish]);
+  const matchDay = useMatchDayCard(ready?.saved.codes.matchday ?? null);
   return {
-    statusText: statusText(ready, statusKey, t, format),
+    statusText: statusText(ready, statusKey, t, { time: format, day: formatDay }),
     panel,
     panelTime,
     continueCode,
     continueCopy,
+    matchDay,
     scoring,
   };
 }
@@ -515,19 +549,22 @@ function useUnpairedPanel(panel: HomePanel | null, setPanel: SetPanel): void {
  */
 function statusText(
   ready: ReadyStore | null,
-  statusKey: MessageKey | null,
+  news: HomeNews | null,
   t: Translator['t'],
-  format: (at: Date, zone: string | null) => string,
+  format: { time: FormatAt; day: FormatAt },
 ): string {
   const notice = ready?.notice ?? null;
   if (notice !== null) {
     const mode = t(MODE_NAME[notice.mode]);
-    return t('reopen.expired', { mode, time: format(notice.expiredAt, notice.venueTz) });
+    return t('reopen.expired', { mode, time: format.time(notice.expiredAt, notice.venueTz) });
   }
   if (ready?.dropped) return t('store.unreadable');
-  if (statusKey !== null) return t(statusKey);
-  return t('home.status.idle');
+  if (news === null) return t('home.status.idle');
+  // The refusal names no zone (MD-1's B2 shape), so the day is the phone's (spec decision 13).
+  return typeof news === 'string' ? t(news) : t(news.key, { date: format.day(news.at, null) });
 }
+
+type FormatAt = (at: Date, zone: string | null) => string;
 
 /**
  * The panel's buttons: open the code it named, scan again from the same tile,

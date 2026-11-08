@@ -232,7 +232,7 @@ const panelHandlers = () => ({
 
 /**
  * The sheet's words (copy table, Task 30), in the operator's language, with the
- * mode named. Remote Scoring only: a Match Day code never reaches the sheet until Match Day opens (MD-2 Task 3).
+ * mode named. Remote Scoring here; a Match Day code's sheet is HomeScreen.matchday.test.tsx's (MD-2 Task 3).
  */
 describe('the unpair sheet', () => {
   it.each<[Lang, HomePanel, string, string, string]>([
@@ -333,6 +333,7 @@ describe('HomeScreen’s unpair sheet', () => {
         panelTime: null,
         continueCode: null,
         continueCopy: null,
+        matchDay: null,
         scoring: { current: null, leftovers: [] },
       },
       actions: {
@@ -349,6 +350,7 @@ describe('HomeScreen’s unpair sheet', () => {
         dismissScoring: vi.fn(),
         askDismiss: vi.fn(),
         continueScoring: vi.fn(),
+        continueMatchDay: vi.fn(),
       },
     };
     const real = vi.mocked(useHome).getMockImplementation();

@@ -15,7 +15,7 @@ const FOREIGN: Recognition = { outcome: 'foreign' };
  * than `URL`: React Native's URL polyfill has historically lacked `hostname`
  * and `pathname`, and this runs on Hermes.
  */
-const HTTPS_LINK = /^https:\/\/([^/?#:@\s]+)(\/[^?#\s]*)?(?:[?#]\S*)?$/i;
+export const HTTPS_LINK = /^https:\/\/([^/?#:@\s]+)(\/[^?#\s]*)?(?:[?#]\S*)?$/i;
 const SCORE_PATH = /^\/score\/([^/?#\s]+)\/?$/;
 /**
  * The day's QR (MD-2; S4 design §9 item 2): `/day/` and a token of `md_` and

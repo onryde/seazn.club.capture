@@ -1169,5 +1169,14 @@
   "scoring.tennis.setScore.tiebreak": "Tie-break: {side}",
   "mode.matchday": "Día de partidos",
   "home.tile.matchday.purpose": "Anota todos los partidos del día.",
-  "home.tile.matchday.hint": "Escanea el código del Día de partidos"
+  "home.tile.matchday.hint": "Escanea el código del Día de partidos",
+  "matchday.ended": "El Día de partidos ha terminado",
+  "matchday.withdrawn": "Código del Día de partidos retirado",
+  "matchday.unknown": "Código del Día de partidos no reconocido",
+  "matchday.opens": "El Día de partidos se abre el {date}",
+  "matchday.notOpen": "El Día de partidos aún no se ha abierto",
+  "matchday.continue": "Día de partidos · {competition} · {scope}",
+  "matchday.continueWhole": "Día de partidos · {competition}",
+  "matchday.loading.title": "Abriendo el Día de partidos",
+  "matchday.loading.body": "Cargando los partidos del día desde Seazn."
 }

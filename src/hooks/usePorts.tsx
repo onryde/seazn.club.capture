@@ -24,6 +24,8 @@ import type { ModeStore } from '@/services/modeStore';
 import type { LinkPort } from '@/services/linkPort';
 import type { PhotoPort } from '@/services/photoPort';
 import type { ProbeFlight } from '@/services/probeFlight';
+import type { MatchDayPort } from '@/services/matchDayPort';
+import type { MatchDayStore } from '@/services/matchDayStore';
 import type { RealtimePort } from '@/services/realtimePort';
 import type { RecordUploadPort } from '@/services/recordUploadPort';
 import type { RecordSendFlight } from '@/services/recordSendFlight';
@@ -104,6 +106,10 @@ export type Ports = {
   readonly tapQueue: TapQueueStore;
   /** S2: the "something changed" ping from the server, a private Realtime channel; down means poll (plan Task 8). */
   readonly realtime: RealtimePort;
+  /** S4: the Match Day code's calls to the web (the day, a match's scoring link), plain fetch, to the build's host. */
+  readonly matchDay: MatchDayPort;
+  /** S4: the day's last good copy, tied to its code, and the matches opened from it; one store, so writes queue. */
+  readonly matchDayStore: MatchDayStore;
   /** R5: the battery state and the app's settings page, Android only. */
   readonly power: PowerPort;
   /** R4: the credential Send record to Seazn may use (P10: inert while its switch is off). */

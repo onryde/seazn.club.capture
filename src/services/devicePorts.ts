@@ -39,8 +39,9 @@ export interface ForegroundPort {
  * 2026-11-02; it replaces R2's gear on the Live Stream tile).
  * `scoring` is Remote Scoring (plan S2-1 Tasks 10 and 11): the match scanned from Home's Remote Scoring tile, drawn by
  * its sport's pad. A path that reaches it with no match saved goes Home.
+ * `matchday` is Match Day (MD-2): the day a saved Match Day code lists, opened from Home's Match Day tile.
  */
-export type Route = 'home' | 'stream' | 'streamSettings' | 'settings' | 'scoring';
+export type Route = 'home' | 'stream' | 'streamSettings' | 'settings' | 'scoring' | 'matchday';
 
 /**
  * Live Stream's sub-screens, pushed over the mounted viewfinder (D19). Named
@@ -52,13 +53,13 @@ export function isStreamSubRoute(route: Route): boolean {
 }
 
 /**
- * P8: the screens that are Home's own, not a mode's: Settings from Home's gear, and Remote Scoring, which has no
- * broadcast to protect (ruling 10: Back goes Home freely, and Home stays where it was put). The reopen gate treats
- * them as Home, so a return to the foreground stays on them, and a broadcast moves them to Live Stream as it moves
- * Home (A2).
+ * P8: the screens that are Home's own, not a mode's: Settings from Home's gear, and Remote Scoring and Match Day, which
+ * have no broadcast to protect (ruling 10: Back goes Home freely, and Home stays where it was put). The reopen gate
+ * treats them as Home, so a return to the foreground stays on them, and a broadcast moves them to Live Stream as it
+ * moves Home (A2).
  */
 export function isHomeSubRoute(route: Route): boolean {
-  return route === 'settings' || route === 'scoring';
+  return route === 'settings' || route === 'scoring' || route === 'matchday';
 }
 
 /**

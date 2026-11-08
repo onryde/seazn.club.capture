@@ -7,6 +7,7 @@ import { appVersionOf } from '@/hooks/appVersion';
 import { realtimePortFor } from '@/hooks/realtimePortWiring';
 import { chooseCodePort } from '@/hooks/codePortWiring';
 import { chooseEngine, routedRecordFor } from '@/hooks/engineWiring';
+import { matchDayPortFor } from '@/hooks/matchDayPortWiring';
 import { photoPortFor } from '@/hooks/photoPortWiring';
 import { scoringLinkPortFor } from '@/hooks/scoringLinkPortWiring';
 import { scoringPortFor } from '@/hooks/scoringPortWiring';
@@ -15,6 +16,7 @@ import { createNativeCodeScanner } from '@/scanner/nativeCodeScanner';
 import { createEndedNotice } from '@/services/endedNotice';
 import { withTimeout } from '@/services/kvTimeout';
 import { createLogger } from '@/services/logger';
+import { createMatchDayStore } from '@/services/matchDayStore';
 import { createModeStore } from '@/services/modeStore';
 import { createProbeFlight } from '@/services/probeFlight';
 import { createScanFlight } from '@/services/scanFlight';
@@ -154,6 +156,10 @@ export function createNativePorts(
     tapQueue: createTapQueueStore({ files: createExpoQueueFiles(), logger }),
     // S2: the real `@supabase/realtime-js` over the runtime's WebSocket. The focused match's live owner (`scoringLive.ts`) subscribes.
     realtime: realtimePortFor({ logger }),
+    // S4: plain fetch (AGENTS §8), the code's token to the build's host only. Home's tile and Match Day's list call it.
+    matchDay: matchDayPortFor({ fetch: (url, init) => fetch(url, init), logger, hosts }),
+    // S4: beside the mode store's `code.matchday`, in the same secure store: the day's last good copy and the opened list.
+    matchDayStore: createMatchDayStore(kv),
     power: createNativePower({
       native,
       os: Platform.OS,

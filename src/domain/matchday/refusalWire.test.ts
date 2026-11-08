@@ -65,7 +65,7 @@ describe.each(CONTRACTS)('parseRefusal runs every %s refusal fixture', (contract
     const [status, word] = EXPECTED[contract]?.[name] ?? [0, 'not listed'];
     expect(contractAdmits(contract, error, '/$defs/refusal')).toBe(word !== null);
     expect(name.startsWith('refusal-valid-')).toBe(word !== null);
-    expect(parseRefusal(status, refusedWith(error))).toBe(word);
+    expect(parseRefusal(status, refusedWith(error))?.code ?? null).toBe(word);
   });
 });
 
@@ -90,7 +90,7 @@ describe('parseRefusal reads the nine words, and only them', () => {
     [409, 'MD_ALREADY'],
     [409, 'MD_TIES'],
   ])('%s %s', (status, code) => {
-    expect(parseRefusal(status, refusal({ code }))).toBe(code);
+    expect(parseRefusal(status, refusal({ code }))).toEqual({ code });
   });
 
   it.each([
@@ -111,7 +111,7 @@ describe('parseRefusal reads the nine words, and only them', () => {
 
 describe('parseRefusal reads a refusal status only', () => {
   it.each([400, 403, 499])('%s is a refusal status', (status) => {
-    expect(parseRefusal(status, refusal({ code: 'MD_ENDED' }))).toBe('MD_ENDED');
+    expect(parseRefusal(status, refusal({ code: 'MD_ENDED' }))).toEqual({ code: 'MD_ENDED' });
   });
 
   it.each([200, 201, 399, 500, 503])('%s is not', (status) => {
@@ -133,24 +133,38 @@ describe('parseRefusal reads the v1 error envelope and nothing else', () => {
   });
 
   it('ignores a field the contract does not name', () => {
-    expect(parseRefusal(410, refusal({ code: 'MD_ENDED', added_later: { at: 1 } }))).toBe(
-      'MD_ENDED',
-    );
+    expect(parseRefusal(410, refusal({ code: 'MD_ENDED', added_later: { at: 1 } }))).toEqual({
+      code: 'MD_ENDED',
+    });
   });
 
   it('reads a refusal with no message: the phone never shows it', () => {
-    expect(parseRefusal(401, refusedWith({ code: 'MD_UNKNOWN' }))).toBe('MD_UNKNOWN');
+    expect(parseRefusal(401, refusedWith({ code: 'MD_UNKNOWN' }))).toEqual({ code: 'MD_UNKNOWN' });
   });
 });
 
-describe("parseRefusal holds MD_NOT_OPEN's opens_at to a UTC instant", () => {
-  it('reads MD_NOT_OPEN with its opens_at', () => {
+describe("parseRefusal holds MD_NOT_OPEN's opens_at to a UTC instant, and hands it on", () => {
+  it('reads MD_NOT_OPEN with its opens_at, as the instant it names', () => {
     const body = refusal({ code: 'MD_NOT_OPEN', opens_at: '2026-11-07T23:00:00.000Z' });
-    expect(parseRefusal(403, body)).toBe('MD_NOT_OPEN');
+    expect(parseRefusal(403, body)).toEqual({
+      code: 'MD_NOT_OPEN',
+      opensAt: new Date(Date.UTC(2026, 10, 7, 23, 0, 0)),
+    });
   });
 
   it('reads MD_NOT_OPEN without one: the contract makes it optional', () => {
-    expect(parseRefusal(403, refusal({ code: 'MD_NOT_OPEN' }))).toBe('MD_NOT_OPEN');
+    const read = parseRefusal(403, refusal({ code: 'MD_NOT_OPEN' }));
+    expect(read).toEqual({ code: 'MD_NOT_OPEN' });
+    expect(read !== null && 'opensAt' in read).toBe(false);
+  });
+
+  // The contract's opens_at is MD_NOT_OPEN's only ("MD_NOT_OPEN only"): on another word it is held to the same form,
+  // and never handed on, so no other refusal says when a day opens.
+  it('hands on no opens_at with another word', () => {
+    const body = refusal({ code: 'MD_ENDED', opens_at: '2026-11-07T23:00:00.000Z' });
+    const read = parseRefusal(410, body);
+    expect(read).toEqual({ code: 'MD_ENDED' });
+    expect(read !== null && 'opensAt' in read).toBe(false);
   });
 
   it.each([
@@ -165,6 +179,6 @@ describe("parseRefusal holds MD_NOT_OPEN's opens_at to a UTC instant", () => {
 
   it('a second read of the same body is the same', () => {
     const body = refusal({ code: 'MD_NOT_OPEN', opens_at: '2026-11-07T23:00:00.000Z' });
-    expect(parseRefusal(403, body)).toBe(parseRefusal(403, body));
+    expect(parseRefusal(403, body)).toEqual(parseRefusal(403, body));
   });
 });
