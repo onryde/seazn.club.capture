@@ -21,7 +21,7 @@ import { Button } from '@/ui/components/Button';
 import { DetailsCard } from '@/ui/components/DetailsCard';
 import { IconButton } from '@/ui/components/IconButton';
 import { LastTapLine } from '@/ui/components/LastTapLine';
-import { PadStateCard } from '@/ui/components/PadStateCard';
+import { PadStateCard, type TitledCard } from '@/ui/components/PadStateCard';
 import { PadStrip } from '@/ui/components/PadStrip';
 import { RefusalBanner } from '@/ui/components/RefusalBanner';
 import { ScoreHalf } from '@/ui/components/ScoreHalf';
@@ -54,6 +54,18 @@ export type PadContentModel = {
   readonly actions: PadContentActions;
 };
 
+type PadContentProps = {
+  readonly model: PadContentModel;
+  readonly covered: boolean;
+  /** A sport's own score area, in the halves' place (the controller's ruling 4, the interface cricket shares). */
+  readonly body?: ReactNode;
+  /**
+   * Whether the last-tap line carries the pad's Undo (default yes). A sport whose body has its own Undo key (cricket's
+   * Out, Undo, More row, ruling 79) says no, so the pad has one Undo, never two.
+   */
+  readonly lineUndo?: boolean;
+};
+
 /**
  * The set-based sports' pad, portrait, layout A: the top bar (Home, the games tally, then Rules, History and the sync
  * status at the right end), the strip (the game of how many at the left, a sport's note at the right), the first side's
@@ -73,17 +85,7 @@ export const PadContent = memo(function PadContent({
   covered,
   body,
   lineUndo = true,
-}: {
-  readonly model: PadContentModel;
-  readonly covered: boolean;
-  /** What stands in the halves' place, for a sport with a board of its own; the halves without it. */
-  readonly body?: ReactNode;
-  /**
-   * Whether the last-tap line carries the pad's Undo (default yes). A sport whose body has its own Undo key (cricket's
-   * Out, Undo, More row, ruling 79) says no, so the pad has one Undo, never two.
-   */
-  readonly lineUndo?: boolean;
-}) {
+}: PadContentProps) {
   const { view, line, cardNote, flash, toss, actions } = model;
   const known = matchKnown(view.card);
   return (
@@ -197,26 +199,17 @@ const MatchIcons = memo(function MatchIcons({ actions }: { readonly actions: Pad
  * The halves, under a card that goes with them; or a card in their place, scrolling when it is taller than the room.
  * Not started's card carries the match card between its title and its sentence (owner, 2026-11-01, option A).
  */
-const PadBody = memo(function PadBody({
-  view,
-  flash,
-  onTap,
-  body,
-}: {
+type PadBodyProps = {
   readonly view: PadView<MessageKey>;
   readonly flash: HalfFlash;
   readonly onTap: (side: PadSide) => void;
-  readonly body: ReactNode;
-}) {
+  readonly body: ReactNode | undefined;
+};
+
+const PadBody = memo(function PadBody({ view, flash, onTap, body }: PadBodyProps) {
   const card = view.card?.kind === 'updateNeeded' ? null : view.card;
   if (card !== null && cardPlacement(card) === 'instead') {
-    return (
-      <ScrollView testID="pad-card-scroll" style={styles.body}>
-        <PadStateCard card={card}>
-          {card.kind === 'notStarted' ? <DetailsCard details={view.details} /> : null}
-        </PadStateCard>
-      </ScrollView>
-    );
+    return <CardInstead card={card} details={view.details} />;
   }
   return (
     <View style={styles.body}>
@@ -241,6 +234,23 @@ function Halves({
       <ScoreHalf half={view.halves[0]} flash={flashCue(flash, 'first')} onTap={onTap} />
       <ScoreHalf half={view.halves[1]} flash={flashCue(flash, 'second')} onTap={onTap} />
     </>
+  );
+}
+
+/** A card in the halves' place, scrolling when it is taller than the room; Not started's carries the match card. */
+function CardInstead({
+  card,
+  details,
+}: {
+  readonly card: TitledCard;
+  readonly details: PadMatchDetails<MessageKey>;
+}) {
+  return (
+    <ScrollView testID="pad-card-scroll" style={styles.body}>
+      <PadStateCard card={card}>
+        {card.kind === 'notStarted' ? <DetailsCard details={details} /> : null}
+      </PadStateCard>
+    </ScrollView>
   );
 }
 

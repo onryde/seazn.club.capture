@@ -1,11 +1,13 @@
-import { act, fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { ClockBarView } from '@/domain/scoring/clockBarView';
 import en from '@/i18n/en.json';
 import type { MessageKey } from '@/i18n/messages';
 import nl from '@/i18n/nl.json';
 import { ClockBar } from '@/ui/components/ClockBar';
-import { colour } from '@/ui/theme/tokens';
+import { colour, layout } from '@/ui/theme/tokens';
+import { typeScale } from '@/ui/theme/type';
+import { declaredStyle } from '../../../test/declaredStyle';
 import { edgeOf, fillOf } from '../../../test/pressState';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
@@ -28,11 +30,16 @@ function viewOf(
   };
 }
 
-function renderBar(view: ClockBarView<MessageKey>, correct: boolean, language: 'en' | 'nl' = 'en') {
+function renderBar(
+  view: ClockBarView<MessageKey>,
+  correct: boolean,
+  language: 'en' | 'nl' = 'en',
+  compact = false,
+) {
   const onAction = vi.fn();
   const onCorrect = correct ? vi.fn() : null;
   const rendered = renderWithPorts(
-    <ClockBar view={view} onAction={onAction} onCorrect={onCorrect} />,
+    <ClockBar view={view} onAction={onAction} onCorrect={onCorrect} compact={compact} />,
     { deviceLanguages: [language] },
   );
   return { onAction, onCorrect, rendered };
@@ -111,5 +118,47 @@ describe('ClockBar', () => {
       }),
     ).toBeTruthy();
     expect(nl['scoring.football.clock.start']).not.toBe(en['scoring.football.clock.start']);
+  });
+});
+
+// The controller's fix-round 2 ruling (R1): a compact board's clock bar is one row of a touch target, the time a step
+// down (`tallyCompact`) with the period under it inside the face, heard as one, and the button beside them.
+describe('ClockBar, compact', () => {
+  const H1 = en['scoring.football.period.H1'];
+
+  it('sets the time a step down with the period under it, in the face that opens Correct, heard as one', () => {
+    const { onCorrect } = renderBar(viewOf('pause'), true, 'en', true);
+    const face = screen.getByRole('button', { name: `${said('34:12')}, ${H1}` });
+    expect(within(face).getByText(H1)).toBeTruthy();
+    expect(getComputedStyle(within(face).getByText('34:12')).fontSize).toBe(
+      `${typeScale.tallyCompact.fontSize}px`,
+    );
+    expect(declaredStyle(face, 'min-height')).toBe(`${layout.touch}px`);
+    act(() => fireEvent.click(face));
+    expect(onCorrect).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: en['scoring.football.clock.pause'] })).toBeTruthy();
+  });
+
+  it('with no Correct, the face says the time and the period as one, and is no button', () => {
+    renderBar(viewOf('start'), false, 'en', true);
+    const face = screen.getByLabelText(`${said('34:12')}, ${H1}`);
+    expect(within(face).getByText(H1)).toBeTruthy();
+    expect(screen.getAllByText(H1)).toHaveLength(1);
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+  });
+
+  it('with no period, the face says the time alone', () => {
+    renderBar(viewOf('start', '0:00', null), true, 'en', true);
+    expect(screen.getByRole('button', { name: said('0:00') })).toBeTruthy();
+  });
+
+  it('a full bar keeps the period on its own line, outside the face, and the time at the tally’s size', () => {
+    renderBar(viewOf('pause'), true);
+    const face = screen.getByRole('button', { name: said('34:12') });
+    expect(within(face).queryByText(H1)).toBeNull();
+    expect(screen.getByText(H1)).toBeTruthy();
+    expect(getComputedStyle(within(face).getByText('34:12')).fontSize).toBe(
+      `${typeScale.tally.fontSize}px`,
+    );
   });
 });

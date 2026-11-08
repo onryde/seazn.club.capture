@@ -178,6 +178,47 @@ describe('NameText', () => {
     expect(read().words).toBe('Borussia Mönchengladbach');
   });
 
+  // The controller's fix-round 2 ruling (N1): a split is for a place of two lines or more, and is forgotten when the
+  // place's lines change. A split name in a one-line place would be a hard break Android shrinks to 4 dp.
+  it('a split name set again in one line is whole on it, with no line feed', () => {
+    const name = (lines: number) => (
+      <NameText variant="matchName" lines={lines} floor={0.75}>
+        Wolverhampton Wanderers
+      </NameText>
+    );
+    const view = render(name(2));
+    linesAre('Wolverhampto', 'n Wanderers');
+    expect(read().words).toBe('Wolverhampton\nWanderers');
+    view.rerender(name(1));
+    expect(read()).toMatchObject({ words: 'Wolverhampton Wanderers', lines: '1' });
+    expect(read().words).not.toContain('\n');
+  });
+
+  it('back at two lines, the name is whole until its own lines break a word there again', () => {
+    const name = (lines: number) => (
+      <NameText variant="matchName" lines={lines} floor={0.75}>
+        Wolverhampton Wanderers
+      </NameText>
+    );
+    const view = render(name(2));
+    linesAre('Wolverhampto', 'n Wanderers');
+    view.rerender(name(1));
+    view.rerender(name(2));
+    expect(read().words).toBe('Wolverhampton Wanderers');
+    linesAre('Wolverhampto', 'n Wanderers');
+    expect(read().words).toBe('Wolverhampton\nWanderers');
+  });
+
+  it('in a one-line place a name is never split, whatever lines the phone reports', () => {
+    render(
+      <NameText variant="matchName" lines={1} floor={0.75}>
+        Wolverhampton Wanderers
+      </NameText>,
+    );
+    linesAre('Wolverhampto', 'n Wanderers');
+    expect(read()).toMatchObject({ words: 'Wolverhampton Wanderers', lines: '1' });
+  });
+
   it('with no floor, a name with gaps is never fitted and nothing asks for its lines', () => {
     render(
       <NameText variant="label" lines={2}>

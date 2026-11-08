@@ -11,6 +11,7 @@ import type { ClockBarAction, ClockBarView } from '@/domain/scoring/clockBarView
 import { usePadText } from '@/hooks/usePadText';
 import type { MessageKey } from '@/i18n/messages';
 import { Text } from '@/ui/components/Text';
+import { type BoardTier, TIER_FACES } from '@/ui/theme/columnBoard';
 import { colour, layout, plateInk, pressedOpacity, radius, space } from '@/ui/theme/tokens';
 
 type ClockBarProps = {
@@ -19,6 +20,8 @@ type ClockBarProps = {
   readonly onAction: () => void;
   /** A tap on the time opens Correct (S2-5 design §7.5); none where the sport offers no Correct now. */
   readonly onCorrect: (() => void) | null;
+  /** A compact board's bar (fix-round 2 ruling R1, `columnBoard.ts`): one row, the period under the time. */
+  readonly compact?: boolean;
 };
 
 /**
@@ -28,48 +31,50 @@ type ClockBarProps = {
  * opens Correct when the sport offers it; a screen reader hears it as the view says it ("Match clock 34:12"). The time
  * never wraps: it shrinks to fit its one line, down to `layout.clockFloor`, where the phone's font scale would push it
  * past the button (the controller's fix-round ruling d; the clock alone shrinks). The period wraps under it
- * (footballFit.test.ts holds both beside the button at 320 dp).
+ * (footballFit.test.ts holds both beside the button at 320 dp). Compact (fix-round 2 ruling R1), the bar is one row of a
+ * touch target: the time a step down with the period under it inside the face, which says both.
  */
-export const ClockBar = memo(function ClockBar({ view, onAction, onCorrect }: ClockBarProps) {
+export const ClockBar = memo(function ClockBar({
+  view,
+  onAction,
+  onCorrect,
+  compact,
+}: ClockBarProps) {
   const words = usePadText();
+  const period = view.period === null ? null : words(view.period);
+  const tier: BoardTier = compact === true ? 'compact' : 'full';
   return (
     <View testID="clock-bar" style={styles.bar}>
-      <ClockFace time={view.time} said={words(view.said)} onCorrect={onCorrect} />
+      <ClockFace
+        time={view.time}
+        said={words(view.said)}
+        tier={tier}
+        period={period}
+        onCorrect={onCorrect}
+      />
       {view.action === null ? null : <ClockButton action={view.action} onPress={onAction} />}
-      {view.period === null ? null : (
-        <Text variant="diagSection" style={styles.period}>
-          {words(view.period)}
-        </Text>
-      )}
+      {tier === 'compact' || period === null ? null : <PeriodLine period={period} />}
     </View>
   );
 });
 
-/** The time: a button opening Correct when offered, else the same digits a screen reader reads once. */
-const ClockFace = memo(function ClockFace({
-  time,
-  said,
-  onCorrect,
-}: {
+type ClockFaceProps = {
   readonly time: string;
   readonly said: string;
+  readonly tier: BoardTier;
+  /** The period's words: drawn under the time in a compact face, and said with it. */
+  readonly period: string | null;
   readonly onCorrect: (() => void) | null;
-}) {
-  const digits = (
-    <Text
-      variant="tally"
-      numberOfLines={1}
-      adjustsFontSizeToFit
-      minimumFontScale={layout.clockFloor}
-      aria-hidden
-      style={styles.time}
-    >
-      {time}
-    </Text>
-  );
+};
+
+/** The time: a button opening Correct when offered, else the same digits a screen reader reads once. */
+const ClockFace = memo(function ClockFace({ time, said, tier, period, onCorrect }: ClockFaceProps) {
+  const under = tier === 'compact' ? period : null;
+  const label = under === null ? said : `${said}, ${under}`;
+  const digits = <ClockDigits time={time} tier={tier} under={under} />;
   if (onCorrect === null) {
     return (
-      <View accessible accessibilityLabel={said} style={styles.face}>
+      <View accessible accessibilityLabel={label} style={styles.face}>
         {digits}
       </View>
     );
@@ -77,7 +82,7 @@ const ClockFace = memo(function ClockFace({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={said}
+      accessibilityLabel={label}
       onPress={onCorrect}
       style={facePressable}
     >
@@ -85,6 +90,45 @@ const ClockFace = memo(function ClockFace({
     </Pressable>
   );
 });
+
+type ClockDigitsProps = {
+  readonly time: string;
+  readonly tier: BoardTier;
+  /** The period under the time, in a compact face only. */
+  readonly under: string | null;
+};
+
+/** The time on its one line, shrinking to fit (ruling d), and in a compact face the period under it. The face says both. */
+function ClockDigits({ time, tier, under }: ClockDigitsProps) {
+  return (
+    <>
+      <Text
+        variant={TIER_FACES[tier].time}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={layout.clockFloor}
+        aria-hidden
+        style={styles.time}
+      >
+        {time}
+      </Text>
+      {under === null ? null : (
+        <Text variant="diagSection" aria-hidden style={styles.periodUnder}>
+          {under}
+        </Text>
+      )}
+    </>
+  );
+}
+
+/** A full bar's period: its own line under the time and the button, as wide as the bar, in lilac caps. */
+function PeriodLine({ period }: { readonly period: string }) {
+  return (
+    <Text variant="diagSection" style={styles.period}>
+      {period}
+    </Text>
+  );
+}
 
 /** Start or Pause: the lime plate with night ink (AGENTS §5's primary), a touch target at least. */
 const ClockButton = memo(function ClockButton({
@@ -116,6 +160,7 @@ const styles = StyleSheet.create({
   facePressed: { opacity: pressedOpacity.link },
   time: { flexShrink: 0 },
   period: { width: '100%', color: colour.ink3 },
+  periodUnder: { color: colour.ink3 },
   button: {
     flexShrink: 0,
     minWidth: layout.touch,

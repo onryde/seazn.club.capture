@@ -104,7 +104,7 @@ export function doneSaid(words: FootballWords, did: FootballDone): Text {
     case 'clock':
       return clockSaid(words, did);
     case 'clockCorrect':
-      return { key: 'scoring.football.last.clockCorrect', vars: { at: faceAt(words.cfg, did.at) } };
+      return correctedSaid(words, did);
     case 'goal':
       return goalSaid(words, did);
     case 'card':
@@ -129,6 +129,12 @@ type Done<K extends FootballDone['kind']> = Extract<FootballDone, { kind: K }>;
 /** Start or Pause, with the clock's face it was recorded at. */
 const clockSaid = (words: FootballWords, did: Done<'clock'>): Text => ({
   key: did.running ? 'scoring.football.last.clockStart' : 'scoring.football.last.clockPause',
+  vars: { at: faceAt(words.cfg, did.at) },
+});
+
+/** A correction of the clock, with the face it was recorded at: "Clock corrected · 2:00" (fix round 2). */
+const correctedSaid = (words: FootballWords, did: Done<'clockCorrect'>): Text => ({
+  key: 'scoring.football.last.clockCorrected',
   vars: { at: faceAt(words.cfg, did.at) },
 });
 

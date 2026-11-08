@@ -270,6 +270,18 @@ export const typeScale = {
     color: colour.lime,
   },
   /**
+   * The tally a step down, for a compact board on a short phone (S2-5 fix round 2, the controller's ruling R1): the match
+   * clock's time over its period in one 48 dp row (32 + 16), and a team's score, so a column of three keeps its touch
+   * targets at a 556 dp window (`columnBoard.ts`, footballFit.test.ts). The same face, tabular, lime.
+   */
+  tallyCompact: {
+    fontFamily: font.displayBold,
+    fontSize: 30,
+    lineHeight: 32,
+    fontVariant: ['tabular-nums'],
+    color: colour.lime,
+  },
+  /**
    * The count in the pad's send badge (owner, 2026-11-02): the score's face, tabular so 9 to 10 does not jump, at 18 on
    * a 20 dp line. "99+" (25.8 dp) is the widest it draws (padFit.test.ts). Cream; the badge sets caution in trouble.
    */

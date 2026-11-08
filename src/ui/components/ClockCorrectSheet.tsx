@@ -45,15 +45,8 @@ const ON: readonly ClockStep[] = [10, 60];
  * steppers are disabled and the sheet says so. Cancel, the dim and Back (the caller's) close it with nothing set. A
  * plain View over the pad, modal to a screen reader, as every pad sheet (`padSheet.ts`). A kit part: no sport named.
  */
-export const ClockCorrectSheet = memo(function ClockCorrectSheet({
-  time,
-  atFloor,
-  floorLine,
-  words,
-  onStep,
-  onSet,
-  onCancel,
-}: ClockCorrectSheetProps) {
+export const ClockCorrectSheet = memo(function ClockCorrectSheet(props: ClockCorrectSheetProps) {
+  const { time, atFloor, floorLine, words, onStep, onSet, onCancel } = props;
   const { t } = useT();
   return (
     <View style={padSheet.overlay}>
@@ -63,20 +56,7 @@ export const ClockCorrectSheet = memo(function ClockCorrectSheet({
         <Text variant="tally" style={styles.time}>
           {time}
         </Text>
-        <View style={styles.steps}>
-          {BACK.map((step) => (
-            <Stepper
-              key={step}
-              step={step}
-              word={words.steps[step]}
-              off={atFloor}
-              onStep={onStep}
-            />
-          ))}
-          {ON.map((step) => (
-            <Stepper key={step} step={step} word={words.steps[step]} off={false} onStep={onStep} />
-          ))}
-        </View>
+        <Steppers steps={words.steps} atFloor={atFloor} onStep={onStep} />
         {atFloor ? <Text variant="status">{floorLine}</Text> : null}
         <Button label={words.set} onPress={onSet} />
         <GhostButton label={t('scoring.sheet.cancel')} onPress={onCancel} />
@@ -84,6 +64,26 @@ export const ClockCorrectSheet = memo(function ClockCorrectSheet({
     </View>
   );
 });
+
+type SteppersProps = {
+  readonly steps: ClockCorrectWords['steps'];
+  readonly atFloor: boolean;
+  readonly onStep: (step: ClockStep) => void;
+};
+
+/** The four steppers in a row: the two back ones off at the floor, the two on always live. */
+function Steppers({ steps, atFloor, onStep }: SteppersProps) {
+  return (
+    <View style={styles.steps}>
+      {BACK.map((step) => (
+        <Stepper key={step} step={step} word={steps[step]} off={atFloor} onStep={onStep} />
+      ))}
+      {ON.map((step) => (
+        <Stepper key={step} step={step} word={steps[step]} off={false} onStep={onStep} />
+      ))}
+    </View>
+  );
+}
 
 /** One stepper, a quarter of the row: lime-edged as every sheet control that takes a tap (owner ruling 85). */
 const Stepper = memo(function Stepper({

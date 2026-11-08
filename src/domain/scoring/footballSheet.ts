@@ -203,34 +203,29 @@ function moreItem(id: string, display: FootballDisplay, stamp: Stamp): FootballM
   const [word, seat, index] = id.split('.');
   const side: PadSide = seat === 'second' ? 'second' : 'first';
   const team = display.sides[side];
+  if (word === 'penalty' || word === 'sinBin' || word === 'shot') {
+    return flow(moreFlow(word, side, stamp, display));
+  }
+  return backFromBin(side, team, Number(index), stamp);
+}
+
+/** The flow a More item for a team opens, at its first step: a player's where the team has a sheet. */
+function moreFlow(
+  word: 'penalty' | 'sinBin' | 'shot',
+  side: PadSide,
+  stamp: Stamp,
+  display: FootballDisplay,
+): FootballFlow {
+  const sheet = display.sides[side].sheet;
   switch (word) {
-    case 'penalty':
-      return flow({
-        kind: 'penalty',
-        side,
-        stamp,
-        step: penaltyFirstStep(display, side),
-        taker: null,
-        goalkeeper: null,
-      });
+    case 'penalty': {
+      const step = penaltyFirstStep(display, side);
+      return { kind: 'penalty', side, stamp, step, taker: null, goalkeeper: null };
+    }
     case 'sinBin':
-      return flow({
-        kind: 'sinBin',
-        side,
-        stamp,
-        step: team.sheet ? 'player' : 'reason',
-        person: null,
-      });
+      return { kind: 'sinBin', side, stamp, step: sheet ? 'player' : 'reason', person: null };
     case 'shot':
-      return flow({
-        kind: 'shot',
-        side,
-        stamp,
-        step: team.sheet ? 'taker' : 'outcome',
-        taker: null,
-      });
-    default:
-      return backFromBin(side, team, Number(index), stamp);
+      return { kind: 'shot', side, stamp, step: sheet ? 'taker' : 'outcome', taker: null };
   }
 }
 
@@ -340,6 +335,15 @@ function goalStep(current: Flow<'goal'>, display: FootballDisplay): FootballStep
       options: [...playerOptions(other.onPitch), word('dontKnow')],
     };
   }
+  return scorerStep(current, team, other);
+}
+
+/** Who scored: Penalty as a switch, the team's players on the pitch, Own goal (by the other team) and Don't know. */
+function scorerStep(
+  current: Flow<'goal'>,
+  team: FootballSide,
+  other: FootballSide,
+): FootballStepSheet {
   const penalty: FootballStepOption = {
     ...word('penalty'),
     kind: 'toggle',
@@ -533,10 +537,8 @@ export function footballChoose(
       return chooseCard(current, id, display);
     case 'sub':
       return chooseSub(current, id, display);
-    case 'kick': {
-      const person = playerChosen(display.sides[current.side].onPitch, id);
-      return tap({ kind: 'kick', side: current.side, person, scored: current.scored });
-    }
+    case 'kick':
+      return chooseKick(current, id, display);
     case 'penalty':
       return choosePenalty(current, id, display);
     case 'sinBin':
@@ -546,6 +548,12 @@ export function footballChoose(
     case 'more':
       return moreItem(id, display, stamp);
   }
+}
+
+/** A kick's taker chosen (or not known): the kick, scored or missed as its column said. */
+function chooseKick(current: Flow<'kick'>, id: string, display: FootballDisplay): FootballMove {
+  const person = playerChosen(display.sides[current.side].onPitch, id);
+  return tap({ kind: 'kick', side: current.side, person, scored: current.scored });
 }
 
 function chooseGoal(current: Flow<'goal'>, id: string, display: FootballDisplay): FootballMove {

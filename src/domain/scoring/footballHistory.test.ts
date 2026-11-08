@@ -64,6 +64,9 @@ describe('doneSaid: the last-tap line’s words (design §6.7)', () => {
     ['a Start', { kind: 'clock', running: true, at: at('H2', 0) }, 'Clock started · 45:00'],
     ['a Pause', { kind: 'clock', running: false, at: at('H1', 754) }, 'Clock paused · 12:34'],
     ['a Pause with no stamp', { kind: 'clock', running: false, at: null }, 'Clock paused'],
+    // The controller's fix-round 2 ruling: a correction is said as a record, "Clock corrected", not in Correct's button words.
+    ['a correction', { kind: 'clockCorrect', at: at('H1', 120) }, 'Clock corrected · 2:00'],
+    ['a correction with no stamp', { kind: 'clockCorrect', at: null }, 'Clock corrected'],
     [
       'a goal',
       { kind: 'goal', side: 'first', scorer: SILVA, ownGoal: false, penalty: false, at: STAMP_41 },
@@ -194,6 +197,7 @@ describe('doneSaid: the last-tap line’s words (design §6.7)', () => {
       { kind: 'start' },
       { kind: 'clock', running: true, at: null },
       { kind: 'clock', running: false, at: null },
+      { kind: 'clockCorrect', at: null },
       { kind: 'goal', side: 'first', scorer: null, ownGoal: false, penalty: false, at: null },
       { kind: 'goal', side: 'first', scorer: null, ownGoal: true, penalty: false, at: null },
       { kind: 'goal', side: 'first', scorer: null, ownGoal: false, penalty: true, at: null },

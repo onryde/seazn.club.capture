@@ -5,7 +5,6 @@ import { TeamColumn, type TeamAction, type TeamColumnView } from '@/ui/component
 import { colour, layout } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
 import { declaredStyle } from '../../../test/declaredStyle';
-import { layOut } from '../../../test/layOut';
 import { linesAllowed } from '../../../test/linesAllowed';
 import { edgeOf, fillOf } from '../../../test/pressState';
 import { renderWithPorts } from '../../../test/renderWithPorts';
@@ -36,9 +35,11 @@ const VIEW: TeamColumnView = {
   actions: [GOAL, CARD, SUB],
 };
 
-function renderColumn(view: TeamColumnView) {
+function renderColumn(view: TeamColumnView, compact?: boolean) {
   const onAction = vi.fn();
-  const rendered = renderWithPorts(<TeamColumn view={view} onAction={onAction} />);
+  const rendered = renderWithPorts(
+    <TeamColumn view={view} onAction={onAction} compact={compact} />,
+  );
   return { onAction, rendered };
 }
 
@@ -179,31 +180,29 @@ describe('TeamColumn', () => {
     expect(declaredStyle(screen.getByTestId('column-marks'), 'flex-wrap')).toBe('nowrap');
   });
 
-  // The controller's fix-round ruling (c): a column too short for its full head and a touch target per button (336 dp
-  // for three buttons: 2 × 8 padding, a 152 head, 3 × (8 + 48)) sets its head compact, the name on one line and the
-  // score in the tally's 46 on 48, so the three buttons keep 48 each (footballFit.test.ts holds the heights).
-  it('sets its head compact below 336 dp for three buttons: the name on one line, the score a step smaller', () => {
-    renderColumn({ ...VIEW, label: 'Wanderers United Academy' });
-    const name = () => screen.getByText('Wanderers United Academy');
-    const score = () => screen.getByTestId('column-value');
-    expect(linesAllowed(name())).toBe(layout.padNameLines);
-    layOut(screen.getByTestId('team-column'), { width: 140, height: 336 });
-    expect(linesAllowed(name())).toBe(layout.padNameLines);
-    expect(getComputedStyle(score()).fontSize).toBe(`${typeScale.scoreCompact.fontSize}px`);
-    layOut(screen.getByTestId('team-column'), { width: 140, height: 335 });
-    expect(linesAllowed(name())).toBe(1);
-    expect(declaredStyle(name(), 'min-height')).toBe(`${typeScale.matchName.lineHeight}px`);
-    expect(getComputedStyle(score()).fontSize).toBe(`${typeScale.tally.fontSize}px`);
-    expect(getComputedStyle(score()).color).toBe(edgeOf(colour.lime));
+  // The controller's fix-round 2 ruling (R1, superseding fix round 1's own measure): the board picks its tier. A compact
+  // column sets the name on one line and the score a step down (`tallyCompact`), so its three buttons keep 48 each on a
+  // short phone; a full one, the default, keeps two lines' room and `scoreCompact` (footballFit.test.ts holds the heights).
+  it('a compact column sets the name on one line, with one line’s room, and the score a step down', () => {
+    renderColumn({ ...VIEW, label: 'Wanderers United Academy' }, true);
+    const name = screen.getByText('Wanderers United Academy');
+    const score = screen.getByTestId('column-value');
+    expect(linesAllowed(name)).toBe(1);
+    expect(declaredStyle(name, 'min-height')).toBe(`${typeScale.matchName.lineHeight}px`);
+    expect(getComputedStyle(score).fontSize).toBe(`${typeScale.tallyCompact.fontSize}px`);
+    expect(getComputedStyle(score).color).toBe(edgeOf(colour.lime));
   });
 
-  it('a column with two buttons is full from 280 dp, and a trailing compact score is cream', () => {
-    renderColumn({ ...VIEW, lead: false, actions: [GOAL, CARD] });
-    const score = () => screen.getByTestId('column-value');
-    layOut(screen.getByTestId('team-column'), { width: 140, height: 280 });
-    expect(getComputedStyle(score()).fontSize).toBe(`${typeScale.scoreCompact.fontSize}px`);
-    layOut(screen.getByTestId('team-column'), { width: 140, height: 279 });
-    expect(getComputedStyle(score()).fontSize).toBe(`${typeScale.tally.fontSize}px`);
-    expect(getComputedStyle(score()).color).toBe(edgeOf(colour.ink));
+  it('a full column, the default, keeps two lines for the name and the score at its size; a trailing score is cream', () => {
+    renderColumn({ ...VIEW, label: 'Wanderers United Academy', lead: false });
+    const score = screen.getByTestId('column-value');
+    expect(linesAllowed(screen.getByText('Wanderers United Academy'))).toBe(layout.padNameLines);
+    expect(getComputedStyle(score).fontSize).toBe(`${typeScale.scoreCompact.fontSize}px`);
+    expect(getComputedStyle(score).color).toBe(edgeOf(colour.ink));
+  });
+
+  it('a trailing compact score is cream too', () => {
+    renderColumn({ ...VIEW, lead: false }, true);
+    expect(getComputedStyle(screen.getByTestId('column-value')).color).toBe(edgeOf(colour.ink));
   });
 });

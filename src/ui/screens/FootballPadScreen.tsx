@@ -1,5 +1,5 @@
-import { memo, useMemo, type ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { memo, useCallback, useMemo, useState, type ReactNode } from 'react';
+import { type LayoutChangeEvent, StyleSheet, View } from 'react-native';
 import {
   binOver,
   footballBoard,
@@ -32,6 +32,7 @@ import {
 } from '@/ui/components/PadSheets';
 import { TeamColumn, type TeamAction, type TeamColumnView } from '@/ui/components/TeamColumn';
 import { Text } from '@/ui/components/Text';
+import { type BoardTier, boardTier } from '@/ui/theme/columnBoard';
 import { colour, space } from '@/ui/theme/tokens';
 
 /**
@@ -73,34 +74,68 @@ type BoardProps = {
   readonly actions: FootballPadActions;
 };
 
-/** The clock bar over the two columns (design §6.1, §6.2), and in the shootout each team's kicks under its column (§6.5). */
-const FootballBoardView = memo(function FootballBoardView({
-  display,
-  card,
-  halves,
-  readingNow,
-  actions,
-}: BoardProps) {
+/**
+ * The clock bar over the two columns (design §6.1, §6.2), and in the shootout each team's kicks under its column (§6.5).
+ * The board's own height picks its tier (fix-round 2 ruling R1, `columnBoard.ts`): compact under the full tier's least
+ * height, so a short phone keeps a touch target per button.
+ */
+const FootballBoardView = memo(function FootballBoardView(props: BoardProps) {
+  const { display, card, readingNow, actions } = props;
   const board = useMemo(() => footballBoard(display, card), [display, card]);
+  const [compact, measured] = useCompactBoard();
   return (
-    <View testID="football-board" style={styles.board}>
-      <FootballClockLeaf display={display} readingNow={readingNow} actions={actions} />
-      <View style={styles.columns}>
-        {board.columns.map((column, at) => (
-          <SideColumn
-            key={column.side}
-            column={column}
-            half={halves[at]!}
-            kicks={board.kicks?.[at] ?? null}
-            display={display}
-            readingNow={readingNow}
-            onAction={actions.column}
-          />
-        ))}
-      </View>
+    <View testID="football-board" onLayout={measured} style={styles.board}>
+      <FootballClockLeaf
+        display={display}
+        readingNow={readingNow}
+        actions={actions}
+        compact={compact}
+      />
+      <SideColumns board={board} compact={compact} {...props} />
     </View>
   );
 });
+
+type SideColumnsProps = BoardProps & {
+  readonly board: ReturnType<typeof footballBoard>;
+  readonly compact: boolean;
+};
+
+/** The two teams' columns side by side, home on the left, and in the shootout each one's kicks under it. */
+function SideColumns({ board, halves, display, readingNow, compact, actions }: SideColumnsProps) {
+  return (
+    <View style={styles.columns}>
+      {board.columns.map((column, at) => (
+        <SideColumn
+          key={column.side}
+          column={column}
+          half={halves[at]!}
+          kicks={board.kicks?.[at] ?? null}
+          display={display}
+          readingNow={readingNow}
+          compact={compact}
+          onAction={actions.column}
+        />
+      ))}
+    </View>
+  );
+}
+
+/** Whether the board is compact, from its own height as laid out; full until the phone lays it out. */
+function useCompactBoard(): [boolean, (event: LayoutChangeEvent) => void] {
+  const [tier, setTier] = useState<BoardTier>('full');
+  const measured = useCallback((event: LayoutChangeEvent) => {
+    setTier(boardTier(event.nativeEvent.layout.height));
+  }, []);
+  return [tier === 'compact', measured];
+}
+
+type ClockLeafProps = {
+  readonly display: FootballDisplay;
+  readonly readingNow: () => number;
+  readonly actions: FootballPadActions;
+  readonly compact: boolean;
+};
 
 /**
  * The one part that ticks (AGENTS §8): the shared clock's reading once a second while it runs, as the clock bar draws it.
@@ -110,35 +145,40 @@ const FootballClockLeaf = memo(function FootballClockLeaf({
   display,
   readingNow,
   actions,
-}: {
-  readonly display: FootballDisplay;
-  readonly readingNow: () => number;
-  readonly actions: FootballPadActions;
-}) {
+  compact,
+}: ClockLeafProps) {
   useClockTick(display.clock.anchor?.running === true);
   const view = footballClockBar(display, readingNow());
   const onCorrect = footballTakesCorrect(display) ? actions.correct : null;
-  return <ClockBar view={view} onAction={actions.clock} onCorrect={onCorrect} />;
+  return <ClockBar view={view} onAction={actions.clock} onCorrect={onCorrect} compact={compact} />;
 });
 
-/** A team's column in the operator's words, and in the shootout its kicks under it. */
-const SideColumn = memo(function SideColumn({
-  column,
-  half,
-  kicks,
-  display,
-  readingNow,
-  onAction,
-}: {
+type SideColumnProps = {
   readonly column: BoardColumn;
   readonly half: PadHalf<FootballPadKey>;
   readonly kicks: readonly boolean[] | null;
   readonly display: FootballDisplay;
   readonly readingNow: () => number;
+  readonly compact: boolean;
   readonly onAction: (id: string) => void;
-}) {
+};
+
+/** A team's column in the operator's words, and in the shootout its kicks under it. */
+const SideColumn = memo(function SideColumn(props: SideColumnProps) {
+  const { column, kicks, compact, onAction } = props;
+  const view = useColumnView(props);
+  return (
+    <View testID={`column-${column.side}`} style={styles.side}>
+      <TeamColumn view={view} onAction={onAction} compact={compact} />
+      {kicks === null ? null : <KickRow kicks={kicks} />}
+    </View>
+  );
+});
+
+/** A column's view in the operator's words: the side's name, score, marks and buttons, and its sin-bin tags. */
+function useColumnView({ column, half, display, readingNow }: SideColumnProps): TeamColumnView {
   const words = usePadText();
-  const view = useMemo<TeamColumnView>(
+  return useMemo<TeamColumnView>(
     () => ({
       label: half.label,
       bar: half.bar,
@@ -153,13 +193,7 @@ const SideColumn = memo(function SideColumn({
     }),
     [half, column, display, readingNow, words],
   );
-  return (
-    <View testID={`column-${column.side}`} style={styles.side}>
-      <TeamColumn view={view} onAction={onAction} />
-      {kicks === null ? null : <KickRow kicks={kicks} />}
-    </View>
-  );
-});
+}
 
 const teamAction = (
   action: BoardAction,
@@ -250,22 +284,40 @@ const PadSheet = memo(function PadSheet({
  * Correct (design §7.5): the time it will be set to, which runs on with the clock while the sheet is open (its own tick,
  * as the clock leaf), the four steppers, and Set.
  */
+type CorrectViewProps = {
+  readonly sheet: Extract<FootballSheetView, { kind: 'correct' }>;
+  readonly display: FootballDisplay;
+  readonly readingNow: () => number;
+  readonly actions: FootballPadActions;
+};
+
 const CorrectView = memo(function CorrectView({
   sheet,
   display,
   readingNow,
   actions,
-}: {
-  readonly sheet: Extract<FootballSheetView, { kind: 'correct' }>;
-  readonly display: FootballDisplay;
-  readonly readingNow: () => number;
-  readonly actions: FootballPadActions;
-}) {
+}: CorrectViewProps) {
   const { t } = useT();
+  const words = useCorrectWords();
   useClockTick(display.clock.anchor?.running === true);
   const seconds = readingNow() + sheet.deltaSeconds;
-  const time = footballCorrectTime(display, seconds);
-  const words = useMemo<ClockCorrectWords>(
+  return (
+    <ClockCorrectSheet
+      time={footballCorrectTime(display, seconds)}
+      atFloor={seconds <= sheet.floor}
+      floorLine={t('scoring.football.correct.floor')}
+      words={words}
+      onStep={actions.step}
+      onSet={actions.set}
+      onCancel={actions.cancelSheet}
+    />
+  );
+});
+
+/** Correct's words in the operator's language: the title, Set and the four steppers. */
+function useCorrectWords(): ClockCorrectWords {
+  const { t } = useT();
+  return useMemo<ClockCorrectWords>(
     () => ({
       title: t('scoring.football.correct.title'),
       set: t('scoring.football.correct.set'),
@@ -278,18 +330,7 @@ const CorrectView = memo(function CorrectView({
     }),
     [t],
   );
-  return (
-    <ClockCorrectSheet
-      time={time}
-      atFloor={seconds <= sheet.floor}
-      floorLine={t('scoring.football.correct.floor')}
-      words={words}
-      onStep={actions.step}
-      onSet={actions.set}
-      onCancel={actions.cancelSheet}
-    />
-  );
-});
+}
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colour.ground },

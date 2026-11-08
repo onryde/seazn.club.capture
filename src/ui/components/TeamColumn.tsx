@@ -1,6 +1,5 @@
-import { Fragment, memo, type ReactNode, useCallback, useState } from 'react';
+import { Fragment, memo, type ReactNode, useCallback } from 'react';
 import {
-  type LayoutChangeEvent,
   type PressableStateCallbackType,
   Pressable,
   type StyleProp,
@@ -11,6 +10,7 @@ import {
 import type { PadBar } from '@/domain/scoring/padView';
 import { NameText } from '@/ui/components/NameText';
 import { Text } from '@/ui/components/Text';
+import { type BoardTier, MARKS_HEIGHT, TIER_FACES } from '@/ui/theme/columnBoard';
 import { colour, layout, plateInk, pressedOpacity, radius, space } from '@/ui/theme/tokens';
 import { type TypeRole, typeScale } from '@/ui/theme/type';
 
@@ -46,6 +46,8 @@ export type TeamColumnView = {
 type TeamColumnProps = {
   readonly view: TeamColumnView;
   readonly onAction: (id: string) => void;
+  /** A compact board's column (fix-round 2 ruling R1, `columnBoard.ts`): the name on one line, the score a step down. */
+  readonly compact?: boolean;
 };
 
 /**
@@ -56,23 +58,14 @@ type TeamColumnProps = {
  * A screen reader hears the name, the score and the marks as one, then each button.
  *
  * The controller's fix-round rulings: the name shrinks to fit before its ellipsis, so no word breaks at a letter (a);
- * the marks' row is one line of fixed height, so the buttons never move (b); a column too short for its full head and a
- * touch target per button sets the head compact, the name on one line and the score a step smaller, so the column
- * never overflows (c); the score shrinks to fit its line and is never cut (f). footballFit.test.ts holds the numbers.
+ * the marks' row is one line of fixed height, so the buttons never move (b); the score shrinks to fit its line and is
+ * never cut (f). A compact board's column (fix-round 2, R1, superseding round 1's own measure) sets the name on one
+ * line and the score a step down, so a short phone keeps a touch target per button. footballFit.test.ts holds the numbers.
  */
-export const TeamColumn = memo(function TeamColumn({ view, onAction }: TeamColumnProps) {
-  const [height, setHeight] = useState<number | null>(null);
-  const measured = useCallback((event: LayoutChangeEvent) => {
-    setHeight(event.nativeEvent.layout.height);
-  }, []);
-  const compact = height !== null && height < fullColumn(view.actions.length);
+export const TeamColumn = memo(function TeamColumn({ view, onAction, compact }: TeamColumnProps) {
   return (
-    <View
-      testID="team-column"
-      onLayout={measured}
-      style={view.bar === 'lit' ? litColumn : dimColumn}
-    >
-      <ColumnHead view={view} compact={compact} />
+    <View testID="team-column" style={view.bar === 'lit' ? litColumn : dimColumn}>
+      <ColumnHead view={view} tier={compact === true ? 'compact' : 'full'} />
       {view.actions.map((action) => (
         <ColumnButton key={action.id} action={action} onAction={onAction} />
       ))}
@@ -80,14 +73,11 @@ export const TeamColumn = memo(function TeamColumn({ view, onAction }: TeamColum
   );
 });
 
+type ColumnHeadProps = { readonly view: TeamColumnView; readonly tier: BoardTier };
+
 /** The head: the name, the score and the marks' row, heard as one. */
-const ColumnHead = memo(function ColumnHead({
-  view,
-  compact,
-}: {
-  readonly view: TeamColumnView;
-  readonly compact: boolean;
-}) {
+const ColumnHead = memo(function ColumnHead({ view, tier }: ColumnHeadProps) {
+  const faces = TIER_FACES[tier];
   return (
     <View
       accessible
@@ -96,22 +86,13 @@ const ColumnHead = memo(function ColumnHead({
     >
       <NameText
         variant="matchName"
-        lines={compact ? 1 : layout.padNameLines}
+        lines={faces.nameLines}
         floor={layout.teamNameFloor}
-        style={compact ? styles.nameCompact : styles.name}
+        style={tier === 'compact' ? styles.nameCompact : styles.name}
       >
         {view.label}
       </NameText>
-      <Text
-        testID="column-value"
-        variant={compact ? COMPACT_SCORE : FULL_SCORE}
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={layout.scoreFloor}
-        style={view.lead ? undefined : styles.trailing}
-      >
-        {view.value}
-      </Text>
+      <ColumnScore value={view.value} lead={view.lead} role={faces.score} />
       <View testID="column-marks-room" style={styles.marksRoom}>
         <ColumnMarks cards={view.cards} tags={view.tags} />
       </View>
@@ -119,22 +100,23 @@ const ColumnHead = memo(function ColumnHead({
   );
 });
 
-const FULL_SCORE: TypeRole = 'scoreCompact';
-const COMPACT_SCORE: TypeRole = 'tally';
-/** The marks' row: one line of the count's role, whatever it holds (ruling b). A card icon (11 dp) sits inside it. */
-const MARKS_HEIGHT = typeScale.periodScore.lineHeight;
+type ColumnScoreProps = { readonly value: string; readonly lead: boolean; readonly role: TypeRole };
 
-/** A head's height: the name's lines, the score's line and the marks' row, a gap between each. */
-const headHeight = (nameLines: number, score: TypeRole) =>
-  nameLines * typeScale.matchName.lineHeight +
-  space.xs +
-  typeScale[score].lineHeight +
-  space.xs +
-  MARKS_HEIGHT;
-
-/** The least height a column holds its full head in, with a touch target per button: padding, the head, then a gap and a target each. */
-const fullColumn = (buttons: number) =>
-  2 * space.sm + headHeight(layout.padNameLines, FULL_SCORE) + buttons * (space.sm + layout.touch);
+/** The score on its one line, shrinking to fit and never cut (ruling f): lime while the team leads, else cream. */
+function ColumnScore({ value, lead, role }: ColumnScoreProps) {
+  return (
+    <Text
+      testID="column-value"
+      variant={role}
+      numberOfLines={1}
+      adjustsFontSizeToFit
+      minimumFontScale={layout.scoreFloor}
+      style={lead ? undefined : styles.trailing}
+    >
+      {value}
+    </Text>
+  );
+}
 
 /** The marks' row: a card icon per colour the team has, with its count, then the sport's tags. Nothing when none. */
 const ColumnMarks = memo(function ColumnMarks({
@@ -175,14 +157,10 @@ const CardCount = memo(function CardCount({
   );
 });
 
+type ColumnButtonProps = { readonly action: TeamAction; readonly onAction: (id: string) => void };
+
 /** A team's button: the lime plate with night ink when primary, else `surface2`; a disabled one greys, with its note. */
-const ColumnButton = memo(function ColumnButton({
-  action,
-  onAction,
-}: {
-  readonly action: TeamAction;
-  readonly onAction: (id: string) => void;
-}) {
+const ColumnButton = memo(function ColumnButton({ action, onAction }: ColumnButtonProps) {
   const press = useCallback(() => onAction(action.id), [onAction, action.id]);
   const name = action.note === null ? action.label : `${action.label}, ${action.note}`;
   return (

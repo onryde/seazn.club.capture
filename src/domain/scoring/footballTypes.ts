@@ -266,7 +266,7 @@ export type FootballLastWord =
   | 'start'
   | 'clockStart'
   | 'clockPause'
-  | 'clockCorrect'
+  | 'clockCorrected'
   | 'goal'
   | 'penaltyGoal'
   | 'ownGoal'

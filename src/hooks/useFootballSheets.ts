@@ -136,7 +136,8 @@ const openable = (snapshot: FootballSheetSnapshot | null): snapshot is FootballS
  * What opens a sheet: a column's button (its first step, or for a team with no sheet its tap at once), More, Correct from
  * the clock's face, Match details, History and the question's Discard. Each answers what it came to, for the bounce memory.
  */
-function useOpens({ setSheet, snapshot, clock, justShown, driver }: Parts) {
+function useOpens(parts: Parts) {
+  const { setSheet, snapshot, clock, justShown, driver } = parts;
   const column = useCallback(
     (id: string): PadOutcome => {
       // A disabled button takes no press; one that went off under the finger opens a sheet the render closes at once
@@ -147,17 +148,7 @@ function useOpens({ setSheet, snapshot, clock, justShown, driver }: Parts) {
     },
     [snapshot, clock, setSheet, driver],
   );
-  // More and Correct open over a standing question too, and the render closes them at once (`staleSheet`): a column's
-  // button checks first, since a team with no sheet records at once.
-  const more = useCallback((): PadOutcome => {
-    if (snapshot === null) return NOT_NOW;
-    return opened({ kind: 'flow', flow: MORE_FLOW }, snapshot, null, setSheet, driver);
-  }, [snapshot, setSheet, driver]);
-  const correct = useCallback((): PadOutcome => {
-    if (snapshot === null || !footballTakesCorrect(snapshot.display)) return NOT_NOW;
-    setSheet({ kind: 'correct', delta: 0, phase: snapshot.display.enginePhase });
-    return TAKEN;
-  }, [snapshot, setSheet]);
+  const { more, correct } = useOpensOverAsk(parts);
   const details = useCallback(() => setSheet(DETAILS), [setSheet]);
   const history = useCallback(() => setSheet(HISTORY), [setSheet]);
   // Discard asks again before it deletes: quiet in the bounce window of the question appearing.
@@ -168,6 +159,23 @@ function useOpens({ setSheet, snapshot, clock, justShown, driver }: Parts) {
     () => ({ column, more, openCorrect: correct, details, history, askDiscard }),
     [column, more, correct, details, history, askDiscard],
   );
+}
+
+/**
+ * More and Correct open over a standing question too, and the render closes them at once (`staleSheet`): a column's
+ * button checks first, since a team with no sheet records at once.
+ */
+function useOpensOverAsk({ setSheet, snapshot, driver }: Parts) {
+  const more = useCallback((): PadOutcome => {
+    if (snapshot === null) return NOT_NOW;
+    return opened({ kind: 'flow', flow: MORE_FLOW }, snapshot, null, setSheet, driver);
+  }, [snapshot, setSheet, driver]);
+  const correct = useCallback((): PadOutcome => {
+    if (snapshot === null || !footballTakesCorrect(snapshot.display)) return NOT_NOW;
+    setSheet({ kind: 'correct', delta: 0, phase: snapshot.display.enginePhase });
+    return TAKEN;
+  }, [snapshot, setSheet]);
+  return { more, correct };
 }
 
 /** A move made from the pad: a step shown over it, or the tap made at once. */
@@ -190,18 +198,20 @@ function opened(
  * a double tap there counts once; Cancel and the dim arm the same window on the way out (`arm`), and Back (`cancel`) is
  * not a touch on the pad.
  */
-function useSteps({
-  sheet,
-  setSheet,
-  snapshot,
-  clock,
-  justShown,
-  record,
-  arm,
-  cancel,
-  driver,
-}: Parts) {
-  const choose = useCallback(
+function useSteps(parts: Parts) {
+  const { justShown, arm, cancel } = parts;
+  const choose = useChoose(parts);
+  const dismiss = useCallback(() => {
+    if (justShown()) return;
+    arm(CLOSE_TAP);
+    cancel();
+  }, [justShown, arm, cancel]);
+  return useMemo(() => ({ choose, dismiss }), [choose, dismiss]);
+}
+
+/** A choice on the step on screen: the next step, the one tap the flow records, or Correct or Match details from More. */
+function useChoose({ sheet, setSheet, snapshot, clock, justShown, record, driver }: Parts) {
+  return useCallback(
     (id: string) => {
       if (sheet?.kind !== 'step' || snapshot === null || justShown()) return;
       const move = footballChoose(sheet.flow, id, snapshot.display, clock.stampNow());
@@ -218,12 +228,6 @@ function useSteps({
     },
     [sheet, setSheet, snapshot, clock, justShown, record, driver],
   );
-  const dismiss = useCallback(() => {
-    if (justShown()) return;
-    arm(CLOSE_TAP);
-    cancel();
-  }, [justShown, arm, cancel]);
-  return useMemo(() => ({ choose, dismiss }), [choose, dismiss]);
 }
 
 /**

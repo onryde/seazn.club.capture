@@ -719,6 +719,18 @@ describe('the columns’ sheets (design §6.3)', () => {
       'HT',
     ]);
   });
+
+  it('End of period on a link that died is refused, and the record does not say it', async () => {
+    const { fakes, view } = await opened();
+    fakes.scoring.revoke();
+    press(view, (actions) => actions.clock());
+    await wait(1_000);
+    expect(pad(view).view.card).toEqual({ kind: 'linkInvalid' });
+    expect(pad(view).display.marker).toBe('HT');
+    press(view, (actions) => actions.tool('period'));
+    await flush();
+    expect(lines(fakes, 'scoring.football.period')).toEqual([]);
+  });
 });
 
 // The controller's ruling 2: a Start accepted 3 s or more after its tap is followed by one resync, built from the
@@ -882,7 +894,7 @@ describe('a resync is a clock correction (ruling I1)', () => {
   }
 
   const CLOCK_STARTED = 'scoring.football.last.clockStart';
-  const CORRECTED = 'scoring.football.last.clockCorrect';
+  const CORRECTED = 'scoring.football.last.clockCorrected';
 
   /** The resync's stamp, as the server holds it: the Start's 0:00 plus the whole seconds it waited, 120 or more. */
   async function resyncStamp(fakes: FakePorts) {

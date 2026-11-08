@@ -186,9 +186,18 @@ function useSheets(
   pad: PadFacts | null,
   clock: FootballClockRead,
 ) {
+  const driver = useSheetDriver(ports, sender, pad);
+  const snapshot = useSheetSnapshot(pad);
+  const sheets = useFootballSheets(driver, snapshot, clock, taps.opening, taps.arm);
+  useClosedByDeadLink(pad?.view, sheets.open, sheets.cancel);
+  return sheets;
+}
+
+/** What a sheet records through: a step's tap, and Correct's Set, said in the record when it is taken. */
+function useSheetDriver(ports: Ports, sender: Sender, pad: PadFacts | null): FootballSheetDriver {
   const { tap } = sender;
   const { logger } = ports;
-  const driver = useMemo<FootballSheetDriver>(
+  return useMemo<FootballSheetDriver>(
     () => ({
       tap,
       correct: (elapsed) => {
@@ -201,7 +210,11 @@ function useSheets(
     }),
     [tap, logger, pad],
   );
-  const snapshot = useMemo<FootballSheetSnapshot | null>(
+}
+
+/** The match as the sheets read it; none until the pad is drawn. */
+function useSheetSnapshot(pad: PadFacts | null): FootballSheetSnapshot | null {
+  return useMemo(
     () =>
       pad === null
         ? null
@@ -214,9 +227,6 @@ function useSheets(
           },
     [pad],
   );
-  const sheets = useFootballSheets(driver, snapshot, clock, taps.opening, taps.arm);
-  useClosedByDeadLink(pad?.view, sheets.open, sheets.cancel);
-  return sheets;
 }
 
 /** A sheet goes with the app to the background (brief test 15): a choice left open on a locked phone is stale when it comes back. */
@@ -251,42 +261,21 @@ function useActions(parts: Parts): FootballPadActions {
   );
   const links = useLinks(parts.runner, parts.setCardNote);
   const pressing = usePressing(parts);
+  const sheet = useSheetActions(parts);
+  return useMemo(
+    () => ({ home, tapHalf: ignoreHalf, ...sheet, ...pressing, ...asked, ...links, ...start }),
+    [home, sheet, pressing, asked, links, start],
+  );
+}
+
+/** Undo, and what the sheets' own buttons do: a choice, Correct's steps and Set, a close, Match details and History. */
+function useSheetActions({ taps, sheets }: Parts) {
   const { cancel } = sheets;
   const { undo } = taps;
   const { choose, step, set, dismiss, details, history } = sheets.actions;
   return useMemo(
-    () => ({
-      home,
-      undo,
-      cancel,
-      choose,
-      step,
-      set,
-      dismiss,
-      cancelSheet: dismiss,
-      details,
-      history,
-      tapHalf: ignoreHalf,
-      ...pressing,
-      ...asked,
-      ...links,
-      ...start,
-    }),
-    [
-      home,
-      undo,
-      cancel,
-      choose,
-      step,
-      set,
-      dismiss,
-      details,
-      history,
-      pressing,
-      asked,
-      links,
-      start,
-    ],
+    () => ({ undo, cancel, choose, step, set, dismiss, cancelSheet: dismiss, details, history }),
+    [undo, cancel, choose, step, set, dismiss, details, history],
   );
 }
 
@@ -317,33 +306,15 @@ const MORE_TOOL = 'more';
  * tap counts once, and so does any tap on the heels of a sheet's recording. Start and Pause read the clock when pressed;
  * End of period stamps the reading too.
  */
-function usePressing({ ports, sender, pad, taps, sheets, clock }: Parts) {
-  const { opening } = taps;
-  const { tap } = sender;
-  const { logger } = ports;
-  const sheetActions = sheets.actions;
+function usePressing(parts: Parts) {
+  const { opening } = parts.taps;
+  const sheetActions = parts.sheets.actions;
+  const startPause = useStartPause(parts);
+  const endPeriod = useEndPeriod(parts);
   const column = useCallback(
     (id: string) => void opening(COLUMN_TAP, () => sheetActions.column(id)),
     [opening, sheetActions],
   );
-  const running = pad?.display.clock.anchor?.running === true;
-  const phase = pad?.display.enginePhase ?? '';
-  const startPause = useCallback(
-    () =>
-      void opening(CLOCK_TAP, () => {
-        const outcome = tap({ kind: 'clock', running: !running, elapsed: clock.readingNow() });
-        const action = running ? 'pause' : 'start';
-        if (outcome.ok) logger.info(CLOCK_EVENT, { action, phase });
-        return outcome;
-      }),
-    [opening, tap, running, phase, clock, logger],
-  );
-  const marker = pad?.display.marker ?? null;
-  const endPeriod = useCallback((): PadOutcome => {
-    const outcome = tap({ kind: 'period', stamp: clock.stampNow() });
-    if (outcome.ok && marker !== null) logger.info(PERIOD_EVENT, { phase: marker });
-    return outcome;
-  }, [tap, clock, marker, logger]);
   const tool = useCallback(
     (id: string) => {
       if (id === PERIOD_TOOL) void opening(PERIOD_TAP, endPeriod);
@@ -359,4 +330,35 @@ function usePressing({ ports, sender, pad, taps, sheets, clock }: Parts) {
     () => ({ column, clock: startPause, tool, correct }),
     [column, startPause, tool, correct],
   );
+}
+
+/** Start or Pause, whichever the clock takes now, at the reading when pressed, and said in the record when taken. */
+function useStartPause({ ports, sender, pad, taps, clock }: Parts) {
+  const { opening } = taps;
+  const { tap } = sender;
+  const { logger } = ports;
+  const running = pad?.display.clock.anchor?.running === true;
+  const phase = pad?.display.enginePhase ?? '';
+  return useCallback(
+    () =>
+      void opening(CLOCK_TAP, () => {
+        const outcome = tap({ kind: 'clock', running: !running, elapsed: clock.readingNow() });
+        const action = running ? 'pause' : 'start';
+        if (outcome.ok) logger.info(CLOCK_EVENT, { action, phase });
+        return outcome;
+      }),
+    [opening, tap, running, phase, clock, logger],
+  );
+}
+
+/** End of period, stamped at the reading, and the period it ends said in the record when taken. */
+function useEndPeriod({ ports, sender, pad, clock }: Parts) {
+  const { tap } = sender;
+  const { logger } = ports;
+  const marker = pad?.display.marker ?? null;
+  return useCallback((): PadOutcome => {
+    const outcome = tap({ kind: 'period', stamp: clock.stampNow() });
+    if (outcome.ok && marker !== null) logger.info(PERIOD_EVENT, { phase: marker });
+    return outcome;
+  }, [tap, clock, marker, logger]);
 }

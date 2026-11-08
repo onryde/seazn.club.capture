@@ -4,6 +4,7 @@ import es from '@/i18n/es.json';
 import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
 import { layout, space } from '@/ui/theme/tokens';
+import { BOARD_FULL_HEIGHT } from '@/ui/theme/columnBoard';
 import { maxFontScale, typeScale } from '@/ui/theme/type';
 import { loadFont } from '../../../test/fontMetrics';
 import { linesOf } from '../../../test/textFit';
@@ -177,6 +178,29 @@ describe('a team’s name shrunk to fit, no word broken (ruling a)', () => {
   });
 });
 
+// The controller's fix-round 2 ruling (R1): on a compact board each name is one line, shrunk to fit. The fake's two
+// names fit above the floor; a name of 23 or more characters needs about half its size, under the floor: iOS ends it in
+// an ellipsis at 0.75, Android (no floor but 4 dp) shrinks it to about 12.5 dp at 320. A device check judges it.
+describe('a team’s name on one line, on a compact board (ruling R1)', () => {
+  const oneLine = (name: string, width: number) =>
+    Math.min(1, teamText(width) / nameWidth(name)).toFixed(2);
+
+  it('the fake’s names need 1 and 0.77 at 320, 1 and 0.89 at 360: at least the floor', () => {
+    expect(FAKE_NAMES.map((name) => oneLine(name, 320))).toEqual(['1.00', '0.77']);
+    expect(FAKE_NAMES.map((name) => oneLine(name, 360))).toEqual(['1.00', '0.89']);
+  });
+
+  it('a long name needs about half: 0.48 at 320 and 0.56 at 360, under the floor', () => {
+    expect(['Wolverhampton Wanderers', ...LONG_NAMES].map((name) => oneLine(name, 320))).toEqual([
+      '0.48',
+      '0.47',
+      '0.48',
+    ]);
+    expect(oneLine('Wolverhampton Wanderers', 360)).toBe('0.56');
+    expect(Number(oneLine('Wolverhampton Wanderers', 360))).toBeLessThan(layout.teamNameFloor);
+  });
+});
+
 describe('the clock bar at 320 and 360 in four languages (ruling 109; the controller’s ruling 7)', () => {
   it('the longest reading, 120+15:00, is 193.2 dp of tabular digits', () => {
     expect(clockWidth('120+15:00').toFixed(1)).toBe('193.2');
@@ -318,8 +342,8 @@ describe('the sheets’ rows at 320 and 360 in four languages (design §6.3)', (
   );
 });
 
-/** `scoreCompact` (64) or, in a compact head, `tally` (46): Barlow Condensed 700, tabular digits. A team's score. */
-const scoreWidth = (text: string, role: 'scoreCompact' | 'tally') =>
+/** `scoreCompact` (64) or, on a compact board, `tallyCompact` (30): Barlow Condensed 700, tabular digits. A team's score. */
+const scoreWidth = (text: string, role: 'scoreCompact' | 'tallyCompact') =>
   [...text].reduce(
     (sum, char) =>
       sum +
@@ -344,7 +368,7 @@ describe('a team’s score in the shootout (ruling f)', () => {
     expect(layout.scoreFloor).toBe(0.6);
     for (const width of WIDTHS)
       for (const score of ['5 (4)', '10 (4)', '5 (10)', '10 (10)'])
-        for (const role of ['scoreCompact', 'tally'] as const)
+        for (const role of ['scoreCompact', 'tallyCompact'] as const)
           expect(
             Math.min(1, teamText(width) / scoreWidth(score, role)),
             `${score} ${role} @${width}`,
@@ -438,57 +462,88 @@ describe('the team columns’ height, portrait', () => {
   });
 
   /*
-   * The controller's fix-round ruling (c): below 3 : 2 : 2, Card and Sub hold 48 and Goal takes the rest, never less than
-   * 48; a column too short for its full head and three targets (336 dp, so a window under 638) sets its head compact:
-   * the name on one line (30) and the score in `tally` (48), 102 in all, and the column never overflows. A window of
-   * 588 is the least the compact head holds the three targets in.
+   * The controller's fix-round ruling (c): below 3 : 2 : 2, Card and Sub hold 48 and Goal takes the rest, never less
+   * than 48. Its fix-round 2 ruling (R1, superseding round 1's compact head): the board's tier. The full tier needs the
+   * clock bar (72) over a column of three (336): 408 dp of board, a 638 window, the named threshold
+   * (`BOARD_FULL_HEIGHT`). Below it, compact: the clock bar is one row of a touch target (the time in `tallyCompact`, 32,
+   * over the period's 16) and the gap under it, 56; a column's head is the name on one line (30), the score in
+   * `tallyCompact` (32) and the marks' row (16), with two gaps of 4: 86; a column of three needs 2 × 8 + 86 +
+   * 3 × (8 + 48) = 270. The compact board needs 326, so it holds from a 556 window. The heights are the app's, after
+   * the insets: a 360 × 640 phone with three-button navigation lays the app out about 560 tall (the re-review's
+   * estimate; the owner's 360 × 804 is about 724), which a device check settles.
    */
+  const COMPACT_CLOCK =
+    Math.max(layout.touch, typeScale.tallyCompact.lineHeight + typeScale.diagSection.lineHeight) +
+    space.sm;
   const COMPACT_HEAD =
     typeScale.matchName.lineHeight +
     space.xs +
-    typeScale.tally.lineHeight +
+    typeScale.tallyCompact.lineHeight +
     space.xs +
     typeScale.periodScore.lineHeight;
-  const columnOf = (height: number) => height - AROUND - CLOCK;
-  const FULL_COLUMN = 2 * space.sm + HEAD + 3 * (space.sm + layout.touch);
-  /** The buttons' heights in a window `height` tall, and whether the head is compact: the screen's rule, written out. */
+  const columnOf = (head: number) => 2 * space.sm + head + 3 * (space.sm + layout.touch);
+  const FULL_BOARD = CLOCK + columnOf(HEAD);
+  /** The tier, the column's height and the buttons' heights in a window `height` tall: the screen's rule, written out. */
   function laidOut(height: number) {
-    const compact = columnOf(height) < FULL_COLUMN;
-    const room = columnOf(height) - 2 * space.sm - (compact ? COMPACT_HEAD : HEAD) - 3 * space.sm;
+    const board = height - AROUND;
+    const compact = board < FULL_BOARD;
+    const column = board - (compact ? COMPACT_CLOCK : CLOCK);
+    const room = column - 2 * space.sm - (compact ? COMPACT_HEAD : HEAD) - 3 * space.sm;
     const total = WEIGHTS.reduce((sum, weight) => sum + weight, 0);
     const [goal, card] = WEIGHTS.map((weight) => (room * weight) / total);
     const buttons =
       card! < layout.touch
         ? [room - 2 * layout.touch, layout.touch, layout.touch]
         : [goal!, card!, card!];
-    return { compact, room, buttons };
+    return { compact, column, room, buttons };
   }
+  const heights = (buttons: readonly number[]) => buttons.map((each) => each.toFixed(1));
 
-  it('a full column is 336 dp and a compact head 102: compact below a 638 window; three targets hold from 588', () => {
-    expect([FULL_COLUMN, COMPACT_HEAD]).toEqual([336, 102]);
+  it('the full tier needs 408 dp of board, the named threshold: full from a 638 window, compact under it', () => {
+    expect([CLOCK, columnOf(HEAD), FULL_BOARD]).toEqual([72, 336, 408]);
+    expect(BOARD_FULL_HEIGHT).toBe(FULL_BOARD);
     expect(laidOut(638).compact).toBe(false);
     expect(laidOut(637).compact).toBe(true);
-    expect(Math.min(...laidOut(588).buttons)).toBe(layout.touch);
-    expect(Math.min(...laidOut(587).buttons)).toBeLessThan(layout.touch);
+  });
+
+  it('compact: a 56 clock bar and a 270 column of three, so three targets hold from a 556 window, not under', () => {
+    expect([COMPACT_CLOCK, COMPACT_HEAD, columnOf(COMPACT_HEAD)]).toEqual([56, 86, 270]);
+    expect(Math.min(...laidOut(556).buttons)).toBe(layout.touch);
+    expect(Math.min(...laidOut(555).buttons)).toBeLessThan(layout.touch);
   });
 
   it.each([
+    [560, true, ['52.0', '48.0', '48.0']],
+    [600, true, ['80.6', '53.7', '53.7']],
+    [637, true, ['96.4', '64.3', '64.3']],
+    [638, false, ['48.0', '48.0', '48.0']],
     [640, false, ['50.0', '48.0', '48.0']],
-    [600, true, ['60.0', '48.0', '48.0']],
+    [724, false, ['98.6', '65.7', '65.7']],
   ] as const)(
-    'at 360 × %i: compact %s; Goal %s, Card and Sub 48, each at least 48, nothing past the column',
-    (height, compact, heights) => {
+    'a window %i tall: compact %s; Goal, Card and Sub %s, each at least 48, and nothing past the column',
+    (height, compact, expected) => {
       const laid = laidOut(height);
       expect(laid.compact).toBe(compact);
-      expect(laid.buttons.map((each) => each.toFixed(1))).toEqual(heights);
+      expect(heights(laid.buttons)).toEqual(expected);
       for (const each of laid.buttons) expect(each).toBeGreaterThanOrEqual(layout.touch);
       expect(laid.buttons.reduce((sum, each) => sum + each, 0)).toBeCloseTo(laid.room, 10);
     },
   );
 
-  it('on the owner’s phone the head stays full and the buttons stand 3 : 2 : 2', () => {
-    const laid = laidOut(724);
-    expect(laid.compact).toBe(false);
-    expect(laid.buttons.map((each) => each.toFixed(1))).toEqual(['98.6', '65.7', '65.7']);
-  });
+  // The ruling's two phones: 360 and 320 dp wide, 560 tall as laid out. The heights do not depend on the width (every
+  // reserve above is fixed); what does is that the compact faces fit their rooms there.
+  it.each(WIDTHS)(
+    'at %i × 560: compact, the board inside the window, the time and the scores in their rooms',
+    (width) => {
+      const laid = laidOut(560);
+      expect(laid.compact).toBe(true);
+      expect(AROUND + COMPACT_CLOCK + laid.column).toBe(560);
+      expect(laid.column).toBeGreaterThanOrEqual(columnOf(COMPACT_HEAD));
+      const time =
+        (clockWidth('120+15:00') * typeScale.tallyCompact.fontSize) / typeScale.tally.fontSize;
+      for (const [lang, dictionary] of LANGUAGES)
+        expect(time, `${lang} @${width}`).toBeLessThanOrEqual(faceRoom(width, dictionary));
+      expect(scoreWidth('10 (10)', 'tallyCompact')).toBeLessThanOrEqual(teamText(width));
+    },
+  );
 });

@@ -39,15 +39,14 @@ export const NO_RESYNC: ResyncMemory = {
 
 type ClockTap = Extract<FootballTap, { readonly kind: 'clock' }>;
 
+/** What the watch remembers after a step, and the resyncs it asks for. */
+type Stepped = { readonly memory: ResyncMemory; readonly taps: readonly ClockTap[] };
+
 const CLOCK = 'football.clock';
 const PERIOD = 'football.period';
 
 /** The watch over `state` at `nowMs` (the phone's clock): what it remembers now, and the resyncs it asks for. */
-export function resyncStep(
-  memory: ResyncMemory,
-  state: MatchState,
-  nowMs: number,
-): { readonly memory: ResyncMemory; readonly taps: readonly ClockTap[] } {
+export function resyncStep(memory: ResyncMemory, state: MatchState, nowMs: number): Stepped {
   const waiting = new Map(memory.waiting);
   const decided = new Set(memory.decided);
   const claimed = new Set(memory.claimed);

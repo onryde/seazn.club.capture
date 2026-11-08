@@ -12,6 +12,7 @@ import { KO_11, at, clock, goal, sinBin, start, type Spec } from '../../../test/
 import { KICK_OFF, KICKS_4_1, KICKS_4_3 } from '../../../test/footballPadFixtures';
 import { screenIsHeld, type HoldLog } from '../../../test/heldScreen';
 import { edgeOf } from '../../../test/pressState';
+import { layOut } from '../../../test/layOut';
 import { linesAllowed } from '../../../test/linesAllowed';
 import { LINK, linkKey } from '../../../test/scoringHomeFixtures';
 import { backgroundAndBack, flush, launchApp, type LaunchedApp } from '../../../test/routedApp';
@@ -183,6 +184,41 @@ describe('the team columns', () => {
     expect(lastTap()).toBe(fill(en['scoring.football.last.undone'], { what: said }));
     expect(value('first')).toBe('0');
     expect(scoreColours()).toEqual([edgeOf(colour.ink), edgeOf(colour.ink)]);
+  });
+});
+
+// The controller's fix-round 2 ruling (R1): the board's own height picks its tier. The full tier needs the clock bar's
+// 72 dp (a 48 row, the period's 16 and the 8 under it) over a column of three's 336 (2 × 8, a 152 head, 3 × (8 + 48)):
+// 408. Below it the clock bar and both columns go compact, at once (footballFit.test.ts holds the heights).
+describe('a short phone (ruling R1)', () => {
+  const said = (time: string) => en['scoring.football.clock.said'].replace('{time}', time);
+  const H1 = en['scoring.football.period.H1'];
+  const name = () => within(column('second')).getByText('Northgate United');
+
+  it('at 408 dp of board the pad is full; at 407 the clock bar and the columns go compact', async () => {
+    await open(STARTED);
+    // Before the phone lays the board out, it is full.
+    expect(linesAllowed(name())).toBe(2);
+    expect(within(clockBar()).getByText(H1)).toBeTruthy();
+    const board = screen.getByTestId('football-board');
+    layOut(board, { width: 328, height: 408 });
+    expect(within(clockBar()).queryByLabelText(`${said('0:00')}, ${H1}`)).toBeNull();
+    expect(linesAllowed(name())).toBe(2);
+    layOut(board, { width: 328, height: 407 });
+    expect(within(clockBar()).getByLabelText(`${said('0:00')}, ${H1}`)).toBeTruthy();
+    expect(linesAllowed(name())).toBe(1);
+    expect(linesAllowed(within(column('first')).getByText('Riverside FC'))).toBe(1);
+  });
+
+  it('a phone that grows again goes back to full', async () => {
+    await open(STARTED);
+    const board = screen.getByTestId('football-board');
+    layOut(board, { width: 328, height: 330 });
+    expect(linesAllowed(name())).toBe(1);
+    layOut(board, { width: 328, height: 480 });
+    expect(linesAllowed(name())).toBe(2);
+    expect(within(clockBar()).getByText(H1)).toBeTruthy();
+    expect(within(clockBar()).queryByLabelText(`${said('0:00')}, ${H1}`)).toBeNull();
   });
 });
 

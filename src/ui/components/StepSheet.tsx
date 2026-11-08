@@ -136,16 +136,14 @@ const HeadingRow = memo(function HeadingRow({ label }: { readonly label: string 
   );
 });
 
-/** A switch the caller turns: its label and the pill, one target; a screen reader hears whether it is on. */
-const ToggleRow = memo(function ToggleRow({
-  label,
-  checked,
-  onPress,
-}: {
+type ToggleRowProps = {
   readonly label: string;
   readonly checked: boolean;
   readonly onPress: () => void;
-}) {
+};
+
+/** A switch the caller turns: its label and the pill, one target; a screen reader hears whether it is on. */
+const ToggleRow = memo(function ToggleRow({ label, checked, onPress }: ToggleRowProps) {
   return (
     <Pressable
       accessibilityRole="switch"

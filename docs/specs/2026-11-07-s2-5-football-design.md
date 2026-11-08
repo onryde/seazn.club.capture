@@ -314,9 +314,13 @@ does not move. The first tap's payload is never changed after it is queued (a ch
 twice on the phone and stop the phone recognising the server's copy after a lost answer; the phone review's finding)
 (_the controller's_, 2026-11-08, from the owner's "what if [the server is] down for 2 mins"; no schema change). If play
 was really stopped while the Start waited, the phone cannot know; the next Pause re-anchors every screen. The resync carries the Start's own time moved on by its wait, never the
-screen's reading (which reads short once the server's copy has been fetched). It is not a scorer action: a running
-clock event within 2 s of the reading it re-anchors is hidden from History and the last-tap line, Undo skips it, and
-Undo of the Start voids both. If the app dies between the Start's acceptance and the resync, none is made, and other
+screen's reading (which reads short once the server's copy has been fetched). It is a clock correction, read the same
+on every screen whoever sent it (_the controller's_, 2026-11-08, fix rounds 1 and 2, superseding the rule that hid it
+and the paired Undo): a running clock event that follows a running one in the same period, with no Pause between, is a
+correction. History and the last-tap line say "Clock corrected" with its time, and Undo voids just it, leaving the
+Start under it. A Correct's own event reads the same, and so does a stopped clock event after a stopped one (a Correct
+while paused). No time is read to judge it, so the server's copies say the same as this phone's, after a cold start
+too. If the app dies between the Start's acceptance and the resync, none is made, and other
 screens are off by the wait until the next clock tap (_the controller's_, 2026-11-08).
 
 The anchor's `recorded_at` is the clock of the web server that wrote the event (`append-event.ts:418`), and each

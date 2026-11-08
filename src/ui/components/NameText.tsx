@@ -25,19 +25,7 @@ type NameTextProps = Omit<TextProps, 'children' | 'numberOfLines'> & {
  * with gaps still wraps at the letter there, unless the place gives a `floor` (`FittedName`).
  */
 export function NameText({ lines, floor, children, ...rest }: NameTextProps) {
-  if (isOneWord(children)) {
-    return (
-      <Text
-        {...rest}
-        numberOfLines={1}
-        ellipsizeMode="tail"
-        adjustsFontSizeToFit
-        minimumFontScale={layout.nameFloor}
-      >
-        {children}
-      </Text>
-    );
-  }
+  if (isOneWord(children)) return <OneWordName {...rest}>{children}</OneWordName>;
   if (floor === undefined) {
     return (
       <Text {...rest} numberOfLines={lines}>
@@ -45,31 +33,47 @@ export function NameText({ lines, floor, children, ...rest }: NameTextProps) {
       </Text>
     );
   }
+  // A place with other lines is a new place: the split its name was given before is forgotten (fix-round 2, N1).
   return (
-    <FittedName {...rest} lines={lines} floor={floor}>
+    <FittedName key={lines ?? 'uncapped'} {...rest} lines={lines} floor={floor}>
       {children}
     </FittedName>
   );
 }
 
+/** A name with no gap: one line, shrunk to fit down to `layout.nameFloor`, then an ellipsis. */
+function OneWordName({ children, ...rest }: Omit<NameTextProps, 'lines' | 'floor'>) {
+  return (
+    <Text
+      {...rest}
+      numberOfLines={1}
+      ellipsizeMode="tail"
+      adjustsFontSizeToFit
+      minimumFontScale={layout.nameFloor}
+    >
+      {children}
+    </Text>
+  );
+}
+
+type FittedNameProps = Omit<NameTextProps, 'floor'> & { readonly floor: number };
+
 /**
  * A name with gaps, shrunk to fit its lines down to `floor`, then an ellipsis. Android shrinks only while the lines
  * exceed the cap (RN 0.86.3 `TextLayoutManager.adjustSpannableFontToFit`), so a word wider than the line breaks at a
  * letter on two lines and is never shrunk. The phone's own lines say when it did (`onTextLayout`); the name is then set
- * on two lines at a gap (`splitInTwo`), where that word would make a third line, and the shrink takes it.
+ * on two lines at a gap (`splitInTwo`), where that word would make a third line, and the shrink takes it. Only in a
+ * place of two lines or more (the controller's fix-round 2 ruling, N1): in one line the hard break would be a second
+ * line Android shrinks to its 4 dp floor.
  */
-function FittedName({
-  lines,
-  floor,
-  children,
-  ...rest
-}: Omit<NameTextProps, 'floor'> & { readonly floor: number }) {
+function FittedName({ lines, floor, children, ...rest }: FittedNameProps) {
   const [brokeIn, setBrokeIn] = useState<string | null>(null);
+  const splits = lines !== undefined && lines >= 2;
   const laidOut = useCallback(
     (event: NativeSyntheticEvent<TextLayoutEventData>) => {
-      if (breaksInsideWord(event.nativeEvent.lines.map((line) => line.text))) setBrokeIn(children);
+      if (splits && breaksInsideWord(linesOf(event))) setBrokeIn(children);
     },
-    [children],
+    [children, splits],
   );
   return (
     <Text
@@ -84,3 +88,6 @@ function FittedName({
     </Text>
   );
 }
+
+const linesOf = (event: NativeSyntheticEvent<TextLayoutEventData>) =>
+  event.nativeEvent.lines.map((line) => line.text);

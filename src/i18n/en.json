@@ -942,7 +942,7 @@
   "scoring.football.last.start": "Match started",
   "scoring.football.last.clockStart": "Clock started{at}",
   "scoring.football.last.clockPause": "Clock paused{at}",
-  "scoring.football.last.clockCorrect": "Correct clock{at}",
+  "scoring.football.last.clockCorrected": "Clock corrected{at}",
   "scoring.football.last.goal": "Goal · {team}{who}{at}",
   "scoring.football.last.penaltyGoal": "Penalty goal · {team}{who}{at}",
   "scoring.football.last.ownGoal": "Goal · {team} · own goal{who}{at}",

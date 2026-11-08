@@ -81,7 +81,7 @@ const rowsOf = (fold: ReturnType<typeof folded>) =>
 const START_COPY = event(2, clock(true, at('H1', 0)), T + 120_000, PHONE_LINK);
 const RESYNC_COPY = event(3, RESYNC, T + 120_500, PHONE_LINK);
 
-const CORRECTED = 'scoring.football.last.clockCorrect';
+const CORRECTED = 'scoring.football.last.clockCorrected';
 
 describe('a resync is a clock correction (ruling I1)', () => {
   it('as the server’s copies: History shows the Start, then a correction, and the last-tap line is the correction', () => {

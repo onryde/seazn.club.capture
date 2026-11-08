@@ -767,9 +767,10 @@ The words for the football pad, its columns, the More sheet and the clock bar (`
 | Correct clock / Match clock          | Corregir el reloj / Reloj del partido                | Corriger le chrono / Chrono du match           | Klok corrigeren / Wedstrijdklok     | `more.correct`, `clock.said`.                              |
 | Rolling                              | Libres                                               | Libres                                         | Doorlopend                          | `rules.subsRolling`: a player who came off may go back on. |
 
-Revision, 2026-11-08 (fix round 1, the controller's ruling I1): `last.clockCorrect`, History's and the last-tap line's
-words for a clock correction (a Correct, or the resync after a late Start), reuses `more.correct`'s words with the
-clock's face after them, in all four languages; no new term.
+Revision, 2026-11-08 (fix round 2, the controller's ruling): `last.clockCorrected`, History's and the last-tap line's
+words for a clock correction (a Correct, or the resync after a late Start), is said as a record: "Clock corrected" /
+"Reloj corregido" / "Chrono corrigé" / "Klok gecorrigeerd", the clock's face after it. The button keeps `more.correct`'s
+words above. Drafts, not yet reviewed.
 
 ## App settings (2026-11-02)
 

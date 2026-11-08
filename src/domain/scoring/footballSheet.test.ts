@@ -262,6 +262,23 @@ describe('Sub, the kicks and More (design §6.3–§6.5)', () => {
     });
   });
 
+  it('More’s Sin-bin asks who was sent off, and a shot on target who took it, where the team has a sheet', () => {
+    expect(flowOf(footballChoose(MORE_FLOW, 'sinBin.second', LIVE, STAMP))).toEqual({
+      kind: 'sinBin',
+      side: 'second',
+      stamp: STAMP,
+      step: 'player',
+      person: null,
+    });
+    expect(flowOf(footballChoose(MORE_FLOW, 'shot.first', LIVE, STAMP))).toEqual({
+      kind: 'shot',
+      side: 'first',
+      stamp: STAMP,
+      step: 'taker',
+      taker: null,
+    });
+  });
+
   it('Correct and Match details are the hook’s; Back from sin-bin records at once', () => {
     expect(footballChoose(MORE_FLOW, 'correct', LIVE, STAMP)).toEqual({
       kind: 'other',
@@ -311,10 +328,18 @@ describe('with no team sheet (design §6.6)', () => {
     });
   });
 
-  it('Sub opens nothing, and a missed penalty goes straight to the outcome', () => {
+  it('Sub opens nothing; a missed penalty and a shot go straight to the outcome, a sin-bin to the reason', () => {
     expect(footballOpen('sub.first', BARE, STAMP)).toEqual({ kind: 'stay' });
     expect(flowOf(footballChoose(MORE_FLOW, 'penalty.first', BARE, STAMP))).toMatchObject({
       step: 'outcome',
+    });
+    expect(flowOf(footballChoose(MORE_FLOW, 'shot.first', BARE, STAMP))).toMatchObject({
+      kind: 'shot',
+      step: 'outcome',
+    });
+    expect(flowOf(footballChoose(MORE_FLOW, 'sinBin.first', BARE, STAMP))).toMatchObject({
+      kind: 'sinBin',
+      step: 'reason',
     });
   });
 });
