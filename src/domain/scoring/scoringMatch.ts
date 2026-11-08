@@ -16,6 +16,7 @@ import {
   landedSave,
   namedQueue,
   onBootSaveFailed,
+  onBootSaved,
   onSaveFailed,
   saveOf,
   savedOf,
@@ -215,6 +216,8 @@ function handle<S extends SportTypes>(
       return handled(onSaveFailed(landedSave(state), event.key, now));
     case 'bootSaveFailed':
       return handled(onBootSaveFailed(state));
+    case 'bootSaved':
+      return handled(onBootSaved(state));
     case 'say':
       return handled(part({ ...state, line: event.words }));
     case 'answerAsk':

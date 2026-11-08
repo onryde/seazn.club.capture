@@ -23,6 +23,7 @@ import { IconButton } from '@/ui/components/IconButton';
 import { LastTapLine } from '@/ui/components/LastTapLine';
 import { PadStateCard } from '@/ui/components/PadStateCard';
 import { PadStrip } from '@/ui/components/PadStrip';
+import { RefusalBanner } from '@/ui/components/RefusalBanner';
 import { ScoreHalf } from '@/ui/components/ScoreHalf';
 import { StartSides } from '@/ui/components/StartSides';
 import { SyncBadge } from '@/ui/components/SyncBadge';
@@ -91,7 +92,13 @@ export const PadContent = memo(function PadContent({
       {view.start === null ? (
         <PadBody view={view} flash={flash} onTap={actions.tapHalf} body={body} />
       ) : (
-        <StartPanel start={view.start} details={view.details} toss={toss} actions={actions} />
+        <StartPanel
+          start={view.start}
+          details={view.details}
+          toss={toss}
+          line={line}
+          actions={actions}
+        />
       )}
       <PadControls view={view} line={line} cardNote={cardNote} actions={actions} />
     </View>
@@ -230,17 +237,21 @@ function Halves({
  * serves first, then Start match, a tap and no hold (it is not destructive: Undo takes it back). It scrolls when it is
  * taller than the room. Start match is disabled, and says so, until a side is picked; a sport with no serve to pick
  * (`needsToss` false) has no question and no picker, and Start match is ready (plan S2-3 Task 2). Such a sport whose sides
- * carry plates shows the names with their plates as read-only rows (`StartSides`).
+ * carry plates shows the names with their plates as read-only rows (`StartSides`). A refusal on the pad's line (the
+ * serve pick the disk refused twice: S2-4 Batch 2 re-review N1) is said under Start match, since the pad's own line is
+ * not drawn before the start; a note is not news there.
  */
 const StartPanel = memo(function StartPanel({
   start,
   details,
   toss,
+  line,
   actions,
 }: {
   readonly start: PadStart<MessageKey>;
   readonly details: PadMatchDetails<MessageKey>;
   readonly toss: PadSide | null;
+  readonly line: PadLineWords;
   readonly actions: PadContentActions;
 }) {
   const { t } = useT();
@@ -264,6 +275,7 @@ const StartPanel = memo(function StartPanel({
         onPress={actions.start}
         disabled={start.needsToss && toss === null}
       />
+      {line?.kind === 'refusal' ? <RefusalBanner text={t(line.key)} /> : null}
     </ScrollView>
   );
 });

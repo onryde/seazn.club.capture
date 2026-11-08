@@ -188,6 +188,8 @@ export type MatchEvent<S extends SportTypes = SportTypes> =
   | { readonly kind: 'saveFailed'; readonly key: string | null }
   /** A save's boot cache could not be written (the queue's own outcome is `saved` or `saveFailed`). */
   | { readonly kind: 'bootSaveFailed' }
+  /** A save's boot cache was written: the scorer's pick and pending picks as that save held them are on disk. */
+  | { readonly kind: 'bootSaved' }
   | { readonly kind: 'say'; readonly words: PadLineWords }
   /** The scorer's answer to the reconnect question (`scoringMatchAsk.ts`): send the queued taps, or discard them. */
   | { readonly kind: 'answerAsk'; readonly answer: 'send' | 'discard' };

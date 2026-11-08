@@ -165,6 +165,31 @@ describe('the pad', () => {
     expect(model.line).toBeNull();
   });
 
+  // S2-4 Batch 2 re-review N1: the serve pick is kept in the boot cache; a disk that refuses it twice is said on the
+  // line, which the Start screen draws (PadContent.test.tsx), and a later save the disk takes clears it (N2).
+  it('a serve pick the disk refuses twice is said on the line before Start; a later pick it takes clears it', async () => {
+    const fakes = await rig();
+    const view = mount(fakes);
+    await flush();
+    // The disk refuses from here on: the match opened (and cached its bootstrap) before.
+    const saveBoot = vi
+      .spyOn(fakes.tapQueue, 'saveBoot')
+      .mockRejectedValueOnce(new Error('the disk refused'))
+      .mockRejectedValueOnce(new Error('the disk refused'));
+    act(() => pad(view.result.current).actions.pickServer('second'));
+    await flush();
+    expect(pad(view.result.current).view.start).not.toBeNull();
+    expect(pad(view.result.current).line).toEqual({
+      kind: 'refusal',
+      key: 'scoring.refusal.choiceNotSaved',
+    });
+    act(() => pad(view.result.current).actions.pickServer('first'));
+    await flush();
+    expect(saveBoot).toHaveBeenCalledTimes(3);
+    expect((await fakes.tapQueue.loadBoot(FIXTURE))?.toss).toBe('first');
+    expect(pad(view.result.current).line).toBeNull();
+  });
+
   it('a rally before the match has started is refused on the line, and nothing is sent', async () => {
     const fakes = await rig();
     const append = vi.spyOn(fakes.scoring, 'append');

@@ -167,7 +167,8 @@ export function createScoringRunner(ports: RunnerPorts, options: Options): Scori
 
   /**
    * A queue save is done: the reducer is told; a save of the caches alone only lets the screen show what it holds. A boot
-   * cache that was not written is told too: it holds the scorer's pick and pending picks (S2-4 Batch 2 fix round 1).
+   * cache is told too, written or not: it holds the scorer's pick and pending picks (S2-4 Batch 2 fix round 1), and a
+   * written one takes back a line that said they were not saved (re-review N2).
    */
   const landed = (effect: SaveEffect, ok: boolean, bootOk: boolean): void => {
     if (effect.queue !== null) {
@@ -175,7 +176,7 @@ export function createScoringRunner(ports: RunnerPorts, options: Options): Scori
     } else if (saver.unsettled() === 0 && state !== null && !stopped) {
       publish({ kind: 'ready', state });
     }
-    if (effect.boot !== null && !bootOk) dispatch({ kind: 'bootSaveFailed' });
+    if (effect.boot !== null) dispatch(bootOk ? { kind: 'bootSaved' } : { kind: 'bootSaveFailed' });
   };
   const saver = createSaver({ ports, fixtureId, landed });
   const reads = createReads({

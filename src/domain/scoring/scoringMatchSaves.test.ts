@@ -148,4 +148,35 @@ describe('a refused boot save', () => {
     const failed = step(ready({ judge: 'trust' }), { kind: 'bootSaveFailed' }, NOW);
     expect(savesOf(failed.effects)).toEqual([]);
   });
+
+  // Batch 2 re-review N1: the serve pick (badminton, table tennis, chess) is a choice of the scorer's on its own.
+  it('a serve pick held alone, no pending picks, refused twice, is said too', () => {
+    const tossed = step(ready({}, []), { kind: 'pickServer', side: 'second' }, NOW).state;
+    expect([tossed.toss, tossed.picks]).toEqual(['second', {}]);
+    const once = step(tossed, { kind: 'bootSaveFailed' }, NOW);
+    const twice = step(once.state, { kind: 'bootSaveFailed' }, NOW);
+    expect(twice.state.line).toEqual(NOT_SAVED);
+  });
+
+  // Batch 2 re-review N2: the line always says something true (AGENTS §6). A boot cache written after the line said the
+  // choice was not saved (a retry still queued behind a newer save, or a fresh pick on a disk that has recovered) means
+  // it is saved now, so the line goes.
+  it('said, a boot save that lands clears the line: the choice is saved now', () => {
+    const once = step(picked(), { kind: 'bootSaveFailed' }, NOW);
+    const twice = step(once.state, { kind: 'bootSaveFailed' }, NOW);
+    expect(twice.state.line).toEqual(NOT_SAVED);
+    const saved = step(twice.state, { kind: 'bootSaved' }, NOW);
+    expect(saved.state.line).toBeNull();
+    expect(savesOf(saved.effects)).toEqual([]);
+  });
+
+  it('a boot save that lands leaves any other line alone', () => {
+    const COUNTED = { kind: 'note', key: 'scoring.pad.countedOnce' } as const;
+    const NOT_NOW = { kind: 'refusal', key: 'scoring.refusal.notNow' } as const;
+    for (const words of [COUNTED, NOT_NOW]) {
+      const said = step(picked(), { kind: 'say', words }, NOW);
+      expect(step(said.state, { kind: 'bootSaved' }, NOW).state.line).toEqual(words);
+    }
+    expect(step(picked(), { kind: 'bootSaved' }, NOW).state.line).toBeNull();
+  });
 });

@@ -868,6 +868,26 @@ describe('a refused write of the pending picks', () => {
     expect((await fakes.tapQueue.loadBoot(FIXTURE))?.picks).not.toStrictEqual(PICKS);
     expect(lineOf(runner)).toEqual({ kind: 'refusal', key: 'scoring.refusal.choiceNotSaved' });
   });
+
+  // Batch 2 re-review N2: the line always says something true (AGENTS §6). Once the disk takes a later boot save, the
+  // choice is saved and "Couldn't save your choice" goes.
+  it('said, a later boot save that lands clears the line, the picks on disk', async () => {
+    const fakes = newFakes();
+    const { runner } = await rig(fakes);
+    const saveBoot = vi
+      .spyOn(fakes.tapQueue, 'saveBoot')
+      .mockRejectedValueOnce(new Error('the disk refused'))
+      .mockRejectedValueOnce(new Error('the disk refused'));
+    runner.dispatch({ kind: 'setPicks', picks: PICKS });
+    await flush();
+    expect(lineOf(runner)).toEqual({ kind: 'refusal', key: 'scoring.refusal.choiceNotSaved' });
+    const LATER = { ...PICKS, 'order.second': ['p-chen'] };
+    runner.dispatch({ kind: 'setPicks', picks: LATER });
+    await flush();
+    expect(saveBoot).toHaveBeenCalledTimes(3);
+    expect((await fakes.tapQueue.loadBoot(FIXTURE))?.picks).toStrictEqual(LATER);
+    expect(lineOf(runner)).toBeNull();
+  });
 });
 
 describe('stopping', () => {

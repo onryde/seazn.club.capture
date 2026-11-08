@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { badmintonPad, type BadmintonDisplay } from '@/domain/scoring/badmintonPad';
 import type { PadSide, PadStart, PadStartSide, PadView } from '@/domain/scoring/padView';
+import type { PadLineWords } from '@/hooks/padScreenModel';
 import type { MessageKey } from '@/i18n/messages';
 import dutch from '@/i18n/nl.json';
 import en from '@/i18n/en.json';
@@ -136,6 +137,50 @@ describe('PadContent: the Start screen of a sport with a serve pick', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'L. Chen' }));
     expect(pickServer.mock.calls).toEqual([['second']]);
     expect(start).not.toHaveBeenCalled();
+  });
+});
+
+// Batch 2 re-review N1: a serve pick the disk refused twice is said on the Start screen, where the scorer is; the pad's
+// line is not drawn there. A note ("Counted once") is no news before Start and stays off it.
+describe('PadContent: the Start screen says a pick that was not saved', () => {
+  function renderSaid(line: PadLineWords, needsToss = true) {
+    const { actions } = actionsOf();
+    renderWithPorts(
+      <PadContent
+        model={{
+          view: viewNeeding(needsToss),
+          line,
+          cardNote: null,
+          flash: null,
+          toss: 'first',
+          actions,
+        }}
+        covered={false}
+      />,
+    );
+  }
+
+  it('shows the refusal under Start match, in the operator’s words', () => {
+    renderSaid({ kind: 'refusal', key: 'scoring.refusal.choiceNotSaved' });
+    const refusal = within(screen.getByTestId('start-screen')).getByTestId('refusal');
+    expect(refusal.textContent).toBe(en['scoring.refusal.choiceNotSaved']);
+    expect(refusal.getAttribute('role')).toBe('alert');
+  });
+
+  it('shows it for a sport with no serve to pick as well', () => {
+    renderSaid({ kind: 'refusal', key: 'scoring.refusal.choiceNotSaved' }, false);
+    expect(screen.getByTestId('refusal').textContent).toBe(en['scoring.refusal.choiceNotSaved']);
+  });
+
+  it('shows nothing for no line', () => {
+    renderSaid(null);
+    expect(screen.queryByTestId('refusal')).toBeNull();
+  });
+
+  it('shows nothing for a note', () => {
+    renderSaid({ kind: 'note', key: 'scoring.pad.countedOnce' });
+    expect(screen.queryByTestId('refusal')).toBeNull();
+    expect(screen.queryByText(en['scoring.pad.countedOnce'])).toBeNull();
   });
 });
 

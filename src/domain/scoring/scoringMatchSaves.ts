@@ -49,6 +49,9 @@ function bootOf(state: MatchState): BootCache | null {
     : null;
 }
 
+/** The line a boot cache refused twice says, when it held a choice of the scorer's. */
+const CHOICE_NOT_SAVED = 'scoring.refusal.choiceNotSaved';
+
 /**
  * A save's boot cache did not land (S2-4 Batch 2 fix round 1; plan Review Focus 3): the scorer's pick and pending picks
  * would not outlive the app. It is saved again once, as the state holds it now. If that fails too, the line says so when
@@ -61,8 +64,18 @@ export function onBootSaveFailed<S extends SportTypes>(state: MatchState<S>): Pa
     return part({ ...state, bootOwed: 'retry' }, [again]);
   }
   const chose = state.toss !== null || Object.keys(state.picks).length > 0;
-  const line = chose ? refusalLine('scoring.refusal.choiceNotSaved') : state.line;
+  const line = chose ? refusalLine(CHOICE_NOT_SAVED) : state.line;
   return part({ ...state, bootOwed: 'said', line });
+}
+
+/**
+ * A save's boot cache was written (S2-4 Batch 2 re-review N2): the line always says something true (AGENTS §6), so a
+ * "Couldn't save your choice" said before it goes. Whichever save it was, a retry queued behind a newer one or a fresh
+ * pick on a disk that has recovered, the scorer's choice is on disk now. Any other line is left as it is.
+ */
+export function onBootSaved<S extends SportTypes>(state: MatchState<S>): Part<S> {
+  const said = state.line?.kind === 'refusal' && state.line.key === CHOICE_NOT_SAVED;
+  return part(said ? { ...state, line: null } : state);
 }
 
 /**
