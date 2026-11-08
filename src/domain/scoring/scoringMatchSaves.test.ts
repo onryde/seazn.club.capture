@@ -91,3 +91,61 @@ describe('the boot cache and the pending picks', () => {
     expect(savesOf(result.effects)).toEqual([]);
   });
 });
+
+// S2-4 Batch 2 fix round 1 (review M1): a boot cache that was not written is saved again once, as the state holds it
+// then; if that save fails too, the line says the scorer's choice was not saved. A cache of the bootstrap alone stays
+// quiet (it costs a reopen a network read, never a choice), and a boot save made anew starts the count again.
+describe('a refused boot save', () => {
+  const PICKS = { 'order.first': ['p-sharma'], 'bowler.i1.1': ['p-chen'] };
+  const NOT_SAVED = { kind: 'refusal', key: 'scoring.refusal.choiceNotSaved' };
+
+  function picked() {
+    return step(ready(), { kind: 'setPicks', picks: PICKS }, NOW).state;
+  }
+
+  it('is saved again once, with the picks held, and the line is left alone', () => {
+    const failed = step(picked(), { kind: 'bootSaveFailed' }, NOW);
+    expect(savesOf(failed.effects)).toEqual([
+      {
+        kind: 'save',
+        n: 2,
+        queue: null,
+        boot: { bootstrap: SINGLES, toss: null, picks: PICKS },
+        ledger: null,
+        tap: null,
+      },
+    ]);
+    expect(failed.state.line).toBeNull();
+    expect(failed.state.saving).toBe(0);
+  });
+
+  it('refused twice, it is not saved a third time and the line says the choice was not saved', () => {
+    const once = step(picked(), { kind: 'bootSaveFailed' }, NOW);
+    const twice = step(once.state, { kind: 'bootSaveFailed' }, NOW);
+    expect(savesOf(twice.effects)).toEqual([]);
+    expect(twice.state.line).toEqual(NOT_SAVED);
+  });
+
+  it('holding no choice of the scorer’s, refused twice it is quiet', () => {
+    const once = step(ready(), { kind: 'bootSaveFailed' }, NOW);
+    expect(savesOf(once.effects).map((save) => save.boot?.picks)).toEqual([{}]);
+    const twice = step(once.state, { kind: 'bootSaveFailed' }, NOW);
+    expect(twice.state.line).toBeNull();
+  });
+
+  it('a boot save made anew after a refusal starts again: one more refusal is saved again, not said', () => {
+    const once = step(picked(), { kind: 'bootSaveFailed' }, NOW);
+    const moved = step(once.state, { kind: 'setPicks', picks: { 'order.first': ['p-chen'] } }, NOW);
+    expect(savesOf(moved.effects).map((save) => save.boot?.picks)).toEqual([
+      { 'order.first': ['p-chen'] },
+    ]);
+    const again = step(moved.state, { kind: 'bootSaveFailed' }, NOW);
+    expect(savesOf(again.effects)).toHaveLength(1);
+    expect(again.state.line).toBeNull();
+  });
+
+  it('a sender with no screen keeps no boot cache: nothing is saved again', () => {
+    const failed = step(ready({ judge: 'trust' }), { kind: 'bootSaveFailed' }, NOW);
+    expect(savesOf(failed.effects)).toEqual([]);
+  });
+});

@@ -1,6 +1,6 @@
 import { matchLabelOf } from '@/domain/scoring/matchLabel';
 import { refusalLine } from '@/domain/scoring/padLine';
-import type { MatchQueue } from '@/domain/scoring/queue';
+import type { BootCache, MatchQueue } from '@/domain/scoring/queue';
 import type { Bootstrap } from '@/domain/scoring/wire';
 import type { SportTypes } from '@/domain/scoring/scoringSport';
 import {
@@ -28,10 +28,7 @@ export function saveOf(prev: MatchState, next: MatchState): Omit<SaveEffect, 'n'
   const bootMoved =
     prev.bootstrap !== next.bootstrap || prev.toss !== next.toss || prev.picks !== next.picks;
   const ledgerMoved = prev.sync.ledger !== next.sync.ledger;
-  const boot =
-    bootMoved && next.bootstrap !== null && next.judge === 'fold'
-      ? { bootstrap: next.bootstrap, toss: next.toss, picks: next.picks }
-      : null;
+  const boot = bootMoved ? bootOf(next) : null;
   if (!queueMoved && boot === null && !ledgerMoved) return null;
   const added = next.sync.queue.pending.find(
     (tap) => !prev.sync.queue.pending.some((before) => before.key === tap.key),
@@ -43,6 +40,29 @@ export function saveOf(prev: MatchState, next: MatchState): Omit<SaveEffect, 'n'
     ledger: ledgerMoved ? next.sync.ledger : null,
     tap: added?.key ?? null,
   };
+}
+
+/** The boot cache the state holds, while the pad folds the match: the bootstrap, the pick and the pending picks. */
+function bootOf(state: MatchState): BootCache | null {
+  return state.bootstrap !== null && state.judge === 'fold'
+    ? { bootstrap: state.bootstrap, toss: state.toss, picks: state.picks }
+    : null;
+}
+
+/**
+ * A save's boot cache did not land (S2-4 Batch 2 fix round 1; plan Review Focus 3): the scorer's pick and pending picks
+ * would not outlive the app. It is saved again once, as the state holds it now. If that fails too, the line says so when
+ * it held a choice of the scorer's; a cache of the bootstrap alone costs a reopen a network read, never a choice.
+ */
+export function onBootSaveFailed<S extends SportTypes>(state: MatchState<S>): Part<S> {
+  const boot = bootOf(state);
+  if (state.bootOwed === null && boot !== null) {
+    const again: Planned = { kind: 'save', queue: null, boot, ledger: null, tap: null };
+    return part({ ...state, bootOwed: 'retry' }, [again]);
+  }
+  const chose = state.toss !== null || Object.keys(state.picks).length > 0;
+  const line = chose ? refusalLine('scoring.refusal.choiceNotSaved') : state.line;
+  return part({ ...state, bootOwed: 'said', line });
 }
 
 /**

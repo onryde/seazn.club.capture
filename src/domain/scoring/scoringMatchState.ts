@@ -95,6 +95,12 @@ export type MatchState<S extends SportTypes = SportTypes> = {
   readonly undone: UndoneLine<S> | null;
   readonly line: PadLineWords;
   readonly saveOwed: SaveOwed | null;
+  /**
+   * The boot cache (the bootstrap, the pick and the pending picks) could not be written (S2-4 Batch 2 fix round 1):
+   * `retry`, it was saved again once; `said`, that save failed too, and the line says so when it held a choice of the
+   * scorer's. A boot save a later step makes anew clears it.
+   */
+  readonly bootOwed: 'retry' | 'said' | null;
   /** Queue saves asked for and not yet answered by `saved` or `saveFailed`: while any is out, nothing new is sent. */
   readonly saving: number;
   /** The number of the last save asked for (`MatchEffect` `save`): each is numbered, one after another from 1. */
@@ -180,6 +186,8 @@ export type MatchEvent<S extends SportTypes = SportTypes> =
   | { readonly kind: 'saved'; readonly n: number }
   /** A save failed: `key` is the tap it was to make durable, if any. */
   | { readonly kind: 'saveFailed'; readonly key: string | null }
+  /** A save's boot cache could not be written (the queue's own outcome is `saved` or `saveFailed`). */
+  | { readonly kind: 'bootSaveFailed' }
   | { readonly kind: 'say'; readonly words: PadLineWords }
   /** The scorer's answer to the reconnect question (`scoringMatchAsk.ts`): send the queued taps, or discard them. */
   | { readonly kind: 'answerAsk'; readonly answer: 'send' | 'discard' };

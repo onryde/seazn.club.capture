@@ -2,13 +2,13 @@ import type { EventEnvelope } from '@seazn/engine/core';
 import { doneOf } from '@/domain/scoring/cricketDone';
 import { rankOfOrdinal } from '@/domain/scoring/cricketTurn';
 import type {
-  CricketBallTap,
+  CricketBallSeen,
   CricketEventKey,
   CricketOrdinal,
   CricketPadKey,
   CricketSide,
-  CricketTap,
-  CricketWicketTap,
+  CricketSeenTap,
+  CricketWicketSeen,
 } from '@/domain/scoring/cricketTypes';
 import type { PadHistoryGroup, PadHistoryRow, PadSide, PadText } from '@/domain/scoring/padView';
 import type { Seats } from '@/domain/scoring/setBasedSides';
@@ -92,7 +92,8 @@ export const EVENT_WORDS: Readonly<Record<CricketWordedType, CricketEventKey>> =
 const WORDED = Object.keys(EVENT_WORDS) as readonly CricketWordedType[];
 
 /** What an event did as History says it: the tap that made it, else its type's own words. */
-export type CricketDone = CricketTap | { readonly kind: 'event'; readonly type: CricketWordedType };
+export type CricketDone =
+  CricketSeenTap | { readonly kind: 'event'; readonly type: CricketWordedType };
 
 /** What an event did, or null for one with no row (a void, or a type no cricket ledger holds). */
 export function historyDoneOf(envelope: EventEnvelope, seats: Seats): CricketDone | null {
@@ -147,7 +148,7 @@ export function doneSaid(did: CricketDone, words: CricketWords): Text {
 }
 
 /** The line after an Undo took a tap back: "Undone — " and the tap in its own words. */
-export const undoneSaid = (tap: CricketTap, words: CricketWords): Text => ({
+export const undoneSaid = (tap: CricketSeenTap, words: CricketWords): Text => ({
   key: 'scoring.cricket.last.undone',
   vars: { what: doneSaid(tap, words) },
 });
@@ -156,7 +157,7 @@ export const undoneSaid = (tap: CricketTap, words: CricketWords): Text => ({
  * A ball: its extra with the runs it added ("3 wides"), the runs off the bat ("2 runs", "Four" on the 4 key), the
  * dismissal, in that order and joined; a ball with none of them is a dot.
  */
-function ballSaid(ball: CricketBallTap, words: CricketWords): Text {
+function ballSaid(ball: CricketBallSeen, words: CricketWords): Text {
   const parts: Text[] = [
     ...(ball.extra === null
       ? []
@@ -174,14 +175,14 @@ function ballSaid(ball: CricketBallTap, words: CricketWords): Text {
   );
 }
 
-function batSaid(ball: CricketBallTap): readonly Text[] {
+function batSaid(ball: CricketBallSeen): readonly Text[] {
   if (ball.boundary === 4) return [{ key: 'scoring.cricket.ball.four' }];
   if (ball.boundary === 6) return [{ key: 'scoring.cricket.ball.six' }];
   return ball.bat === 0 ? [] : [{ key: 'scoring.cricket.ball.runs.other', count: ball.bat }];
 }
 
 /** "Home Player 1 out · caught (Away Player 5)": the batter, how, and the fielders a run out names thrower first. */
-function outSaid(wicket: CricketWicketTap, words: CricketWords): Text {
+function outSaid(wicket: CricketWicketSeen, words: CricketWords): Text {
   const kind: Text = { key: `scoring.cricket.out.kind.${wicket.kind}` };
   return {
     key: 'scoring.cricket.out',
@@ -189,7 +190,7 @@ function outSaid(wicket: CricketWicketTap, words: CricketWords): Text {
   };
 }
 
-function howSaid(kind: Text, wicket: CricketWicketTap, words: CricketWords): Text {
+function howSaid(kind: Text, wicket: CricketWicketSeen, words: CricketWords): Text {
   const { fielder, fielderAssist } = wicket;
   if (fielder === null) return kind;
   if (fielderAssist === null) {
@@ -206,7 +207,7 @@ function howSaid(kind: Text, wicket: CricketWicketTap, words: CricketWords): Tex
 
 /** Over totals: the innings' running total and its overs as a scorebook writes them ("14/1 (2 ov)", "9/0 (1.5 ov)"). */
 function summarySaid(
-  did: Extract<CricketTap, { readonly kind: 'summary' }>,
+  did: Extract<CricketSeenTap, { readonly kind: 'summary' }>,
   words: CricketWords,
 ): Text {
   return {

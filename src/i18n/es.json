@@ -354,6 +354,7 @@
   "scoring.refusal.notCounted": "No registrado: el partido ha avanzado.",
   "scoring.refusal.notSaved": "No registrado: este móvil no pudo guardarlo. Toca de nuevo.",
   "scoring.refusal.savePending": "No se pudo guardar en este móvil: reintentando.",
+  "scoring.refusal.choiceNotSaved": "No se pudo guardar tu elección en este móvil.",
   "scoring.card.notStarted.title": "Aún no ha empezado",
   "scoring.card.notStarted.body": "El organizador todavía no ha iniciado esta división. Esta pantalla se actualiza sola.",
   "scoring.card.resultRecorded.title": "Resultado registrado",

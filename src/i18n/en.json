@@ -354,6 +354,7 @@
   "scoring.refusal.notCounted": "Not recorded — the match has moved on.",
   "scoring.refusal.notSaved": "Not recorded — this phone couldn't save it. Tap again.",
   "scoring.refusal.savePending": "Couldn't save on this phone — retrying.",
+  "scoring.refusal.choiceNotSaved": "Couldn't save your choice on this phone.",
   "scoring.card.notStarted.title": "Not started yet",
   "scoring.card.notStarted.body": "The organiser hasn't started this division yet. This screen updates on its own.",
   "scoring.card.resultRecorded.title": "Result recorded",

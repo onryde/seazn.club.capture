@@ -19,30 +19,48 @@ import type { PadSide } from '@/domain/scoring/padView';
 // Taps
 // ---------------------------------------------------------------------------------------------------------------
 
-/** How a batter is out, in the engine's own words (`CricketWicket.kind`). */
+/** How a batter is out, in the engine's own words (`CricketWicket.kind`): what a ledger ball may say, the console's too. */
 export type CricketWicketKind = NonNullable<CricketBallEv['wicket']>['kind'];
+
+/**
+ * How a batter is out on a ball the pad records (spec §4.3): never retired or timed out. Recorded on a ball, each adds a
+ * legal ball none bowled; retirement is More's Retire (`cricket.retire`, no ball), and timed out is open (§11). The web's
+ * console keeps both on a ball, so a ball on the ledger may still say either (`CricketWicketSeen`).
+ */
+export type CricketBallWicketKind = Exclude<CricketWicketKind, 'retired' | 'timedout'>;
 
 /** An extra, in the engine's own words: its kind, and the runs it adds (a wide's own run included). */
 export type CricketExtra = NonNullable<CricketBallEv['runs']['extras']>;
 
 /** A dismissal on a ball: how, who, the fielder and a second one (a run out's), and who walks in. */
-export type CricketWicketTap = {
-  readonly kind: CricketWicketKind;
+type WicketOf<K extends CricketWicketKind> = {
+  readonly kind: K;
   readonly out: string;
   readonly fielder: string | null;
   readonly fielderAssist: string | null;
   readonly incoming: string | null;
 };
 
+/** A dismissal the pad records on a ball: never retired or timed out. */
+export type CricketWicketTap = WicketOf<CricketBallWicketKind>;
+
+/** A dismissal on a ball as the ledger holds it: any kind the engine takes, the console's retired and timed out too. */
+export type CricketWicketSeen = WicketOf<CricketWicketKind>;
+
 /**
  * One delivery as the scorer taps it: runs off the bat, one extra or none, a boundary (the 4 and 6 keys, ruling 73), a
  * dismissal or none. Who bats and bowls is the display's (its crease and its bowler), never the tap's.
  */
-export type CricketBallTap = {
+export type CricketBallTap = BallOf<CricketWicketTap>;
+
+/** A delivery as the ledger holds it, whoever recorded it: its dismissal may be any kind the engine takes. */
+export type CricketBallSeen = BallOf<CricketWicketSeen>;
+
+type BallOf<W> = {
   readonly bat: number;
   readonly extra: CricketExtra | null;
   readonly boundary: 4 | 6 | null;
-  readonly wicket: CricketWicketTap | null;
+  readonly wicket: W | null;
 };
 
 /** The event types More records (spec §4.8): each with the engine's own payload. */
@@ -87,12 +105,20 @@ export type CricketTap =
       readonly reason: CricketChangeReason | null;
     };
 
+/**
+ * What an event on the ledger did, as the pad names it: the tap that records it, with a ball as the ledger holds it (a
+ * console's ball may be out retired or timed out, which the pad never records).
+ */
+export type CricketSeenTap =
+  | Exclude<CricketTap, { readonly kind: 'ball' }>
+  | { readonly kind: 'ball'; readonly ball: CricketBallSeen };
+
 /** A tap Undo names once it is taken back: any but the toss and the start, whose Undo returns to the screen before them. */
-export type CricketUndoneTap = Exclude<CricketTap, { readonly kind: 'toss' | 'start' }>;
+export type CricketUndoneTap = Exclude<CricketSeenTap, { readonly kind: 'toss' | 'start' }>;
 
 /** What the last tap did (the tap that recorded it), or the tap Undo took back. */
 export type CricketLastTap =
-  CricketTap | { readonly kind: 'undone'; readonly tap: CricketUndoneTap };
+  CricketSeenTap | { readonly kind: 'undone'; readonly tap: CricketUndoneTap };
 
 // ---------------------------------------------------------------------------------------------------------------
 // The display
@@ -192,6 +218,11 @@ export type CricketDisplay = {
   readonly state: CricketState;
   /** The over under way (counted from 1) and its deliveries. */
   readonly over: { readonly number: number; readonly chips: readonly OverChip[] };
+  /**
+   * The deliveries bowled in the innings now, legal and illegal (0 before it opens). A hand swap is keyed to the next of
+   * them, so any delivery, a wide or a no-ball included, uses it up (the controller's ruling, Batch 2 fix round 1).
+   */
+  readonly deliveries: number;
   /** The next ball is a free hit (the engine's: a no-ball before it). */
   readonly freeHit: boolean;
   /** What the next ball cannot go without: the openers of an innings not yet opened, or the bowler of an over due. */

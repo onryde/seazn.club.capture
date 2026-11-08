@@ -354,6 +354,7 @@
   "scoring.refusal.notCounted": "Niet vastgelegd: de wedstrijd is al verder.",
   "scoring.refusal.notSaved": "Niet vastgelegd: opslaan mislukt. Tik opnieuw.",
   "scoring.refusal.savePending": "Opslaan op deze telefoon mislukt: nieuwe poging.",
+  "scoring.refusal.choiceNotSaved": "Keuze niet opgeslagen op deze telefoon.",
   "scoring.card.notStarted.title": "Nog niet begonnen",
   "scoring.card.notStarted.body": "De organisator heeft deze divisie nog niet gestart. Dit scherm werkt zichzelf bij.",
   "scoring.card.resultRecorded.title": "Resultaat vastgelegd",

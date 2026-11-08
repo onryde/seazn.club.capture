@@ -89,6 +89,24 @@ describe('withPick', () => {
     expect(displayOf(DOT_ONE, twice).crease?.striker.id).toBe(H(1));
   });
 
+  // The controller's ruling (Batch 2 fix round 1): keyed to the deliveries, a wide counts though no legal ball moved.
+  it('a swap after a wide is keyed to the delivery count, not the legal balls', () => {
+    const wide = [
+      ...DOT_ONE,
+      ball({
+        over: 0,
+        ballInOver: 2,
+        striker: H(1),
+        nonStriker: H(2),
+        bowler: A(11),
+        extras: { kind: 'wide', runs: 1 },
+      }),
+    ];
+    expect(withPick(NO_PICKS, displayOf(wide), { kind: 'swap' })).toStrictEqual({
+      'swap.i1.2': [H(2), H(1)],
+    });
+  });
+
   it('writes a super over’s replacement for its innings', () => {
     const out = displayOf([...TIED_KO, ...superOverOf('A', H(11), [{ out: true }])]);
     expect(withPick(NO_PICKS, out, { kind: 'incoming', batter: A(3) })).toStrictEqual({

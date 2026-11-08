@@ -15,6 +15,7 @@ import {
 import {
   landedSave,
   namedQueue,
+  onBootSaveFailed,
   onSaveFailed,
   saveOf,
   savedOf,
@@ -86,6 +87,7 @@ export function openMatch<S extends SportTypes>(held: MatchHeld<S>, now: number)
     undone: null,
     line: null,
     saveOwed: null,
+    bootOwed: null,
     saving: 0,
     saveSeq: 0,
     bootstrapAskedAt: null,
@@ -134,8 +136,10 @@ export function step<S extends SportTypes>(
   const planned = [...(save === null ? [] : [save]), ...result.effects, ...settled.effects];
   const { effects, last } = numbered(planned, final.saveSeq, final.bootstrap);
   const owed = effects.filter((effect) => effect.kind === 'save' && effect.queue !== null).length;
+  // A boot cache saved anew (the bootstrap, the pick or the picks moved) carries what a failed one did not.
+  const bootOwed = save !== null && save.boot !== null ? null : final.bootOwed;
   return {
-    state: { ...final, saving: final.saving + owed, saveSeq: last },
+    state: { ...final, saving: final.saving + owed, saveSeq: last, bootOwed },
     effects,
     outcome: result.outcome,
   };
@@ -209,6 +213,8 @@ function handle<S extends SportTypes>(
       return handled(part(savedOf(landedSave(state), event.n)));
     case 'saveFailed':
       return handled(onSaveFailed(landedSave(state), event.key, now));
+    case 'bootSaveFailed':
+      return handled(onBootSaveFailed(state));
     case 'say':
       return handled(part({ ...state, line: event.words }));
     case 'answerAsk':

@@ -230,6 +230,28 @@ describe('a ball', () => {
     });
   });
 
+  // The controller's ruling (Batch 2 fix round 1): a swap is keyed to the innings' deliveries, legal and illegal, so the
+  // delivery after it, whatever it is, uses it up. Each delivery below has one run run, so the batters cross: the ball
+  // after it is the fold's pair, H-p1 on strike, and never the swap again (a legal-ball key reversed it twice).
+  it.each([
+    ['a wide with one run run', { extra: { kind: 'wide', runs: 2 } }],
+    ['a no-ball with 1 off the bat', { bat: 1, extra: { kind: 'noball', runs: 1 } }],
+    ['a legal single', { bat: 1 }],
+  ] as const)('a swap, then %s: the next ball is reversed once only', (_, delivery) => {
+    const dot = ball({ over: 0, ballInOver: 1, striker: H(1), nonStriker: H(2), bowler: A(11) });
+    const specs = [...OPENING, dot];
+    const picks = { 'swap.i1.1': [H(2), H(1)] };
+    const swapped = eventOf(specs, tapOf(delivery), picks);
+    expect(payloadOf(swapped)).toMatchObject({ striker: H(2), nonStriker: H(1) });
+    expect(taken(specs, swapped, picks)).toBe(true);
+    const next = [...specs, { type: 'cricket.ball', payload: payloadOf(swapped) }];
+    expect(displayOf(next, picks).deliveries).toBe(2);
+    expect(payloadOf(eventOf(next, tapOf({}), picks))).toMatchObject({
+      striker: H(1),
+      nonStriker: H(2),
+    });
+  });
+
   it('a ball is no event while the openers or the bowler are not known', () => {
     expect(eventOf([], tapOf({}))).toBeNull();
     expect(eventOf(OPENING, tapOf({}))).toBeNull();

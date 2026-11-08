@@ -1,6 +1,12 @@
 import { describe, expectTypeOf, it } from 'vitest';
 import type { CricketBoardView } from '@/domain/scoring/cricketPad';
-import type { CricketPadKey, CricketTap } from '@/domain/scoring/cricketTypes';
+import type {
+  CricketBallTap,
+  CricketPadKey,
+  CricketTap,
+  CricketWicketSeen,
+  CricketWicketTap,
+} from '@/domain/scoring/cricketTypes';
 import type { PadView } from '@/domain/scoring/padView';
 import type { PendingPicks } from '@/domain/scoring/pendingPicks';
 import type { PadActions } from '@/hooks/padScreenModel';
@@ -41,5 +47,45 @@ describe('cricket’s pad', () => {
     expectTypeOf<
       Extract<ReturnType<typeof useCricketMatch>, { kind: 'pad' }>
     >().toEqualTypeOf<CricketPadModel>();
+  });
+});
+
+// Spec §4.3: retired and timed out are never recorded on a ball by the pad (each adds a legal ball none bowled), while a
+// ball on the ledger, the web console's, may say either. The kinds are written out, not read from the code under test.
+describe('a wicket on a ball', () => {
+  it('the pad records the eight kinds a ball may carry, never retired or timed out', () => {
+    expectTypeOf<CricketWicketTap['kind']>().toEqualTypeOf<
+      | 'bowled'
+      | 'caught'
+      | 'hitballtwice'
+      | 'hitwicket'
+      | 'lbw'
+      | 'obstructed'
+      | 'runout'
+      | 'stumped'
+    >();
+    expectTypeOf<{ kind: 'retired' }>().not.toExtend<Pick<CricketWicketTap, 'kind'>>();
+    expectTypeOf<{ kind: 'timedout' }>().not.toExtend<Pick<CricketWicketTap, 'kind'>>();
+  });
+
+  it('a ball the pad records carries only those, and record takes nothing wider', () => {
+    expectTypeOf<NonNullable<CricketBallTap['wicket']>>().toEqualTypeOf<CricketWicketTap>();
+    expectTypeOf<CricketWicketSeen>().not.toExtend<CricketWicketTap>();
+    expectTypeOf<Parameters<CricketPadActions['record']>[0]>().toEqualTypeOf<CricketTap>();
+  });
+
+  it('a ball on the ledger may say any of the ten the engine takes', () => {
+    expectTypeOf<CricketWicketSeen['kind']>().toEqualTypeOf<
+      | 'bowled'
+      | 'caught'
+      | 'hitballtwice'
+      | 'hitwicket'
+      | 'lbw'
+      | 'obstructed'
+      | 'retired'
+      | 'runout'
+      | 'stumped'
+      | 'timedout'
+    >();
   });
 });

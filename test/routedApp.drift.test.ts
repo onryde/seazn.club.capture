@@ -298,6 +298,10 @@ describe('every path the navigation moves to has its route file, and each Settin
       'src/ui/screens/ChessPadScreen.tsx',
       // The tie-break sheet's steps (S2-3b): a sport's screen file that is no pad, so it must not mount KeepScreenOn.
       'src/ui/screens/ChessTiebreakView.tsx',
+      'src/ui/screens/CricketMatchScreen.tsx',
+      'src/ui/screens/CricketPadScreen.tsx',
+      // The board in the pad's halves' place (S2-4 Task 8): a sport's screen file that is no pad, as the tie-break view.
+      'src/ui/screens/CricketBoard.tsx',
     ]);
   });
 

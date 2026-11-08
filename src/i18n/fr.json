@@ -354,6 +354,7 @@
   "scoring.refusal.notCounted": "Non enregistré\u00a0: le match a avancé.",
   "scoring.refusal.notSaved": "Non enregistré\u00a0: sauvegarde impossible. Touchez de nouveau.",
   "scoring.refusal.savePending": "Enregistrement impossible sur ce téléphone\u00a0: nouvel essai.",
+  "scoring.refusal.choiceNotSaved": "Impossible d'enregistrer votre choix sur ce téléphone.",
   "scoring.card.notStarted.title": "Pas encore commencé",
   "scoring.card.notStarted.body": "L'organisateur n'a pas encore démarré cette division. Cet écran se met à jour tout seul.",
   "scoring.card.resultRecorded.title": "Résultat enregistré",

@@ -833,6 +833,43 @@ describe('caches', () => {
   });
 });
 
+// S2-4 Batch 2 fix round 1 (review M1): the pending picks live in the boot cache, so a refused write of it is saved
+// again once, and said on the line when that is refused too; picks kept in memory alone would not outlive the app.
+describe('a refused write of the pending picks', () => {
+  const PICKS = { 'order.first': ['p-sharma'], 'bowler.i1.1': ['p-chen'] };
+  const lineOf = (runner: ScoringRunner) => {
+    const snapshot = runner.snapshot();
+    return snapshot.kind === 'ready' ? snapshot.state.line : 'not ready';
+  };
+
+  it('refused once, is saved again and lands: the picks are on disk and the line says nothing', async () => {
+    const fakes = newFakes();
+    const { runner } = await rig(fakes);
+    const saveBoot = vi
+      .spyOn(fakes.tapQueue, 'saveBoot')
+      .mockRejectedValueOnce(new Error('the disk refused'));
+    runner.dispatch({ kind: 'setPicks', picks: PICKS });
+    await flush();
+    expect(saveBoot).toHaveBeenCalledTimes(2);
+    expect((await fakes.tapQueue.loadBoot(FIXTURE))?.picks).toStrictEqual(PICKS);
+    expect(lineOf(runner)).toBeNull();
+  });
+
+  it('refused twice, is not tried a third time and the line says the choice was not saved', async () => {
+    const fakes = newFakes();
+    const { runner } = await rig(fakes);
+    const saveBoot = vi
+      .spyOn(fakes.tapQueue, 'saveBoot')
+      .mockRejectedValueOnce(new Error('the disk refused'))
+      .mockRejectedValueOnce(new Error('the disk refused'));
+    runner.dispatch({ kind: 'setPicks', picks: PICKS });
+    await flush();
+    expect(saveBoot).toHaveBeenCalledTimes(2);
+    expect((await fakes.tapQueue.loadBoot(FIXTURE))?.picks).not.toStrictEqual(PICKS);
+    expect(lineOf(runner)).toEqual({ kind: 'refusal', key: 'scoring.refusal.choiceNotSaved' });
+  });
+});
+
 describe('stopping', () => {
   it('waits for the saves already made, then sends nothing and hears nothing', async () => {
     const fakes = newFakes();

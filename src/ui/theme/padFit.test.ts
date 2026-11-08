@@ -389,9 +389,10 @@ describe('the last-tap line', () => {
     );
 
   // Fifteen since S2-1 Task 7 added the start with no named server ("Match started"); eighteen since Task 9 added three
-  // refusals the hook says: the match moved on, this phone could not save the tap, and the save is being retried.
-  it('reads eighteen sentences in each language (anti-vacuity)', () => {
-    for (const [, dictionary] of LANGUAGES) expect(sentences(dictionary)).toHaveLength(18);
+  // refusals the hook says: the match moved on, this phone could not save the tap, and the save is being retried;
+  // nineteen since S2-4 Batch 2 fix round 1 added the scorer's choice that could not be saved.
+  it('reads nineteen sentences in each language (anti-vacuity)', () => {
+    for (const [, dictionary] of LANGUAGES) expect(sentences(dictionary)).toHaveLength(19);
   });
 
   it('holds every sentence and refusal whole at 360, in four languages', () => {

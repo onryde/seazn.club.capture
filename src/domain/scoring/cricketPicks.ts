@@ -4,7 +4,6 @@ import {
   type CricketState,
 } from '@seazn/engine/sports/cricket';
 import {
-  legalBallsOf,
   ordinalOf,
   otherSide,
   overOf,
@@ -55,15 +54,24 @@ export const openersKey = (ordinal: CricketOrdinal): string => `openers.${ordina
 export const bowlerKey = (ordinal: CricketOrdinal, over: number): string =>
   `bowler.${ordinal}.${over}`;
 export const incomingKey = (ordinal: CricketOrdinal): string => `incoming.${ordinal}`;
-export const swapKey = (ordinal: CricketOrdinal, legalBalls: number): string =>
-  `swap.${ordinal}.${legalBalls}`;
+/**
+ * A hand swap's key: the innings and the count of its deliveries, legal and illegal, before the ball it reverses. Not
+ * the legal balls: a wide or a no-ball does not move them, so a swap keyed by them would reverse the ball after it too,
+ * when the batters may have crossed (the controller's ruling, Batch 2 fix round 1).
+ */
+export const swapKey = (ordinal: CricketOrdinal, deliveries: number): string =>
+  `swap.${ordinal}.${deliveries}`;
 
 /** The picks that apply to the display's next ball (`picksAt` on the display's own fold). */
 export const picksFor = (picks: PendingPicks, display: CricketDisplay): CricketPicksNow =>
-  picksAt(picks, display.state);
+  picksAt(picks, display.state, display.deliveries);
 
-/** The picks that apply to the next ball of the folded match. */
-export function picksAt(picks: PendingPicks, state: CricketState): CricketPicksNow {
+/** The picks that apply to the next ball of the folded match, `deliveries` into the innings now. */
+export function picksAt(
+  picks: PendingPicks,
+  state: CricketState,
+  deliveries: number,
+): CricketPicksNow {
   const order = {
     first: mergedOrder(picks[orderKey('first')], state.orders.home),
     second: mergedOrder(picks[orderKey('second')], state.orders.away),
@@ -79,7 +87,7 @@ export function picksAt(picks: PendingPicks, state: CricketState): CricketPicksN
       bowlersAllowed(state, turn),
     ),
     incoming: oneIn(picks[incomingKey(ordinal)], incomingAllowed(state, turn)),
-    swap: swapOf(picks[swapKey(ordinal, legalBallsOf(turn))], turn),
+    swap: swapOf(picks[swapKey(ordinal, deliveries)], turn),
   };
 }
 
@@ -157,7 +165,7 @@ export function withPick(
   pick: CricketPick,
 ): PendingPicks {
   const turn = turnOf(display.state);
-  const kept = turn === null ? picks : withoutPast(picks, turn, display.state.cfg.ballsPerOver);
+  const kept = turn === null ? picks : withoutPast(picks, turn, display);
   const entry = entryOf(pick, display, turn);
   return entry === null ? kept : { ...kept, [entry.key]: entry.ids };
 }
@@ -182,37 +190,41 @@ function entryOf(
     case 'incoming':
       return { key: incomingKey(ordinal), ids: [pick.batter] };
     case 'swap':
-      return swapEntry(display, ordinal, legalBallsOf(turn));
+      return swapEntry(display, ordinal, display.deliveries);
   }
 }
 
 function swapEntry(
   display: CricketDisplay,
   ordinal: CricketOrdinal,
-  legalBalls: number,
+  deliveries: number,
 ): Entry | null {
   const { crease } = display;
   if (crease === null) return null;
-  return { key: swapKey(ordinal, legalBalls), ids: [crease.nonStriker.id, crease.striker.id] };
+  return { key: swapKey(ordinal, deliveries), ids: [crease.nonStriker.id, crease.striker.id] };
 }
 
 /** An innings's place in the match's order: the main innings, then the super over's. */
-/** The picks without those of an innings before the turn's, or of an over or a ball already bowled in it. */
-function withoutPast(picks: PendingPicks, turn: CricketTurn, ballsPerOver: number): PendingPicks {
+/** The picks without those of an innings before the turn's, or of an over or a delivery already bowled in it. */
+function withoutPast(
+  picks: PendingPicks,
+  turn: CricketTurn,
+  display: CricketDisplay,
+): PendingPicks {
   const now = rankOfOrdinal(ordinalOf(turn)) ?? 0;
-  const over = overOf(turn, ballsPerOver);
-  const legal = legalBallsOf(turn);
+  const over = overOf(turn, display.state.cfg.ballsPerOver);
+  const { deliveries } = display;
   return Object.fromEntries(
-    Object.entries(picks).filter(([key]) => !isPast(key, now, over, legal)),
+    Object.entries(picks).filter(([key]) => !isPast(key, now, over, deliveries)),
   );
 }
 
-function isPast(key: string, now: number, over: number, legal: number): boolean {
+function isPast(key: string, now: number, over: number, deliveries: number): boolean {
   const [kind, ordinal, at] = key.split('.');
   // An order's key names a side, not an innings (`order.first`): it has no rank, and is never past.
   const rank = ordinal === undefined ? null : rankOfOrdinal(ordinal);
   if (rank === null) return false;
   if (rank !== now) return rank < now;
   if (kind === 'bowler') return Number(at) < over;
-  return kind === 'swap' && Number(at) < legal;
+  return kind === 'swap' && Number(at) < deliveries;
 }

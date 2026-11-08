@@ -8,9 +8,9 @@ import {
   type CricketBallEv,
 } from '@seazn/engine/sports/cricket';
 import type {
-  CricketBallTap,
+  CricketBallSeen,
   CricketMoreType,
-  CricketTap,
+  CricketSeenTap,
   CricketUndoneTap,
 } from '@/domain/scoring/cricketTypes';
 import type { PadSide } from '@/domain/scoring/padView';
@@ -40,7 +40,7 @@ export const MORE_TYPES: readonly CricketMoreType[] = [
 ];
 
 /** What an event did, as the tap that records it; null for one no tap of the pad's makes. */
-export function doneOf(envelope: EventEnvelope, seats: Seats): CricketTap | null {
+export function doneOf(envelope: EventEnvelope, seats: Seats): CricketSeenTap | null {
   const { type, payload } = envelope;
   if (type === 'core.start') return { kind: 'start' };
   if (type === 'cricket.toss') return tossDone(payload, seats);
@@ -52,20 +52,20 @@ export function doneOf(envelope: EventEnvelope, seats: Seats): CricketTap | null
   return more === undefined ? null : { kind: 'more', type: more, payload };
 }
 
-function tossDone(payload: unknown, seats: Seats): CricketTap | null {
+function tossDone(payload: unknown, seats: Seats): CricketSeenTap | null {
   const toss = CricketToss.safeParse(payload);
   if (!toss.success) return null;
   const wonBy = sideOfEntrant(seats, toss.data.wonBy);
   return wonBy === null ? null : { kind: 'toss', wonBy, elected: toss.data.elected };
 }
 
-function ballDone(payload: unknown): CricketTap | null {
+function ballDone(payload: unknown): CricketSeenTap | null {
   const ball = CricketBall.safeParse(payload);
-  return ball.success ? { kind: 'ball', ball: ballTapOf(ball.data) } : null;
+  return ball.success ? { kind: 'ball', ball: ballSeenOf(ball.data) } : null;
 }
 
-/** A ball's payload as the tap: who bats and bowls is the display's, so only what happened on it. */
-export function ballTapOf(ball: CricketBallEv): CricketBallTap {
+/** A ball's payload as the ledger holds it: who bats and bowls is the display's, so only what happened on it. */
+export function ballSeenOf(ball: CricketBallEv): CricketBallSeen {
   const { wicket } = ball;
   return {
     bat: ball.runs.bat,
@@ -84,21 +84,21 @@ export function ballTapOf(ball: CricketBallEv): CricketBallTap {
   };
 }
 
-function summaryDone(payload: unknown): CricketTap | null {
+function summaryDone(payload: unknown): CricketSeenTap | null {
   const summary = CricketInningsSummary.safeParse(payload);
   if (!summary.success) return null;
   const { runs, wickets, legalBalls } = summary.data;
   return { kind: 'summary', runs, wickets, legalBalls };
 }
 
-function retireDone(payload: unknown): CricketTap | null {
+function retireDone(payload: unknown): CricketSeenTap | null {
   const retire = CricketRetire.safeParse(payload);
   if (!retire.success) return null;
   const { person, reason, incoming } = retire.data;
   return { kind: 'retire', person, reason, incoming: incoming ?? null };
 }
 
-function changeDone(payload: unknown): CricketTap | null {
+function changeDone(payload: unknown): CricketSeenTap | null {
   const change = CricketBowlerChange.safeParse(payload);
   if (!change.success) return null;
   return { kind: 'bowlerChange', bowler: change.data.bowler, reason: change.data.reason ?? null };
@@ -110,7 +110,7 @@ const sideOfEntrant = (seats: Seats, entrantId: string): PadSide | null => {
 };
 
 /** The tap Undo takes back, as the last-tap line names it, or null for the toss and the start (whose Undo shows no line). */
-export function undoneTap(did: CricketTap): CricketUndoneTap | null {
+export function undoneTap(did: CricketSeenTap): CricketUndoneTap | null {
   return did.kind === 'toss' || did.kind === 'start' ? null : did;
 }
 

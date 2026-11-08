@@ -48,8 +48,8 @@ import type {
   CricketPadKey,
   CricketPlayer,
   CricketResult,
+  CricketSeenTap,
   CricketStage,
-  CricketTap,
   CricketTypes,
   OverChip,
 } from '@/domain/scoring/cricketTypes';
@@ -257,7 +257,8 @@ function displayOf(
 ): CricketDisplay {
   const { state, scorecard } = folded;
   const turn = turnOf(state);
-  const picks = picksAt(input.picks ?? NO_PICKS, state);
+  const deliveries = deliveriesOf(folded, turn);
+  const picks = picksAt(input.picks ?? NO_PICKS, state, deliveries);
   const entered = playersEntered(match.engine.lineups);
   const at = creaseAndBowler(match, folded, turn, picks);
   const needs = needsOf(turn, picks, at.bowlerId, entered.first && entered.second);
@@ -271,6 +272,7 @@ function displayOf(
     bowler: at.bowler,
     state,
     over: overNow(folded, turn),
+    deliveries,
     freeHit: turn?.innings?.fine?.freeHitPending === true,
     needs,
     battingOrder: turn === null ? [] : picks.order[padSideOf(turn.battingSide)],
@@ -467,6 +469,13 @@ function bowlerOf(
 
 const NO_FIGURES = '0-0-0-0';
 
+/** The deliveries bowled in the innings now, legal and illegal: the balls the fold filed under it. */
+const deliveriesOf = (folded: CricketFolded, turn: CricketTurn | null): number =>
+  turn === null
+    ? 0
+    : folded.balls.filter((one) => one.superOver === turn.superOver && one.index === turn.index)
+        .length;
+
 /** The over the next ball is in (counted from 1) and the deliveries already bowled in it. */
 function overNow(folded: CricketFolded, turn: CricketTurn | null): CricketDisplay['over'] {
   if (turn === null) return { number: 1, chips: [] };
@@ -537,8 +546,8 @@ function resultOf(state: CricketState, seats: Seats): CricketResult | null {
 function recordedOf(
   seats: Seats,
   envelopes: readonly EventEnvelope[],
-): ReadonlyMap<string, Recorded<CricketTap>> {
-  const recorded = new Map<string, Recorded<CricketTap>>();
+): ReadonlyMap<string, Recorded<CricketSeenTap>> {
+  const recorded = new Map<string, Recorded<CricketSeenTap>>();
   for (const envelope of envelopes) {
     const did = doneOf(envelope, seats);
     if (did !== null) recorded.set(envelope.id, { did, facts: CRICKET_FACTS });
