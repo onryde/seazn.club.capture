@@ -36,6 +36,19 @@ describe('which host the composition root’s Match Day port trusts', () => {
     expect(asked).toEqual(['https://seazn.club/api/v1/match-day-code']);
   });
 
+  // MD-2 Task 2b: review and approve left Task 3's offline stub; the port the app is given asks for them.
+  it('asks the review and the approve on the build’s own host, not a stub', async () => {
+    const { port, asked } = wiring(['stg.seazn.club']);
+    const code = { origin: 'https://stg.seazn.club', token: FIXTURE_DAY_TOKEN };
+    const stage = '6a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d';
+    await port.review(code, 'swiss', stage);
+    await port.approve(code, 'draw', stage, 'h', null);
+    expect(asked).toEqual([
+      `https://stg.seazn.club/api/v1/match-day-code/approvals/swiss/${stage}`,
+      `https://stg.seazn.club/api/v1/match-day-code/approvals/draw/${stage}`,
+    ]);
+  });
+
   it('a build with no host sends nowhere', async () => {
     const { port, asked } = wiring([]);
     const answer = await port.day({ origin: 'https://stg.seazn.club', token: FIXTURE_DAY_TOKEN });

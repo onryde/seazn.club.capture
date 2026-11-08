@@ -1,3 +1,4 @@
+import type { ApprovalReview, Approved } from '@/domain/matchday/approvalWire';
 import type { ApprovalKind, MatchDay, MatchDayRefusal } from '@/domain/matchday/matchDay';
 import type { OpenAnswer } from '@/domain/matchday/openWire';
 import type { SavedDayCode } from '@/domain/mode/dayCode';
@@ -17,22 +18,28 @@ export type PortAnswer<T> =
 /**
  * The web's Match Day code API (S4 design §9; MD-1), plain fetch (AGENTS §8). Every call carries the code's `md_`
  * token as a bearer to the build's own origin only, never in a URL, a log line or an error, and never rejects.
- * `review` and `approve` (§7) have no contract on the phone yet: they answer `offline` until the approval contract is
- * vendored, which gives `review` its value type.
+ * `review` and `approve` (§7) answer capture-matchday-approval.v1 (`approvalWire.ts`).
  */
 export interface MatchDayPort {
   /** `GET /api/v1/match-day-code`: the day the code lists. */
   day(code: SavedDayCode): Promise<PortAnswer<MatchDay>>;
   /** `POST /api/v1/match-day-code/fixtures/{id}/scoring-link`: the match's own scoring link, or why not. */
   open(code: SavedDayCode, fixtureId: string): Promise<PortAnswer<OpenAnswer>>;
-  /** `GET /api/v1/match-day-code/approvals/{kind}/{stageId}`: the proposal, read-only. */
-  review(code: SavedDayCode, kind: ApprovalKind, stageId: string): Promise<PortAnswer<never>>;
-  /** `POST /api/v1/match-day-code/approvals/{kind}/{stageId}` with `{hash, round}`; `round` is required for Swiss. */
+  /** `GET /api/v1/match-day-code/approvals/{kind}/{stageId}`: the proposal, read-only, with the hash to hand back. */
+  review(
+    code: SavedDayCode,
+    kind: ApprovalKind,
+    stageId: string,
+  ): Promise<PortAnswer<ApprovalReview>>;
+  /**
+   * `POST /api/v1/match-day-code/approvals/{kind}/{stageId}` with `{hash, round}`, both the review's: `round` is
+   * required for Swiss (without it the server answers 422, which is offline here) and null for a draw.
+   */
   approve(
     code: SavedDayCode,
     kind: ApprovalKind,
     stageId: string,
     hash: string,
     round: number | null,
-  ): Promise<PortAnswer<{ readonly ok: true }>>;
+  ): Promise<PortAnswer<Approved>>;
 }

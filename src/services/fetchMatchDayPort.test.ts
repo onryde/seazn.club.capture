@@ -6,11 +6,11 @@ import {
   createFetchMatchDayPort,
 } from '@/services/fetchMatchDayPort';
 import type { ScoringFetch } from '@/services/fetchScoringPort';
-import { MAX_BODY_BYTES, type FetchResponse } from '@/services/httpAsk';
+import { MAX_BODY_BYTES, utf8Length, type FetchResponse } from '@/services/httpAsk';
 import { createLogger, type Logger } from '@/services/logger';
 import { createRingRecord, parseRecordLine } from '@/services/sessionRecord';
 import { FIXTURE_DAY_TOKEN } from '../../test/fixtures/dayCode';
-import { answered, fixtureOf, refusedWith } from '../../test/matchDayContracts';
+import { answered, contractAdmits, fixtureOf, refusedWith } from '../../test/matchDayContracts';
 
 /** Made up: the shape the web mints, never a real code. The bearer the port sends and must never say. */
 const TOKEN = FIXTURE_DAY_TOKEN;
@@ -22,8 +22,15 @@ const LINK_SECRET = 'dl_Fake-Link_0123456789abcdefghijklmnopqrstuvw';
 const LINK = `${ORIGIN}/score/${LINK_SECRET}`;
 const DAY_URL = `${ORIGIN}/api/v1/match-day-code`;
 const OPEN_URL = `${DAY_URL}/fixtures/${FIXTURE}/scoring-link`;
+const APPROVAL = 'capture-matchday-approval.v1';
+/** valid-swiss's stage and hash, typed from the fixture. */
+const STAGE = '6a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d';
+const HASH = '3f6c1e0b9a8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d9c8b7a6f5e4d3c2b';
+const SWISS_URL = `${DAY_URL}/approvals/swiss/${STAGE}`;
 
 const DAY = answered(fixtureOf('capture-matchday-day.v1', 'valid-courts'));
+const REVIEW = answered(fixtureOf(APPROVAL, 'valid-swiss'));
+const APPROVED = answered(fixtureOf(APPROVAL, 'ok-valid'));
 const refusal = (code: string, extras: Record<string, unknown> = {}) =>
   refusedWith({ code, message: 'a developer string', ...extras });
 
@@ -143,14 +150,85 @@ describe('what each call asks', () => {
     );
     await port.day(CODE);
     await port.open(CODE, FIXTURE);
-    expect(order).toEqual([`protect ${TOKEN}`, 'fetch', `protect ${TOKEN}`, 'fetch']);
+    await port.review(CODE, 'swiss', STAGE);
+    await port.approve(CODE, 'swiss', STAGE, HASH, 4);
+    expect(order).toEqual([
+      ...[`protect ${TOKEN}`, 'fetch', `protect ${TOKEN}`, 'fetch'],
+      ...[`protect ${TOKEN}`, 'fetch', `protect ${TOKEN}`, 'fetch'],
+    ]);
   });
 
-  it('review and approve ask nothing yet: the approval contract is not vendored, so they answer offline', async () => {
-    const { port, calls } = portOver(answering(respond(200, DAY)));
-    expect(await port.review(CODE, 'swiss', FIXTURE)).toEqual(OFFLINE);
-    expect(await port.approve(CODE, 'draw', FIXTURE, 'hash', null)).toEqual(OFFLINE);
-    expect(calls).toEqual([]);
+  it('review: a GET of the approval’s route, with the same bearer, no body, never cached, no redirect', async () => {
+    const { port, calls } = portOver(answering(respond(200, REVIEW)));
+    await port.review(CODE, 'swiss', STAGE);
+    expect(calls).toHaveLength(1);
+    const [url, init] = calls[0];
+    expect(url).toBe(SWISS_URL);
+    expect(url).not.toContain('md_');
+    expect(init.method).toBe('GET');
+    expect(init.headers).toEqual({
+      Authorization: `Bearer ${TOKEN}`,
+      'Cache-Control': 'no-store',
+      Accept: 'application/json',
+    });
+    expect(init.redirect).toBe('error');
+    expect(init).not.toHaveProperty('body');
+    expect(init.signal).toBeDefined();
+  });
+
+  it('approve: POSTs the same route with the body {hash, round} and the same bearer (request-valid-swiss)', async () => {
+    const { port, calls } = portOver(answering(respond(200, APPROVED)));
+    await port.approve(CODE, 'swiss', STAGE, HASH, 4);
+    expect(calls).toHaveLength(1);
+    const [url, init] = calls[0];
+    expect(url).toBe(SWISS_URL);
+    expect(init.method).toBe('POST');
+    expect(init.headers).toEqual({
+      Authorization: `Bearer ${TOKEN}`,
+      'Cache-Control': 'no-store',
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    });
+    expect(init.redirect).toBe('error');
+    expect(init.signal).toBeDefined();
+    const body = JSON.parse(init.body ?? 'null') as unknown;
+    expect(body).toEqual(fixtureOf(APPROVAL, 'request-valid-swiss'));
+    expect(contractAdmits(APPROVAL, body, '/$defs/request')).toBe(true);
+    expect(`${url} ${init.body ?? ''}`).not.toContain('md_');
+  });
+
+  it('approve of a draw sends its proposal id as the hash and a null round (request-valid-draw-null-round)', async () => {
+    const draw = fixtureOf(APPROVAL, 'request-valid-draw-null-round') as { hash: string };
+    const { port, calls } = portOver(answering(respond(200, APPROVED)));
+    await port.approve(CODE, 'draw', STAGE, draw.hash, null);
+    const [url, init] = calls[0];
+    expect(url).toBe(`${DAY_URL}/approvals/draw/${STAGE}`);
+    expect(JSON.parse(init.body ?? 'null')).toEqual(draw);
+  });
+
+  it('puts a stage id in the path as one segment, whatever it holds', async () => {
+    const { port, calls } = portOver(answering(respond(200, REVIEW)));
+    await port.review(CODE, 'swiss', '../x?y#z');
+    await port.approve(CODE, 'draw', 'a/b', HASH, null);
+    expect(calls.map(([url]) => url)).toEqual([
+      `${DAY_URL}/approvals/swiss/..%2Fx%3Fy%23z`,
+      `${DAY_URL}/approvals/draw/a%2Fb`,
+    ]);
+  });
+
+  it('a second approve is a second request: the port keeps nothing, the server says MD_ALREADY', async () => {
+    let answer = respond(200, APPROVED);
+    const { port, calls } = portOver(async () => answer);
+    expect(await port.approve(CODE, 'swiss', STAGE, HASH, 4)).toEqual({
+      ok: true,
+      value: { ok: true },
+    });
+    answer = respond(409, refusal('MD_ALREADY'));
+    expect(await port.approve(CODE, 'swiss', STAGE, HASH, 4)).toEqual({
+      ok: false,
+      refusal: 'MD_ALREADY',
+    });
+    expect(calls).toHaveLength(2);
   });
 });
 
@@ -165,6 +243,8 @@ describe('the token goes only to the build’s Seazn host', () => {
     const { port, calls } = portOver(answering(respond(200, DAY)));
     expect(await port.day({ origin, token: TOKEN })).toEqual(OFFLINE);
     expect(await port.open({ origin, token: TOKEN }, FIXTURE)).toEqual(OFFLINE);
+    expect(await port.review({ origin, token: TOKEN }, 'swiss', STAGE)).toEqual(OFFLINE);
+    expect(await port.approve({ origin, token: TOKEN }, 'swiss', STAGE, HASH, 4)).toEqual(OFFLINE);
     expect(calls).toEqual([]);
   });
 
@@ -323,6 +403,152 @@ describe('what an open answers', () => {
   });
 });
 
+describe('what a review answers', () => {
+  it('the proposal, parsed: its rows, its round and the hash the approve hands back', async () => {
+    const { port } = portOver(answering(respond(200, REVIEW)));
+    const answer = await port.review(CODE, 'swiss', STAGE);
+    if (!answer.ok) throw new Error('the review was not read');
+    expect(answer.value.stageId).toBe(STAGE);
+    expect(answer.value.round).toBe(4);
+    expect(answer.value.hash).toBe(HASH);
+    expect(answer.value.rows[2]).toEqual({ label: 'R4 3', home: 'Eva Bakker', away: null });
+  });
+
+  // The approval contract's statuses for the nine words: MD_OUT_OF_SCOPE here is the code's refusal, not an answer.
+  it.each([
+    [401, 'MD_UNKNOWN'],
+    [410, 'MD_WITHDRAWN'],
+    [410, 'MD_ENDED'],
+    [403, 'MD_NOT_OPEN'],
+    [403, 'MD_NO_APPROVE'],
+    [403, 'MD_OUT_OF_SCOPE'],
+    [409, 'MD_STALE'],
+    [409, 'MD_ALREADY'],
+  ])('%s %s is that refusal', async (status, code) => {
+    const { port } = portOver(answering(respond(status, refusal(code))));
+    expect(await port.review(CODE, 'swiss', STAGE)).toEqual({ ok: false, refusal: code });
+  });
+
+  it('MD_NOT_OPEN hands on when the day opens', async () => {
+    const body = refusal('MD_NOT_OPEN', { opens_at: '2026-11-07T23:00:00.000Z' });
+    const { port } = portOver(answering(respond(403, body)));
+    expect(await port.review(CODE, 'draw', STAGE)).toEqual({
+      ok: false,
+      refusal: 'MD_NOT_OPEN',
+      opensAt: new Date(Date.UTC(2026, 10, 7, 23)),
+    });
+  });
+
+  it('404 NOT_FOUND (no such stage or proposal) is gone', async () => {
+    const { port } = portOver(answering(respond(404, refusal('NOT_FOUND'))));
+    expect(await port.review(CODE, 'swiss', STAGE)).toEqual(GONE);
+  });
+
+  it.each([
+    ['429 RATE_LIMITED', 429, refusal('RATE_LIMITED')],
+    ['422 (a kind the stage has not)', 422, refusal('VALIDATION')],
+    ['a 5xx', 500, refusal('INTERNAL')],
+    ['a 200 that is not a review', 200, answered(fixtureOf(APPROVAL, 'invalid-no-hash'))],
+    ['a 200 that is the day', 200, DAY],
+  ])('%s: offline', async (_, status, body) => {
+    const { port } = portOver(answering(respond(status, body)));
+    expect(await port.review(CODE, 'swiss', STAGE)).toEqual(OFFLINE);
+  });
+
+  it('a review reads up to 64 KiB, and one byte over is no answer', async () => {
+    const padded = (bytes: number) => {
+      // The names carry accents ("Chloé"): the cap counts UTF-8 bytes, as native's does.
+      const text = JSON.stringify({ ...REVIEW, pad: '' });
+      return text.replace('"pad":""', `"pad":"${'x'.repeat(bytes - utf8Length(text))}"`);
+    };
+    const review = (text: string) =>
+      portOver(answering(raw(200, text))).port.review(CODE, 'swiss', STAGE);
+    expect(utf8Length(padded(MAX_BODY_BYTES))).toBe(MAX_BODY_BYTES);
+    expect((await review(padded(MAX_BODY_BYTES))).ok).toBe(true);
+    expect(await review(padded(MAX_BODY_BYTES + 1))).toEqual(OFFLINE);
+  });
+});
+
+describe('what an approve answers', () => {
+  it('ok-valid: approved by this request', async () => {
+    const { port } = portOver(answering(respond(200, APPROVED)));
+    expect(await port.approve(CODE, 'swiss', STAGE, HASH, 4)).toEqual({
+      ok: true,
+      value: { ok: true },
+    });
+  });
+
+  it('ok-invalid-false: a 200 that does not say approved is offline, never approved', async () => {
+    const data = fixtureOf(APPROVAL, 'ok-invalid-false');
+    const { port } = portOver(answering(respond(200, answered(data))));
+    expect(await port.approve(CODE, 'swiss', STAGE, HASH, 4)).toEqual(OFFLINE);
+  });
+
+  it.each([
+    [401, 'MD_UNKNOWN'],
+    [410, 'MD_WITHDRAWN'],
+    [410, 'MD_ENDED'],
+    [403, 'MD_NOT_OPEN'],
+    [403, 'MD_NO_APPROVE'],
+    [403, 'MD_OUT_OF_SCOPE'],
+    [409, 'MD_STALE'],
+    [409, 'MD_ALREADY'],
+    [409, 'MD_TIES'],
+  ])('%s %s is that refusal', async (status, code) => {
+    const { port } = portOver(answering(respond(status, refusal(code))));
+    expect(await port.approve(CODE, 'draw', STAGE, HASH, null)).toEqual({
+      ok: false,
+      refusal: code,
+    });
+  });
+
+  it('the approval contract’s refusal fixtures: MD_TIES and MD_NO_APPROVE read, a seeding word does not', async () => {
+    const at = async (status: number, name: string) =>
+      portOver(answering(respond(status, refusedWith(fixtureOf(APPROVAL, name))))).port.approve(
+        CODE,
+        'draw',
+        STAGE,
+        HASH,
+        null,
+      );
+    expect(await at(409, 'refusal-valid-ties')).toEqual({ ok: false, refusal: 'MD_TIES' });
+    expect(await at(403, 'refusal-valid-no-approve')).toEqual({
+      ok: false,
+      refusal: 'MD_NO_APPROVE',
+    });
+    expect(await at(409, 'refusal-invalid-seeding-word')).toEqual(OFFLINE);
+  });
+
+  it.each([
+    ['404 NOT_FOUND: gone', 404, refusal('NOT_FOUND'), GONE],
+    ['422 (a Swiss approve without its round): offline', 422, refusal('VALIDATION'), OFFLINE],
+    ['429 RATE_LIMITED: offline', 429, refusal('RATE_LIMITED'), OFFLINE],
+    ['a 5xx: offline', 503, null, OFFLINE],
+  ])('%s', async (_, status, body, answer) => {
+    const { port } = portOver(answering(respond(status, body)));
+    expect(await port.approve(CODE, 'swiss', STAGE, HASH, 4)).toEqual(answer);
+  });
+
+  it('an approve reads up to 64 KiB, not the day’s 1 MiB', async () => {
+    const big = JSON.stringify({ ...APPROVED, pad: 'x'.repeat(MAX_BODY_BYTES) });
+    const { port } = portOver(answering(raw(200, big)));
+    expect(await port.approve(CODE, 'swiss', STAGE, HASH, 4)).toEqual(OFFLINE);
+  });
+
+  it('an approve that never answers: offline after 8 s, the request aborted', async () => {
+    vi.useFakeTimers();
+    let signal: AbortSignal | undefined;
+    const { port } = portOver((_url, init) => {
+      signal = init.signal;
+      return new Promise<FetchResponse>(() => {});
+    });
+    const pending = port.approve(CODE, 'swiss', STAGE, HASH, 4);
+    await vi.advanceTimersByTimeAsync(MATCHDAY_TIMEOUT_MS);
+    expect(await pending).toEqual(OFFLINE);
+    expect(signal?.aborted).toBe(true);
+  });
+});
+
 describe('what is no answer: offline', () => {
   it('a network failure is offline', async () => {
     const { port } = portOver(async () => {
@@ -330,6 +556,8 @@ describe('what is no answer: offline', () => {
     });
     expect(await port.day(CODE)).toEqual(OFFLINE);
     expect(await port.open(CODE, FIXTURE)).toEqual(OFFLINE);
+    expect(await port.review(CODE, 'swiss', STAGE)).toEqual(OFFLINE);
+    expect(await port.approve(CODE, 'swiss', STAGE, HASH, 4)).toEqual(OFFLINE);
   });
 
   it('a fetch that never answers: offline after 8 s, the request aborted', async () => {
@@ -449,8 +677,8 @@ describe('the record', () => {
       const { port } = portOver(answer, { logger });
       await port.day(CODE);
       await port.open(CODE, FIXTURE);
-      await port.review(CODE, 'swiss', FIXTURE);
-      await port.approve(CODE, 'swiss', FIXTURE, 'h', 4);
+      await port.review(CODE, 'swiss', STAGE);
+      await port.approve(CODE, 'swiss', STAGE, HASH, 4);
     }
     const said = everything();
     expect(said).not.toContain('md_');
@@ -501,15 +729,28 @@ describe('the record', () => {
     ]);
   });
 
-  it('says the stubs’ offline too: a call that cannot be made is never silent', async () => {
-    const { port, entries } = portOver(answering(respond(200, DAY)));
-    await port.review(CODE, 'swiss', FIXTURE);
-    expect(entries()).toEqual([
-      expect.objectContaining({
-        event: 'matchday.answer',
-        fields: expect.objectContaining({ op: 'review', kind: 'offline', problem: 'no-contract' }),
-      }),
+  it('says a refused approve and a review that came to nothing, by their own call’s name', async () => {
+    let answer: FetchResponse = respond(409, refusal('MD_STALE'));
+    const { port, entries } = portOver(async () => answer);
+    await port.approve(CODE, 'swiss', STAGE, HASH, 4);
+    answer = respond(200, answered({ kind: 'swiss' }));
+    await port.review(CODE, 'swiss', STAGE);
+    expect(entries().map((entry) => entry.fields)).toEqual([
+      { op: 'approve', kind: 'refused', status: 409, word: 'MD_STALE' },
+      { op: 'review', kind: 'offline', status: 200, problem: 'unparseable' },
     ]);
+  });
+
+  it('never says the hash, the stage or the review’s names', async () => {
+    const { logger, everything } = spyLogger();
+    for (const answer of [respond(409, refusal('MD_STALE')), respond(200, answered({}))]) {
+      const { port } = portOver(answering(answer), { logger });
+      await port.review(CODE, 'swiss', STAGE);
+      await port.approve(CODE, 'swiss', STAGE, HASH, 4);
+    }
+    const said = everything();
+    expect(said).not.toContain(HASH);
+    expect(said).not.toContain(STAGE);
   });
 
   it('says nothing for a success', async () => {

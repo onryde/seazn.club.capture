@@ -1,4 +1,6 @@
 import { isRecord } from '@/domain/credentials/wire';
+import { approveRequest, parseApproval, parseApproved } from '@/domain/matchday/approvalWire';
+import type { ApprovalKind } from '@/domain/matchday/matchDay';
 import { parseDay } from '@/domain/matchday/dayWire';
 import { openRefused, parseOpen, type OpenAnswer } from '@/domain/matchday/openWire';
 import { parseRefusal } from '@/domain/matchday/refusalWire';
@@ -58,11 +60,22 @@ export function createFetchMatchDayPort(deps: Deps): MatchDayPort {
       const answer = answerOf(say, 'open', reply, parseOpen);
       return answer.ok ? linkOnBuildHost(deps, say, answer.value) : answer;
     },
-    // The approval contract is not vendored yet (MD-2 Task 2b): nothing is asked, and nothing untyped is handed on.
-    review: async () => notYet(say, 'review'),
-    approve: async () => notYet(say, 'approve'),
+    review: async (code, kind, stageId) => {
+      const reply = await send(deps, code, 'GET', approvalPath(kind, stageId), MAX_BODY_BYTES);
+      return answerOf(say, 'review', reply, parseApproval);
+    },
+    approve: async (code, kind, stageId, hash, round) => {
+      const body = JSON.stringify(approveRequest(hash, round));
+      const path = approvalPath(kind, stageId);
+      const reply = await send(deps, code, 'POST', path, MAX_BODY_BYTES, body);
+      return answerOf(say, 'approve', reply, parseApproved);
+    },
   };
 }
+
+/** `approvals/{kind}/{stageId}`: the kind is one of two words, and the stage id one path segment whatever it holds. */
+const approvalPath = (kind: ApprovalKind, stageId: string) => () =>
+  `${ROOT}/approvals/${kind}/${encodeURIComponent(stageId)}`;
 
 /**
  * One request, bounded: its reply, or why there is none. Never rejects. The token is handed to the logger first,
@@ -75,36 +88,46 @@ async function send(
   method: 'GET' | 'POST',
   path: string | (() => string),
   cap: number,
+  body?: string,
 ): Promise<Reply | Lost> {
   deps.logger.protectLink(code.token);
   if (!isBuildOrigin(code.origin, deps.host)) return { problem: 'foreign-host' };
   const deadline = Math.min(deps.timeoutMs ?? MATCHDAY_TIMEOUT_MS, MATCHDAY_TIMEOUT_MS);
+  const request = { method, path: typeof path === 'string' ? path : path(), cap, body };
   return withDeadline<Reply | Lost>(
-    (signal) => exchange(deps, code, method, typeof path === 'string' ? path : path(), cap, signal),
+    (signal) => exchange(deps, code, request, signal),
     deadline,
     () => ({ problem: 'timeout' }),
     () => ({ problem: 'unexpected' }),
   );
 }
 
+type Request = {
+  readonly method: 'GET' | 'POST';
+  readonly path: string;
+  readonly cap: number;
+  /** JSON, sent as such; none for a GET and for the open ("with no body"). */
+  readonly body: string | undefined;
+};
+
 async function exchange(
   deps: Deps,
   code: SavedDayCode,
-  method: 'GET' | 'POST',
-  path: string,
-  cap: number,
+  request: Request,
   signal?: AbortSignal,
 ): Promise<Reply | Lost> {
-  const url = `${code.origin}${path}`;
+  const url = `${code.origin}${request.path}`;
   let response: FetchResponse;
   try {
     response = await deps.fetch(url, {
-      method,
+      method: request.method,
       headers: {
         Authorization: `Bearer ${code.token}`,
         'Cache-Control': 'no-store',
         Accept: 'application/json',
+        ...(request.body === undefined ? {} : { 'Content-Type': 'application/json' }),
       },
+      ...(request.body === undefined ? {} : { body: request.body }),
       redirect: 'error',
       signal,
     });
@@ -116,7 +139,7 @@ async function exchange(
   if (response.url !== undefined && response.url !== '' && response.url !== url) {
     return { problem: 'redirected' };
   }
-  const body = await bodyOf(response, cap);
+  const body = await bodyOf(response, request.cap);
   return body === TOO_LARGE ? { problem: 'too-large' } : { status: response.status, body };
 }
 
@@ -188,10 +211,6 @@ function linkOnBuildHost(deps: Deps, say: Reporter, answer: OpenAnswer): PortAns
     return say.failed('open', OFFLINE, 200, 'foreign-link');
   }
   return { ok: true, value: answer };
-}
-
-function notYet(say: Reporter, op: Op): PortAnswer<never> {
-  return say.failed(op, OFFLINE, 0, 'no-contract');
 }
 
 type Failure = Exclude<PortAnswer<never>, { ok: true }>;
