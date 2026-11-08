@@ -531,6 +531,25 @@ all four. A counted word (`.one` / `.other`) is picked by the language's plural 
 | On strike                            | Al bate                                     | Face au lanceur                      | Aan slag                                | `board.onStrike`: the striker's dot, as a screen reader names it.                                 |
 | Free hit / Over {number}             | Free hit / Over {number}                    | Free hit / Over {number}             | Free hit / Over {number}                | `board.freeHit`, `board.over`: the game's own words in all four.                                  |
 
+### Cricket setup words (S2-4 Task 10, 2026-11-08)
+
+The toss on the whole screen (owner ruling 83) and the setup before the first ball (`scoring.cricket.toss.*`,
+`scoring.cricket.setup.*`). The toss's question is the web's (`apps/web/src/dictionaries`, "Who won the toss?"); Bat and
+Bowl are the web's verbs ("Bat or bowl?": batear / lanzar, frapper / lancer, batten / bowlen), capitalised as buttons;
+Move up and Move down are the web's list words, as its "Move up: {item}". **es, fr and nl are unreviewed drafts, for the
+owner's review**, as the rest of the cricket words.
+
+| English                        | Español                           | Français                          | Nederlands                     | Notes                                                                      |
+| ------------------------------ | --------------------------------- | --------------------------------- | ------------------------------ | -------------------------------------------------------------------------- |
+| Who won the toss?              | ¿Quién ganó el sorteo?            | Qui a gagné le tirage au sort ?   | Wie heeft de toss gewonnen?    | `toss.ask`: the web's words. fr has a no-break space before `?`.           |
+| {team} chose to…               | {team} eligió…                    | {team} a choisi de…               | {team} koos voor…              | `toss.chose`, over Bat and Bowl; "Team" (`toss.team`) until one is picked. |
+| Bat / Bowl                     | Batear / Lanzar                   | Frapper / Lancer                  | Batten / Bowlen                | `toss.bat`, `toss.bowl`: the web's verbs.                                  |
+| {team} batting order           | Orden de bateo de {team}          | Ordre de frappe de {team}         | Slagvolgorde van {team}        | `setup.order`; `setup.orderHint` says the first two open.                  |
+| Opener / Openers: {striker}, … | Abridor / Abridores: {striker}, … | Ouvreur / Ouvreurs : {striker}, … | Opener / Openers: {striker}, … | `setup.opener` (the plate), `setup.openers`.                               |
+| Move up: {name} / Move down    | Subir: {name} / Bajar             | Monter : {name} / Descendre       | Omhoog: {name} / Omlaag        | `setup.up`, `setup.down`: what a screen reader says for ▲ and ▼.           |
+| {team}: first bowler           | {team}: primer lanzador           | {team} : premier lanceur          | {team}: eerste bowler          | `setup.bowler`.                                                            |
+| Next / Back                    | Siguiente / Atrás                 | Suivant / Retour                  | Volgende / Terug               | `setup.next`, `setup.back`.                                                |
+
 ## App settings (2026-11-02)
 
 The app's own Settings, from the gear in Home's top-right corner (owner, 2026-11-02: "we should have common setting in a top

@@ -8,22 +8,30 @@ import { KeepScreenOn } from '@/ui/components/KeepScreenOn';
 import { PadContent } from '@/ui/components/PadContent';
 import { DiscardAsk, MatchDetailsView, MatchHistory } from '@/ui/components/PadSheets';
 import { CricketBoard } from '@/ui/screens/CricketBoard';
+import { CricketSetup } from '@/ui/screens/CricketSetup';
 import { colour } from '@/ui/theme/tokens';
 
 /**
  * The cricket pad (S2-4 spec §5; plan Task 8; owner ruling 38: a screen per sport), drawn from the model of
  * `useCricketMatch`, portrait. Its frame is the kit's (`PadContent`): the top bar (Home, the sync status, Match details and
  * History), the strip (the result once one stands), the last-tap line with the one Undo. In the halves' place stands
- * cricket's board (`CricketBoard`): the score, the crease and the bowler, this over. Read only for now: the run keys,
+ * cricket's board (`CricketBoard`): the score, the crease and the bowler, this over; before the first ball, the setup
+ * (`CricketSetup`: the toss on the whole screen, the batting order, the first bowler, Start). The run keys,
  * the extras and Out, Undo, More are Task 11's. The screen is held on while the pad is (`holdsScreen`). Sheets and History
  * cover the pad, which is hidden from a screen reader while they show.
  */
 export function CricketPadScreen({ model }: { readonly model: CricketPadModel }) {
-  const { view, sheet, actions, board } = model;
+  const { view, sheet, actions, board, setup } = model;
+  const body =
+    setup === null ? (
+      <CricketBoard view={board} />
+    ) : (
+      <CricketSetup setup={setup} details={view.details} actions={actions} />
+    );
   return (
     <View style={styles.screen}>
       {holdsScreen(view.card) ? <KeepScreenOn /> : null}
-      <PadContent model={model} covered={sheet !== null} body={<CricketBoard view={board} />} />
+      <PadContent model={model} covered={sheet !== null} body={body} />
       <PadSheet sheet={sheet} actions={actions} />
     </View>
   );

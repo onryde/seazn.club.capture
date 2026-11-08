@@ -1,8 +1,11 @@
 import { act, renderHook } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { withPick } from '@/domain/scoring/cricketPicks';
 import type { CricketTap } from '@/domain/scoring/cricketTypes';
 import { useCricketMatch } from '@/hooks/useCricketMatch';
+import { LanguageProvider } from '@/hooks/useLanguage';
+import { PortsProvider, type Ports } from '@/hooks/usePorts';
 import { translatePad } from '@/i18n/padText';
 import { createTranslator } from '@/i18n/translate';
 import {
@@ -323,5 +326,328 @@ describe('the reconnect question (owner ruling 43)', () => {
     expect(pad(view).sheet).toBeNull();
     expect((await typesOf(fakes)).length).toBe(6);
     expect(pad(view).board.score?.runs).toBe(7);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// The setup before the first ball (S2-4 spec §4.1, owner ruling 83; plan Task 10)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** A restart: a new `Ports` over the same disk and the same server, so nothing of the launch's memory is left. */
+async function reopened(fakes: FakePorts, seed: FakeMatchSeed) {
+  const ports: Ports = { ...fakes.ports };
+  function Wrapper({ children }: { children: ReactNode }) {
+    return (
+      <PortsProvider ports={ports}>
+        <LanguageProvider>{children}</LanguageProvider>
+      </PortsProvider>
+    );
+  }
+  const view = renderHook(() => useCricketMatch(seed.fixtureId), { wrapper: Wrapper });
+  await flush();
+  await wait();
+  return view;
+}
+
+function setupOf(view: Match) {
+  const { setup } = pad(view);
+  if (setup === null) throw new Error('expected the setup');
+  return setup;
+}
+
+const names = (rows: readonly { readonly name: string }[]) => rows.map((row) => row.name);
+
+async function ledgerOf(fakes: FakePorts, seed: FakeMatchSeed) {
+  const events = await fakes.scoring.events(LINK, seed.fixtureId, 0);
+  return Array.isArray(events) ? events : [];
+}
+
+const RIVERSIDE_ORDER = [
+  'A. Sharma',
+  'B. Okafor',
+  'C. Mendes',
+  'D. Walsh',
+  'E. Nakamura',
+  'F. Haddad',
+  'G. Lindqvist',
+  'H. Brennan',
+  'I. Petrova',
+  'J. Mwangi',
+  'K. Doyle',
+];
+
+describe('the setup before the first ball (ruling 83)', () => {
+  const FRESH = cricketSeed();
+
+  /** Riverside won the toss and bats: the toss recorded and sent, its window over. */
+  async function tossed() {
+    const opening = await opened(FRESH);
+    act(() => pad(opening.view).actions.pickTossWinner('first'));
+    act(() => pad(opening.view).actions.recordToss('bat'));
+    await flush();
+    await wait();
+    return opening;
+  }
+
+  /** Tossed, then Next on the order as it stands (A. Sharma on strike, B. Okafor), then W. Murphy to bowl. */
+  async function ready() {
+    const opening = await tossed();
+    const { nextOpeners } = setupOf(opening.view).view;
+    if (nextOpeners === null) throw new Error('expected two openers');
+    act(() => pad(opening.view).actions.setOpeners(nextOpeners));
+    await flush();
+    await wait();
+    act(() => pad(opening.view).actions.setBowler(away(11)));
+    await flush();
+    await wait();
+    return opening;
+  }
+
+  it('the toss asks with team names, and Bat or Bowl records nothing until a team is picked', async () => {
+    const { fakes, view } = await opened(FRESH);
+    const setup = setupOf(view);
+    expect([setup.step, setup.tossWinner]).toEqual(['toss', null]);
+    expect(setup.view.teams.map((team) => team.label)).toEqual(['Riverside CC', 'Hillcrest CC']);
+    act(() => pad(view).actions.recordToss('bat'));
+    await flush();
+    expect(await typesOf(fakes, FRESH)).toEqual([]);
+    expect(setupOf(view).step).toBe('toss');
+  });
+
+  it('Bat makes the toss winner the batting side', async () => {
+    const { fakes, view } = await opened(FRESH);
+    act(() => pad(view).actions.pickTossWinner('second'));
+    expect(setupOf(view).tossWinner).toBe('second');
+    act(() => pad(view).actions.recordToss('bat'));
+    await flush();
+    const [toss] = await ledgerOf(fakes, FRESH);
+    expect([toss?.type, toss?.payload]).toEqual([
+      'cricket.toss',
+      { wonBy: AWAY_ENTRANT, elected: 'bat' },
+    ]);
+    const setup = setupOf(view);
+    expect([setup.step, setup.view.batting?.label, setup.tossWinner]).toEqual([
+      'order',
+      'Hillcrest CC',
+      null,
+    ]);
+  });
+
+  it('a second team tap changes the pick before Bat or Bowl', async () => {
+    const { fakes, view } = await opened(FRESH);
+    act(() => pad(view).actions.pickTossWinner('first'));
+    act(() => pad(view).actions.pickTossWinner('second'));
+    act(() => pad(view).actions.recordToss('bowl'));
+    await flush();
+    const [toss] = await ledgerOf(fakes, FRESH);
+    expect(toss?.payload).toEqual({ wonBy: AWAY_ENTRANT, elected: 'bowl' });
+    expect(setupOf(view).view.batting?.label).toBe('Riverside CC');
+  });
+
+  it('the order lists starters only, Opener on the first two', async () => {
+    const { view } = await tossed();
+    const { order } = setupOf(view).view;
+    expect(names(order)).toEqual(RIVERSIDE_ORDER);
+    expect(order.map((row) => row.opener)).toEqual(RIVERSIDE_ORDER.map((_, i) => i < 2));
+  });
+
+  it('Up moves a batter and the openers follow the order', async () => {
+    const { view } = await tossed();
+    act(() => pad(view).actions.moveBatter(2, 1));
+    await flush();
+    const { order, nextOpeners } = setupOf(view).view;
+    expect(names(order).slice(0, 3)).toEqual(['A. Sharma', 'C. Mendes', 'B. Okafor']);
+    expect(order.slice(0, 3).map((row) => row.opener)).toEqual([true, true, false]);
+    expect(nextOpeners).toEqual({ striker: home(1), nonStriker: home(3) });
+  });
+
+  it('Next picks the openers and asks the first bowler, of the fielding side', async () => {
+    const { view } = await tossed();
+    act(() => pad(view).actions.setOpeners({ striker: home(2), nonStriker: home(1) }));
+    await flush();
+    const setup = setupOf(view);
+    expect(setup.step).toBe('bowler');
+    expect(setup.view.openers).toEqual({
+      striker: { id: home(2), name: 'B. Okafor' },
+      nonStriker: { id: home(1), name: 'A. Sharma' },
+    });
+    expect(names(setup.view.bowlers)).toContain('W. Murphy');
+    expect(names(setup.view.bowlers)).not.toContain('A. Sharma');
+  });
+
+  it('Back from the bowler shows the order again; Next there asks the bowler again, the pick kept', async () => {
+    const { view } = await ready();
+    await wait();
+    act(() => pad(view).actions.changeOrder());
+    expect([setupOf(view).step, setupOf(view).ready]).toEqual(['order', true]);
+    await wait();
+    act(() => pad(view).actions.setOpeners({ striker: home(1), nonStriker: home(2) }));
+    await flush();
+    expect(setupOf(view).step).toBe('ready');
+    expect(
+      setupOf(view)
+        .view.bowlers.filter((row) => row.chosen)
+        .map((row) => row.name),
+    ).toEqual(['W. Murphy']);
+  });
+
+  it('Start match waits for openers and a bowler', async () => {
+    const { fakes, view } = await tossed();
+    expect(setupOf(view).ready).toBe(false);
+    act(() => pad(view).actions.start());
+    await flush();
+    await wait();
+    act(() => pad(view).actions.setOpeners({ striker: home(1), nonStriker: home(2) }));
+    await flush();
+    await wait();
+    expect(setupOf(view).ready).toBe(false);
+    act(() => pad(view).actions.start());
+    await flush();
+    await wait();
+    expect(await typesOf(fakes, FRESH)).toEqual(['cricket.toss']);
+    act(() => pad(view).actions.setBowler(away(11)));
+    await flush();
+    await wait();
+    expect([setupOf(view).step, setupOf(view).ready]).toEqual(['ready', true]);
+    act(() => pad(view).actions.start());
+    await flush();
+    expect(await typesOf(fakes, FRESH)).toEqual(['cricket.toss', 'core.start']);
+    expect(pad(view).setup).toBeNull();
+  });
+
+  it('a second tap on Start records one start', async () => {
+    const { fakes, view } = await ready();
+    act(() => {
+      pad(view).actions.start();
+      pad(view).actions.start();
+    });
+    await flush();
+    expect(await typesOf(fakes, FRESH)).toEqual(['cricket.toss', 'core.start']);
+    expect(pad(view).line).toEqual({ kind: 'note', key: 'scoring.pad.countedOnce' });
+  });
+
+  it('the first ball carries the openers and the bowler', async () => {
+    const { fakes, view } = await ready();
+    act(() => pad(view).actions.start());
+    await flush();
+    await wait();
+    act(() => pad(view).actions.record(TWO));
+    await flush();
+    const ball = (await ledgerOf(fakes, FRESH)).at(-1);
+    expect(ball?.type).toBe('cricket.ball');
+    expect(ball?.payload).toMatchObject({
+      over: 0,
+      ballInOver: 1,
+      striker: home(1),
+      nonStriker: home(2),
+      bowler: away(11),
+    });
+  });
+
+  it('a reopened match keeps the batting order and the bowler pick', async () => {
+    const { fakes, view } = await tossed();
+    act(() => pad(view).actions.moveBatter(2, 1));
+    await flush();
+    await wait();
+    act(() => pad(view).actions.setOpeners({ striker: home(1), nonStriker: home(3) }));
+    await flush();
+    await wait();
+    act(() => pad(view).actions.setBowler(away(10)));
+    await flush();
+    await wait();
+    view.unmount();
+    await flush();
+    const again = await reopened(fakes, FRESH);
+    const setup = setupOf(again);
+    expect(setup.step).toBe('ready');
+    expect(names(setup.view.order).slice(0, 3)).toEqual(['A. Sharma', 'C. Mendes', 'B. Okafor']);
+    expect(setup.view.openers?.nonStriker.name).toBe('C. Mendes');
+    expect(setup.view.bowlers.filter((row) => row.chosen).map((row) => row.name)).toEqual([
+      'V. Kaur',
+    ]);
+  });
+
+  it('a reopened match before Bat or Bowl asks the toss again: the winner was in memory only', async () => {
+    const { fakes, view } = await opened(FRESH);
+    act(() => pad(view).actions.pickTossWinner('first'));
+    view.unmount();
+    await flush();
+    const again = await reopened(fakes, FRESH);
+    expect([setupOf(again).step, setupOf(again).tossWinner]).toEqual(['toss', null]);
+  });
+
+  it('Undo of the toss asks the toss again, with no team held', async () => {
+    const { fakes, view } = await tossed();
+    act(() => pad(view).actions.undo());
+    await flush();
+    await wait();
+    expect([setupOf(view).step, setupOf(view).tossWinner]).toEqual(['toss', null]);
+    expect((await typesOf(fakes, FRESH)).at(-1)).toBe('core.void');
+  });
+
+  it('a match under way shows no setup', async () => {
+    const { view } = await opened();
+    expect(pad(view).setup).toBeNull();
+  });
+});
+
+describe('the setup, a second touch (the bounce window)', () => {
+  const FRESH = cricketSeed();
+
+  it('a move on the heels of the toss is the second touch of Bat: counted once, the order unchanged', async () => {
+    const { view } = await opened(FRESH);
+    act(() => pad(view).actions.pickTossWinner('first'));
+    act(() => pad(view).actions.recordToss('bat'));
+    await flush();
+    act(() => pad(view).actions.moveBatter(1, 0));
+    await flush();
+    expect(names(setupOf(view).view.order).slice(0, 2)).toEqual(['A. Sharma', 'B. Okafor']);
+    expect(pad(view).line).toEqual({ kind: 'note', key: 'scoring.pad.countedOnce' });
+    await wait();
+    act(() => pad(view).actions.moveBatter(1, 0));
+    await flush();
+    expect(names(setupOf(view).view.order).slice(0, 2)).toEqual(['B. Okafor', 'A. Sharma']);
+  });
+
+  it('Next on the heels of the toss is the second touch: no openers', async () => {
+    const { view } = await opened(FRESH);
+    act(() => pad(view).actions.pickTossWinner('first'));
+    act(() => pad(view).actions.recordToss('bat'));
+    await flush();
+    act(() => pad(view).actions.setOpeners({ striker: home(1), nonStriker: home(2) }));
+    await flush();
+    expect(setupOf(view).step).toBe('order');
+  });
+
+  it('a bowler on the heels of Next is the second touch: no bowler', async () => {
+    const { view } = await opened(FRESH);
+    act(() => pad(view).actions.pickTossWinner('first'));
+    act(() => pad(view).actions.recordToss('bat'));
+    await flush();
+    await wait();
+    act(() => pad(view).actions.setOpeners({ striker: home(1), nonStriker: home(2) }));
+    await flush();
+    act(() => pad(view).actions.setBowler(away(11)));
+    await flush();
+    expect(setupOf(view).step).toBe('bowler');
+    await wait();
+    act(() => pad(view).actions.setBowler(away(11)));
+    await flush();
+    expect(setupOf(view).step).toBe('ready');
+  });
+
+  it('a pick on the heels of Back is the second touch: the order unchanged', async () => {
+    const { view } = await opened(FRESH);
+    act(() => pad(view).actions.pickTossWinner('first'));
+    act(() => pad(view).actions.recordToss('bat'));
+    await flush();
+    await wait();
+    act(() => pad(view).actions.setOpeners({ striker: home(1), nonStriker: home(2) }));
+    await flush();
+    await wait();
+    act(() => pad(view).actions.changeOrder());
+    act(() => pad(view).actions.moveBatter(1, 0));
+    await flush();
+    expect(names(setupOf(view).view.order).slice(0, 2)).toEqual(['A. Sharma', 'B. Okafor']);
   });
 });

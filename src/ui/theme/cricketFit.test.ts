@@ -6,6 +6,7 @@ import nl from '@/i18n/nl.json';
 import { layout, space } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
 import { loadFont } from '../../../test/fontMetrics';
+import { linesIn, linesOf } from '../../../test/textFit';
 
 // S2-4 plan Task 8: what the cricket board draws fits at 320 and 360 dp in four languages (the pattern of padFit.test.ts,
 // whose rooms are copied here from the token and type declarations and the board's styles, never read from the
@@ -145,5 +146,71 @@ describe('the board’s regions', () => {
   it('the over strip holds its label and a chip of usable height', () => {
     const chip = layout.overStrip - typeScale.metricUnit.lineHeight - space.xs;
     expect(chip).toBeGreaterThanOrEqual(typeScale.controlSmall.lineHeight + 2 * space.xs);
+  });
+});
+
+// S2-4 plan Task 10 (owner ruling 83): the two-half toss and the setup in the pad's column. The toss's question is
+// `state` caps, kept to `padTossAskLines` lines in its half whatever it says, so a long team's name must still fit in
+// them; a side's button holds a team name wrapped at its gaps, and Bat and Bowl on one line. The order row's name keeps
+// the room left by its place and the two ▲▼ targets, and the Opener plate under it.
+describe.each(WIDTHS)('the toss and the setup at %i dp', (width) => {
+  /** `state`: Barlow Condensed 700 at 15, uppercase, letterspaced. The toss's two questions and the Opener plate. */
+  const stateWidth = (text: string) =>
+    barlow700.width(text.toUpperCase(), typeScale.state.fontSize) +
+    typeScale.state.letterSpacing * [...text].length;
+  /** A side's button: half the row less its gap, less its padding (`space.sm` a side) and its border (TossPicker). */
+  const tossText = (column(width) - space.sm) / 2 - 2 * space.sm - 2 * layout.iconBorder;
+  /** An order row: the place (`space.lg`), the name, two 48 dp targets, `space.sm` between each (CricketOrderList). */
+  const orderName = column(width) - space.lg - 2 * layout.touch - 3 * space.sm;
+  /** A thirty-character club's name, and a name with one long word. */
+  const LONG_TEAM = 'Bishops Stortford Cricket Club';
+  const ONE_WORD_TEAM = 'Wolverhampton CC';
+
+  it('the thirty-character name is thirty characters (anti-vacuity)', () => {
+    expect(LONG_TEAM).toHaveLength(30);
+  });
+
+  it.each(LANGUAGES)(
+    '%s: both questions keep to their lines with a thirty-character name',
+    (_, dictionary) => {
+      const ask = said(dictionary, 'scoring.cricket.toss.ask');
+      const chose = said(dictionary, 'scoring.cricket.toss.chose');
+      const team = said(dictionary, 'scoring.cricket.toss.team');
+      for (const text of [ask, fill(chose, { team }), fill(chose, { team: LONG_TEAM })]) {
+        expect(linesOf(text, column(width), stateWidth), text).toBeLessThanOrEqual(
+          layout.padTossAskLines,
+        );
+        for (const line of linesIn(text, column(width), stateWidth)) {
+          expect(stateWidth(line), line).toBeLessThanOrEqual(column(width));
+        }
+      }
+    },
+  );
+
+  it('a thirty-character name takes the question’s second line at 320, one at 360 (anti-vacuity)', () => {
+    const chose = fill(said(en, 'scoring.cricket.toss.chose'), { team: LONG_TEAM });
+    expect(linesOf(chose, column(width), stateWidth)).toBe(width === 320 ? 2 : 1);
+  });
+
+  it.each(LANGUAGES)('%s: Bat and Bowl each one line in a side’s button', (_, dictionary) => {
+    for (const key of ['scoring.cricket.toss.bat', 'scoring.cricket.toss.bowl']) {
+      expect(labelWidth(said(dictionary, key)), key).toBeLessThanOrEqual(tossText);
+    }
+  });
+
+  it('a team’s name wraps at its gaps in a side’s button, every word whole', () => {
+    for (const name of [LONG_TEAM, ONE_WORD_TEAM]) {
+      for (const word of name.split(' ')) {
+        expect(labelWidth(word), word).toBeLessThanOrEqual(tossText);
+      }
+    }
+    // Anti-vacuity: the long name needs more than one line, and the button (filling its half) grows for it.
+    expect(linesOf(LONG_TEAM, tossText, labelWidth)).toBeGreaterThan(1);
+  });
+
+  it.each(LANGUAGES)('%s: an order row holds a long name and the Opener plate', (_, dictionary) => {
+    const opener = said(dictionary, 'scoring.cricket.setup.opener');
+    expect(stateWidth(opener) + 2 * space.sm).toBeLessThanOrEqual(orderName);
+    expect(labelWidth('M. Wolstenholme')).toBeLessThanOrEqual(orderName);
   });
 });

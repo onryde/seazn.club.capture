@@ -15,6 +15,11 @@ import type { PadActions, PadScreenModel, ScoringMatch } from '@/hooks/padScreen
 import type { ScoringRunner } from '@/hooks/scoringRunner';
 import { useBackCloses } from '@/hooks/useBackCloses';
 import {
+  useCricketSetup,
+  type CricketSetupActions,
+  type CricketSetupModel,
+} from '@/hooks/useCricketSetup';
+import {
   useCricketSheets,
   type CricketSheetSnapshot,
   type CricketSheetView,
@@ -28,25 +33,28 @@ import type { MessageKey } from '@/i18n/messages';
 
 /**
  * A cricket match on the pad screen (S2-4 plan Task 8): the generic match (`useScoringMatch`) with cricket's pad hook, as
- * `useChessMatch` is chess's. Read only for now, with the three actions every later task builds on: `record` queues a
- * tap through the runtime (a ball, the toss, Start), `setPicks` keeps the scorer's pending picks with the queue, and
- * `undo` takes back this phone's last standing tap. The board is the display's (`cricketBoard`); the halves are not drawn.
+ * `useChessMatch` is chess's, with the three actions every later task builds on: `record` queues a tap through the
+ * runtime (a ball, the toss, Start), `setPicks` keeps the scorer's pending picks with the queue, and `undo` takes back
+ * this phone's last standing tap. The board is the display's (`cricketBoard`); the halves are not drawn. Before the first
+ * ball the setup stands in the board's place (`useCricketSetup`, Task 10).
  */
 
-/** Cricket's own buttons, beside every pad's (`PadActions`). Tasks 10 to 17 add theirs over these. */
-export type CricketPadActions = PadActions & {
-  /** A tap to the match: once for a repeat of the same tap inside the bounce window, as every pad's tap. */
-  readonly record: (tap: CricketTap) => void;
-  /** The scorer's pending picks, the whole map: kept on the phone until a tap carries them. */
-  readonly setPicks: (picks: PendingPicks) => void;
-  /** The kit's Start screen: cricket never shows it (its toss and setup are its own), so these are never pressed. */
-  readonly pickServer: (side: PadSide) => void;
-  readonly start: () => void;
-  /** The reconnect question (owner ruling 43): Send my taps, Discard them (which asks again) and its confirm's Discard. */
-  readonly sendTaps: () => void;
-  readonly askDiscard: () => void;
-  readonly confirmDiscard: () => void;
-};
+/** Cricket's own buttons, beside every pad's (`PadActions`) and the setup's (Task 10). Tasks 11 to 17 add theirs. */
+export type CricketPadActions = PadActions &
+  CricketSetupActions & {
+    /** A tap to the match: once for a repeat of the same tap inside the bounce window, as every pad's tap. */
+    readonly record: (tap: CricketTap) => void;
+    /** The scorer's pending picks, the whole map: kept on the phone until a tap carries them. */
+    readonly setPicks: (picks: PendingPicks) => void;
+    /** The kit's Start screen's pick: cricket never shows it (its toss is its own), so this is never pressed. */
+    readonly pickServer: (side: PadSide) => void;
+    /** Start match, on the setup's last step: records `core.start`, once for a double tap, and nothing until it is ready. */
+    readonly start: () => void;
+    /** The reconnect question (owner ruling 43): Send my taps, Discard them (which asks again) and its confirm's Discard. */
+    readonly sendTaps: () => void;
+    readonly askDiscard: () => void;
+    readonly confirmDiscard: () => void;
+  };
 
 /** What the cricket pad screen is drawn from: the shared model, the board and the display it is read from. */
 export type CricketPadModel = PadScreenModel<CricketPadKey, CricketSheetView> & {
@@ -54,6 +62,8 @@ export type CricketPadModel = PadScreenModel<CricketPadKey, CricketSheetView> & 
   readonly display: CricketDisplay;
   /** The kit's Start screen pick: cricket's toss is an event of its own, so this is always none. */
   readonly toss: PadSide | null;
+  /** The setup in the board's place before the first ball (the toss, the order, the bowler); none once play is on. */
+  readonly setup: CricketSetupModel | null;
   readonly actions: CricketPadActions;
 };
 
@@ -94,19 +104,23 @@ function useCricketPad(
   const driver = useCricketDriver(sender);
   const taps = useTaps(driver, settle, sender.say, ignoreFlash);
   const sheets = useSheets(taps, pad);
-  const actions = useActions({ sender, runner, pad, taps, sheets, setCardNote });
+  const setup = useCricketSetup(pad, sender, taps);
+  const actions = useActions({ sender, runner, pad, taps, sheets, setup, setCardNote });
   useBackCloses(sheets.open, sheets.cancel);
   const board = useMemo(() => (pad === null ? null : cricketBoard(pad.display)), [pad]);
   return useMemo(
-    () => modelOf(pad, board, sheets.view, cardNote, actions),
-    [pad, board, sheets.view, cardNote, actions],
+    () => modelOf(pad, { board, setup: setup.model }, sheets.view, cardNote, actions),
+    [pad, board, setup.model, sheets.view, cardNote, actions],
   );
 }
+
+/** What cricket draws in the halves' place: the board, or the setup while the match is before its first ball. */
+type Body = { readonly board: CricketBoardView | null; readonly setup: CricketSetupModel | null };
 
 /** What the screen is drawn from, or none while the match is loading. */
 function modelOf(
   pad: PadFacts | null,
-  board: CricketBoardView | null,
+  { board, setup }: Body,
   sheet: CricketSheetView | null,
   cardNote: MessageKey | null,
   actions: CricketPadActions,
@@ -122,6 +136,7 @@ function modelOf(
     toss: pad.toss,
     board,
     display: pad.display,
+    setup,
     actions,
   };
 }
@@ -146,6 +161,7 @@ type Parts = {
   readonly pad: PadFacts | null;
   readonly taps: ReturnType<typeof useTaps>;
   readonly sheets: ReturnType<typeof useSheets>;
+  readonly setup: ReturnType<typeof useCricketSetup>;
   readonly setCardNote: (note: MessageKey | null) => void;
 };
 
@@ -174,11 +190,23 @@ function useActions(parts: Parts): CricketPadActions {
       ...sheets.actions,
       ...asked,
       ...links,
+      ...parts.setup.actions,
       ...start,
       record,
       setPicks,
     }),
-    [home, undo, cancel, sheets.actions, asked, links, start, record, setPicks],
+    [
+      home,
+      undo,
+      cancel,
+      sheets.actions,
+      asked,
+      links,
+      parts.setup.actions,
+      start,
+      record,
+      setPicks,
+    ],
   );
 }
 
@@ -195,10 +223,20 @@ function useRecord(sender: Sender, taps: ReturnType<typeof useTaps>) {
   );
 }
 
-/** The kit's Start match: a tap with no side, never shown for cricket (its toss and setup are its own screens). */
-function useStart({ sender, runner, pad, taps }: Parts) {
+/**
+ * Start match on the setup's last step: a tap with no side (the kit's, `useStartActions`), an opening tap, so a double
+ * tap records one start. It records nothing until the setup is ready (the openers and the first bowler, spec §4.1), the
+ * same reading that greys the button.
+ */
+function useStart({ sender, runner, pad, taps, setup }: Parts) {
   const { tap } = sender;
   const startWith = useCallback(() => tap({ kind: 'start' }), [tap]);
-  // The literal `false`: there is no serve to pick, so Start match would start at once (`useStartActions`).
-  return useStartActions(runner, pad?.toss ?? null, startWith, taps.opening, false);
+  // The literal `false`: there is no serve to pick, so Start match starts at once (`useStartActions`).
+  const kit = useStartActions(runner, pad?.toss ?? null, startWith, taps.opening, false);
+  const ready = setup.model?.ready === true;
+  const { start: kitStart, pickServer } = kit;
+  const start = useCallback(() => {
+    if (ready) kitStart();
+  }, [ready, kitStart]);
+  return useMemo(() => ({ pickServer, start }), [pickServer, start]);
 }

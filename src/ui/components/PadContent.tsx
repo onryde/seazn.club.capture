@@ -1,4 +1,4 @@
-import { memo, type ReactNode } from 'react';
+import { memo, useMemo, type ReactNode } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import {
   cardPlacement,
@@ -7,6 +7,7 @@ import {
   type PadMatchDetails,
   type PadSide,
   type PadStart,
+  type PadStartSide,
   type PadSync,
   type PadTally,
   type PadView,
@@ -27,7 +28,7 @@ import { StartSides } from '@/ui/components/StartSides';
 import { SyncBadge } from '@/ui/components/SyncBadge';
 import { Text } from '@/ui/components/Text';
 import { ToolRow } from '@/ui/components/ToolRow';
-import { TossPicker } from '@/ui/components/TossPicker';
+import { TossPicker, type TossOption } from '@/ui/components/TossPicker';
 import { UpdateBanner } from '@/ui/components/UpdateBanner';
 import { layout, space } from '@/ui/theme/tokens';
 
@@ -244,13 +245,14 @@ const StartPanel = memo(function StartPanel({
 }) {
   const { t } = useT();
   const words = usePadText();
+  const options = useMemo(() => tossOptionsOf(start.sides), [start.sides]);
   return (
     <ScrollView testID="start-screen" style={styles.body} contentContainerStyle={styles.start}>
       <DetailsCard details={details} />
       {start.needsToss ? (
         <TossPicker
           ask={words(start.ask)}
-          sides={start.sides}
+          options={options}
           picked={toss}
           onPick={actions.pickServer}
         />
@@ -265,6 +267,17 @@ const StartPanel = memo(function StartPanel({
     </ScrollView>
   );
 });
+
+/** The Start screen's sides as the picker's choices: each side's seat is its id, its name as typed. */
+function tossOptionsOf(
+  sides: readonly [PadStartSide, PadStartSide],
+): readonly [TossOption<PadSide>, TossOption<PadSide>] {
+  const [top, bottom] = sides;
+  return [
+    { id: top.side, label: top.label },
+    { id: bottom.side, label: bottom.label },
+  ];
+}
 
 /**
  * Under the halves: the last-tap line and the tools, or, when an update is needed, the banner in their place

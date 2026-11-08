@@ -302,6 +302,10 @@ describe('every path the navigation moves to has its route file, and each Settin
       'src/ui/screens/CricketPadScreen.tsx',
       // The board in the pad's halves' place (S2-4 Task 8): a sport's screen file that is no pad, as the tie-break view.
       'src/ui/screens/CricketBoard.tsx',
+      // The setup in the board's place before the first ball (S2-4 Task 10), and its two parts: no pads either.
+      'src/ui/screens/CricketSetup.tsx',
+      'src/ui/screens/CricketOrderList.tsx',
+      'src/ui/screens/CricketToss.tsx',
     ]);
   });
 

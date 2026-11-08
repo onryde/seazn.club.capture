@@ -396,6 +396,12 @@ const base = {
   /** A side's button on the Start screen: a big target, half again the touch height and more. */
   padTossHeight: 64,
   /**
+   * A toss that fills its half of the screen (owner ruling 83, cricket's two-half toss): its question keeps this many
+   * lines of `state` whatever it says, so "Team chose to…" becoming a long team's name never moves the buttons under it.
+   * A name longer still gives way to an ellipsis (cricketFit.test.ts: 30-character names fit at 320 in four languages).
+   */
+  padTossAskLines: 2,
+  /**
    * Match details' rules table (owner, 2026-11-01, option A): the label column is as wide as the widest label in the
    * operator's language, and at most this. Spanish's widest (_Cambio de lado_, 108) keeps one line; French's and
    * Dutch's (_Changement de côté_, _Van kant wisselen_) wrap to two, so each value keeps 124 dp at 320 (padFit.test.ts).

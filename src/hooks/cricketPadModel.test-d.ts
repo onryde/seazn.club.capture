@@ -18,7 +18,20 @@ import type { MessageKey } from '@/i18n/messages';
  * screen gets what the match hook answers. The own list is copied here by hand, so a button moved between pads fails here.
  */
 type CricketOwn =
-  'record' | 'setPicks' | 'pickServer' | 'start' | 'sendTaps' | 'askDiscard' | 'confirmDiscard';
+  | 'record'
+  | 'setPicks'
+  | 'pickServer'
+  | 'start'
+  | 'sendTaps'
+  | 'askDiscard'
+  | 'confirmDiscard'
+  // The setup before the first ball (Task 10).
+  | 'pickTossWinner'
+  | 'recordToss'
+  | 'moveBatter'
+  | 'setOpeners'
+  | 'setBowler'
+  | 'changeOrder';
 
 describe('cricket’s words', () => {
   // The kit takes `PadView<MessageKey>`: a pad key the dictionaries lack must fail to compile, here and at the screen.
