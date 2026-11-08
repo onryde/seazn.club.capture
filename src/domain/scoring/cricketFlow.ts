@@ -51,7 +51,9 @@ export function flowChoice(
       return extrasOutcome(flow.extra, id);
     case 'wicket': {
       const chosen = chooseWicket(flow.wicket, display, id);
-      return chosen === null ? null : { kind: 'tap', tap: { kind: 'ball', ball: chosen.done } };
+      if (chosen === null) return null;
+      if ('next' in chosen) return { kind: 'next', flow: { kind: 'wicket', wicket: chosen.next } };
+      return { kind: 'tap', tap: { kind: 'ball', ball: chosen.done } };
     }
   }
 }

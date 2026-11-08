@@ -51,6 +51,12 @@ function stepName(view: View): string | null {
   return sheet?.kind === 'step' ? sheet.step.name : null;
 }
 
+/** The choices of the step on screen. */
+function stepOptions(view: View) {
+  const sheet = pad(view).sheet;
+  return sheet?.kind === 'step' ? sheet.step.options : [];
+}
+
 async function count(fakes: FakePorts) {
   const events = await fakes.scoring.events(LINK, LIVE.fixtureId, 0);
   return Array.isArray(events) ? events.length : -1;
@@ -107,6 +113,37 @@ describe('useCricketSheets', () => {
     act(() => pad(view).actions.choose('stumped'));
     await flush();
     expect([stepName(view), await count(fakes)]).toEqual(['wicket.kind', before]);
+  });
+
+  it('Out from the wide sheet records one ball: the wide and the stumping together', async () => {
+    const { fakes, view } = await opened();
+    const before = await count(fakes);
+    act(() => pad(view).actions.openExtras('wide'));
+    for (const id of ['out', 'stumped']) {
+      await wait();
+      act(() => pad(view).actions.choose(id));
+    }
+    const keeper = stepOptions(view);
+    expect([stepName(view), keeper.length]).toEqual(['wicket.fielder', 1]);
+    await wait();
+    act(() => pad(view).actions.choose(keeper[0]!.id));
+    const incoming = stepOptions(view).find((one) => one.chosen === true);
+    expect(stepName(view)).toBe('wicket.incoming');
+    await wait();
+    act(() => pad(view).actions.choose(incoming!.id));
+    await flush();
+    const events = await fakes.scoring.events(LINK, LIVE.fixtureId, 0);
+    if (!Array.isArray(events)) throw new Error('no events');
+    expect([stepName(view), events.length]).toEqual([null, before + 1]);
+    expect(events.at(-1)?.payload).toMatchObject({
+      runs: { bat: 0, extras: { kind: 'wide', runs: 1 } },
+      wicket: {
+        kind: 'stumped',
+        fielder: keeper[0]!.id,
+        incoming: incoming!.id,
+        bowlerCredited: true,
+      },
+    });
   });
 
   it('a key on the heels of a recorded ball is its second touch: no sheet, and the line says Counted once', async () => {

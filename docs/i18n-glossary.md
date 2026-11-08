@@ -566,6 +566,28 @@ drafts, for the owner's review**, as the rest of the cricket words.
 | Off the bat | Con el bate          | Avec la batte     | Van het bat  | `extras.bat`: the no-ball's runs off the bat; `extras.runs` "Runs" a bye's. |
 | How out?    | ¿Cómo fue eliminado? | Éliminé comment ? | Hoe uit?     | `wicket.how`: the wicket's first step. fr has a no-break space before `?`.  |
 
+### Cricket wicket steps (S2-4 Task 12, 2026-11-08)
+
+The wicket steps' titles, rows and notes (`scoring.cricket.wicket.*`). The kinds of dismissal
+(`scoring.cricket.wicket.kind.*`: _Bowled_, _Caught_, _LBW_, _Run out_, _Stumped_, _Hit wicket_, _Obstructing the
+field_, _Hit the ball twice_) are the game's own words in all four, capitalised for a row, as the owner-tested preview has
+them; the lower-case `out.kind.*` stay for the History sentence. The striker's note is the board's _On strike_
+(`board.onStrike`). **es, fr and nl are unreviewed drafts, for the owner's review**, as the rest of the cricket words.
+
+| English             | Español                   | Français                | Nederlands               | Notes                                                                           |
+| ------------------- | ------------------------- | ----------------------- | ------------------------ | ------------------------------------------------------------------------------- |
+| Who's out?          | ¿Quién está eliminado?    | Qui est éliminé ?       | Wie is uit?              | `wicket.who`: run out and obstructing only. fr has a no-break space before `?`. |
+| Fielder             | Jugador de campo          | Joueur de champ         | Veldspeler               | `wicket.fielder`: the step's title; a stumping offers the keeper.               |
+| Second fielder      | Segundo jugador           | Second joueur           | Tweede veldspeler        | `wicket.assist`: a run out's `fielderAssist`.                                   |
+| Runs completed      | Carreras completadas      | Courses complétées      | Voltooide runs           | `wicket.completed`: 0 to 3, in a row of keys under _Runs run_.                  |
+| Next batter         | Siguiente bateador        | Batteur suivant         | Volgende batter          | `wicket.incoming`.                                                              |
+| No fielder          | Sin jugador de campo      | Aucun joueur de champ   | Geen veldspeler          | `wicket.noFielder`: obstructing names none.                                     |
+| No second fielder   | Sin segundo jugador       | Pas de second joueur    | Geen tweede veldspeler   | `wicket.noAssist`.                                                              |
+| Already the fielder | Ya es el jugador de campo | Déjà le joueur de champ | Is al de veldspeler      | `wicket.isFielder`: why the fielder is greyed as the second.                    |
+| Retired not out     | Retirado, no eliminado    | Retiré, non éliminé     | Teruggetrokken, niet uit | `wicket.retired`: a retired batter who may resume.                              |
+| Non-striker         | Al otro extremo           | À l’autre bout          | Aan de overkant          | `wicket.nonStriker`.                                                            |
+| Next in order       | Siguiente en el orden     | Suivant dans l’ordre    | Volgende in de volgorde  | `wicket.nextInOrder`: the suggested batter (ruling 82).                         |
+
 ## App settings (2026-11-02)
 
 The app's own Settings, from the gear in Home's top-right corner (owner, 2026-11-02: "we should have common setting in a top

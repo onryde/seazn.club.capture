@@ -276,3 +276,61 @@ describe('Undo and the status line', () => {
     );
   });
 });
+
+describe('the wicket steps (plan Task 12)', () => {
+  const choices = () => within(screen.getByTestId('step-sheet')).getAllByRole('button');
+  const heading = () => within(screen.getByTestId('step-sheet')).getByRole('heading').textContent;
+
+  it('Out, Bowled, then the next batter, suggested and said so: one wicket, the board a wicket down', async () => {
+    const app = await scanned();
+    await press(app, en['scoring.cricket.key.out']);
+    expect(heading()).toBe(en['scoring.cricket.wicket.how']);
+    await press(app, en['scoring.cricket.wicket.kind.bowled']);
+    expect(heading()).toBe(en['scoring.cricket.wicket.incoming']);
+    const next = choices()[0]!;
+    expect(next.getAttribute('aria-selected')).toBe('true');
+    expect(within(next).getByText(en['scoring.cricket.wicket.nextInOrder'])).toBeTruthy();
+    aSecondOn(app);
+    act(() => fireEvent.click(next));
+    await flush(400);
+    expect(sheet()).toBeNull();
+    expect(await lastPayload(app)).toMatchObject({
+      runs: { bat: 0 },
+      wicket: { kind: 'bowled', bowlerCredited: true },
+    });
+    expect(runs()).toBe('5/1');
+  });
+
+  it('a run out asks who, the fielder, a second one (never the fielder), the runs, then who walks in', async () => {
+    const app = await scanned();
+    await press(app, en['scoring.cricket.key.out']);
+    await press(app, en['scoring.cricket.wicket.kind.runout']);
+    expect(heading()).toBe(en['scoring.cricket.wicket.who']);
+    const [striker] = choices();
+    aSecondOn(app);
+    act(() => fireEvent.click(striker!));
+    await flush(400);
+    expect(heading()).toBe(en['scoring.cricket.wicket.fielder']);
+    const fielder = choices()[3]!;
+    const name = fielder.textContent;
+    aSecondOn(app);
+    act(() => fireEvent.click(fielder));
+    await flush(400);
+    expect(heading()).toBe(en['scoring.cricket.wicket.assist']);
+    const same = choices().find((one) => one.textContent?.startsWith(name ?? '?') === true);
+    expect(same?.getAttribute('aria-disabled')).toBe('true');
+    expect(within(same!).getByText(en['scoring.cricket.wicket.isFielder'])).toBeTruthy();
+    await press(app, en['scoring.cricket.wicket.noAssist']);
+    await press(app, `${en['scoring.cricket.extras.ran']}: 1`);
+    expect(heading()).toBe(en['scoring.cricket.wicket.incoming']);
+    aSecondOn(app);
+    act(() => fireEvent.click(choices()[0]!));
+    await flush(400);
+    expect(await lastPayload(app)).toMatchObject({
+      runs: { bat: 1 },
+      wicket: { kind: 'runout', bowlerCredited: false },
+    });
+    expect(await lastPayload(app)).not.toHaveProperty('wicket.fielderAssist');
+    expect(runs()).toBe('6/1');
+  });
+});

@@ -380,7 +380,70 @@ describe.each(WIDTHS)('the extras sheets at %i dp', (width) => {
 
   it.each(LANGUAGES)('%s: How out? is one line in the title', (_, dictionary) => {
     const title = said(dictionary, 'scoring.cricket.wicket.how');
-    const titleWidth = (text: string) => barlow700.width(text, typeScale.title.fontSize);
-    expect(linesOf(title, sheetText, titleWidth)).toBe(1);
+    expect(linesOf(title, sheetText, sheetTitleWidth)).toBe(1);
   });
+});
+
+/** A sheet's title: `title`, uppercase and letterspaced. */
+const sheetTitleWidth = (text: string) =>
+  barlow700.width(text.toUpperCase(), typeScale.title.fontSize) +
+  text.length * (typeScale.title.letterSpacing ?? 0);
+
+/**
+ * S2-4 plan Task 12: the wicket steps' words, at 320 and 360 dp in four languages. Each title one line; each row's label
+ * one line at `controlInk` inside the row's padding; each row's note one line at `metricUnit`.
+ */
+const WICKET_TITLES = ['how', 'who', 'fielder', 'assist', 'completed', 'incoming'].map(
+  (step) => `scoring.cricket.wicket.${step}`,
+);
+const WICKET_ROWS = [
+  ...[
+    'bowled',
+    'caught',
+    'lbw',
+    'runout',
+    'stumped',
+    'hitwicket',
+    'obstructed',
+    'hitballtwice',
+  ].map((kind) => `scoring.cricket.wicket.kind.${kind}`),
+  'scoring.cricket.wicket.noFielder',
+  'scoring.cricket.wicket.noAssist',
+];
+const WICKET_NOTES = [
+  'scoring.cricket.board.onStrike',
+  'scoring.cricket.wicket.nonStriker',
+  'scoring.cricket.wicket.isFielder',
+  'scoring.cricket.wicket.retired',
+  'scoring.cricket.wicket.nextInOrder',
+];
+
+describe.each(WIDTHS)('the wicket steps at %i dp', (width) => {
+  const sheetText = width - 2 * space.md;
+  const rowText = sheetText - 2 * space.md;
+  const rowWidth = (text: string) => geist500.width(text, typeScale.controlInk.fontSize);
+
+  it.each(LANGUAGES)(
+    '%s: every title is one line, every row and note one line',
+    (_, dictionary) => {
+      for (const key of WICKET_TITLES) {
+        expect(linesOf(said(dictionary, key), sheetText, sheetTitleWidth), key).toBe(1);
+      }
+      for (const key of WICKET_ROWS) {
+        expect(rowWidth(said(dictionary, key)), key).toBeLessThanOrEqual(rowText);
+      }
+      for (const key of WICKET_NOTES) {
+        expect(unitWidth(said(dictionary, key)), key).toBeLessThanOrEqual(rowText);
+      }
+    },
+  );
+});
+
+it('the widest wicket title is wider than half the sheet at 320 (anti-vacuity: titles are measured uppercase)', () => {
+  const widest = Math.max(
+    ...LANGUAGES.flatMap(([, dictionary]) =>
+      WICKET_TITLES.map((key) => sheetTitleWidth(said(dictionary, key))),
+    ),
+  );
+  expect(widest).toBeGreaterThan((320 - 2 * space.md) / 2);
 });

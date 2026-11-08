@@ -377,7 +377,7 @@ function swapEnds(crease: Crease): void {
   [crease.striker, crease.nonStriker] = [crease.nonStriker, crease.striker];
 }
 
-const times = (n: number, delivery: Delivery): Delivery[] =>
+export const times = (n: number, delivery: Delivery): Delivery[] =>
   Array.from({ length: n }, () => delivery);
 
 // ---------------------------------------------------------------------------------------------------------------

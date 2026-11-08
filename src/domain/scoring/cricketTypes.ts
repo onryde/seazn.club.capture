@@ -339,17 +339,23 @@ export type CricketResultKey =
  * Every dictionary key the cricket pad and its History words name. The kit translates them as `MessageKey`, so each must
  * exist in en.json (`cricketPadWords.test.ts` holds it to that at compile time).
  */
-/** The board's words the domain names (`cricketBoard`): the chase, with or without a ball limit, and a free hit. */
+/**
+ * The board's words the domain names (`cricketBoard`): the chase, with or without a ball limit, and a free hit; and the
+ * striker's, which the wicket steps' Who's out? says too (`cricketWicket`).
+ */
 export type CricketBoardKey =
   | Counted<'scoring.cricket.board.chase'>
   | 'scoring.cricket.board.need'
-  | 'scoring.cricket.board.freeHit';
+  | 'scoring.cricket.board.freeHit'
+  | 'scoring.cricket.board.onStrike';
 
 /** The pad's keys and its sheets' words (Tasks 11 to 15). */
 export type CricketSheetKey =
   | `scoring.cricket.key.${'wide' | 'noBall' | 'bye' | 'legBye' | 'out' | 'more'}`
   | `scoring.cricket.extras.${'ran' | 'bat' | 'runs' | 'out'}`
-  | 'scoring.cricket.wicket.how';
+  | `scoring.cricket.wicket.${'how' | 'who' | 'fielder' | 'assist' | 'completed' | 'incoming'}`
+  | `scoring.cricket.wicket.${'noFielder' | 'noAssist' | 'isFielder' | 'retired' | 'nonStriker' | 'nextInOrder'}`
+  | `scoring.cricket.wicket.kind.${CricketBallWicketKind}`;
 
 export type CricketPadKey =
   | CricketRuleKey

@@ -36,7 +36,7 @@ export function cricketEventFor(
     case 'start':
       return { type: 'core.start', payload: {} };
     case 'ball':
-      return ballEvent(tap.ball, display);
+      return ballEventOf(tap.ball, display);
     case 'summary':
       return summaryEvent(tap);
     case 'retire':
@@ -51,9 +51,9 @@ export function cricketEventFor(
 /**
  * A ball: the over and the ball in it from the legal balls bowled (both checked strictly by the server), the pair and the
  * bowler from the display. `freeHit` is never sent (the server refuses it unless one is pending, §4.2). Null while the
- * crease or the bowler is not known.
+ * crease or the bowler is not known. The wicket steps try a candidate ball with it (`endsInnings`).
  */
-function ballEvent(ball: CricketBallTap, display: CricketDisplay): SportEvent | null {
+export function ballEventOf(ball: CricketBallTap, display: CricketDisplay): SportEvent | null {
   const { innings, crease, bowler } = display;
   if (innings === null || crease === null || bowler === null) return null;
   const { ballsPerOver } = display.cfg;
