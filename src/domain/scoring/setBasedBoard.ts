@@ -119,7 +119,7 @@ export function pickedServer(
  */
 export function lastTapOf<D, T>(
   envelopes: readonly EventEnvelope[],
-  recorded: ReadonlyMap<string, Recorded<D>>,
+  recorded: ReadonlyMap<string, Pick<Recorded<D>, 'did'>>,
   undoneTap: (did: D) => T | null,
 ): D | { readonly kind: 'undone'; readonly tap: T } | null {
   for (const envelope of [...envelopes].reverse()) {
