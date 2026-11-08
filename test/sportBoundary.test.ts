@@ -302,3 +302,67 @@ describe('a generic scoring file names no cricket module either', { timeout: 180
     expect(await refusals(CRICKET_VALUE, 'src/domain/scoring/cricketFold.test.ts')).toEqual([]);
   });
 });
+
+/**
+ * Football is held the same way (S2-5 plan P Task 9): its modules are `football*` (domain, services) and `*Football*`
+ * (hooks, screens), both case spellings since the globs are case sensitive. The hook and the screen are Batch C's; the
+ * lint holds their paths already.
+ */
+const FOOTBALL_VALUE =
+  "import { foldFootball } from '@/domain/scoring/footballFold';\nexport const f = foldFootball;\n";
+const FOOTBALL_TYPE =
+  "import type { FootballDisplay } from '@/domain/scoring/footballTypes';\nexport type D = FootballDisplay;\n";
+const FOOTBALL_CAPITAL =
+  "import { useFootballMatch } from '@/hooks/useFootballMatch';\nexport const h = useFootballMatch;\n";
+
+const FOOTBALL_OWN = [
+  'src/domain/scoring/footballFold.ts',
+  'src/domain/scoring/footballBoard.ts',
+  'src/domain/scoring/footballPad.ts',
+  'src/domain/scoring/footballSport.ts',
+  'src/hooks/useFootballMatch.ts',
+  'src/ui/screens/FootballPadScreen.tsx',
+  'src/services/fakeFootballPad.ts',
+  // held by `usePad*` and exempt only by `*Football*`
+  'src/hooks/usePadFootballProbe.ts',
+] as const;
+
+describe('a generic scoring file names no football module either', { timeout: 180_000 }, () => {
+  it('refuses a football import, by value and by type, from a path of every glob', async () => {
+    const byValue = await Promise.all(
+      GENERIC.map(async (file) => (await refusals(FOOTBALL_VALUE, file)).length),
+    );
+    const byType = await Promise.all(
+      GENERIC.map(async (file) => (await refusals(FOOTBALL_TYPE, file)).length),
+    );
+    expect(byValue).toEqual(GENERIC.map(() => 1));
+    expect(byType).toEqual(GENERIC.map(() => 1));
+  });
+
+  it('refuses the capitalised spelling too (a hook or a screen)', async () => {
+    const counts = await Promise.all(
+      GENERIC.map(async (file) => (await refusals(FOOTBALL_CAPITAL, file)).length),
+    );
+    expect(counts).toEqual(GENERIC.map(() => 1));
+  });
+
+  it('refuses the sport module from a path of every glob, and from the generic clock bar', async () => {
+    const source =
+      "import { footballSport } from '@/domain/scoring/footballSport';\nexport const s = footballSport;\n";
+    const paths = [...GENERIC, 'src/domain/scoring/clockBarView.ts'];
+    const counts = await Promise.all(
+      paths.map(async (file) => (await refusals(source, file)).length),
+    );
+    expect(counts).toEqual(paths.map(() => 1));
+  });
+
+  it('stays silent in football’s own files, and in a test', async () => {
+    const own = await Promise.all(
+      FOOTBALL_OWN.flatMap((file) =>
+        [FOOTBALL_VALUE, FOOTBALL_CAPITAL].map(async (src) => (await refusals(src, file)).length),
+      ),
+    );
+    expect(own).toEqual(FOOTBALL_OWN.flatMap(() => [0, 0]));
+    expect(await refusals(FOOTBALL_VALUE, 'src/domain/scoring/footballFold.test.ts')).toEqual([]);
+  });
+});

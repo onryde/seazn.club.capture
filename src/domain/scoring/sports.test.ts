@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { badmintonSport } from '@/domain/scoring/badmintonSport';
 import { chessSport } from '@/domain/scoring/chessSport';
 import { cricketSport } from '@/domain/scoring/cricketSport';
+import { footballSport } from '@/domain/scoring/footballSport';
 import { sportFor } from '@/domain/scoring/sports';
 import { tableTennisSport } from '@/domain/scoring/tableTennisSport';
 
 // The sports this build scores (owner, 2026-11-02: pad per sport): one table by the bootstrap's sport_key. Badminton and
-// table tennis (S2-2), chess (S2-3, under the engine's key `boardgame`) and cricket (S2-4) are its four rows.
+// table tennis (S2-2), chess (S2-3, under the engine's key `boardgame`), cricket (S2-4) and football (S2-5) are its five rows.
 
 describe('sportFor', () => {
   it('names badminton by its key', () => {
@@ -24,6 +25,11 @@ describe('sportFor', () => {
 
   it('names cricket by its key', () => {
     expect(sportFor('cricket')).toBe(cricketSport);
+  });
+
+  it('names football by its key', () => {
+    expect(sportFor('football')).toBe(footballSport);
+    expect(sportFor('Football')).toBeNull();
   });
 
   it.each(['tennis', '', 'Badminton', 'constructor', 'toString'])(

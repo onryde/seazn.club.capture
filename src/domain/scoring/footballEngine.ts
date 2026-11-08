@@ -34,6 +34,11 @@ export function footballCfg(raw: unknown): FootballCfg | null {
  * web's `buildLineup` writes it. Rows with none (a web older than design §10) are every row starting, in the order
  * listed, so a goal the console names a player for still folds on the phone (design §9); `sheet` is false, and the pad
  * shows the team only (§6.6). No rows: no slots, no sheet.
+ *
+ * The rows are kept in the order they arrive, never sorted again: the web's bootstrap sends them in `buildLineup`'s
+ * order (`order_no` nulls last, `full_name`, `person_id`), and a row with no order is numbered by its place in it (the
+ * controller's ruling, 2026-11-08, agreed with S2-4). Nothing here is football's but the name: the builder reads only
+ * the bootstrap's rows and the engine's slot, so it can move to a shared team-sheet module when cricket adds one.
  */
 export function footballLineupOf(side: BootstrapSide): { lineup: Lineup; sheet: boolean } {
   const sheet = side.lineup.some((row) => row.slot !== undefined);

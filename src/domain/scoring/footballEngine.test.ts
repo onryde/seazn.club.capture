@@ -192,6 +192,52 @@ describe('footballLineupOf', () => {
     });
   });
 
+  // The controller's ruling of 2026-11-08 (agreed with S2-4, superseding item 7 of the Batch B rulings): the web's
+  // bootstrap orders the rows as the server's `buildLineup` does (`order_no` nulls last, `full_name`, `person_id`), so the
+  // phone keeps them exactly as they arrive and never sorts them again. These rows are in an order that sorting by
+  // person id (H-p2, H-p5, H-p9), by name (Abe, Mo, Zed) or by order number (1, 2) would each change.
+  it('rows keep the order they arrive in', () => {
+    const side: BootstrapSide = {
+      ...HOME,
+      members: [
+        { personId: 'H-p9', fullName: 'Zed' },
+        { personId: 'H-p2', fullName: 'Abe' },
+        { personId: 'H-p5', fullName: 'Mo' },
+      ],
+      lineup: [
+        { personId: 'H-p9', pairOrder: null, slot: 'starting', orderNo: 2 },
+        { personId: 'H-p2', pairOrder: null, slot: 'starting', orderNo: 1 },
+        { personId: 'H-p5', pairOrder: null, slot: 'bench' },
+      ],
+    };
+    expect(footballLineupOf(side).lineup.slots.map((slot) => slot.personId)).toEqual([
+      'H-p9',
+      'H-p2',
+      'H-p5',
+    ]);
+  });
+
+  // The wire's `order_no: null` is read as no order (`wire.ts`); such a row is numbered by its place in the order it came in.
+  it('a null orderNo is numbered by position', () => {
+    const side: BootstrapSide = {
+      ...HOME,
+      lineup: [
+        { personId: 'H-p7', pairOrder: null, slot: 'starting', orderNo: 1 },
+        { personId: 'H-p3', pairOrder: null, slot: 'starting' },
+        { personId: 'H-p8', pairOrder: null, slot: 'bench', orderNo: 12 },
+        { personId: 'H-p1', pairOrder: null, slot: 'bench' },
+      ],
+    };
+    expect(
+      footballLineupOf(side).lineup.slots.map((slot) => [slot.personId, slot.orderNo]),
+    ).toEqual([
+      ['H-p7', 1],
+      ['H-p3', 2],
+      ['H-p8', 12],
+      ['H-p1', 4],
+    ]);
+  });
+
   it('no rows folds with an empty lineup', () => {
     const home = NO_SHEET.sides.home;
     if (home === null) throw new Error('NO_SHEET has a home side');
