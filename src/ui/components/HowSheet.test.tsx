@@ -2,11 +2,13 @@ import { act, fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import en from '@/i18n/en.json';
 import { HowSheet } from '@/ui/components/HowSheet';
+import { colour, layout } from '@/ui/theme/tokens';
+import { edgeOf, fillOf } from '../../../test/pressState';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
 // The sheet that asks How a game ended (plan S2-3 Task 3): a title, the methods as one choice among them or none, Record
-// and Cancel. It sends nothing itself; the caller holds the pick. The lime fill of the picked chip, the wrap of the chips
-// at 320 dp and how the sheet sits over the pad are the device check's.
+// and Cancel. It sends nothing itself; the caller holds the pick. How the picked chip's heavier lime border reads, the wrap
+// of the chips at 320 dp and how the sheet sits over the pad are the device check's.
 
 const OPTIONS = [
   { id: 'checkmate', label: 'Checkmate' },
@@ -95,5 +97,25 @@ describe('HowSheet', () => {
     render({ options: [] });
     expect(screen.queryAllByRole('radio')).toEqual([]);
     expect(screen.getAllByRole('button')).toHaveLength(2);
+  });
+});
+
+// Owner rulings 82 and 85 (2026-11-07): How's methods are rows that take a tap, as every sport's sheets have them: a lime
+// border, and the picked one the heavier lime border on surface (the shared row style, `sheetRow.ts`). jsdom reads the
+// tokens; how they read on a phone is the device check's (plan Task 19).
+describe('HowSheet rows (rulings 82, 85)', () => {
+  it('a How row has the lime border, and the picked one the heavier lime border on surface', () => {
+    render({ picked: 'resign' });
+    const plain = getComputedStyle(screen.getByRole('radio', { name: 'Time' }));
+    expect([plain.borderTopColor, plain.borderTopWidth]).toEqual([
+      edgeOf(colour.lime),
+      `${layout.iconBorder}px`,
+    ]);
+    const picked = getComputedStyle(screen.getByRole('radio', { name: 'Resignation' }));
+    expect([picked.borderTopColor, picked.borderTopWidth, picked.backgroundColor]).toEqual([
+      edgeOf(colour.lime),
+      `${layout.iconBorderOn}px`,
+      fillOf(colour.surface),
+    ]);
   });
 });

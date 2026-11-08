@@ -31,6 +31,11 @@ export type StepSheetFacts = {
     readonly id: string;
     readonly label: PadVar<MessageKey>;
     readonly tone: StepOption['tone'];
+    /** Not offered now: greyed, with its reason (`note`) under it (owner ruling 82). */
+    readonly disabled?: boolean;
+    readonly note?: PadVar<MessageKey> | null;
+    /** The choice made, or the one suggested: the heavier lime border (owner ruling 82). */
+    readonly chosen?: boolean;
   }[];
 };
 
@@ -46,7 +51,12 @@ export const StepSheetView = memo(function StepSheetView({
   const { t } = useT();
   const words = usePadText();
   const options = useMemo<readonly StepOption[]>(
-    () => sheet.options.map((option) => ({ ...option, label: words(option.label) })),
+    () =>
+      sheet.options.map((option) => ({
+        ...option,
+        label: words(option.label),
+        note: option.note == null ? null : words(option.note),
+      })),
     [sheet.options, words],
   );
   return (

@@ -1,17 +1,11 @@
 import { memo, useCallback } from 'react';
-import {
-  type PressableStateCallbackType,
-  Pressable,
-  type StyleProp,
-  StyleSheet,
-  View,
-  type ViewStyle,
-} from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Button } from '@/ui/components/Button';
 import { GhostButton } from '@/ui/components/GhostButton';
 import { padSheet } from '@/ui/components/padSheet';
+import { sheetRow, sheetRowLabel, sheetRowStyles } from '@/ui/components/sheetRow';
 import { Text } from '@/ui/components/Text';
-import { colour, layout, plateInk, radius, space } from '@/ui/theme/tokens';
+import { space } from '@/ui/theme/tokens';
 
 /** One way a game can end: its id goes back to the caller as it is. */
 export type HowOption = { readonly id: string; readonly label: string };
@@ -83,7 +77,10 @@ export const HowOptions = memo(function HowOptions({
   );
 });
 
-/** A method: one choice among them, said to a screen reader as picked or not, and drawn as a lime fill when picked. */
+/**
+ * A method: one choice among them, said to a screen reader as picked or not. It is a row that takes a tap, drawn as every
+ * sport's sheet rows are (owner rulings 82 and 85, `sheetRow.ts`): lime, and the picked one the heavier lime on surface.
+ */
 const HowChip = memo(function HowChip({
   option,
   picked,
@@ -94,6 +91,7 @@ const HowChip = memo(function HowChip({
   readonly onPick: (id: string | null) => void;
 }) {
   const press = useCallback(() => onPick(picked ? null : option.id), [onPick, picked, option.id]);
+  const tone = picked ? 'chosen' : 'standard';
   return (
     <Pressable
       accessibilityRole="radio"
@@ -102,9 +100,9 @@ const HowChip = memo(function HowChip({
       // checked state (ChoiceRow).
       aria-checked={picked}
       onPress={press}
-      style={picked ? pickedChip : chip}
+      style={CHIP[tone]}
     >
-      <Text variant="controlInk" style={picked ? styles.labelPicked : undefined}>
+      <Text variant="controlInk" style={sheetRowLabel[tone]}>
         {option.label}
       </Text>
     </Pressable>
@@ -113,26 +111,8 @@ const HowChip = memo(function HowChip({
 
 const styles = StyleSheet.create({
   options: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-  chip: {
-    minHeight: layout.touch,
-    // A chip wider than the sheet wraps its own words, never past the edge.
-    maxWidth: '100%',
-    justifyContent: 'center',
-    paddingHorizontal: space.md,
-    borderRadius: radius.card,
-    borderWidth: layout.iconBorder,
-    borderColor: colour.ink3,
-  },
-  picked: { backgroundColor: colour.lime, borderColor: colour.lime },
-  pressed: { backgroundColor: colour.pressFill },
-  labelPicked: { color: plateInk },
+  // A chip wider than the sheet wraps its own words, never past the edge.
+  chip: { maxWidth: '100%' },
 });
 
-/** Module-level so render allocates no function; pressed takes the press fill, as GhostButton. */
-function pressable(rest: StyleProp<ViewStyle>) {
-  const down = [rest, styles.pressed];
-  return ({ pressed }: PressableStateCallbackType) => (pressed ? down : rest);
-}
-
-const chip = pressable(styles.chip);
-const pickedChip = pressable([styles.chip, styles.picked]);
+const CHIP = sheetRowStyles([sheetRow.row, styles.chip]);

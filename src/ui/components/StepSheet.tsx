@@ -1,22 +1,27 @@
 import { memo, useCallback } from 'react';
-import {
-  type PressableStateCallbackType,
-  Pressable,
-  type StyleProp,
-  StyleSheet,
-  View,
-  type ViewStyle,
-} from 'react-native';
+import { Pressable, View } from 'react-native';
 import { GhostButton } from '@/ui/components/GhostButton';
 import { padSheet } from '@/ui/components/padSheet';
+import { sheetRow, sheetRowLabel, sheetRowStyles, sheetRowTone } from '@/ui/components/sheetRow';
 import { Text } from '@/ui/components/Text';
-import { colour, layout, radius, space } from '@/ui/theme/tokens';
 
-/** One choice in a step: its id goes back to the caller; a destructive one is drawn in caution. */
+/**
+ * One choice in a step: its id goes back to the caller. Every row that takes a tap is drawn lime, a destructive one
+ * (Undo, Remove, End) in caution (`sheetRow.ts`, owner rulings 82 and 85).
+ */
 export type StepOption = {
   readonly id: string;
   readonly label: string;
   readonly tone: 'standard' | 'destructive';
+  /** Not offered now: greyed, with no press. Its reason is `note`. */
+  readonly disabled?: boolean;
+  /**
+   * A second line under the label, in the inert caption: why a row cannot be chosen ("Bowled the last over"), or what a
+   * row that can is ("Retired").
+   */
+  readonly note?: string | null;
+  /** The choice already made, or the one suggested: the heavier lime border on surface, said selected. */
+  readonly chosen?: boolean;
 };
 
 type StepSheetProps = {
@@ -58,7 +63,11 @@ export const StepSheet = memo(function StepSheet({
   );
 });
 
-/** One choice of a step, a full-width row; the tie-break sheet (`TieBreakSheet`) draws its rows with it too. */
+/**
+ * One choice of a step, a full-width row; the tie-break sheet (`TieBreakSheet`) draws its rows with it too. A row that
+ * cannot be chosen now takes no press: `disabled` is its one gate, which Pressable also folds into the state a screen
+ * reader reads, on the phone and on the web. Its label and its reason are both read.
+ */
 export const StepRow = memo(function StepRow({
   option,
   onChoose,
@@ -67,39 +76,27 @@ export const StepRow = memo(function StepRow({
   readonly onChoose: (id: string) => void;
 }) {
   const choose = useCallback(() => onChoose(option.id), [onChoose, option.id]);
-  const destructive = option.tone === 'destructive';
+  const off = option.disabled === true;
+  const tone = sheetRowTone({
+    disabled: off,
+    chosen: option.chosen,
+    destructive: option.tone === 'destructive',
+  });
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityState={{ disabled: off }}
+      aria-selected={tone === 'chosen' ? true : undefined}
+      disabled={off}
       onPress={choose}
-      style={destructive ? destructiveRow : standardRow}
+      style={ROW[tone]}
     >
-      <Text variant="controlInk" style={destructive ? styles.labelDestructive : undefined}>
+      <Text variant="controlInk" style={sheetRowLabel[tone]}>
         {option.label}
       </Text>
+      {option.note != null ? <Text variant="metricUnit">{option.note}</Text> : null}
     </Pressable>
   );
 });
 
-const styles = StyleSheet.create({
-  row: {
-    minHeight: layout.touch,
-    justifyContent: 'center',
-    paddingHorizontal: space.md,
-    borderRadius: radius.card,
-    borderWidth: layout.iconBorder,
-    borderColor: colour.ink3,
-  },
-  destructive: { borderColor: colour.caution },
-  pressed: { backgroundColor: colour.pressFill },
-  labelDestructive: { color: colour.caution },
-});
-
-/** Module-level so render allocates no function; pressed takes the press fill, as GhostButton. */
-function pressable(rest: StyleProp<ViewStyle>) {
-  const down = [rest, styles.pressed];
-  return ({ pressed }: PressableStateCallbackType) => (pressed ? down : rest);
-}
-
-const standardRow = pressable(styles.row);
-const destructiveRow = pressable([styles.row, styles.destructive]);
+const ROW = sheetRowStyles(sheetRow.row);
