@@ -28,6 +28,11 @@ import {
   type FootballEngineMatch,
 } from '@/domain/scoring/footballEngine';
 import {
+  footballHistory,
+  periodWordOf,
+  type FootballHistoryEntry,
+} from '@/domain/scoring/footballHistory';
+import {
   ENGINE_SIDE,
   otherSide,
   seatOf,
@@ -35,6 +40,7 @@ import {
   type FootballDone,
   type FootballMarker,
   type FootballPadPhase,
+  type FootballPeriodWord,
   type FootballPlayer,
   type FootballShootout,
   type FootballSide,
@@ -106,9 +112,33 @@ export function foldFootball(input: SportFoldInput): SportFold<FootballTypes> {
     kind: 'folded',
     display: displayOf(match, input, stream, folded, recorded),
     legalQueued: stream.legal,
-    // History's grouping and words are the pad's (Task 8, `footballHistory`).
-    history: [],
+    history: footballHistory(historyOf(match, stream, recorded), {
+      names: { first: match.seats.first.name, second: match.seats.second.name },
+      cfg: match.engine.cfg,
+    }),
   };
+}
+
+/**
+ * History's entries (design §6.4): one for each event the pad has words for, in the match's order, undone where a void
+ * takes it back, sending where it is this phone's queued tap, under the period it was recorded in. The engine records the
+ * pad's events only in a period, the kicks or (a card) before kick-off, which is the first half's; a phase with no word
+ * would keep the period before it.
+ */
+function historyOf(
+  match: FootballMatch,
+  stream: FootballStream,
+  recorded: ReadonlyMap<string, FootballRecorded>,
+): readonly FootballHistoryEntry[] {
+  const voided = voidedIn(stream.envelopes);
+  let period: FootballPeriodWord = 'H1';
+  return stream.entries.flatMap(({ envelope, own, sending }) => {
+    const event = recorded.get(envelope.id);
+    if (event === undefined) return [];
+    period = periodWordOf(event.facts.period, match.engine.cfg) ?? period;
+    const { did, facts } = event;
+    return [{ did, period, after: facts.after, own, undone: voided.has(envelope.id), sending }];
+  });
 }
 
 /**

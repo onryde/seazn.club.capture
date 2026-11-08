@@ -17,6 +17,14 @@ export type FootballPlayer = {
   readonly number: number | null;
 };
 
+/** A player as the sheets and the last-tap line name one: `#9 Okafor`, or the name alone with no shirt number (§6.3). */
+export const playerLabel = (player: FootballPlayer): string =>
+  player.number === null ? player.name : `#${player.number} ${player.name}`;
+
+/** A player in the least room: `#9`, or the name alone with no shirt number (the bin mark, the sub line: §6.2, §6.7). */
+export const playerMark = (player: FootballPlayer): string =>
+  player.number === null ? player.name : `#${player.number}`;
+
 /** A player serving a temporary dismissal, and when it is over (the engine's `expiresAt`), if it says. */
 export type FootballBinned = {
   readonly person: FootballPlayer | null;
@@ -218,23 +226,34 @@ export type FootballTap =
 export type FootballPeriodWord =
   'H1' | 'H2' | 'Q1' | 'Q2' | 'Q3' | 'Q4' | 'ET_H1' | 'ET_H2' | 'shootout';
 
+/** The clock bar's word between two periods, from the period that just ended. */
+export type FootballBreakWord = 'halfTime' | 'quarterTime' | 'fullTime' | 'etHalfTime';
+
+/** The card colours the engine lists (`footballPadRules.cardColors`), each with its words. */
+export type FootballCardWord = 'yellow' | 'second_yellow' | 'red';
+
+/** The outcomes of a missed penalty and of a shot the engine lists, each with its words. */
+export type FootballOutcomeWord = 'saved' | 'missed' | 'post' | 'blocked' | 'scored';
+
 /**
  * Every dictionary key the pad, its board, History and its rules rows name. The kit translates them as `MessageKey`, so
  * each must exist in en.json (`footballPad.test.ts` checks). The sheets' own words are the screen's.
  */
 export type FootballPadKey =
   | `scoring.football.period.${FootballPeriodWord}`
-  | `scoring.football.break.${'halfTime' | 'quarterTime' | 'fullTime' | 'etHalfTime'}`
+  | `scoring.football.break.${FootballBreakWord}`
   | `scoring.football.end.${FootballMarker}`
-  | `scoring.football.clock.${'start' | 'pause'}`
+  | `scoring.football.clock.${'start' | 'pause' | 'said'}`
   | `scoring.football.column.${'goal' | 'card' | 'sub' | 'scored' | 'missed' | 'noSubs' | 'noSheet'}`
-  | `scoring.football.card.${'yellow' | 'second_yellow' | 'red'}`
-  | `scoring.football.outcome.${'saved' | 'missed' | 'post' | 'blocked' | 'scored'}`
+  | `scoring.football.card.${FootballCardWord}`
+  | `scoring.football.outcome.${FootballOutcomeWord}`
   | `scoring.football.more.${'penalty' | 'sinBin' | 'sinBinEnd' | 'shot' | 'correct' | 'details'}`
   | `scoring.football.note.${'extraTime' | 'penalties' | 'notStarted'}`
   | 'scoring.football.mark.sinBinOver'
   | `scoring.football.last.${FootballLastWord}`
   | `scoring.football.rules.${FootballRuleWord}`
+  | 'scoring.football.start.ask'
+  | 'scoring.football.tool.more'
   | 'scoring.football.tallySaid'
   | 'scoring.football.hint';
 
@@ -253,21 +272,22 @@ export type FootballLastWord =
   | 'sinBin'
   | 'sinBinEnd'
   | 'shot'
-  | 'kick'
+  | 'kickScored'
+  | 'kickMissed'
   | 'undone';
 
-/** The rules rows' labels and values (Match details). */
+/** The rules rows' labels and values (Match details). A value with a count names its `.other` form (`PadCounted`). */
 export type FootballRuleWord =
   | 'format'
   | 'periods'
   | 'extraTime'
   | 'shootout'
-  | 'shootoutKicks'
+  | 'shootoutKicks.other'
   | 'subs'
   | 'subsRolling'
-  | 'subsCapped'
+  | 'subsCapped.other'
   | 'subsMax'
-  | 'subsWindows'
+  | 'subsWindows.other'
   | 'subsUnlimited'
   | 'sinBin'
   | 'minutes'
