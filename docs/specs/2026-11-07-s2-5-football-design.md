@@ -307,11 +307,13 @@ re-seated from a clock event projects forward to now, so it never "shows the pas
 **This phone's own taps** apply at once, locally, before the server has them (the queue's optimistic display, S2
 design §6.2): Start shows running from the tap. When the server's copy arrives, the reading moves to its anchor, a
 jump of the network delay, under a second online. A Start (a clock event with `running: true`) made **offline** reaches the server late and is anchored at its
-arrival, so the phone sends it with `at.elapsed` moved on by the time it waited in the queue (send time less tap time,
-both the phone's clock, whole seconds): its stamp and its arrival then agree, and every screen reads the same time
-(_the controller's_, 2026-11-08, from the owner's "what if [the server is] down for 2 mins"; no schema change). A Pause
-carries a stopped reading and is sent as tapped. If play was really stopped while the Start waited, the phone cannot
-know; the next Pause re-anchors every screen.
+arrival, so other screens would read it short by the time it waited. When this phone's own Start is accepted 3 s or
+more after it was tapped, and no later clock event stands, the phone queues one more clock event, `running: true` at
+its reading at that moment: a normal tap, created then, so every screen re-anchors on it and the phone's own reading
+does not move. The first tap's payload is never changed after it is queued (a changed payload would count the wait
+twice on the phone and stop the phone recognising the server's copy after a lost answer; the phone review's finding)
+(_the controller's_, 2026-11-08, from the owner's "what if [the server is] down for 2 mins"; no schema change). If play
+was really stopped while the Start waited, the phone cannot know; the next Pause re-anchors every screen.
 
 The anchor's `recorded_at` is the clock of the web server that wrote the event (`append-event.ts:418`), and each
 screen's offset is measured against whichever web server answers it. Every screen agrees within the offset's
