@@ -116,7 +116,6 @@ function sending<S extends SportTypes>(state: MatchState<S>, now: number): Part<
   if (body === null || head === undefined) return part(state);
   const copied = copiesOf(state, sync.ledger).has(head.key);
   const payload = state.sport.payloadForSend(head, sync.ledger, copied, {
-    now,
     bootstrap: state.bootstrap,
   });
   const decided: SyncState =

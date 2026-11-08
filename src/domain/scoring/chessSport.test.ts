@@ -175,7 +175,7 @@ describe('chessSport: a tap', () => {
       createdAt: '2026-11-04T10:30:00.000Z',
       attempts: 1,
     };
-    const SEND = { now: Date.parse('2026-11-04T10:30:05.000Z'), bootstrap: null };
+    const SEND = { bootstrap: null };
     expect(chessSport.payloadForSend(queued, [], false, SEND)).toEqual({ winner: 'ent-home' });
   });
 });

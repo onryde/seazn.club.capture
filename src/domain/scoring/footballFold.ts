@@ -458,7 +458,6 @@ function sideOf(match: FootballMatch, state: FootballState, side: PadSide): Foot
   const squad = state.squads[ENGINE_SIDE[side]];
   const people = (ids: readonly string[]) => ids.flatMap((id) => playerOf(match, side, id) ?? []);
   const sentOff = new Set(squad.sentOff);
-  const binned = (squad.sinBin ?? []).flatMap((entry) => entry.person ?? []);
   const cards = state.cards.filter((card) => card.side === ENGINE_SIDE[side]);
   return {
     entrantId: match.seats[side].entrantId,
@@ -467,31 +466,45 @@ function sideOf(match: FootballMatch, state: FootballState, side: PadSide): Foot
     onPitch: people(squad.onPitch),
     bench: people(squad.bench),
     offeredOn: people(squad.bench.filter((id) => !sentOff.has(id))),
-    cardable: people(
-      [
-        ...new Set([
-          ...squad.onPitch,
-          ...squad.bench,
-          ...squad.offUsed,
-          ...binned,
-          ...(squad.nonPlayers ?? []),
-        ]),
-      ].filter((id) => !sentOff.has(id)),
-    ),
-    yellowed: cards.flatMap((card) =>
-      card.color === 'yellow' && card.person !== undefined ? [card.person] : [],
-    ),
+    cardable: people(cardableOf(squad)),
+    yellowed: yellowedOf(cards),
     sentOff: squad.sentOff,
     sinBin: (squad.sinBin ?? []).map((entry) => ({
       person: playerOf(match, side, entry.person),
       expiresAt: entry.expiresAt ?? null,
     })),
-    cards: {
-      yellow: cards.filter((card) => card.color === 'yellow').length,
-      red: cards.filter((card) => card.color !== 'yellow').length,
-    },
+    cards: cardCountOf(cards),
   };
 }
+
+type Squad = FootballState['squads'][keyof FootballState['squads']];
+type Card = FootballState['cards'][number];
+
+/** Everyone a card may name: on the pitch, on the bench, off after a sub, in the bin, the non-players; none sent off. */
+function cardableOf(squad: Squad): readonly string[] {
+  const sentOff = new Set(squad.sentOff);
+  const binned = (squad.sinBin ?? []).flatMap((entry) => entry.person ?? []);
+  const named = [
+    ...squad.onPitch,
+    ...squad.bench,
+    ...squad.offUsed,
+    ...binned,
+    ...(squad.nonPlayers ?? []),
+  ];
+  return [...new Set(named)].filter((id) => !sentOff.has(id));
+}
+
+/** The people a team's yellow cards name, in the order they were shown. */
+const yellowedOf = (cards: readonly Card[]): readonly string[] =>
+  cards.flatMap((card) =>
+    card.color === 'yellow' && card.person !== undefined ? [card.person] : [],
+  );
+
+/** A team's cards by colour: a second yellow's red is a red. */
+const cardCountOf = (cards: readonly Card[]): FootballSide['cards'] => ({
+  yellow: cards.filter((card) => card.color === 'yellow').length,
+  red: cards.filter((card) => card.color !== 'yellow').length,
+});
 
 /** The shootout, by seat: the kicks in order, whose kick is next in the engine's order, and the kicks scored. */
 function shootoutOf(state: FootballState): FootballShootout | null {
@@ -524,23 +537,10 @@ function subsLeftOf(state: FootballState, side: FootballSide): boolean {
   const off = side.onPitch[0];
   const on = side.offeredOn[0];
   if (off === undefined || on === undefined) return false;
-  const stamp = subStamp(state.phase, state.asOf ?? null);
-  const envelope: FootballEnvelope = {
-    id: 'candidate-sub',
-    fixtureId: 'candidate',
-    seq: Number.MAX_SAFE_INTEGER,
-    type: 'football.sub',
-    payload: {
-      by: side.entrantId,
-      off: off.personId,
-      on: on.personId,
-      ...(stamp === null ? {} : { at: stamp }),
-    },
-    recordedAt: new Date(0).toISOString(),
-    recordedBy: null,
-  };
   try {
-    football.apply(state, envelope, { strict: true });
+    football.apply(state, candidateSub(state, side.entrantId, off.personId, on.personId), {
+      strict: true,
+    });
     return true;
   } catch (error) {
     if (!EngineError.is(error)) throw error;
@@ -548,6 +548,20 @@ function subsLeftOf(state: FootballState, side: FootballSide): boolean {
       error.code !== 'SUB_WINDOW_EXCEEDED' && field(error.data, 'reason') !== 'sub-cap-reached'
     );
   }
+}
+
+/** The change `subsLeftOf` asks the engine about: stamped as the pad stamps a sub, after every event the ledger holds. */
+function candidateSub(state: FootballState, by: string, off: string, on: string): FootballEnvelope {
+  const stamp = subStamp(state.phase, state.asOf ?? null);
+  return {
+    id: 'candidate-sub',
+    fixtureId: 'candidate',
+    seq: Number.MAX_SAFE_INTEGER,
+    type: 'football.sub',
+    payload: { by, off, on, ...(stamp === null ? {} : { at: stamp }) },
+    recordedAt: new Date(0).toISOString(),
+    recordedBy: null,
+  };
 }
 
 /** An event as football's `apply` takes it, its payload one of the module's own. */

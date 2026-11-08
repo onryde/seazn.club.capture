@@ -22,6 +22,7 @@ import {
   NO_SLOTS,
   period,
   queuedOf,
+  sinBin,
   start,
   sub,
   voiding,
@@ -346,6 +347,15 @@ describe('foldFootball: cards and substitutions', () => {
   it('a player who came off is still cardable', () => {
     const { first } = displayOf([...KICK_OFF, sub({ by: 'H', off: H(8), on: H(14) })]).sides;
     expect(ids(first.cardable)).toContain(H(8));
+  });
+
+  it('a player in the sin-bin is off the pitch and still cardable', () => {
+    const binned = sinBin({ by: 'H', person: H(5), at: at('H1', 600) });
+    const { first } = displayOf([...KICK_OFF, binned]).sides;
+    expect([ids(first.onPitch).includes(H(5)), ids(first.cardable).includes(H(5))]).toEqual([
+      false,
+      true,
+    ]);
   });
 
   it('second yellow is offered only after a yellow', () => {

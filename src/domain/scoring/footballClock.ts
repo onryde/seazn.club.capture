@@ -2,6 +2,7 @@ import { gameTimeOf, type GameTime } from '@seazn/engine/core';
 import { footballPadRules } from '@seazn/engine/pad';
 import type { FootballCfg } from '@seazn/engine/sports/football';
 import { isRecord } from '@/domain/credentials/wire';
+import type { FootballTap } from '@/domain/scoring/footballTypes';
 import type { LedgerEvent } from '@/domain/scoring/wire';
 
 /**
@@ -106,6 +107,49 @@ export function reading(
   const serverNow = now.deviceMs + now.offsetMs;
   const anchorServerMs = anchor.base === 'server' ? anchor.atMs : anchor.atMs + now.offsetMs;
   return anchor.elapsed + Math.max(0, Math.floor((serverNow - anchorServerMs) / 1000));
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The resync after a late Start (design §7.2; the controller's ruling, 2026-11-08)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** How long after its tap a Start may be accepted before every other screen would read it short: 3 s. */
+const RESYNC_AFTER_MS = 3000;
+
+/** This phone's own clock tap, as the resync rule reads it: when it was made (the phone's clock) and what it said. */
+export type OwnClockTap = {
+  readonly createdAtMs: number;
+  readonly running: boolean;
+  readonly period: string;
+};
+
+/**
+ * Whether this phone's own clock tap, accepted at `acceptedAtMs` (the phone's clock), wants a resync tap after it: a
+ * Start accepted 3 s or more after it was tapped, while no later clock event stands. A Start's stamp is the reading at
+ * the tap, and the server records it at its arrival, so every other screen would read the clock short by the wait; a
+ * running clock event made now (`resyncTap`) re-anchors them, and the Start's own payload is never changed. A Pause is
+ * true whenever it arrives. `laterClockEventStands` is the caller's: any standing or queued `football.clock` or
+ * `football.period` event after the Start (a marker stops the clock, §7.6), whose own anchor already moved every screen.
+ */
+export function needsResync(
+  start: OwnClockTap,
+  acceptedAtMs: number,
+  laterClockEventStands: boolean,
+): boolean {
+  return (
+    start.running && acceptedAtMs - start.createdAtMs >= RESYNC_AFTER_MS && !laterClockEventStands
+  );
+}
+
+/**
+ * The resync tap: the clock running at the phone's reading now, a normal clock tap made through `footballEventFor` (it
+ * is stamped in the fold's phase there), so the phone's own reading does not move and every screen re-anchors on it.
+ */
+export function resyncTap(
+  anchor: ClockAnchor | null,
+  now: { readonly deviceMs: number; readonly offsetMs: number },
+): Extract<FootballTap, { readonly kind: 'clock' }> {
+  return { kind: 'clock', running: true, elapsed: reading(anchor, now) };
 }
 
 // ---------------------------------------------------------------------------------------------------------------

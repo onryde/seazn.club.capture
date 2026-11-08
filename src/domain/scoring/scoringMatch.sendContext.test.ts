@@ -8,9 +8,10 @@ import { tableTennisSport } from '@/domain/scoring/tableTennisSport';
 import { NOW, savesOf, sendsOf } from '../../../test/scoringMatchFixtures';
 import { SINGLES, ledgerOf, start } from '../../../test/tableTennisLedger';
 
-// The send's context (plan S2-5 P Task 7; the controller's ruling 4 of Batch B): a sport whose payload depends on when it
-// is sent (football's Start, advanced by the time it waited in the queue) is told the runtime's clock and the bootstrap
-// the match holds. Any sport serves to show the pump passes them; table tennis is the one driven here.
+// The send's context (plan S2-5 P Task 7; ruling 3 of Batch B): a sport that judges a payload against its own fold of
+// the ledger (football's stamps, against the fold's phase) is told the bootstrap the match holds. Nothing else: the
+// send-time clock went with the controller's ruling of 2026-11-08, which keeps a payload a function of the tap and the
+// ledger. Any sport serves to show the pump passes it; table tennis is the one driven here.
 
 const QUEUE: MatchQueue = {
   fixtureId: SINGLES.fixtureId,
@@ -44,21 +45,28 @@ function sendWith(sport: ScoringSport<TableTennisTypes>, sentAt: number) {
   return sendsOf(step(made.state, { kind: 'saved', n: save.n }, sentAt).effects)[0];
 }
 
-describe('the pump tells the sport when it sends', () => {
-  it('hands payloadForSend the step’s clock and the bootstrap the match holds', () => {
+describe('the pump tells the sport the match it sends for', () => {
+  it('hands payloadForSend the bootstrap the match holds, and no clock', () => {
     const payloadForSend = vi.fn(tableTennisSport.payloadForSend);
     const sent = sendWith({ ...tableTennisSport, payloadForSend }, NOW + 120_500);
     expect(sent?.body.idempotency_key).toBe('k-tap');
     expect(payloadForSend).toHaveBeenCalledTimes(1);
-    expect(payloadForSend.mock.calls[0]?.[3]).toEqual({ now: NOW + 120_500, bootstrap: SINGLES });
+    expect(payloadForSend.mock.calls[0]?.[3]).toEqual({ bootstrap: SINGLES });
   });
 
   it('sends what the sport made of it, and keeps it in the queue', () => {
-    const payloadForSend = vi.fn((_queued, _ledger, _copied, send: { readonly now: number }) => ({
-      sentAt: send.now,
-    }));
+    const payloadForSend = vi.fn(
+      (
+        _queued,
+        _ledger,
+        _copied,
+        send: { readonly bootstrap: { readonly fixtureId: string } | null },
+      ) => ({
+        judgedFor: send.bootstrap?.fixtureId ?? null,
+      }),
+    );
     const sent = sendWith({ ...tableTennisSport, payloadForSend }, NOW + 7_000);
-    expect(sent?.body.payload).toEqual({ sentAt: NOW + 7_000 });
-    expect(sent?.sent.payload).toEqual({ sentAt: NOW + 7_000 });
+    expect(sent?.body.payload).toEqual({ judgedFor: 'fx-tt-1' });
+    expect(sent?.sent.payload).toEqual({ judgedFor: 'fx-tt-1' });
   });
 });

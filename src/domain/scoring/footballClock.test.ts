@@ -6,11 +6,13 @@ import {
   clockText,
   matchTime,
   minuteText,
+  needsResync,
   newestStamp,
   PHASE_ORDER,
   periodLengths,
   reading,
   restamp,
+  resyncTap,
   stampFor,
   subStamp,
   type AnchorEvent,
@@ -474,5 +476,62 @@ describe('restamp (design §7.3, ruling 3)', () => {
   it('leaves a period it does not know', () => {
     const payload = goal(at('Q9', 10));
     expect(restamp('football.goal', payload, at('H1', 600), 'H1')).toBe(payload);
+  });
+});
+
+// The controller's ruling of 2026-11-08 (design §7.2 at 8aafcca2): a Start accepted 3 s or more after it was tapped is
+// followed by one more clock event, running at the phone's reading then, so every screen re-anchors on a stamp that is
+// true at its arrival. The Start's own payload is never changed.
+describe('the resync after a late Start (design §7.2)', () => {
+  const TAPPED = Date.parse('2026-11-07T14:30:00.000Z');
+  const start = { createdAtMs: TAPPED, running: true, period: 'H1' };
+
+  it('not when the Start is accepted 2999 ms after it was tapped', () => {
+    expect(needsResync(start, TAPPED + 2999, false)).toBe(false);
+  });
+
+  it('when the Start is accepted 3000 ms after it was tapped', () => {
+    expect(needsResync(start, TAPPED + 3000, false)).toBe(true);
+  });
+
+  it('when the Start is accepted 120 s after it was tapped (the owner’s "server down for 2 mins")', () => {
+    expect(needsResync(start, TAPPED + 120_000, false)).toBe(true);
+  });
+
+  it('never for a Pause, however late: a stopped reading is true whenever it arrives', () => {
+    expect(needsResync({ ...start, running: false }, TAPPED + 120_000, false)).toBe(false);
+  });
+
+  it('never when a later clock event stands: it re-anchored every screen already', () => {
+    expect(needsResync(start, TAPPED + 120_000, true)).toBe(false);
+  });
+
+  it('never for an answer timed before the tap (the phone’s clock was set back)', () => {
+    expect(needsResync(start, TAPPED - 60_000, false)).toBe(false);
+  });
+
+  it('the resync tap is a running clock tap at the phone’s reading at that moment', () => {
+    const own: ClockAnchor = {
+      period: 'H1',
+      elapsed: 600,
+      running: true,
+      atMs: TAPPED,
+      base: 'device',
+    };
+    const accepted = { deviceMs: TAPPED + 120_000, offsetMs: 300_000 };
+    expect(resyncTap(own, accepted)).toEqual({ kind: 'clock', running: true, elapsed: 720 });
+  });
+
+  it('the resync tap reads a server anchor through the offset, as the screen does', () => {
+    const copy: ClockAnchor = {
+      period: 'H1',
+      elapsed: 600,
+      running: true,
+      atMs: TAPPED,
+      base: 'server',
+    };
+    // The server's clock is 5 s ahead of the phone's: 120 s on the phone's clock is 125 s on the server's.
+    const accepted = { deviceMs: TAPPED + 120_000, offsetMs: 5_000 };
+    expect(resyncTap(copy, accepted)).toEqual({ kind: 'clock', running: true, elapsed: 725 });
   });
 });

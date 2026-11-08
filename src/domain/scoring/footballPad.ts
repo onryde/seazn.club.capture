@@ -35,18 +35,7 @@ export function footballPad(
   const halves = [half(display, 'first'), half(display, 'second')] as const;
   const view: PadView<FootballPadKey> = {
     halves,
-    tally: {
-      shown: '',
-      said: {
-        key: 'scoring.football.tallySaid',
-        vars: {
-          first: halves[0].label,
-          firstGoals: halves[0].value,
-          second: halves[1].label,
-          secondGoals: halves[1].value,
-        },
-      },
-    },
+    tally: { shown: '', said: tallySaid(halves) },
     details: { context: display.context, rules: footballRuleRows(display.cfg) },
     start: startOf(display),
     strip: [{ slot: 'note', text: noteOf(display) }],
@@ -57,6 +46,17 @@ export function footballPad(
   };
   return withCard(view, cardOf(display));
 }
+
+/** The score as a screen reader says it ("Score: Home FC 2, Away FC 1"). */
+const tallySaid = (halves: readonly [PadHalf<FootballPadKey>, PadHalf<FootballPadKey>]): Text => ({
+  key: 'scoring.football.tallySaid',
+  vars: {
+    first: halves[0].label,
+    firstGoals: halves[0].value,
+    second: halves[1].label,
+    secondGoals: halves[1].value,
+  },
+});
 
 /** The words the pad needs of the match: the teams' names and the config its minutes are counted in. */
 export const footballWords = (display: FootballDisplay): FootballWords => ({

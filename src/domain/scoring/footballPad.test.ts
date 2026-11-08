@@ -319,6 +319,8 @@ describe('footballPad: its words', () => {
   ] as const)(
     '%s has every key the pad names',
     (_lang, dictionary: Readonly<Record<string, string>>) => {
+      // The sweep names 25 keys at engine 2.0.0: a sweep that names few or none proves nothing (the review's M3).
+      expect(named.size).toBeGreaterThan(20);
       expect([...named].filter((key) => !(key in dictionary))).toEqual([]);
     },
   );

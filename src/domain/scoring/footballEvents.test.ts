@@ -70,7 +70,7 @@ describe('footballEventFor: each tap (design §8)', () => {
       'Start',
       { kind: 'clock', running: true, elapsed: 0 },
       [start()],
-      { type: 'football.clock', payload: { running: true, at: at('H1', 0) }, base: 0 },
+      { type: 'football.clock', payload: { running: true, at: at('H1', 0) } },
     ],
     [
       'Pause',
@@ -288,7 +288,6 @@ describe('footballEventFor: stamps (design §7.3)', () => {
     expect(eventOf({ kind: 'clock', running: true, elapsed: 0 }, AFTER_HT)).toEqual({
       type: 'football.clock',
       payload: { running: true, at: at('H2', 0) },
-      base: 0,
     });
   });
 
@@ -485,20 +484,20 @@ describe('footballEventFor: what the engine would refuse is never made', () => {
 
 /** When the queued taps below were made, by the phone's clock. */
 const T = '2026-11-07T14:30:00.000Z';
-const T_MS = Date.parse(T);
-const send = (afterMs: number, bootstrap: Bootstrap | null = MATCH) => ({
-  now: T_MS + afterMs,
-  bootstrap,
-});
+const send = (bootstrap: Bootstrap | null = MATCH) => ({ bootstrap });
 const queued = (spec: Spec, more: Partial<QueuedEvent> = {}): QueuedEvent => ({
   ...queuedOf('k1', spec, T),
   ...more,
 });
 
-describe('footballPayloadForSend (design §7.2, §7.3; rulings 3 and 4)', () => {
+// The controller's ruling of 2026-11-08 (design §7.2 at 8aafcca2): a queued tap's payload is never changed for the time
+// it waited. A changed payload counted the wait twice on this phone's own clock and hid the server's copy of a tap
+// whose answer was lost (the phone review's I1 and I2). A Start accepted late is followed by a resync tap instead
+// (`needsResync`, `resyncTap`).
+describe('footballPayloadForSend (design §7.2, §7.3; ruling 3)', () => {
   it('payloadForSend raises a same-period stamp to the ledger’s newest', () => {
     const tap = queued(goal({ by: 'H', at: at('H1', 590) }));
-    expect(footballPayloadForSend(tap, ledgerOf(AT_600), false, send(0))).toEqual({
+    expect(footballPayloadForSend(tap, ledgerOf(AT_600), false, send())).toEqual({
       by: 'ent-home',
       at: at('H1', 600),
     });
@@ -506,75 +505,61 @@ describe('footballPayloadForSend (design §7.2, §7.3; rulings 3 and 4)', () => 
 
   it('payloadForSend drops an earlier-period stamp', () => {
     const tap = queued(goal({ by: 'H', at: at('H1', 2690) }));
-    expect(footballPayloadForSend(tap, ledgerOf(AFTER_HT), false, send(0))).toEqual({
+    expect(footballPayloadForSend(tap, ledgerOf(AFTER_HT), false, send())).toEqual({
       by: 'ent-home',
     });
   });
 
-  it('a Start queued 120 s is sent with at.elapsed + 120', () => {
-    const tap = queued(clock(true, at('H1', 600)), { base: 600 });
-    expect(footballPayloadForSend(tap, ledgerOf(AT_600), false, send(120_500))).toEqual({
-      running: true,
-      at: at('H1', 720),
-    });
+  it('a Start that waited in the queue is sent as it was tapped, however long it waited', () => {
+    const tap = queued(clock(true, at('H1', 600)));
+    expect(footballPayloadForSend(tap, ledgerOf(AT_600), false, send())).toBe(tap.payload);
   });
 
-  it('a Start retried keeps one advance: its age is counted from its base, never from what the last send wrote', () => {
-    // The pump writes what it sends back into the queue; a send that failed is made again from that payload.
+  // A queue file written before the ruling may still hold a Start with a base: it moves nothing.
+  it('a Start from an older queue file, carrying a base, is sent as it was tapped too', () => {
     const tap = queued(clock(true, at('H1', 720)), { base: 600, attempts: 1 });
-    expect(footballPayloadForSend(tap, ledgerOf(AT_600), false, send(180_000))).toEqual({
-      running: true,
-      at: at('H1', 780),
-    });
-  });
-
-  it('a send clock behind the tap’s own never takes time off', () => {
-    const tap = queued(clock(true, at('H1', 650)), { base: 650 });
-    expect(footballPayloadForSend(tap, ledgerOf(AT_600), false, send(-30_000))).toBe(tap.payload);
-  });
-
-  it('a Pause is never advanced, even one that carries a base', () => {
-    const tap = queued(clock(false, at('H1', 700)), { base: 700 });
-    expect(footballPayloadForSend(tap, ledgerOf(AT_600), false, send(120_500))).toBe(tap.payload);
+    expect(footballPayloadForSend(tap, ledgerOf(AT_600), false, send())).toBe(tap.payload);
   });
 
   it('a Pause queued 120 s keeps its at', () => {
     const tap = queued(clock(false, at('H1', 700)));
-    expect(footballPayloadForSend(tap, ledgerOf(AT_600), false, send(120_500))).toBe(tap.payload);
+    expect(footballPayloadForSend(tap, ledgerOf(AT_600), false, send())).toBe(tap.payload);
   });
 
-  it('a Start sent at once is unchanged', () => {
-    const tap = queued(clock(true, at('H1', 600)), { base: 600 });
-    expect(footballPayloadForSend(tap, ledgerOf(AT_600), false, send(999))).toEqual(tap.payload);
-  });
-
-  it('a Start with no base is sent as it was tapped', () => {
-    const tap = queued(clock(true, at('H1', 600)));
-    expect(footballPayloadForSend(tap, ledgerOf(AT_600), false, send(120_500))).toBe(tap.payload);
-  });
-
-  it('a Start advanced past a later stamp keeps the larger of the two', () => {
-    const tap = queued(clock(true, at('H1', 500)), { base: 500 });
-    expect(footballPayloadForSend(tap, ledgerOf(AT_600), false, send(60_000))).toEqual({
+  it('a Start below the ledger’s newest same-period stamp is raised to it, as any stamp is', () => {
+    const tap = queued(clock(true, at('H1', 500)));
+    expect(footballPayloadForSend(tap, ledgerOf(AT_600), false, send())).toEqual({
       running: true,
       at: at('H1', 600),
     });
   });
 
+  it('two sends over the same ledger send the same payload: the server’s copy is known by it', () => {
+    const tap = queued(clock(true, at('H1', 500)));
+    const first = footballPayloadForSend(tap, ledgerOf(AT_600), false, send());
+    const again = footballPayloadForSend(
+      { ...tap, payload: first, attempts: 1 },
+      ledgerOf(AT_600),
+      false,
+      send(),
+    );
+    expect(again).toEqual(first);
+  });
+
   it('a copied tap keeps its payload', () => {
     const tap = queued(goal({ by: 'H', at: at('H1', 590) }));
-    expect(footballPayloadForSend(tap, ledgerOf(AT_600), true, send(0))).toBe(tap.payload);
+    expect(footballPayloadForSend(tap, ledgerOf(AT_600), true, send())).toBe(tap.payload);
   });
 
   it('a voided event’s stamp is no floor', () => {
     const tap = queued(goal({ by: 'H', at: at('H1', 590) }));
     const ledger = ledgerOf([...AT_600, voiding(eventId(3))]);
-    expect(footballPayloadForSend(tap, ledger, false, send(0))).toBe(tap.payload);
+    expect(footballPayloadForSend(tap, ledger, false, send())).toBe(tap.payload);
   });
 
   it('with no bootstrap held, the period of the newest stamp stands for the phase', () => {
     const tap = queued(goal({ by: 'H', at: at('H1', 590) }));
-    expect(footballPayloadForSend(tap, ledgerOf(AT_600), false, send(0, null))).toEqual({
+    expect(footballPayloadForSend(tap, ledgerOf(AT_600), false, send(null))).toEqual({
       by: 'ent-home',
       at: at('H1', 600),
     });
@@ -609,9 +594,30 @@ describe('never minute, addedMinutes or core.forfeit', () => {
         KICK_OFF,
       ],
       [{ kind: 'sinBin', side: 'first', person: 'H-p3', reason: null, stamp: STAMP }, KICK_OFF],
+      [
+        { kind: 'sinBinEnd', side: 'second', person: 'A-p6', stamp: STAMP },
+        [...KICK_OFF, sinBin({ by: 'A', person: 'A-p6', at: at('H1', 600) })],
+      ],
       [{ kind: 'shot', side: 'first', taker: null, outcome: 'saved', stamp: STAMP }, KICK_OFF],
       [{ kind: 'kick', side: 'first', person: null, scored: true }, LEVEL_AFTER_ET],
     ];
+    // Every kind of tap the pad makes (the review's M2: sinBinEnd was missing), written out from `FootballTap`.
+    expect(new Set(taps.map(([tap]) => tap.kind))).toEqual(
+      new Set([
+        'start',
+        'clock',
+        'goal',
+        'ownGoal',
+        'card',
+        'sub',
+        'period',
+        'penaltyMiss',
+        'sinBin',
+        'sinBinEnd',
+        'shot',
+        'kick',
+      ]),
+    );
     const events = taps.map(([tap, specs]) => eventOf(tap, specs));
     expect(events.every((event) => event !== null)).toBe(true);
     const text = JSON.stringify(events);

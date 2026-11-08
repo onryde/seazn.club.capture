@@ -1,6 +1,5 @@
-import { gameTimeOf, type GameTime } from '@seazn/engine/core';
+import type { GameTime } from '@seazn/engine/core';
 import { footballPadRules } from '@seazn/engine/pad';
-import { isRecord } from '@/domain/credentials/wire';
 import { newestStamp, restamp, stampFor, subStamp } from '@/domain/scoring/footballClock';
 import { footballOptions } from '@/domain/scoring/footballEngine';
 import { footballLedgerPhase } from '@/domain/scoring/footballFold';
@@ -81,18 +80,14 @@ const among = (players: readonly FootballPlayer[], personId: string | null): boo
   personId === null || players.some((player) => player.personId === personId);
 
 /**
- * Start or Pause, stamped in the fold's phase at the reading, never below a same-period `asOf`. A Start keeps the
- * stamp it was made at as its `base`, so the send can add the time it waited in the queue (ruling 4) without adding it
- * twice on a retry.
+ * Start or Pause, stamped in the fold's phase at the reading, never below a same-period `asOf`. A Start that waits in
+ * the queue is sent as it was tapped (design §7.2): one accepted late is followed by a resync tap (`needsResync`).
  */
 function clockEvent(tap: Tap<'clock'>, display: FootballDisplay): SportEvent {
   const { enginePhase, clock } = display;
   const floor = clock.asOf?.period === enginePhase ? clock.asOf.elapsed : 0;
   const at = { period: enginePhase, elapsed: Math.max(tap.elapsed, floor) };
-  const payload = { running: tap.running, at };
-  return tap.running
-    ? { type: 'football.clock', payload, base: at.elapsed }
-    : { type: 'football.clock', payload };
+  return { type: 'football.clock', payload: { running: tap.running, at } };
 }
 
 /** A goal for the column's team: the scorer and the assist on its pitch, never the same player; a penalty has no assist. */
@@ -265,11 +260,12 @@ function kickEvent(tap: Tap<'kick'>, display: FootballDisplay): SportEvent | nul
 // ---------------------------------------------------------------------------------------------------------------
 
 /**
- * The payload a queued tap is sent with now (design §7.2, §7.3; rulings 3 and 4). A tap the ledger holds a copy of goes
- * as it first went (the server matches a resend by its key). Otherwise a Start that waited in the queue is advanced by
- * the time it waited, counted from its own `base` so a retry never adds it twice; then its stamp is judged against the
- * ledger as it stands: in the newest stamp's period and below it, raised to it; in a period the ledger's phase has left,
- * dropped; a substitution takes the window's stamp.
+ * The payload a queued tap is sent with now (design §7.2, §7.3; ruling 3). A tap the ledger holds a copy of goes as it
+ * first went (the server matches a resend by its key). Otherwise its stamp is judged against the ledger as it stands: in
+ * the newest stamp's period and below it, raised to it; in a period the ledger's phase has left, dropped; a substitution
+ * takes the window's stamp. Nothing is added for the time a tap waited in the queue (the controller's ruling,
+ * 2026-11-08): the payload is a function of the tap and the ledger alone, so two sends over one ledger send the same
+ * payload and the runtime still knows the server's copy of a tap whose answer was lost.
  *
  * The ledger's phase is folded from the bootstrap the match holds; with none (or a ledger that will not fold), the newest
  * stamp's period stands for it.
@@ -284,25 +280,11 @@ export function footballPayloadForSend(
   const floor = newestStamp(standingOf(ledger));
   const folded = send.bootstrap === null ? null : footballLedgerPhase(send.bootstrap, ledger);
   const phase = folded ?? floor?.period ?? 'pre';
-  return restamp(queued.type, advanced(queued, send.now), floor, phase);
+  return restamp(queued.type, queued.payload, floor, phase);
 }
 
 /** The ledger's events still in the match: no void, and nothing a void takes back. */
 function standingOf(ledger: readonly LedgerEvent[]): readonly LedgerEvent[] {
   const voided = new Set(ledger.flatMap((event) => (event.voids === null ? [] : [event.voids])));
   return ledger.filter((event) => event.voids === null && !voided.has(event.id));
-}
-
-/**
- * A running clock event that waited in the queue, as at `now`: its `base` (the reading it was made at) plus the whole
- * seconds since it was made, on the phone's one clock. Anything else, and a Start with no base, as it is.
- */
-function advanced(queued: QueuedEvent, now: number): unknown {
-  const { payload, base } = queued;
-  const at = gameTimeOf(payload);
-  if (queued.type !== 'football.clock' || base === undefined || at === null) return payload;
-  if (!isRecord(payload) || payload.running !== true) return payload;
-  const waited = Math.floor((now - Date.parse(queued.createdAt)) / 1000);
-  const elapsed = base + (Number.isFinite(waited) ? Math.max(0, waited) : 0);
-  return elapsed === at.elapsed ? payload : { ...payload, at: { period: at.period, elapsed } };
 }
