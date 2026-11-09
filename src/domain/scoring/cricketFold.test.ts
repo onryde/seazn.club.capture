@@ -443,7 +443,7 @@ describe('the chase and the super over', () => {
     const picks = { 'openers.i2': [A(1), A(2)], 'bowler.i2.0': [H(11)] };
     const waiting = displayOf(FIRST_INNINGS_8, { picks });
     expect([waiting.stage, waiting.needs]).toEqual(['break', null]);
-    const display = displayOf(FIRST_INNINGS_8, { picks: { ...picks, 'begin.i2': [] } });
+    const display = displayOf(FIRST_INNINGS_8, { picks: { ...picks, 'begin.i2': ['second'] } });
     expect(display.stage).toBe('live');
     expect(display.needs).toBeNull();
     expect(display.crease?.striker.id).toBe(A(1));
@@ -451,18 +451,20 @@ describe('the chase and the super over', () => {
   });
 
   it('Start innings alone ends no break: the openers and the bowler are still asked', () => {
-    expect(displayOf(FIRST_INNINGS_8, { picks: { 'begin.i2': [] } }).stage).toBe('break');
-    const begun = { 'openers.s1': [A(1), A(2)], 'bowler.s1.0': [H(11)], 'begin.s1': [] };
-    expect(displayOf(TIED_KO, { picks: { 'begin.s1': [] } }).stage).toBe('superOverSetup');
+    expect(displayOf(FIRST_INNINGS_8, { picks: { 'begin.i2': ['second'] } }).stage).toBe('break');
+    const begun = { 'openers.s1': [A(1), A(2)], 'bowler.s1.0': [H(11)], 'begin.s1': ['second'] };
+    expect(displayOf(TIED_KO, { picks: { 'begin.s1': ['second'] } }).stage).toBe('superOverSetup');
     expect(displayOf(TIED_KO, { picks: begun }).stage).toBe('live');
     // A Start innings kept for another innings is not this one's.
-    expect(displayOf(FIRST_INNINGS_8, { picks: { ...begun, 'begin.i3': [] } }).stage).toBe('break');
+    expect(displayOf(FIRST_INNINGS_8, { picks: { ...begun, 'begin.i3': ['first'] } }).stage).toBe(
+      'break',
+    );
   });
 
   // Ruling 81: Undo takes back this phone's last tap. The innings' last ball undone, the pad is back in the first
   // innings' last over (the fold alone; the hook then drops the stale Start innings, below).
   it('a void of the innings’ last ball takes the pad back into the first innings', () => {
-    const picks = { 'openers.i2': [A(1), A(2)], 'bowler.i2.0': [H(11)], 'begin.i2': [] };
+    const picks = { 'openers.i2': [A(1), A(2)], 'bowler.i2.0': [H(11)], 'begin.i2': ['second'] };
     const last = FIRST_INNINGS_8.length;
     const display = displayOf([...FIRST_INNINGS_8, voiding(last)], {
       picks,

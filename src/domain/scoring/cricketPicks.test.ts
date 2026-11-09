@@ -194,13 +194,13 @@ describe('Start innings', () => {
   });
 
   it('is read for the innings due only, and dropped once its innings is past', () => {
-    expect(picksFor({ 'begin.i2': [] }, displayOf(FIRST_INNINGS_8)).begun).toBe(true);
-    expect(picksFor({ 'begin.i1': [] }, displayOf(FIRST_INNINGS_8)).begun).toBe(false);
-    expect(picksFor({ 'begin.i2': [] }, displayOf(OPENING)).begun).toBe(false);
-    const past = { 'begin.i1': [], 'begin.i2': [] };
+    expect(picksFor({ 'begin.i2': ['second'] }, displayOf(FIRST_INNINGS_8)).begun).toBe(true);
+    expect(picksFor({ 'begin.i1': ['first'] }, displayOf(FIRST_INNINGS_8)).begun).toBe(false);
+    expect(picksFor({ 'begin.i2': ['second'] }, displayOf(OPENING)).begun).toBe(false);
+    const past = { 'begin.i1': ['first'], 'begin.i2': ['second'] };
     expect(
       withPick(past, displayOf(FIRST_INNINGS_8), { kind: 'bowler', bowler: H(11) }),
-    ).toStrictEqual({ 'begin.i2': [], 'bowler.i2.0': [H(11)] });
+    ).toStrictEqual({ 'begin.i2': ['second'], 'bowler.i2.0': [H(11)] });
   });
 });
 

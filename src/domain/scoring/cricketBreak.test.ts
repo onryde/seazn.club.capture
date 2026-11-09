@@ -101,7 +101,7 @@ describe('the innings break (spec §4.5)', () => {
   it('stands while the next innings waits on its openers, its bowler or Start innings, and goes with the first ball', () => {
     const picked = { 'openers.i2': [A(1), A(2)], 'bowler.i2.0': [H(11)] };
     expect(cardOf(FIRST_INNINGS_8, picked)?.title).toBe('Innings break');
-    expect(cardOf(FIRST_INNINGS_8, { ...picked, 'begin.i2': [] })).toBeNull();
+    expect(cardOf(FIRST_INNINGS_8, { ...picked, 'begin.i2': ['second'] })).toBeNull();
     expect(cardOf(OPENING, { 'openers.i1': [H(1), H(2)] })).toBeNull();
   });
 
