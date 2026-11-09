@@ -16,7 +16,7 @@ import {
   type WicketFlow,
 } from '@/domain/scoring/cricketWicket';
 import { NO_PICKS, type PendingPicks } from '@/domain/scoring/pendingPicks';
-import type { Bootstrap } from '@/domain/scoring/wire';
+import { bootstrapToWire, parseBootstrap, type Bootstrap } from '@/domain/scoring/wire';
 import {
   AWAY,
   AWAY_BOWLERS,
@@ -168,6 +168,47 @@ describe('fieldersFor', () => {
     const catalog = JSON.stringify(cricket.positions);
     expect(catalog).toContain(`"${KEEPER_ROLE}"`);
     expect(catalog).toContain(`"${KEEPER_POSITION}"`);
+  });
+});
+
+// T19 device run D9: on the Final the organiser set the keeper's position (WK) and role, and stumped still offered the
+// side. The phone reads both from the device link's lineup rows; the web's endpoint on main writes a row as
+// `{person_id, pair_order}` only (apps/web `device-link-bootstrap.ts`), so neither reaches the phone and the fallback
+// offers the side without the bowler. Through the wire, from rows written here as each web writes them.
+describe('stumped through the wire (T19 D9)', () => {
+  const STARTERS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+  type Keeper = { readonly position_key?: string; readonly roles?: readonly string[] };
+  /** A row as the web's `DeviceLinkBootstrapLineupRow` (its commit 81db7a5ce2, not on main) writes it. */
+  const sheetRow = (n: number, keeper: Keeper) => ({
+    person_id: A(n),
+    pair_order: null,
+    slot: 'starting',
+    position_key: null,
+    order_no: n,
+    role: 'player',
+    roles: [],
+    squad_number: null,
+    ...(n === 2 ? keeper : {}),
+  });
+  const stumpedWith = (lineup: readonly object[]) => {
+    const wire = bootstrapToWire(MATCH) as { data: { sides: { away: { lineup: unknown } } } };
+    wire.data.sides.away.lineup = lineup;
+    const bootstrap = parseBootstrap(wire);
+    if (bootstrap === null) throw new Error('the device link did not parse');
+    return fieldersFor('stumped', displayOf(DOT_ONE, bootstrap)).map((one) => one.id);
+  };
+
+  it.each([
+    ['role', { roles: ['wicketkeeper'] }],
+    ['position', { position_key: 'WK' }],
+    ['position and role, as on the Final', { position_key: 'WK', roles: ['wicketkeeper'] }],
+  ] as const)('a team sheet row with the keeper’s %s offers the keeper only', (_, keeper) => {
+    expect(stumpedWith(STARTERS.map((n) => sheetRow(n, keeper)))).toEqual([A(2)]);
+  });
+
+  it('rows as the web on main writes them, person and pair order only, offer the side without the bowler', () => {
+    const rows = STARTERS.map((n) => ({ person_id: A(n), pair_order: null }));
+    expect(stumpedWith(rows)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(A));
   });
 });
 
