@@ -151,7 +151,7 @@ function bowlersAllowed(state: CricketState, turn: CricketTurn): readonly string
 }
 
 /** Who may take a super over's empty end: not dismissed in any super over, and not the batter who stays. */
-function incomingAllowed(state: CricketState, turn: CricketTurn): readonly string[] {
+export function incomingAllowed(state: CricketState, turn: CricketTurn): readonly string[] {
   const fine = turn.innings?.fine;
   if (!turn.superOver || fine === null || fine === undefined) return [];
   const crease = [fine.striker, fine.nonStriker].filter((id): id is string => id !== null);
@@ -305,8 +305,9 @@ function isPast(key: string, now: number, over: number, deliveries: number): boo
  * batting it (an Undo of the enforced follow-on): the break, with its card, then asks Start innings again, the innings'
  * openers and first bowler kept, the choice already made. An over's bowler or a hand swap is stale for a point of the
  * innings not reached: an over after the one due (an Undo of the over's last ball: the over ended again asks its bowler
- * afresh) or a delivery after the next; of a later innings, any but its first over's bowler. The same map when nothing
- * is stale.
+ * afresh) or a delivery after the next; of a later innings, any but its first over's bowler. A super over's next batter
+ * is stale once no end of the crease now is empty (the next ball carried them, or an Undo took the wicket back: the
+ * wicket again asks afresh; T19 D10). The same map when nothing is stale.
  */
 export function withoutStalePicks(
   picks: PendingPicks,
@@ -318,6 +319,7 @@ export function withoutStalePicks(
     side: turn === null ? null : padSideOf(turn.battingSide),
     over: turn === null ? 0 : overOf(turn, state.cfg.ballsPerOver),
     deliveries,
+    emptyEnd: emptyEndOf(turn),
   };
   const stale = ([key, ids]: readonly [string, readonly string[]]) => isStale(key, ids, now);
   const entries = Object.entries(picks);
@@ -325,13 +327,22 @@ export function withoutStalePicks(
   return Object.fromEntries(entries.filter((entry) => !stale(entry)));
 }
 
-/** Where the ledger stands: the innings due or under way (its rank and its side), its over and its deliveries. */
+/**
+ * Where the ledger stands: the innings due or under way (its rank and its side), its over, its deliveries, and whether a
+ * wicket has left an end of its crease empty.
+ */
 type Now = {
   readonly rank: number;
   readonly side: PadSide | null;
   readonly over: number;
   readonly deliveries: number;
+  readonly emptyEnd: boolean;
 };
+
+function emptyEndOf(turn: CricketTurn | null): boolean {
+  const fine = turn?.innings?.fine;
+  return fine != null && (fine.striker === null || fine.nonStriker === null);
+}
 
 function isStale(key: string, ids: readonly string[], now: Now): boolean {
   const [kind, ordinal, at] = key.split('.');
@@ -343,6 +354,8 @@ function isStale(key: string, ids: readonly string[], now: Now): boolean {
       return rank > now.rank ? Number(at) > 0 : rank === now.rank && Number(at) > now.over;
     case 'swap':
       return rank > now.rank || (rank === now.rank && Number(at) > now.deliveries);
+    case 'incoming':
+      return !now.emptyEnd;
     default:
       return false;
   }

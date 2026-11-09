@@ -2,6 +2,7 @@ import { cricketPadRules } from '@seazn/engine/pad';
 import { activeInnings, eligibleIncomingBatters } from '@seazn/engine/sports/cricket';
 import { cricketTrial } from '@/domain/scoring/cricketEngine';
 import { ballEventOf } from '@/domain/scoring/cricketEvents';
+import { incomingAllowed, type CricketPick } from '@/domain/scoring/cricketPicks';
 import { turnOf } from '@/domain/scoring/cricketTurn';
 import type {
   CricketBallTap,
@@ -316,6 +317,32 @@ export function incomingRows(
 function incomingNote(suggested: boolean, retired: boolean): PadVar<CricketPadKey> | null {
   if (retired) return { key: 'scoring.cricket.wicket.retired' };
   return suggested ? { key: 'scoring.cricket.wicket.nextInOrder' } : null;
+}
+
+/**
+ * A super over's Next batter (§4.6; T19 D10): asked over the pad once its first wicket is recorded, since the wicket's
+ * own steps ask none there (the engine ignores a super-over wicket's `incoming`). Who may take the empty end, the
+ * engine's (`incomingAllowed`) in the phone's order, the order's next suggested.
+ */
+export function superOverIncomingStep(display: CricketDisplay): CricketStep {
+  return {
+    name: 'superOver.incoming',
+    title: { key: 'scoring.cricket.wicket.incoming' },
+    body: null,
+    options: incomingRows(display, superOverIncoming(display)),
+  };
+}
+
+/** The batter chosen for the super over's empty end, as the pick the next ball carries; none for one not offered. */
+export function chooseSuperOverIncoming(display: CricketDisplay, id: string): CricketPick | null {
+  return superOverIncoming(display).includes(id) ? { kind: 'incoming', batter: id } : null;
+}
+
+function superOverIncoming(display: CricketDisplay): readonly string[] {
+  const turn = turnOf(display.state);
+  if (turn === null) return [];
+  const allowed = incomingAllowed(display.state, turn);
+  return display.battingOrder.filter((id) => allowed.includes(id));
 }
 
 /** A choice on the step on screen: the next step, or the ball to record; none for an id the step does not offer. */

@@ -266,7 +266,7 @@ function displayOf(
   const picks = picksAt(input.picks ?? NO_PICKS, state, deliveries);
   const entered = playersEntered(match.engine.lineups);
   const at = creaseAndBowler(match, folded, turn, picks);
-  const needs = needsOf(turn, picks, at.bowlerId, entered.first && entered.second);
+  const needs = needsOf(turn, picks, at, entered.first && entered.second);
   const stage = stageOf(state, turn, entered.first && entered.second, {
     needs,
     begun: picks.begun,
@@ -343,18 +343,22 @@ const dueStage = (turn: CricketTurn | null, due: Due, waiting: CricketStage): Cr
 
 /**
  * What the next ball cannot go without (only while both sides' players are entered, in an innings scored ball by ball):
- * the openers of an innings not yet opened, then the bowler of an over due (the fold names none between overs).
+ * the openers of an innings not yet opened; in a super over under way, the batter for the end its first wicket left
+ * empty, which no tap names (the engine ignores a super-over wicket's `incoming`: §4.6, T19 D10); then the bowler of an
+ * over due (the fold names none between overs).
  */
 function needsOf(
   turn: CricketTurn | null,
   picks: CricketPicksNow,
-  bowlerId: string | null,
+  at: CreaseAndBowler,
   entered: boolean,
 ): CricketDisplay['needs'] {
   const innings = turn?.innings;
   if (turn === null || !entered || innings?.closed === true || innings?.fine === null) return null;
   if (innings === null && picks.openers === null) return 'openers';
-  return bowlerId === null ? 'bowler' : null;
+  // Only a super over leaves an end empty: a main innings' wicket names who walks in, or the engine walks the order.
+  if (at.crease === null) return 'incoming';
+  return at.bowlerId === null ? 'bowler' : null;
 }
 
 // ---------------------------------------------------------------------------------------------------------------

@@ -3,7 +3,8 @@ import { cricket } from '@seazn/engine/sports/cricket';
 import { describe, expect, it } from 'vitest';
 import { ballEventOf } from '@/domain/scoring/cricketEvents';
 import { KEEPER_POSITION, KEEPER_ROLE, foldCricket } from '@/domain/scoring/cricketFold';
-import { withPick } from '@/domain/scoring/cricketPicks';
+import { flowChoice, flowStep, standingFlow } from '@/domain/scoring/cricketFlow';
+import { withPick, withoutStalePicks } from '@/domain/scoring/cricketPicks';
 import type { CricketBallTap, CricketDisplay } from '@/domain/scoring/cricketTypes';
 import {
   chooseWicket,
@@ -32,6 +33,7 @@ import {
   retire,
   ledgerOf,
   player,
+  superBall,
   superOverOf,
   times,
   type Spec,
@@ -392,5 +394,128 @@ describe('who walks in', () => {
       [H(7), true],
       [H(3), false],
     ]);
+  });
+});
+
+// T19 device run D10 (Critical): the super over's first wicket left an end empty and nothing asked who takes it, so every
+// ball after it was refused and the pad was stuck. Spec §4.6: "After the first wicket the Next batter step still asks,
+// but its answer rides the next ball as its striker or nonStriker"; the second wicket ends it with no Next batter. The
+// wicket's own steps ask none in a super over (the engine ignores `incoming` there), so the sheet stands after the ball,
+// as the over's end's does, and keeps a pick the next ball carries (`incoming.<ordinal>`).
+describe('the super over’s next batter (T19 D10)', () => {
+  /** Away bats the super over first (A-p1 and A-p2), H-p11 bowling: a single puts A-p2 on strike, then A-p2 is bowled. */
+  const ONE_DOWN = [...TIED_KO, ...superOverOf('A', H(11), [ONE, OUT])];
+  const NEXT: PendingPicks = { 'incoming.s1': [A(3)] };
+  /** The third ball, A-p3 in at the striker's end; bowled too when `out`. */
+  const third = (out: boolean): Spec =>
+    superBall({
+      over: 0,
+      ballInOver: 3,
+      striker: A(3),
+      nonStriker: A(1),
+      bowler: H(11),
+      ...(out ? { wicket: { kind: 'bowled', out: A(3), bowlerCredited: true } } : {}),
+    });
+
+  it('after the first wicket the next ball needs a batter, and the Next batter sheet stands over the pad', () => {
+    const display = displayOf(ONE_DOWN);
+    expect([display.stage, display.needs, display.crease, display.innings?.wickets]).toEqual([
+      'live',
+      'incoming',
+      null,
+      1,
+    ]);
+    const flow = standingFlow(display);
+    expect(flow).toEqual({ kind: 'incoming' });
+    const step = flowStep({ kind: 'incoming' }, display);
+    expect(step.title).toEqual({ key: 'scoring.cricket.wicket.incoming' });
+    // Not A-p1 (in) nor A-p2 (out): the order's next, A-p3, first and suggested.
+    expect(step.options.map((one) => one.id)).toEqual([3, 4, 5, 6, 7, 8, 9, 10, 11].map(A));
+    expect(step.options[0]).toMatchObject({ id: A(3), chosen: true });
+  });
+
+  it('a batter chosen is kept, recording nothing: the crease fills and the sheet goes', () => {
+    const display = displayOf(ONE_DOWN);
+    expect(flowChoice({ kind: 'incoming' }, display, A(5))).toEqual({
+      kind: 'pick',
+      pick: { kind: 'incoming', batter: A(5) },
+    });
+    const picks = withPick(NO_PICKS, display, { kind: 'incoming', batter: A(5) });
+    expect(picks).toEqual({ 'incoming.s1': [A(5)] });
+    const filled = displayOf(ONE_DOWN, MATCH, picks);
+    expect([filled.needs, filled.crease?.striker.id, filled.crease?.nonStriker.id]).toEqual([
+      null,
+      A(5),
+      A(1),
+    ]);
+    expect(standingFlow(filled)).toBeNull();
+  });
+
+  it('offers nobody at the crease and nobody out: those choices keep nothing', () => {
+    const display = displayOf(ONE_DOWN);
+    expect(flowChoice({ kind: 'incoming' }, display, A(1))).toBeNull();
+    expect(flowChoice({ kind: 'incoming' }, display, A(2))).toBeNull();
+    expect(flowChoice({ kind: 'incoming' }, display, H(3))).toBeNull();
+  });
+
+  it('the engine takes the next ball with the pick at the empty end, and the pick then goes', () => {
+    const next = displayOf([...ONE_DOWN, third(false)], MATCH, NEXT);
+    expect([next.innings?.legalBalls, next.crease?.striker.id, next.needs]).toEqual([
+      3,
+      A(3),
+      null,
+    ]);
+    // Carried: the crease is full again, so a later wicket asks afresh.
+    expect(withoutStalePicks(NEXT, next)).toEqual({});
+    expect(withoutStalePicks(NEXT, displayOf(ONE_DOWN, MATCH, NEXT))).toBe(NEXT);
+  });
+
+  it('the second wicket ends the side’s super over: no Next batter, the break before the other side’s', () => {
+    const display = displayOf([...ONE_DOWN, third(true)], MATCH, NEXT);
+    expect([display.stage, display.needs, display.innings?.batting]).toEqual([
+      'superOverSetup',
+      'openers',
+      'first',
+    ]);
+    expect(standingFlow(display)).toBeNull();
+  });
+
+  it('a main innings never stands the sheet: its wicket’s own step names who walks in', () => {
+    const oneDown = displayOf([...OPENING, ...inningsOf('H', AWAY_BOWLERS, [OUT])]);
+    expect([oneDown.needs, oneDown.crease?.striker.id]).toEqual([null, H(3)]);
+    expect(standingFlow(oneDown)).toBeNull();
+    // A retirement with nobody named: the engine walks the order, so no end is left empty either.
+    const retired = displayOf([
+      ...OPENING,
+      ...inningsOf('H', AWAY_BOWLERS, [ONE]),
+      retire(H(1), 'hurt'),
+    ]);
+    expect([retired.needs, retired.crease?.nonStriker.id]).toEqual([null, H(3)]);
+  });
+
+  it('a run out of the non-striker empties the other end: the sheet asks, and the pick takes that end', () => {
+    const runOut = superBall({
+      over: 0,
+      ballInOver: 2,
+      striker: A(2),
+      nonStriker: A(1),
+      bowler: H(11),
+      wicket: { kind: 'runout', out: A(1), fielder: H(5), bowlerCredited: false },
+    });
+    const specs = [...TIED_KO, ...superOverOf('A', H(11), [ONE]), runOut];
+    expect([displayOf(specs).needs, standingFlow(displayOf(specs))]).toEqual([
+      'incoming',
+      { kind: 'incoming' },
+    ]);
+    const filled = displayOf(specs, MATCH, NEXT);
+    expect([filled.crease?.striker.id, filled.crease?.nonStriker.id]).toEqual([A(2), A(3)]);
+    expect(withoutStalePicks(NEXT, filled)).toBe(NEXT);
+  });
+
+  it('an Undo of the first wicket after a batter was chosen drops the pick: the wicket again asks afresh', () => {
+    const before = [...TIED_KO, ...superOverOf('A', H(11), [ONE])];
+    const undone = displayOf(before, MATCH, NEXT);
+    expect(undone.crease?.striker.id).toBe(A(2));
+    expect(withoutStalePicks(NEXT, undone)).toEqual({});
   });
 });

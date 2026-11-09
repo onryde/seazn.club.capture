@@ -250,8 +250,11 @@ export type CricketDisplay = {
   readonly deliveries: number;
   /** The next ball is a free hit (the engine's: a no-ball before it). */
   readonly freeHit: boolean;
-  /** What the next ball cannot go without: the openers of an innings not yet opened, or the bowler of an over due. */
-  readonly needs: 'openers' | 'bowler' | null;
+  /**
+   * What the next ball cannot go without: the openers of an innings not yet opened, a super over's batter for the end
+   * its first wicket left empty (§4.6; T19 D10), or the bowler of an over due.
+   */
+  readonly needs: 'openers' | 'incoming' | 'bowler' | null;
   /** The batting side's order: the scorer's pick merged over the engine's (`orderFromLineup`). */
   readonly battingOrder: readonly string[];
   /** Each side's players, in the engine's batting order. */

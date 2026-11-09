@@ -7,10 +7,13 @@ import {
   AWAY,
   FIRST_INNINGS_8,
   HOME,
+  ONE,
   OPENING,
+  OUT,
   TIED_KO,
   TWO_INNINGS,
   summary,
+  superOverOf,
   type Spec,
 } from './cricketLedger';
 import { FAKE_SCORING_SECRET } from './fakeScoringLinkPort';
@@ -299,6 +302,60 @@ describe('the innings break, from the last ball to Start innings', () => {
     ).toBeTruthy();
     const start = screen.getByRole('button', { name: en['scoring.cricket.setup.startInnings'] });
     expect(start.getAttribute('aria-disabled')).not.toBe('true');
+  });
+
+  // T19 device run D10 (Critical): the super over's first wicket stood no Next batter, the board had nobody at the
+  // crease, and every ball after it was refused. Spec §4.6: the Next batter step still asks, its answer riding the next
+  // ball; the second wicket ends the side's super over with none. Away bats it first (A-p1, A-p2), Home Player 11 bowling.
+  const nextBatter = () =>
+    screen.queryByRole('heading', { name: en['scoring.cricket.wicket.incoming'] });
+  async function chooseRow(app: Awaited<ReturnType<typeof scanned>>, row: HTMLElement) {
+    seconds += 1;
+    app.setNow(new Date(TEST_NOW.getTime() + seconds * 1000));
+    act(() => fireEvent.click(row));
+    await flush(400);
+  }
+
+  it('a super over: the first wicket asks the next batter, the next ball names them, the second ends it', async () => {
+    const seed = seedOf([...TIED_KO, ...superOverOf('A', 'H-p11', [ONE])]);
+    const app = await scanned(seed);
+    await tap(app, en['scoring.cricket.key.out']);
+    await tap(app, en['scoring.cricket.wicket.kind.bowled']);
+    expect((await ledger(app, seed)).at(-1)?.payload).toMatchObject({
+      wicket: { kind: 'bowled', out: 'A-p2' },
+    });
+    expect(nextBatter()).toBeTruthy();
+    const rows = within(screen.getByTestId('step-sheet')).getAllByRole('button');
+    expect(rows[0]?.textContent).toContain('Away Player 3');
+    expect(rows[0]?.getAttribute('aria-selected')).toBe('true');
+    const before = (await ledger(app, seed)).length;
+    await chooseRow(app, rows[0]!);
+    expect((await ledger(app, seed)).length).toBe(before);
+    expect(nextBatter()).toBeNull();
+    expect(screen.getByTestId('board-crease').textContent).toContain('Away Player 3');
+    await tap(app, '1 run');
+    expect((await ledger(app, seed)).at(-1)).toMatchObject({
+      type: 'cricket.superover.ball',
+      payload: { striker: 'A-p3', nonStriker: 'A-p1', runs: { bat: 1 } },
+    });
+    // The single crossed them: A-p1 faces, and is bowled. Two wickets end the side's super over, with no Next batter.
+    await tap(app, en['scoring.cricket.key.out']);
+    await tap(app, en['scoring.cricket.wicket.kind.bowled']);
+    expect((await ledger(app, seed)).at(-1)?.payload).toMatchObject({
+      striker: 'A-p1',
+      wicket: { kind: 'bowled', out: 'A-p1' },
+    });
+    expect(nextBatter()).toBeNull();
+    expect(screen.getByTestId('break-card')).toBeTruthy();
+    expect(screen.getByTestId('break-line').textContent).toContain('Home CC need 3 off 6 balls');
+  });
+
+  it('a super over already stuck after its first wicket, as the device left it: on the scan the sheet asks', async () => {
+    const app = await scanned(seedOf([...TIED_KO, ...superOverOf('A', 'H-p11', [ONE, OUT])]));
+    expect(nextBatter()).toBeTruthy();
+    const rows = within(screen.getByTestId('step-sheet')).getAllByRole('button');
+    await chooseRow(app, rows[0]!);
+    expect(screen.getByTestId('board-crease').textContent).toContain('Away Player 3');
   });
 
   it('a knockout tie: the super over’s setup, the side batting second first, and no More', async () => {

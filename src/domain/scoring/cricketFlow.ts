@@ -27,8 +27,10 @@ import {
 import type { CricketPick } from '@/domain/scoring/cricketPicks';
 import type { CricketDisplay, CricketStep, CricketTap } from '@/domain/scoring/cricketTypes';
 import {
+  chooseSuperOverIncoming,
   chooseWicket,
   startWicket,
+  superOverIncomingStep,
   wicketStep,
   type WicketFlow,
 } from '@/domain/scoring/cricketWicket';
@@ -44,6 +46,8 @@ export type CricketFlow =
   | { readonly kind: 'wicket'; readonly wicket: WicketFlow }
   /** The over-end sheet: the next over's bowler (`cricketBowling.ts`). */
   | { readonly kind: 'bowler' }
+  /** A super over's Next batter, after its first wicket (§4.6; `cricketWicket.ts`). */
+  | { readonly kind: 'incoming' }
   | { readonly kind: 'more' }
   /** More's mid-over change: who finishes the over (none yet), then why. */
   | { readonly kind: 'change'; readonly bowler: string | null }
@@ -69,6 +73,8 @@ export function flowStep(flow: CricketFlow, display: CricketDisplay): CricketSte
       return wicketStep(flow.wicket, display);
     case 'bowler':
       return bowlerStep(display);
+    case 'incoming':
+      return superOverIncomingStep(display);
     case 'more':
       return moreStep(display);
     case 'change':
@@ -80,10 +86,13 @@ export function flowStep(flow: CricketFlow, display: CricketDisplay): CricketSte
 
 /**
  * The step that stands over the pad by itself: the over-end sheet, while an innings under way has an over due with no
- * bowler (spec §4.4). It goes when its pick is kept, or when Undo takes the over's last ball back.
+ * bowler (spec §4.4); a super over's Next batter, while its first wicket has left an end empty (§4.6; T19 D10). Each
+ * goes when its pick is kept, or when Undo takes the ball that made it back.
  */
 export function standingFlow(display: CricketDisplay): CricketFlow | null {
-  return display.stage === 'live' && display.needs === 'bowler' ? { kind: 'bowler' } : null;
+  if (display.stage !== 'live') return null;
+  if (display.needs === 'incoming') return { kind: 'incoming' };
+  return display.needs === 'bowler' ? { kind: 'bowler' } : null;
 }
 
 /** More's first step. */
@@ -106,6 +115,10 @@ export function flowChoice(
     }
     case 'bowler': {
       const pick = chooseBowler(display, id);
+      return pick === null ? null : { kind: 'pick', pick };
+    }
+    case 'incoming': {
+      const pick = chooseSuperOverIncoming(display, id);
       return pick === null ? null : { kind: 'pick', pick };
     }
     case 'more':
