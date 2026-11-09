@@ -247,7 +247,10 @@ function Openers({ view }: { readonly view: CricketSetupView }) {
   );
 }
 
-/** The fielding side's players, a row each (the step sheet's `StepRow`): the one picked has the heavier lime border. */
+/**
+ * The fielding side's players, a row each (the step sheet's `StepRow`). A tap only picks; Start innings confirms,
+ * so the pick is the lime plate with night ink (T19 D11).
+ */
 function BowlerList({
   view,
   onPick,
@@ -262,7 +265,7 @@ function BowlerList({
         id: one.id,
         label: one.name,
         tone: 'standard',
-        chosen: one.chosen,
+        selected: one.chosen,
       })),
     [view.bowlers],
   );

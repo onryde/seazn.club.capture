@@ -79,7 +79,8 @@ export const HowOptions = memo(function HowOptions({
 
 /**
  * A method: one choice among them, said to a screen reader as picked or not. It is a row that takes a tap, drawn as every
- * sport's sheet rows are (owner rulings 82 and 85, `sheetRow.ts`): lime, and the picked one the heavier lime on surface.
+ * sport's sheet rows are (owner rulings 82 and 85, `sheetRow.ts`): lime. A tap only picks and Record sends, so the
+ * picked one is the lime plate with night ink (T19 D11).
  */
 const HowChip = memo(function HowChip({
   option,
@@ -91,7 +92,7 @@ const HowChip = memo(function HowChip({
   readonly onPick: (id: string | null) => void;
 }) {
   const press = useCallback(() => onPick(picked ? null : option.id), [onPick, picked, option.id]);
-  const tone = picked ? 'chosen' : 'standard';
+  const tone = picked ? 'selected' : 'standard';
   return (
     <Pressable
       accessibilityRole="radio"

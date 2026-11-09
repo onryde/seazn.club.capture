@@ -20,8 +20,16 @@ export type StepOption = {
    * row that can is ("Retired").
    */
   readonly note?: string | null;
-  /** The choice already made, or the one suggested: the heavier lime border on surface, said selected. */
+  /**
+   * The choice already made, or the one suggested, on a list whose tap acts: the heavier lime border on surface, said
+   * selected.
+   */
   readonly chosen?: boolean;
+  /**
+   * The pick on a list whose tap only picks and a separate button confirms (the first bowler before Start innings): the
+   * lime plate with night ink, said selected (T19 D11, `sheetRow.ts`).
+   */
+  readonly selected?: boolean;
 };
 
 type StepSheetProps = {
@@ -80,13 +88,14 @@ export const StepRow = memo(function StepRow({
   const tone = sheetRowTone({
     disabled: off,
     chosen: option.chosen,
+    selected: option.selected,
     destructive: option.tone === 'destructive',
   });
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ disabled: off }}
-      aria-selected={tone === 'chosen' ? true : undefined}
+      aria-selected={tone === 'chosen' || tone === 'selected' ? true : undefined}
       disabled={off}
       onPress={choose}
       style={ROW[tone]}

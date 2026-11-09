@@ -4,7 +4,7 @@ import type { CricketStep } from '@/domain/scoring/cricketTypes';
 import en from '@/i18n/en.json';
 import { CricketStandingSheet, CricketStepSheet } from '@/ui/screens/CricketSheets';
 import { colour, layout } from '@/ui/theme/tokens';
-import { edgeOf } from '../../../test/pressState';
+import { edgeOf, fillOf } from '../../../test/pressState';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
 // A cricket sheet's step as the screen draws it (S2-4 plan Task 11): a step written out here, never built by the domain
@@ -98,6 +98,17 @@ describe('CricketStepSheet', () => {
       `${layout.iconBorderOn}px`,
       'true',
     ]);
+  });
+
+  // T19 D11 (the controller's ruling): the lime plate is for a list whose tap only picks and a button confirms. A
+  // sheet's tap acts, so its suggested row keeps the heavier lime border on surface, its name in cream.
+  it('a tap-to-act sheet’s suggested row is never the lime plate', () => {
+    renderSheet();
+    const kaur = screen.getByRole('button', { name: 'V. Kaur' });
+    expect([
+      getComputedStyle(kaur).backgroundColor,
+      getComputedStyle(within(kaur).getByText('V. Kaur')).color,
+    ]).toEqual([fillOf(colour.surface), edgeOf(colour.ink)]);
   });
 
   // Batch 4 review I4: the dim is clicked here (it was only promised), and what it does is the caller's (`onDim`).

@@ -17,8 +17,10 @@ import {
   superOverOf,
   type Spec,
 } from './cricketLedger';
+import { colour, plateInk } from '@/ui/theme/tokens';
 import { FAKE_SCORING_SECRET } from './fakeScoringLinkPort';
 import { TEST_NOW } from './fakePorts';
+import { edgeOf, fillOf, unpaintedFill } from './pressState';
 import { RAW } from './scoringHomeFixtures';
 import { flush, launchApp } from './routedApp';
 
@@ -390,6 +392,30 @@ describe('the innings break, from the last ball to Start innings', () => {
       'Super over 2 · Away CC',
       'Super over 3 · Away CC',
     ]);
+  });
+
+  // T19 device run D11 (the owner: "there is no difference when selecting the bowler, highlight it?"; the
+  // controller's ruling): on a list whose tap only picks and Start innings confirms, the pick is the lime plate with
+  // night ink, as the toss's picked half, and said selected; the rest keep the lime border on the ground. How it reads
+  // in sun is the device's.
+  it('the super over’s first bowler: the pick is the lime plate, said selected; a second pick moves it', async () => {
+    const app = await scanned(seedOf(TIED_KO));
+    await tap(app, en['scoring.cricket.setup.next']);
+    const look = (name: string) => {
+      const row = within(screen.getByTestId('first-bowler')).getByRole('button', { name });
+      return [
+        getComputedStyle(row).backgroundColor,
+        getComputedStyle(within(row).getByText(name)).color,
+        row.getAttribute('aria-selected'),
+      ];
+    };
+    const plate = [fillOf(colour.lime), edgeOf(plateInk), 'true'];
+    const plain = [unpaintedFill(), edgeOf(colour.ink), null];
+    expect([look('Home Player 7'), look('Home Player 8')]).toEqual([plain, plain]);
+    await tap(app, 'Home Player 7');
+    expect([look('Home Player 7'), look('Home Player 8')]).toEqual([plate, plain]);
+    await tap(app, 'Home Player 8');
+    expect([look('Home Player 7'), look('Home Player 8')]).toEqual([plain, plate]);
   });
 
   it('a knockout tie: the super over’s setup, the side batting second first, and no More', async () => {
