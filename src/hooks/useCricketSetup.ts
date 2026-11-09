@@ -1,11 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { cricketBreakCard, type CricketBreakCard } from '@/domain/scoring/cricketPad';
-import {
-  withPick,
-  withoutStaleBegin,
-  type CreasePair,
-  type CricketPick,
-} from '@/domain/scoring/cricketPicks';
+import { withPick, type CreasePair, type CricketPick } from '@/domain/scoring/cricketPicks';
 import {
   orderMoved,
   setupStep,
@@ -94,23 +89,7 @@ export function useCricketSetup(pad: Facts | null, sender: Sender, taps: SetupTa
   const held = useHeld(pad?.display.stage ?? null);
   const model = useMemo(() => modelOf(pad, held.now), [pad, held.now]);
   const actions = useSetupActions(pad, sender, taps, held);
-  useDropStaleBegin(pad, sender.setPicks);
   return { model, actions };
-}
-
-/**
- * A Start innings the ledger went back from (an Undo of the innings' last ball, after Start innings) is dropped from the
- * kept picks as soon as the fold shows it (`withoutStaleBegin`), so the ball recorded again brings the break back; the
- * openers and the bowler stay. Nothing is written while nothing is stale.
- */
-function useDropStaleBegin(pad: Facts | null, setPicks: Sender['setPicks']) {
-  const picks = pad?.picks ?? null;
-  const state = pad?.display.state ?? null;
-  useEffect(() => {
-    if (picks === null || state === null) return;
-    const kept = withoutStaleBegin(picks, state);
-    if (kept !== picks) setPicks(kept);
-  }, [picks, state, setPicks]);
 }
 
 /**

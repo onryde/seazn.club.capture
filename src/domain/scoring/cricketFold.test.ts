@@ -1,7 +1,7 @@
 import { cricket } from '@seazn/engine/sports/cricket';
 import { describe, expect, it } from 'vitest';
 import { foldCricket, KEEPER_POSITION, KEEPER_ROLE } from '@/domain/scoring/cricketFold';
-import { withoutStaleBegin } from '@/domain/scoring/cricketPicks';
+import { withoutStalePicks } from '@/domain/scoring/cricketPicks';
 import { NO_PICKS, type PendingPicks } from '@/domain/scoring/pendingPicks';
 import type { QueuedEvent } from '@/domain/scoring/queue';
 import type { Bootstrap } from '@/domain/scoring/wire';
@@ -487,7 +487,7 @@ describe('the chase and the super over', () => {
     const picks = { 'openers.i2': [A(1), A(2)], 'bowler.i2.0': [H(11)], 'begin.i2': ['second'] };
     const last = FIRST_INNINGS_8.length;
     const back = [...FIRST_INNINGS_8, voiding(last)];
-    const kept = withoutStaleBegin(picks, displayOf(back, { picks, own: [last, last + 1] }).state);
+    const kept = withoutStalePicks(picks, displayOf(back, { picks, own: [last, last + 1] }));
     expect(kept).toEqual({ 'openers.i2': [A(1), A(2)], 'bowler.i2.0': [H(11)] });
     // The innings' last ball again: the break stands, ready for Start innings, on the picks kept.
     const again = [...back, FIRST_INNINGS_8[last - 1]!];
@@ -501,11 +501,11 @@ describe('the chase and the super over', () => {
 
   it('a Start innings for the innings due, or one under way, is not stale: the same picks', () => {
     const due = { 'openers.i2': [A(1), A(2)], 'bowler.i2.0': [H(11)], 'begin.i2': ['second'] };
-    expect(withoutStaleBegin(due, displayOf(FIRST_INNINGS_8, { picks: due }).state)).toBe(due);
+    expect(withoutStalePicks(due, displayOf(FIRST_INNINGS_8, { picks: due }))).toBe(due);
     const begun = displayOf([...FIRST_INNINGS_8, ...inningsOf('A', HOME_BOWLERS, [ONE])], {
       picks: due,
     });
-    expect(withoutStaleBegin(due, begun.state)).toBe(due);
+    expect(withoutStalePicks(due, begun)).toBe(due);
   });
 
   // The controller's ruling (follow-on): Start innings names the side batting the innings. An Undo of the enforced
@@ -521,12 +521,12 @@ describe('the chase and the super over', () => {
     ];
     const picks = { 'openers.i3': [A(1), A(2)], 'bowler.i3.0': [H(11)], 'begin.i3': ['second'] };
     expect(displayOf(followed, { bootstrap, picks }).stage).toBe('live');
-    expect(withoutStaleBegin(picks, displayOf(followed, { bootstrap, picks }).state)).toBe(picks);
+    expect(withoutStalePicks(picks, displayOf(followed, { bootstrap, picks }))).toBe(picks);
     const at = followed.length;
     const undone = [...followed, voiding(at)];
     const back = displayOf(undone, { bootstrap, picks, own: [at, at + 1] });
     expect([back.stage, back.innings?.batting]).toEqual(['break', 'first']);
-    const kept = withoutStaleBegin(picks, back.state);
+    const kept = withoutStalePicks(picks, back);
     expect(kept).toEqual({ 'openers.i3': [A(1), A(2)], 'bowler.i3.0': [H(11)] });
     const again = displayOf([...undone, { type: 'cricket.followon', payload: {} }], {
       bootstrap,
@@ -538,6 +538,49 @@ describe('the chase and the super over', () => {
       'second',
       A(1),
     ]);
+  });
+
+  // T19 D4 (the device run): over 1's last ball, the next bowler picked, Undo of that ball. The pick is for an over the
+  // ledger no longer reaches, and the board no longer shows it, so it goes; the over ended again asks its bowler afresh.
+  it('a void of the over’s last ball drops the next over’s bowler, and the over ended again asks for one', () => {
+    const last = OVER_ONE_DONE.length;
+    const next = { 'bowler.i1.1': [A(10)] };
+    const picked = displayOf(OVER_ONE_DONE, { picks: next });
+    expect([picked.needs, picked.bowler?.id]).toEqual([null, A(10)]);
+    expect(withoutStalePicks(next, picked)).toBe(next);
+    const back = displayOf([...OVER_ONE_DONE, voiding(last)], {
+      picks: next,
+      own: [last, last + 1],
+    });
+    expect([back.innings?.legalBalls, back.bowler?.id]).toEqual([5, A(11)]);
+    const kept = withoutStalePicks(next, back);
+    expect(kept).toEqual({});
+    const again = [...OVER_ONE_DONE, voiding(last), OVER_ONE_DONE[last - 1]!];
+    // Kept, the pick would name the bowler of an over the scorer was never asked about again (the device's defect).
+    expect(displayOf(again, { picks: next }).bowler?.id).toBe(A(10));
+    const asked = displayOf(again, { picks: kept });
+    expect([asked.innings?.legalBalls, asked.needs, asked.bowler]).toEqual([6, 'bowler', null]);
+  });
+
+  it('a hand swap for a delivery the ledger has gone back from is dropped; one for the next delivery stays', () => {
+    const two = displayOf([...OPENING, ...inningsOf('H', AWAY_BOWLERS, [ONE, ONE])]);
+    expect(two.deliveries).toBe(2);
+    const now = { 'swap.i1.2': [H(1), H(2)] };
+    expect(withoutStalePicks(now, two)).toBe(now);
+    expect(withoutStalePicks({ ...now, 'swap.i1.3': [H(2), H(1)] }, two)).toEqual(now);
+  });
+
+  it('of a later innings, only its openers, its first over’s bowler and the orders outlive a void', () => {
+    const live = displayOf([...OPENING, ...inningsOf('H', AWAY_BOWLERS, [ONE, ONE])]);
+    const kept = {
+      'order.second': [A(2), A(1)],
+      'openers.i2': [A(1), A(2)],
+      'bowler.i2.0': [H(11)],
+      'bowler.i1.0': [A(11)],
+    };
+    expect(withoutStalePicks(kept, live)).toBe(kept);
+    const stale = { 'bowler.i2.1': [H(10)], 'swap.i2.7': [A(2), A(1)], 'bowler.i1.1': [A(10)] };
+    expect(withoutStalePicks({ ...kept, ...stale }, live)).toEqual(kept);
   });
 
   it('a knockout tie waits on the super over’s setup, the side that batted second batting first', () => {

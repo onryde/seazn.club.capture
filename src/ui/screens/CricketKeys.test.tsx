@@ -10,11 +10,13 @@ import {
 } from '@/services/fakeCricketPad';
 import type { FakeMatchSeed } from '@/services/fakeScoringPort';
 import { colour, layout } from '@/ui/theme/tokens';
+import { encodeSavedCode } from '@/domain/mode/savedCode';
+import { STORE_KEYS } from '@/services/modeStore';
 import { FAKE_SCORING_SECRET } from '../../../test/fakeScoringLinkPort';
 import { edgeOf } from '../../../test/pressState';
 import { TEST_NOW } from '../../../test/fakePorts';
 import { flush, launchApp, type LaunchedApp } from '../../../test/routedApp';
-import { RAW } from '../../../test/scoringHomeFixtures';
+import { RAW, linkKey } from '../../../test/scoringHomeFixtures';
 
 beforeEach(() => {
   seconds = 0;
@@ -62,6 +64,23 @@ async function press(app: LaunchedApp, name: string | RegExp) {
 }
 
 const key = (name: string | RegExp) => screen.getByRole('button', { name });
+
+/** A phone that scanned this match before a kill: the code saved, the link kept with its sport, the app on the pad. */
+function inCricketMatch(seed: FakeMatchSeed): Record<string, string> {
+  return {
+    [STORE_KEYS.active]: 'scoring',
+    [STORE_KEYS.code('scoring')]: encodeSavedCode({
+      mode: 'scoring',
+      raw: '',
+      slot: null,
+      savedAt: TEST_NOW,
+      expiresAt: null,
+      stream: null,
+      scoring: { fixtureId: seed.fixtureId, label: 'Match 7' },
+    }),
+    [linkKey(seed.fixtureId)]: JSON.stringify({ ...LINK, sportKey: 'cricket' }),
+  };
+}
 const sheet = () => screen.queryByTestId('step-sheet');
 const runs = () => screen.getByTestId('board-runs').textContent;
 
@@ -476,6 +495,60 @@ describe('the next bowler, a mid-over change, a strike swap (plan Task 13)', () 
       'core.void',
     ]);
     expect(sheet()).toBeNull();
+  });
+
+  // T19 D4 (the device run): the next bowler picked, then Undo of the over's last ball. The board goes back to 0.5 with
+  // the over's bowler, so the pick looks undone; it must be, or the over ended again skips its question and the next
+  // balls go in under a bowler the scorer was never asked about.
+  it('a bowler picked, Undo of the over’s last ball, the ball again: the sheet asks afresh, and the pick is off the disk', async () => {
+    const app = await scanned();
+    await overOut(app);
+    await press(app, /V\. Kaur/);
+    await press(app, en['scoring.pad.undo']);
+    expect(screen.getByTestId('board-overs').textContent).toContain('0.5');
+    expect(screen.getByTestId('board-crease').textContent).toContain('W. Murphy');
+    expect((await app.tapQueue.loadBoot(LIVE.fixtureId))?.picks).toEqual({});
+    await press(app, en['scoring.cricket.ball.dot']);
+    expect(heading()?.toUpperCase()).toBe(over2);
+    expect(screen.getByTestId('board-crease').textContent).not.toContain('V. Kaur');
+    await press(app, /U\. Rossi/);
+    await press(app, '1 run');
+    expect(await lastPayload(app)).toMatchObject({
+      over: 1,
+      ballInOver: 1,
+      bowler: idOf('U. Rossi'),
+    });
+  });
+
+  // The same with a kill between the Undo and the over's last ball again, the pick still on the disk (the save of the
+  // drop never landed). The ledger after a ball and its void folds as the balls before them, so the server holds five.
+  // The over's last ball is the device's: More's +5 penalty runs, nothing off the bat, a fair ball.
+  it('reopened with the stale pick on the disk: the penalty ball that ends the over asks its bowler afresh', async () => {
+    const seed = liveCricketSeed({ events: [...LIVE_EVENTS, consoleDot(4), consoleDot(5)] });
+    const stale = { 'bowler.i1.1': [idOf('V. Kaur') ?? ''] };
+    const app = await launchApp({
+      scoringSeed: seed,
+      kvSeed: inCricketMatch(seed),
+      seed: async (fakes) => {
+        const read = await fakes.scoring.bootstrap(LINK);
+        if (read.kind !== 'ok') throw new Error(`no bootstrap: ${read.kind}`);
+        await fakes.tapQueue.saveBoot(seed.fixtureId, {
+          bootstrap: read.bootstrap,
+          toss: null,
+          picks: stale,
+        });
+      },
+    });
+    await flush(1_500);
+    expect(app.nav.current()).toBe('scoring');
+    expect(screen.getByTestId('board-overs').textContent).toContain('0.5');
+    await press(app, en['scoring.cricket.key.more']);
+    await press(app, en['scoring.cricket.more.otherRuns']);
+    await press(app, en['scoring.cricket.other.penalty'].replace('{runs}', '5'));
+    await press(app, `${en['scoring.cricket.extras.bat']}: 0`);
+    expect(heading()?.toUpperCase()).toBe(over2);
+    expect(screen.getByTestId('board-crease').textContent).not.toContain('V. Kaur');
+    expect((await app.tapQueue.loadBoot(seed.fixtureId))?.picks).toEqual({});
   });
 
   // Back is the only way off the screen at an over's end with the dim and the top bar covered; it leaves to Home, writes

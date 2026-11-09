@@ -1,8 +1,8 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { runBall, type SheetExtra } from '@/domain/scoring/cricketExtras';
 import { moreOffered } from '@/domain/scoring/cricketMore';
 import { cricketBoard, type CricketBoardView } from '@/domain/scoring/cricketPad';
-import { withPick, type CricketPick } from '@/domain/scoring/cricketPicks';
+import { withPick, withoutStalePicks, type CricketPick } from '@/domain/scoring/cricketPicks';
 import type { PlayersTab } from '@/domain/scoring/cricketPlayers';
 import { cricketSport } from '@/domain/scoring/cricketSport';
 import { totalsView, type CricketTotals, type TotalsOver } from '@/domain/scoring/cricketTotals';
@@ -138,6 +138,7 @@ function useCricketPad(
   const taps = useTaps(driver, settle, sender.say, ignoreFlash);
   const sheets = useSheets(taps, pad, sender);
   const setup = useCricketSetup(pad, sender, taps);
+  useDropStalePicks(pad, sender.setPicks);
   const actions = useActions({ sender, runner, pad, taps, sheets, setup, setCardNote });
   useBackCloses(sheets.open, sheets.cancel);
   const board = useMemo(() => (pad === null ? null : cricketBoard(pad.display)), [pad]);
@@ -146,6 +147,22 @@ function useCricketPad(
     () => modelOf(pad, { board, setup: setup.model, totals }, sheets.view, cardNote, actions),
     [pad, board, setup.model, totals, sheets.view, cardNote, actions],
   );
+}
+
+/**
+ * A pick the ledger went back from is dropped from the kept picks, on the disk too, as soon as the fold shows it
+ * (`withoutStalePicks`): a Start innings after an Undo of the innings' last ball (the break asks again, the openers and
+ * the bowler kept), and the next over's bowler after an Undo of the over's last ball (T19 D4: the over ended again asks
+ * its bowler afresh). Nothing is written while nothing is stale.
+ */
+function useDropStalePicks(pad: PadFacts | null, setPicks: Sender['setPicks']) {
+  const picks = pad?.picks ?? null;
+  const display = pad?.display ?? null;
+  useEffect(() => {
+    if (picks === null || display === null) return;
+    const kept = withoutStalePicks(picks, display);
+    if (kept !== picks) setPicks(kept);
+  }, [picks, display, setPicks]);
 }
 
 /** The stages the over totals stand in the board's place for: a side scored in totals, and its tie (`totalsView`). */

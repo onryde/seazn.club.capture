@@ -26,7 +26,7 @@ import type { PendingPicks } from '@/domain/scoring/pendingPicks';
  * - `swap.<ordinal>.<deliveries>`: the crease reversed by hand for the next ball (rulings 76, 84);
  * - `begin.<ordinal>`: Start innings, tapped at a break once the innings' openers and bowler are picked (spec §4.5). It
  *   names the side batting the innings (a pad side) and records nothing: the innings opens on its first ball, which
- *   carries the picks. The side tells a Start innings an Undo of the follow-on left stale (`withoutStaleBegin`).
+ *   carries the picks. The side tells a Start innings an Undo of the follow-on left stale (`withoutStalePicks`).
  *
  * A pick the match no longer allows is ignored, never shown: a person no longer in the lineup (the organiser edited the
  * sheet), a bowler the Laws bar from the over, a pair that is not the fold's. A pick for an innings or an over already
@@ -251,23 +251,51 @@ function isPast(key: string, now: number, over: number, deliveries: number): boo
 }
 
 /**
- * The picks without a stale Start innings (the controller's rulings on Task 16's concern 1). One is stale once the
- * ledger has gone back past it: for an innings not yet due (an Undo of the ball that closed the innings before, or a
- * void from the console), or for the innings due with another side batting it (an Undo of the enforced follow-on). It
- * is dropped so the break, with its card, asks Start innings again; the innings' openers and bowler stay, the choice
- * already made. The same map when nothing is stale.
+ * The picks without the stale ones: those the ledger has gone back from, which the board no longer shows (the
+ * controller's rulings on Task 16's concern 1; T19 D4). A Start innings is stale for an innings not yet due (an Undo of
+ * the ball that closed the innings before, or a void from the console), or for the innings due with another side
+ * batting it (an Undo of the enforced follow-on): the break, with its card, then asks Start innings again, the innings'
+ * openers and first bowler kept, the choice already made. An over's bowler or a hand swap is stale for a point of the
+ * innings not reached: an over after the one due (an Undo of the over's last ball: the over ended again asks its bowler
+ * afresh) or a delivery after the next; of a later innings, any but its first over's bowler. The same map when nothing
+ * is stale.
  */
-export function withoutStaleBegin(picks: PendingPicks, state: CricketState): PendingPicks {
+export function withoutStalePicks(
+  picks: PendingPicks,
+  { state, deliveries }: Pick<CricketDisplay, 'state' | 'deliveries'>,
+): PendingPicks {
   const turn = turnOf(state);
-  const now = turn === null ? 0 : (rankOfOrdinal(ordinalOf(turn)) ?? 0);
-  const side = turn === null ? null : padSideOf(turn.battingSide);
-  const stale = ([key, ids]: readonly [string, readonly string[]]) => {
-    const [kind, ordinal] = key.split('.');
-    if (kind !== 'begin') return false;
-    const rank = rankOfOrdinal(ordinal ?? '') ?? 0;
-    return rank > now || (rank === now && ids[0] !== side);
+  const now: Now = {
+    rank: turn === null ? 0 : (rankOfOrdinal(ordinalOf(turn)) ?? 0),
+    side: turn === null ? null : padSideOf(turn.battingSide),
+    over: turn === null ? 0 : overOf(turn, state.cfg.ballsPerOver),
+    deliveries,
   };
+  const stale = ([key, ids]: readonly [string, readonly string[]]) => isStale(key, ids, now);
   const entries = Object.entries(picks);
   if (!entries.some(stale)) return picks;
   return Object.fromEntries(entries.filter((entry) => !stale(entry)));
+}
+
+/** Where the ledger stands: the innings due or under way (its rank and its side), its over and its deliveries. */
+type Now = {
+  readonly rank: number;
+  readonly side: PadSide | null;
+  readonly over: number;
+  readonly deliveries: number;
+};
+
+function isStale(key: string, ids: readonly string[], now: Now): boolean {
+  const [kind, ordinal, at] = key.split('.');
+  const rank = rankOfOrdinal(ordinal ?? '') ?? 0;
+  switch (kind) {
+    case 'begin':
+      return rank > now.rank || (rank === now.rank && ids[0] !== now.side);
+    case 'bowler':
+      return rank > now.rank ? Number(at) > 0 : rank === now.rank && Number(at) > now.over;
+    case 'swap':
+      return rank > now.rank || (rank === now.rank && Number(at) > now.deliveries);
+    default:
+      return false;
+  }
 }
