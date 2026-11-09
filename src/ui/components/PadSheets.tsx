@@ -137,13 +137,18 @@ export const DiscardAsk = memo(function DiscardAsk({
   );
 });
 
-/** History (owner ruling 21) in the operator's language: each row's sentence, score, recorder and "Undone". */
+/**
+ * History (owner ruling 21) in the operator's language: each row's sentence, score, recorder and "Undone". `uncapped`
+ * (cricket's, S2-4 Task 18 fix round) lets a sentence wrap with no line cap; the other sports leave it off.
+ */
 export const MatchHistory = memo(function MatchHistory({
   groups,
   onClose,
+  uncapped = false,
 }: {
   readonly groups: readonly PadHistoryGroup<MessageKey>[];
   readonly onClose: () => void;
+  readonly uncapped?: boolean;
 }) {
   const { t } = useT();
   const words = usePadText();
@@ -168,6 +173,7 @@ export const MatchHistory = memo(function MatchHistory({
       empty={t('scoring.history.empty')}
       groups={said}
       onClose={onClose}
+      uncapped={uncapped}
     />
   );
 });

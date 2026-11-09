@@ -1,13 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
-  OVER_TOTALS,
   bowlerRows,
   bowlerStep,
   changeRows,
   changeStep,
   chooseBowler,
   chooseChange,
-  totalsOffered,
 } from '@/domain/scoring/cricketBowling';
 import { flowChoice, moreFlow, standingFlow } from '@/domain/scoring/cricketFlow';
 import { foldCricket } from '@/domain/scoring/cricketFold';
@@ -133,7 +131,7 @@ describe('the over-end sheet', () => {
     const held = displayOf(OVER_ONE_DONE, FOUR_EACH, withPick(NO_PICKS, display, pick!));
     expect([held.needs, held.bowler?.id]).toEqual([null, A(9)]);
     expect(chooseBowler(display, A(11))).toBeNull();
-    expect(chooseBowler(display, OVER_TOTALS)).toBeNull();
+    expect(chooseBowler(display, 'totals')).toBeNull();
   });
 
   it('no eligible bowler after a ball says ask the organiser, with no over totals', () => {
@@ -145,32 +143,27 @@ describe('the over-end sheet', () => {
     expect(step.options.map((one) => one.id)).toEqual([A(1), A(2)]);
   });
 
-  it('no eligible bowler before the innings’ first ball offers over totals', () => {
-    // The engine never has nobody to bowl an innings' first over (a quota is at least 1, and counts per innings): this
-    // is the gate's other side, on the same display with no delivery yet.
+  // Fix round (controller, 2026-11-09): the sheet once offered "Enter over totals" when nobody could bowl an innings with no
+  // ball yet. A real engine never has nobody to bowl an innings' first over (a quota is at least 1 and counts per innings),
+  // so the row could not be reached and is gone. Over totals are entered where players are not (the totals stage).
+  it('offers no over-totals row, not even when nobody can bowl before the first ball', () => {
     const two = [...OPENING, ...inningsOf('H', [A(1), A(2)], times(12, DOT))];
     const display = { ...displayOf(two, TWO_FIELDERS), deliveries: 0 };
+    expect(bowlerRows(display).map((one) => one.can)).toEqual([false, false]);
     const step = bowlerStep(display);
     expect(step.body).toEqual({ key: 'scoring.cricket.bowling.none' });
-    expect(step.options.at(-1)).toMatchObject({
-      id: OVER_TOTALS,
-      label: { key: 'scoring.cricket.bowling.totals' },
-    });
+    expect(step.options.map((one) => one.id)).toEqual([A(1), A(2)]);
+    expect(flowChoice({ kind: 'bowler' }, display, 'totals')).toBeNull();
+    expect(chooseBowler(display, 'totals')).toBeNull();
   });
 
-  // Controller ruling M8 (Batch 4 review): a row on the sheet must do something. Enter over totals opens the totals entry
-  // (Task 17); an id the sheet does not offer chooses nothing.
-  it('choosing Enter over totals opens the totals entry, only while the sheet offers it', () => {
-    const two = [...OPENING, ...inningsOf('H', [A(1), A(2)], times(12, DOT))];
-    const offered = { ...displayOf(two, TWO_FIELDERS), deliveries: 0 };
-    expect(totalsOffered(offered)).toBe(true);
-    expect(flowChoice({ kind: 'bowler' }, offered, OVER_TOTALS)).toEqual({ kind: 'totals' });
-    const afterBall = displayOf(two, TWO_FIELDERS);
-    expect(totalsOffered(afterBall)).toBe(false);
-    expect(flowChoice({ kind: 'bowler' }, afterBall, OVER_TOTALS)).toBeNull();
-    const someoneCan = displayOf(OVER_ONE_DONE, FOUR_EACH);
-    expect(totalsOffered(someoneCan)).toBe(false);
-    expect(flowChoice({ kind: 'bowler' }, someoneCan, OVER_TOTALS)).toBeNull();
+  it('offers no over-totals row with a bowler to choose either', () => {
+    const display = displayOf(OVER_ONE_DONE, FOUR_EACH);
+    const step = bowlerStep(display);
+    expect(step.options.map((one) => one.id)).not.toContain('totals');
+    // Somebody can bowl, so the line under the title names the fielding side, not the organiser.
+    expect(step.body).toEqual({ key: 'scoring.cricket.bowling.body', vars: { team: 'Away CC' } });
+    expect(flowChoice({ kind: 'bowler' }, display, 'totals')).toBeNull();
   });
 });
 

@@ -38,9 +38,6 @@ export type BowlerRow = {
   readonly reason: BowlerReason | null;
 };
 
-/** The over totals' row: offered when nobody can bowl an innings that has no ball yet (spec §4.4, preflight F5). */
-export const OVER_TOTALS = 'totals';
-
 /** The over's facts the engine's rules read (`FineInnings`, which is not exported). */
 type Fine = InningsState['fine'];
 
@@ -104,31 +101,18 @@ export function changeRows(display: CricketDisplay): readonly BowlerRow[] {
   return ids.map((id) => rowOf(display, fielding, id, true));
 }
 
-/** Nobody on the fielding side may bowl the next over. */
-const nobodyCanBowl = (display: CricketDisplay): boolean =>
-  !bowlerRows(display).some((one) => one.can);
-
-/**
- * Whether the sheet offers over totals: nobody may bowl, and the innings has no ball yet, since the engine refuses a
- * summary for an innings recorded ball by ball (spec §4.4, preflight F5). The row opens the totals entry (`cricketTotals`).
- */
-export const totalsOffered = (display: CricketDisplay): boolean =>
-  nobodyCanBowl(display) && display.deliveries === 0;
-
 /**
  * The over-end sheet: the fielders, those who may bowl first with their figures, the rest greyed with why. With nobody
- * to bowl, it says so and to ask the organiser, and offers over totals while the innings has no ball (`totalsOffered`).
+ * to bowl, it says so and to ask the organiser. (It once offered over totals while the innings had no ball; a real engine
+ * never has nobody to bowl an innings' first over, so the row was unreachable and went. Totals are the totals stage's.)
  */
 export function bowlerStep(display: CricketDisplay): CricketStep {
   const rows = bowlerRows(display);
-  const totals: CricketStepOption[] = totalsOffered(display)
-    ? [{ id: OVER_TOTALS, label: { key: 'scoring.cricket.bowling.totals' }, tone: 'standard' }]
-    : [];
   return {
     name: 'bowler.next',
     title: { key: 'scoring.cricket.bowling.title', vars: { number: display.over.number } },
-    body: nobodyCanBowl(display) ? { key: 'scoring.cricket.bowling.none' } : bodyOf(display),
-    options: [...rows.map((row) => bowlerOption(row, display)), ...totals],
+    body: rows.some((one) => one.can) ? bodyOf(display) : { key: 'scoring.cricket.bowling.none' },
+    options: rows.map((row) => bowlerOption(row, display)),
   };
 }
 

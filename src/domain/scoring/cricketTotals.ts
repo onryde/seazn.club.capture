@@ -23,11 +23,11 @@ export type TotalsField = keyof TotalsOver;
 
 type Note = PadText<CricketPadKey>;
 
-/** The over to enter, in the board's place or over the over-end sheet's "no bowler" case. */
+/** The over to enter, in the keys' place while a side's players are not entered. */
 export type CricketTotalsEntry = {
   readonly kind: 'entry';
-  /** The line above the entry: players not entered, an innings that stays in totals; none over the over-end sheet. */
-  readonly note: Note | null;
+  /** The line above the entry: players not entered, or an innings that stays in totals. */
+  readonly note: Note;
   /** The over now, counted from 1. */
   readonly over: number;
   /** What the entry starts at: nothing scored, and a whole over, or what is left of the innings if that is less. */
@@ -49,8 +49,8 @@ const TIED: Note = { key: 'scoring.cricket.totals.tied' };
 
 /**
  * What the pad shows in place of the keys while the match is scored in over totals: the entry for the next over, or the
- * organiser's line for a tie. Also the entry the over-end sheet opens when nobody can bowl an innings that has no ball
- * (spec §4.4, preflight F5). Null at any other stage: the toss and setup, a break, a decided match.
+ * organiser's line for a tie. Null at any other stage: the toss and setup, a live match with its players entered, a
+ * break, a decided match.
  */
 export function totalsView(display: CricketDisplay): CricketTotals | null {
   if (display.stage === 'tiedNoPlayers') return { kind: 'tied', note: TIED };
@@ -69,8 +69,7 @@ export function totalsView(display: CricketDisplay): CricketTotals | null {
 }
 
 /** The line above an entry at this stage; undefined where there is no entry. */
-function entryNote(display: CricketDisplay): Note | null | undefined {
-  if (display.stage === 'live') return null;
+function entryNote(display: CricketDisplay): Note | undefined {
   if (display.stage !== 'totals') return undefined;
   return display.entered.first && display.entered.second ? STAYS : NO_PLAYERS;
 }

@@ -764,7 +764,6 @@
   "scoring.cricket.bowling.lastOver": "A lancé le dernier over",
   "scoring.cricket.bowling.outOfOvers": "Plus d'overs ({max})",
   "scoring.cricket.bowling.none": "Personne ne peut lancer cet over. Demandez à l'organisateur.",
-  "scoring.cricket.bowling.totals": "Saisir les totaux par over",
   "scoring.cricket.change.title": "Qui termine l'over\u00a0?",
   "scoring.cricket.change.why": "Pourquoi ce changement\u00a0?",
   "scoring.cricket.change.reason.incapacitated": "Blessé ou malade",

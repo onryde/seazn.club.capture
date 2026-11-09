@@ -395,7 +395,7 @@ export type CricketSheetKey =
   | `scoring.cricket.wicket.${'how' | 'who' | 'fielder' | 'assist' | 'completed' | 'incoming'}`
   | `scoring.cricket.wicket.${'noFielder' | 'noAssist' | 'isFielder' | 'retired' | 'nonStriker' | 'nextInOrder'}`
   | `scoring.cricket.wicket.kind.${CricketBallWicketKind}`
-  | `scoring.cricket.bowling.${'title' | 'body' | 'lastOver' | 'outOfOvers' | 'none' | 'totals'}`
+  | `scoring.cricket.bowling.${'title' | 'body' | 'lastOver' | 'outOfOvers' | 'none'}`
   | `scoring.cricket.change.${'title' | 'why'}`
   | `scoring.cricket.change.reason.${CricketChangeReason}`
   | `scoring.cricket.more.${'change' | 'swap' | CricketMoreRow}`

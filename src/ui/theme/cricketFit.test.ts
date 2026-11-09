@@ -460,7 +460,6 @@ it('the widest wicket title is wider than half the sheet at 320 (anti-vacuity: t
  */
 const BOWLING_TITLES = ['scoring.cricket.change.title', 'scoring.cricket.change.why'];
 const BOWLING_ROWS = [
-  'scoring.cricket.bowling.totals',
   'scoring.cricket.more.change',
   'scoring.cricket.more.swap',
   'scoring.cricket.change.reason.incapacitated',
@@ -813,8 +812,8 @@ it('a thirty-character name takes the strip past one line at 320 for an innings 
   }
 });
 
-// S2-4 plan Task 17: over totals (the entry in the keys' place, and in a sheet) at 320 and 360 dp in four languages. The
-// note is `body` text and may take three lines; the heading is one line (`panelTitle` on the pad, `title` in the sheet);
+// S2-4 plan Task 17: over totals (the entry in the keys' place) at 320 and 360 dp in four languages. The
+// note is `body` text and may take three lines; the heading is one line (`panelTitle`);
 // each field's name is one line in what a row leaves it beside two steppers and the figure; Record over is one line in its
 // plate. The steppers' spoken labels are never drawn: they carry the field's name in the dictionary's own place for it.
 const TOTALS_NOTES = ['noPlayers', 'stays', 'tied'].map((key) => `scoring.cricket.totals.${key}`);
@@ -844,16 +843,12 @@ describe.each(WIDTHS)('over totals at %i dp', (width) => {
     },
   );
 
-  it.each(LANGUAGES)(
-    '%s: the heading is one line, on the pad and in the sheet',
-    (_, dictionary) => {
-      const heading = fill(said(dictionary, 'scoring.cricket.totals.title'), {
-        number: OVER_NUMBER,
-      });
-      expect(linesOf(heading, column(width), caps('panelTitle')), heading).toBe(1);
-      expect(sheetTitleWidth(heading), heading).toBeLessThanOrEqual(column(width));
-    },
-  );
+  it.each(LANGUAGES)('%s: the heading is one line on the pad', (_, dictionary) => {
+    const heading = fill(said(dictionary, 'scoring.cricket.totals.title'), {
+      number: OVER_NUMBER,
+    });
+    expect(linesOf(heading, column(width), caps('panelTitle')), heading).toBe(1);
+  });
 
   it.each(LANGUAGES)('%s: each field’s name is one line beside the steppers', (_, dictionary) => {
     for (const key of TOTALS_FIELDS) {
@@ -1084,11 +1079,12 @@ describe.each(WIDTHS)('Match details’ rules at %i dp', (width) => {
   );
 });
 
-// The last-tap line (three lines of `control` beside Undo) and a History row's sentence (two lines in what the right
-// column leaves). Both are cut with an ellipsis, the head kept (the pattern of padFit's last-tap and History cases), so each
-// sentence is measured at its widest realistic fill: a club of thirty characters at the toss, short names for the rest and
-// a ball with every part. A name of 26 characters is held to its own test: every word of every sentence fits the room,
-// so the ellipsis cuts between words and never inside one.
+// The last-tap line (three lines of `control` beside Undo) and a History row's sentence (what the right column leaves).
+// The last-tap line is cut with an ellipsis, the head kept (the pattern of padFit's last-tap case), so each sentence is
+// measured at its widest realistic fill: a club of thirty characters at the toss, short names for the rest and a ball with
+// every part. A History row is not cut (controller's ruling, 2026-11-09, S2-4 Task 18 fix round): cricket's rows wrap with
+// no line cap (`MatchHistory` `uncapped`), so the tests below hold that every word of every sentence fits the room, whole,
+// and pin what the kit's two-line cap would have cut, as anti-vacuity. A name of 26 characters is held to its own test.
 describe('the last-tap line and History sentences', () => {
   const lineRoom = (width: number, dictionary: Dictionary) =>
     column(width) - ghostBox(said(dictionary, 'scoring.pad.undo')) - space.sm;
@@ -1191,10 +1187,11 @@ describe('the last-tap line and History sentences', () => {
     expect(over(layout.padLineLines, lineRoom, 320, single)).toEqual([]);
   });
 
-  // The toss with a club of thirty characters: at 320 the English and Spanish sentences run to a third line in a History
-  // row (the row gives 192 dp beside the score), and the ellipsis cuts after "chose" / "eligió", the club whole. Spanish
-  // and English are the owner's words and are not shortened here; French and Dutch were (Task 18).
-  it('a History row holds every one-clause sentence in its two lines at 360 and every one but the toss at 320', () => {
+  // What the kit's two-line cap (`layout.padHistoryLines`, still the other sports' rule) would have cut in a History row.
+  // Cricket's rows have no cap, so none of these is cut; the list says what the wrapping is doing. The toss with a club of
+  // thirty characters: at 320 the English and Spanish sentences run to a third line (the row gives 192 dp beside the
+  // score). Spanish and English are the owner's words and are not shortened here; French and Dutch were (Task 18).
+  it('a History row would have cut, under the kit’s two-line cap, the toss at 320 and nothing else of one clause', () => {
     expect(over(layout.padHistoryLines, historyRoom, 360, single)).toEqual([]);
     expect(over(layout.padHistoryLines, historyRoom, 320, single)).toEqual([
       'en toss bat',
@@ -1204,13 +1201,14 @@ describe('the last-tap line and History sentences', () => {
     ]);
   });
 
-  it('keeps the club whole in the kept two lines of the toss that runs over at 320', () => {
+  it('shows the whole club in a History row: the toss takes a third line at 320 rather than losing it', () => {
     for (const [, dictionary] of [LANGUAGES[0], LANGUAGES[1]]) {
       for (const [name, text] of sentences(dictionary, USUAL).filter(([n]) =>
         n.startsWith('toss'),
       )) {
-        const kept = linesIn(text, historyRoom(320), controlWidth).slice(0, layout.padHistoryLines);
-        expect(kept.join(' ').startsWith(THIRTY), name).toBe(true);
+        const lines = linesIn(text, historyRoom(320), controlWidth);
+        expect(lines.length, name).toBeGreaterThan(layout.padHistoryLines);
+        expect(lines.join(' '), name).toContain(THIRTY);
       }
     }
   });
@@ -1224,7 +1222,7 @@ describe('the last-tap line and History sentences', () => {
     ]);
   });
 
-  it('cuts only the whole ball in a History row: two languages at 360, all four at 320', () => {
+  it('would have cut only the whole ball in a History row under the cap: two languages at 360, all four at 320', () => {
     const inHistory = (name: string) => composite(name) && IN_HISTORY(name);
     expect(over(layout.padHistoryLines, historyRoom, 360, inHistory)).toEqual([
       'es a whole ball',
@@ -1238,58 +1236,56 @@ describe('the last-tap line and History sentences', () => {
     ]);
   });
 
-  // What the ellipsis cuts is the end. The head of a cut ball sentence is kept: "Undone" (or its word) and the extra, "5
-  // no-balls". The dismissal is not always kept: where the kept lines stop before the batter's " · " (the mark after
-  // "<batter> out") the wicket is cut too, and this pins where, so a copy change that moves it is seen.
+  // What the ellipsis cuts is the end, and only in the last-tap line (a History row is not cut). The head of a cut ball
+  // sentence is kept: "Undone" (or its word) and the extra, "5 no-balls". The dismissal is not always kept: where the kept
+  // lines stop before the batter's " · " (the mark after "<batter> out") the wicket is cut too, and this pins where, so a
+  // copy change that moves it is seen.
   type Cut = { readonly where: string; readonly kept: string; readonly head: string };
-  type Place = {
-    readonly name: string;
-    readonly limit: number;
-    readonly room: (width: number, dictionary: Dictionary) => number;
-    readonly which: (name: string) => boolean;
-  };
-  const PLACES: readonly Place[] = [
-    { name: 'line', limit: layout.padLineLines, room: lineRoom, which: composite },
-    {
-      name: 'history',
-      limit: layout.padHistoryLines,
-      room: historyRoom,
-      which: (name) => composite(name) && IN_HISTORY(name),
-    },
-  ];
   const cuts = (): readonly Cut[] =>
-    PLACES.flatMap(({ name: place, limit, room, which }) =>
-      WIDTHS.flatMap((width) =>
-        LANGUAGES.flatMap(([lang, dictionary]) =>
-          sentences(dictionary, USUAL)
-            .filter(([name]) => which(name))
-            .flatMap(([name, text]): Cut[] => {
-              const lines = linesIn(text, room(width, dictionary), controlWidth);
-              if (lines.length <= limit) return [];
-              const undone = said(dictionary, 'scoring.cricket.last.undone').split('{what}')[0];
-              const noBalls = fill(said(dictionary, 'scoring.cricket.ball.noball.other'), {
-                count: 5,
-              });
-              return [
-                {
-                  where: `${place} ${width} ${lang} ${name}`,
-                  kept: lines.slice(0, limit).join(' '),
-                  head: (name === 'undone ball' ? (undone ?? '') : '') + noBalls,
-                },
-              ];
-            }),
-        ),
+    WIDTHS.flatMap((width) =>
+      LANGUAGES.flatMap(([lang, dictionary]) =>
+        sentences(dictionary, USUAL)
+          .filter(([name]) => composite(name))
+          .flatMap(([name, text]): Cut[] => {
+            const lines = linesIn(text, lineRoom(width, dictionary), controlWidth);
+            if (lines.length <= layout.padLineLines) return [];
+            const undone = said(dictionary, 'scoring.cricket.last.undone').split('{what}')[0];
+            const noBalls = fill(said(dictionary, 'scoring.cricket.ball.noball.other'), {
+              count: 5,
+            });
+            return [
+              {
+                where: `line ${width} ${lang} ${name}`,
+                kept: lines.slice(0, layout.padLineLines).join(' '),
+                head: (name === 'undone ball' ? (undone ?? '') : '') + noBalls,
+              },
+            ];
+          }),
       ),
     );
 
-  it('keeps the head of every cut ball sentence, and names where the wicket goes too', () => {
+  it('keeps the head of every cut ball sentence in the last-tap line, and names where the wicket goes too', () => {
     const all = cuts();
-    // One at 360 and three at 320 in the line; two at 360 and four at 320 in History (the two lists above).
-    expect(all).toHaveLength(10);
+    // One at 360 and three at 320 (the list above). A History row cuts none.
+    expect(all).toHaveLength(4);
     expect(all.filter(({ kept, head }) => !kept.startsWith(head))).toEqual([]);
     expect(all.filter(({ kept }) => !kept.includes(' · ')).map(({ where }) => where)).toEqual([
       'line 320 nl undone ball',
     ]);
+  });
+
+  // Not cut at all in History: every word of every sentence (not only the one-clause ones) is no wider than the row's
+  // room, so wrapping at the spaces shows the whole sentence, whatever the language, at 320 and 360. This and the
+  // component's own check that the sentence carries no line limit (`HistoryCover.test.tsx`) are the two halves of it.
+  it('shows every History sentence whole: no word is wider than the row’s room, whatever the name', () => {
+    for (const who of [USUAL, LONGEST])
+      for (const width of WIDTHS)
+        for (const [lang, dictionary] of LANGUAGES)
+          for (const [name, text] of sentences(dictionary, who).filter(([n]) => IN_HISTORY(n)))
+            expect(
+              wordsFit(text, historyRoom(width), controlWidth),
+              `${lang} ${name} ${width}`,
+            ).toBe(true);
   });
 
   it('keeps every word whole in both rooms, with the longest name as the batter and the one the sentence is about', () => {

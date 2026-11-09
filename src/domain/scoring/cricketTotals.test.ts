@@ -229,10 +229,7 @@ describe('the steppers', () => {
 describe('what the screen says above the entry', () => {
   it('a side with no players says so, and to ask the organiser', () => {
     const entry = entryOf(displayOf(OPENING));
-    expect(entry.note).not.toBeNull();
-    expect(wordsOf(entry.note ?? { key: 'scoring.cricket.totals.noPlayers' })).toBe(
-      'Players not entered — ask the organiser',
-    );
+    expect(wordsOf(entry.note)).toBe('Players not entered — ask the organiser');
   });
 
   // The organiser entered the players after an innings had begun in totals: it stays in totals, and the line says why.
@@ -243,9 +240,7 @@ describe('what the screen says above the entry', () => {
     expect(display.stage).toBe('totals');
     const entry = entryOf(display);
     expect(entry.over).toBe(2);
-    expect(wordsOf(entry.note ?? { key: 'scoring.cricket.totals.noPlayers' })).toBe(
-      'This innings stays in over totals',
-    );
+    expect(wordsOf(entry.note)).toBe('This innings stays in over totals');
     // The innings' last over closes it, and the next is the ball pad's: its openers are due.
     const next = displayOf([...mid, summary(8, 0, 12)], MATCH);
     expect(next.stage).toBe('break');
@@ -253,12 +248,11 @@ describe('what the screen says above the entry', () => {
     expect(totalsView(next)).toBeNull();
   });
 
-  it('the over-end sheet’s entry, in a live match, has no line above it', () => {
+  // Fix round (controller, 2026-11-09): the over-end sheet no longer opens an entry, so a live match has none to show.
+  it('a live match, players entered, has no entry', () => {
     const live = displayOf(OPENING, MATCH);
     expect(live.stage).toBe('live');
-    const entry = entryOf(live);
-    expect(entry.note).toBeNull();
-    expect(entry.over).toBe(1);
+    expect(totalsView(live)).toBeNull();
   });
 });
 

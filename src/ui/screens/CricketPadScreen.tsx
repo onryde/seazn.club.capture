@@ -14,7 +14,7 @@ import { CricketPlayersSheet } from '@/ui/screens/CricketPlayersSheet';
 import { CricketScorecard } from '@/ui/screens/CricketScorecard';
 import { CricketSetup } from '@/ui/screens/CricketSetup';
 import { CricketStandingSheet, CricketStepSheet } from '@/ui/screens/CricketSheets';
-import { CricketTotalsPanel, CricketTotalsSheet } from '@/ui/screens/CricketTotals';
+import { CricketTotalsPanel } from '@/ui/screens/CricketTotals';
 import { colour, space } from '@/ui/theme/tokens';
 
 /**
@@ -28,8 +28,7 @@ import { colour, space } from '@/ui/theme/tokens';
  * and the line keeps Undo, which takes the toss back. At an innings break and before a super over the same setup stands
  * under the break's card until Start innings (Task 16), and the line's Undo takes back the innings' last ball. A side with
  * no players entered stands in totals (Task 17): the score and, in the keys' place, the over to enter
- * (`CricketTotalsPanel`), and the same entry in a sheet where the over-end sheet has nobody to bowl
- * (`CricketTotalsSheet`). The screen is held on while the pad is (`holdsScreen`). Sheets and
+ * (`CricketTotalsPanel`). The screen is held on while the pad is (`holdsScreen`). Sheets and
  * History cover the pad, which is hidden from a screen reader while they show, and every key is disabled under them.
  */
 export function CricketPadScreen({ model }: { readonly model: CricketPadModel }) {
@@ -120,7 +119,7 @@ const PadSheet = memo(function PadSheet({
         />
       );
     case 'history':
-      return <MatchHistory groups={sheet.groups} onClose={actions.cancel} />;
+      return <MatchHistory groups={sheet.groups} onClose={actions.cancel} uncapped />;
     case 'ask':
       return <AskSheet ask={sheet.ask} onSend={actions.sendTaps} onDiscard={actions.askDiscard} />;
     case 'step':
@@ -159,14 +158,6 @@ const PadSheet = memo(function PadSheet({
           step={sheet.step}
           accepts={sheet.accepts}
           onRecord={actions.enter}
-          onCancel={actions.dismiss}
-        />
-      );
-    case 'totals':
-      return (
-        <CricketTotalsSheet
-          totals={sheet.totals}
-          onRecord={actions.enterTotals}
           onCancel={actions.dismiss}
         />
       );

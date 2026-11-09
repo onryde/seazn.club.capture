@@ -1270,6 +1270,18 @@ describe('BadmintonPadScreen: History', () => {
     expect(groups[1] && within(groups[1]).getAllByTestId('history-row')).toHaveLength(22);
   });
 
+  // S2-4 Task 18 fix round: cricket's History rows have no line cap (`MatchHistory` `uncapped`); every other sport keeps the
+  // kit's, and this holds the default so the prop does not leak into the shared cover.
+  it('keeps the kit’s two-line cap on a row’s sentence (only cricket lifts it)', () => {
+    const pad = renderPad();
+    rally(pad, 'first', 1);
+    openHistory();
+    const rows = cover().getAllByTestId('history-said');
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows)
+      expect(getComputedStyle(row).webkitLineClamp).toBe(String(layout.padHistoryLines));
+  });
+
   it('keeps an undone rally in its place, struck through and inert, with “Undone”', () => {
     const pad = renderPad();
     rally(pad, 'first', 2);

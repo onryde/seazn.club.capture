@@ -11,8 +11,6 @@ import { useT } from '@/hooks/useLanguage';
 import { usePadText } from '@/hooks/usePadText';
 import type { MessageKey } from '@/i18n/messages';
 import { Button } from '@/ui/components/Button';
-import { GhostButton } from '@/ui/components/GhostButton';
-import { SheetFrame } from '@/ui/components/SheetFrame';
 import { sheetRow, sheetRowLabel, sheetRowStyles } from '@/ui/components/sheetRow';
 import { Text } from '@/ui/components/Text';
 import { colour, layout, space } from '@/ui/theme/tokens';
@@ -21,8 +19,7 @@ import { colour, layout, space } from '@/ui/theme/tokens';
  * Over totals (S2-4 spec §4.10; plan Task 17), drawn in the keys' place while a side's players are not entered: the note
  * ("Players not entered — ask the organiser"), then the over to enter, three steppers (runs, wickets, legal balls) that
  * start at nothing scored and a whole over, and Record over. A tie nobody can bat a super over for is the organiser's
- * line and nothing to enter (ruling 74). `CricketTotalsSheet` is the same entry over the over-end sheet, for the innings
- * that has no ball and nobody to bowl (preflight F5). The domain says what the engine takes (`totals.fits`): a stepper
+ * line and nothing to enter (ruling 74). The domain says what the engine takes (`totals.fits`): a stepper
  * greys at the figure it would refuse, and Record over while the figures make no over. The entry starts again at each new
  * over (keyed by it), so a tap on Record never leaves the last over's figures under the thumb.
  */
@@ -36,14 +33,12 @@ export const CricketTotalsPanel = memo(function CricketTotalsPanel({
   const words = usePadText();
   return (
     <View testID="cricket-totals" style={styles.panel}>
-      {totals.note === null ? null : (
-        <Text testID="totals-note" variant="body" style={styles.note}>
-          {words(totals.note)}
-        </Text>
-      )}
+      <Text testID="totals-note" variant="body" style={styles.note}>
+        {words(totals.note)}
+      </Text>
       {totals.kind === 'entry' ? (
         <>
-          <Heading over={totals.over} variant="panelTitle" />
+          <Heading over={totals.over} />
           <TotalsFields key={totals.over} totals={totals} onRecord={onRecord} />
         </>
       ) : null}
@@ -51,37 +46,11 @@ export const CricketTotalsPanel = memo(function CricketTotalsPanel({
   );
 });
 
-/** The same entry over the over-end sheet. Cancel, the dim and Back close it with nothing recorded. */
-export const CricketTotalsSheet = memo(function CricketTotalsSheet({
-  totals,
-  onRecord,
-  onCancel,
-}: {
-  readonly totals: CricketTotalsEntry;
-  readonly onRecord: (over: TotalsOver) => void;
-  readonly onCancel: () => void;
-}) {
-  const { t } = useT();
-  return (
-    <SheetFrame testID="totals-sheet" dimTestID="totals-dim" onDim={onCancel}>
-      <Heading over={totals.over} variant="title" />
-      <TotalsFields key={totals.over} totals={totals} onRecord={onRecord} />
-      <GhostButton label={t('scoring.sheet.cancel')} onPress={onCancel} />
-    </SheetFrame>
-  );
-});
-
 /** "Over 3 totals". */
-function Heading({
-  over,
-  variant,
-}: {
-  readonly over: number;
-  readonly variant: 'panelTitle' | 'title';
-}) {
+function Heading({ over }: { readonly over: number }) {
   const { t } = useT();
   return (
-    <Text variant={variant} accessibilityRole="header">
+    <Text variant="panelTitle" accessibilityRole="header">
       {t('scoring.cricket.totals.title', { number: over })}
     </Text>
   );

@@ -201,6 +201,11 @@ ball. The engine refuses a summary for an innings already recorded ball by ball 
 not allowed", `cricket.ts:1842-1844`), and opens a coarse innings only when none is open (`:1845-1854`). Once a ball is
 recorded, the sheet says no bowler can bowl and to ask the organiser, as the web's `noEligible` does.
 
+Amended again (_the controller's, 2026-11-09, S2-4 Task 18 fix round_): the sheet offers no over-totals row at all. The
+row's only case, nobody to bowl an innings that has no ball, cannot happen on a real engine (a quota is at least one over
+and counts per innings), and it was provable only with the engine's `eligibleBowlers` mocked. Over totals are the totals
+stage's (a side whose players are not entered, §4.10); the sheet keeps the "Nobody can bowl this over" line.
+
 ### 4.5 Innings break
 
 The engine closes the innings (all out, overs done, target reached). A card: "{team} {runs}/{wkts} ({overs} ov) ·
@@ -369,7 +374,9 @@ ellipsis, the numbers never do.
   (private; dist `pad/index.js:17-37`). Each needs an engine export and a release the phone takes, or a trial fold of
   the candidate event. Never a hand copy (§11). The plan checks that cricket's fold on Hermes is fast enough on a long
   ledger (a 50-over innings is 300+ events; S2's R4 check was badminton's).
-- **History words** for every cricket event type, in the four dictionaries and the glossary.
+- **History words** for every cricket event type, in the four dictionaries and the glossary. A History row's sentence
+  wraps with no line cap on cricket's cover (the controller's ruling, 2026-11-09, Task 18 fix round), so a ball or a wicket
+  is never cut; the kit's two-line cap stays on the other sports' rows. The last-tap line stays at three lines.
 - **Fake**: a cricket fake so every state renders on a laptop (AGENTS §10).
 
 ## 7. Web side

@@ -6,12 +6,10 @@ import {
   type SheetExtra,
 } from '@/domain/scoring/cricketExtras';
 import {
-  OVER_TOTALS,
   bowlerStep,
   changeStep,
   chooseBowler,
   chooseChange,
-  totalsOffered,
 } from '@/domain/scoring/cricketBowling';
 import {
   MORE_CHANGE,
@@ -53,15 +51,14 @@ export type CricketFlow =
   | { readonly kind: 'moreRow'; readonly row: MoreFlow };
 
 /**
- * What a choice comes to: the next step, a tap the sheet records as it closes, a pick it keeps as it closes, the sheet of
- * typed numbers (`cricketEntry.ts`) in its place, or the over totals' entry (`cricketTotals.ts`).
+ * What a choice comes to: the next step, a tap the sheet records as it closes, a pick it keeps as it closes, or the sheet of
+ * typed numbers (`cricketEntry.ts`) in its place.
  */
 export type FlowOutcome =
   | { readonly kind: 'next'; readonly flow: CricketFlow }
   | { readonly kind: 'tap'; readonly tap: CricketTap }
   | { readonly kind: 'pick'; readonly pick: CricketPick }
-  | { readonly kind: 'entry'; readonly entry: CricketEntryFlow }
-  | { readonly kind: 'totals' };
+  | { readonly kind: 'entry'; readonly entry: CricketEntryFlow };
 
 /** The step of `flow` on screen. */
 export function flowStep(flow: CricketFlow, display: CricketDisplay): CricketStep {
@@ -108,7 +105,6 @@ export function flowChoice(
       return { kind: 'tap', tap: { kind: 'ball', ball: chosen.done } };
     }
     case 'bowler': {
-      if (id === OVER_TOTALS) return totalsOffered(display) ? { kind: 'totals' } : null;
       const pick = chooseBowler(display, id);
       return pick === null ? null : { kind: 'pick', pick };
     }

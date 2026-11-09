@@ -19,12 +19,7 @@ import {
   type PlayersTab,
 } from '@/domain/scoring/cricketPlayers';
 import { scorecardView, type ScorecardInnings } from '@/domain/scoring/cricketScorecard';
-import {
-  totalsTap,
-  totalsView,
-  type CricketTotalsEntry,
-  type TotalsOver,
-} from '@/domain/scoring/cricketTotals';
+import { totalsTap, type TotalsOver } from '@/domain/scoring/cricketTotals';
 import type {
   CricketDisplay,
   CricketPadKey,
@@ -76,8 +71,6 @@ export type CricketSheetView =
       readonly step: CricketEntryStep;
       readonly accepts: (values: readonly string[]) => boolean;
     }
-  /** The over totals' entry over the over-end sheet (the row "Enter over totals"): the stage's own is the pad's body. */
-  | { readonly kind: 'totals'; readonly totals: CricketTotalsEntry }
   | AskView;
 
 type Sheet =
@@ -87,14 +80,12 @@ type Sheet =
   | { readonly kind: 'flow'; readonly flow: CricketFlow }
   | { readonly kind: 'players'; readonly tab: PlayersTab }
   | { readonly kind: 'entry'; readonly entry: CricketEntryFlow }
-  | { readonly kind: 'totals' }
   | null;
 
 const DETAILS: Sheet = { kind: 'details' };
 const HISTORY: Sheet = { kind: 'history' };
 const DISCARD: Sheet = { kind: 'discard' };
 const PLAYERS: Sheet = { kind: 'players', tab: 'batting' };
-const TOTALS: Sheet = { kind: 'totals' };
 
 /** The name a sheet's close has in the bounce memory. */
 const CLOSE_TAP = 'close';
@@ -132,13 +123,8 @@ export function useCricketSheets(
   const cancel = useCallback(() => setSheet(null), []);
   const view = useMemo(() => sheetView(sheet, snapshot), [sheet, snapshot]);
   const justShown = useJustShown(guardedStep(view));
-  // No match to put a sheet over, or the question over it: no sheet stays open behind it. Nor does an entry of over totals
-  // once the match has none to enter (the ledger moved under it).
-  if (
-    sheet !== null &&
-    (snapshot === null || staleByAsk(sheet.kind, snapshot) || noTotals(sheet, snapshot))
-  )
-    setSheet(null);
+  // No match to put a sheet over, or the question over it: no sheet stays open behind it.
+  if (sheet !== null && (snapshot === null || staleByAsk(sheet.kind, snapshot))) setSheet(null);
   const actions = useSheetActions({ sheet, snapshot, justShown, taps, send, setSheet });
   return { open: sheet !== null, cancel, actions, view, justShown };
 }
@@ -294,10 +280,6 @@ function useChoose({ sheet, snapshot, justShown, taps, send, setSheet }: ChooseP
         setSheet({ kind: 'entry', entry: outcome.entry });
         return;
       }
-      if (outcome.kind === 'totals') {
-        setSheet(TOTALS);
-        return;
-      }
       setSheet(null);
       if (outcome.kind === 'tap') {
         opening(JSON.stringify(outcome.tap), () => send.tap(outcome.tap));
@@ -331,29 +313,22 @@ function useEnter({ sheet, snapshot, justShown, taps, send, setSheet }: ChoosePa
 }
 
 /**
- * Record over on the over totals' entry, the pad's own or the over-end sheet's: the summary the figures make
+ * Record over on the over totals' entry (the totals stage's, in the pad's body): the summary the figures make
  * (`totalsTap`), recorded as an opening tap, since the entry starts again at the next over under the same thumb and the
  * second touch of a double tap would record an extra maiden over. Nothing while no entry stands (the ball pad's innings
- * takes no summary), while the figures make no summary the engine takes, or on the heels of the sheet appearing.
+ * takes no summary) or while the figures make no summary the engine takes.
  */
-function useEnterTotals({ sheet, snapshot, justShown, taps, send, setSheet }: ChooseParts) {
+function useEnterTotals({ snapshot, taps, send }: ChooseParts) {
   const { opening } = taps;
   return useCallback(
     (over: TotalsOver) => {
-      if (snapshot === null || justShown()) return;
-      if (sheet?.kind !== 'totals' && snapshot.display.stage !== 'totals') return;
+      if (snapshot === null || snapshot.display.stage !== 'totals') return;
       const made = totalsTap(snapshot.display, over);
       if (made === null) return;
-      setSheet(null);
       opening(JSON.stringify(made), () => send.tap(made));
     },
-    [sheet, snapshot, justShown, opening, send, setSheet],
+    [snapshot, opening, send],
   );
-}
-
-/** The sheet of over totals is open and the match has nothing of the kind to enter any more. */
-function noTotals(sheet: NonNullable<Sheet>, snapshot: CricketSheetSnapshot): boolean {
-  return sheet.kind === 'totals' && totalsView(snapshot.display)?.kind !== 'entry';
 }
 
 /**
@@ -392,10 +367,6 @@ function sheetView(sheet: Sheet, snapshot: CricketSheetSnapshot | null): Cricket
       return { kind: 'step', step: flowStep(sheet.flow, snapshot.display), standing: false };
     case 'players':
       return { kind: 'players', tab: sheet.tab, players: playersView(snapshot.display) };
-    case 'totals': {
-      const totals = totalsView(snapshot.display);
-      return totals?.kind === 'entry' ? { kind: 'totals', totals } : null;
-    }
     case 'entry': {
       const { entry } = sheet;
       const { display } = snapshot;

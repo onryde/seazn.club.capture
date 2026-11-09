@@ -35,7 +35,7 @@ const GROUPS: readonly HistoryGroupWords[] = [
   },
 ];
 
-function renderCover(groups: readonly HistoryGroupWords[] = GROUPS) {
+function renderCover(groups: readonly HistoryGroupWords[] = GROUPS, uncapped?: boolean) {
   const onClose = vi.fn();
   renderWithPorts(
     <HistoryCover
@@ -44,6 +44,7 @@ function renderCover(groups: readonly HistoryGroupWords[] = GROUPS) {
       empty={en['scoring.history.empty']}
       groups={groups}
       onClose={onClose}
+      uncapped={uncapped}
     />,
   );
   return { onClose };
@@ -99,6 +100,21 @@ describe('HistoryCover', () => {
     expect(getComputedStyle(side).width).toBe(`${layout.padHistorySide}px`);
     for (const word of within(side).getAllByText(/./))
       expect(getComputedStyle(word).textAlign).toBe('right');
+  });
+
+  // S2-4 Task 18 fix round (controller's ruling 2, 2026-11-09): cricket's ball and wicket sentences are long, and a History
+  // row there wraps with no line cap, so none is cut. The kit's cap stays the default for every other sport.
+  it('an uncapped cover wraps every sentence in full: no line limit on any row, undone or not', () => {
+    renderCover(GROUPS, true);
+    const rows = screen.getAllByTestId('history-said');
+    expect(rows).toHaveLength(2);
+    for (const said of rows) expect(getComputedStyle(said).webkitLineClamp).toBe('');
+  });
+
+  it('a cover that does not say uncapped keeps the cap on every row', () => {
+    renderCover(GROUPS);
+    for (const said of screen.getAllByTestId('history-said'))
+      expect(getComputedStyle(said).webkitLineClamp).toBe(String(layout.padHistoryLines));
   });
 
   it('says “Nothing recorded yet” and draws no row for an empty match', () => {

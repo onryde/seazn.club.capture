@@ -77,6 +77,17 @@ describe('a cricket match from the scan to the board', () => {
     ).toEqual(['5/0', '5/0', '1/0']);
   });
 
+  // S2-4 Task 18 fix round (controller's ruling 2): a History row wraps with no line cap, so a ball or wicket sentence is
+  // never cut. The kit's cap is two lines, and every other sport's rows keep it.
+  it('History puts no line cap on a row’s sentence', async () => {
+    await scanned();
+    act(() => fireEvent.click(screen.getByRole('button', { name: en['scoring.history.title'] })));
+    await flush(400);
+    const rows = within(screen.getByTestId('history')).getAllByTestId('history-said');
+    expect(rows).toHaveLength(5);
+    for (const said of rows) expect(getComputedStyle(said).webkitLineClamp).toBe('');
+  });
+
   it('Match details lists the format’s rows', async () => {
     await scanned();
     act(() => fireEvent.click(screen.getByRole('button', { name: en['scoring.details.title'] })));

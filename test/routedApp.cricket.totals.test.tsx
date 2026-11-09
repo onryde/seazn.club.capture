@@ -1,4 +1,3 @@
-import { foldEpochOf } from '@seazn/engine/sport';
 import { act, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import en from '@/i18n/en.json';
@@ -11,23 +10,8 @@ import { TEST_NOW } from './fakePorts';
 import { RAW } from './scoringHomeFixtures';
 import { flush, launchApp } from './routedApp';
 
-// M8 (the controller's ruling on Task 17): the over-end sheet's row "Enter over totals" must be wired. A real engine never
-// leaves a fresh innings with nobody to bowl (an innings has no ball, so every fielder may bowl), so the one test of the
-// row makes the engine's `eligibleBowlers` answer "nobody" after the first bowler is picked, and nothing else. The rest of
-// this file is a match with no players on one side, on the real engine.
-const engine = vi.hoisted(() => ({ nobodyCanBowl: false }));
-vi.mock('@seazn/engine/sports/cricket', async (importActual) => {
-  const actual = await importActual<typeof import('@seazn/engine/sports/cricket')>();
-  return {
-    ...actual,
-    eligibleBowlers: (...args: Parameters<typeof actual.eligibleBowlers>) =>
-      engine.nobodyCanBowl ? [] : actual.eligibleBowlers(...args),
-  };
-});
-
 beforeEach(() => {
   vi.useFakeTimers();
-  engine.nobodyCanBowl = false;
 });
 afterEach(() => vi.useRealTimers());
 
@@ -244,98 +228,5 @@ describe('players entered mid-innings keep the totals until the next innings', (
     expect(screen.getByText('This innings stays in over totals')).toBeTruthy();
     expect(heading()).toBe('Over 2 totals');
     expect(screen.queryByTestId('cricket-keys')).toBeNull();
-  });
-});
-
-// M8: the over-end sheet's "Enter over totals" row, which a real engine never shows (see the top of the file).
-describe('the over-end sheet’s Enter over totals row', () => {
-  async function standing() {
-    const fresh = seedOf([], KO_2, { home: HOME, away: AWAY });
-    const app = await scanned(fresh);
-    await press(app, 'Home CC', 'radio');
-    await press(app, 'Bat', 'radio');
-    await press(app, en['scoring.cricket.setup.next']);
-    await press(app, 'Away Player 11');
-    engine.nobodyCanBowl = true;
-    await press(app, en['scoring.start.confirm']);
-    return { app, fresh };
-  }
-
-  it('is on the sheet; choosing it opens the entry, and a recorded over reaches the ledger', async () => {
-    const { app, fresh } = await standing();
-    const sheet = screen.getByTestId('step-sheet');
-    expect(within(sheet).getByText(en['scoring.cricket.bowling.none'])).toBeTruthy();
-    await press(app, en['scoring.cricket.bowling.totals']);
-    const entry = screen.getByTestId('totals-sheet');
-    expect(within(entry).getByRole('heading', { name: 'Over 1 totals' })).toBeTruthy();
-    key('Runs', 'more', 4);
-    await press(app, RECORD);
-    expect(screen.queryByTestId('totals-sheet')).toBeNull();
-    expect((await summaries(app, fresh)).map((event) => event.payload)).toEqual([
-      { runs: 4, wickets: 0, legalBalls: 6, partial: true },
-    ]);
-    expect(runs()).toBe('4/0');
-    expect(screen.getByText('This innings stays in over totals')).toBeTruthy();
-  });
-
-  it('Cancel closes the entry with nothing recorded, and the sheet is there again', async () => {
-    const { app, fresh } = await standing();
-    const before = (await ledger(app, fresh)).length;
-    await press(app, en['scoring.cricket.bowling.totals']);
-    key('Runs', 'more', 4);
-    await press(app, en['scoring.sheet.cancel']);
-    expect(screen.queryByTestId('totals-sheet')).toBeNull();
-    expect(screen.getByTestId('step-sheet')).toBeTruthy();
-    expect((await ledger(app, fresh)).length).toBe(before);
-  });
-
-  // The ledger moves under the open entry: another scorer ends the innings, so the entry has nothing left to take and
-  // closes. When that scorer takes the over back the entry must not come back by itself: the over-end sheet stands, as it
-  // did before the row was chosen.
-  it('closes when the ledger moves under it, and does not come back when the move is undone', async () => {
-    const { app, fresh } = await standing();
-    await press(app, en['scoring.cricket.bowling.totals']);
-    expect(screen.getByTestId('totals-sheet')).toBeTruthy();
-    const other = async (type: string, payload: Record<string, unknown>, key: string) => {
-      const last = (await ledger(app, fresh)).at(-1);
-      await app.scoring.append(LINK, fresh.fixtureId, {
-        expected_seq: last?.seq ?? 0,
-        type,
-        payload,
-        idempotency_key: key,
-        engine_epoch: foldEpochOf('cricket'),
-        rules_version: 0,
-      });
-      app.realtime.ping();
-      await flush(2_000);
-    };
-    await other(
-      'cricket.innings.summary',
-      { runs: 8, wickets: 0, legalBalls: 12, partial: true },
-      'another-scorer-1',
-    );
-    expect(screen.queryByTestId('totals-sheet')).toBeNull();
-    expect(screen.getByTestId('pad-content').getAttribute('aria-hidden')).not.toBe('true');
-    expect(screen.getByTestId('break-card')).toBeTruthy();
-    const summary = (await summaries(app, fresh)).at(-1);
-    await other('core.void', { event_id: summary?.id }, 'another-scorer-2');
-    expect(screen.queryByTestId('break-card')).toBeNull();
-    expect(screen.queryByTestId('totals-sheet')).toBeNull();
-    expect(screen.getByTestId('step-sheet')).toBeTruthy();
-  });
-
-  // A stray touch: the thumb that chose the row lands on the sheet's Record over where it appeared.
-  it('a touch on Record over the instant the entry appears records nothing', async () => {
-    const { app, fresh } = await standing();
-    const before = (await ledger(app, fresh)).length;
-    seconds += 1;
-    app.setNow(new Date(TEST_NOW.getTime() + seconds * 1000));
-    click(en['scoring.cricket.bowling.totals']);
-    await flush(60);
-    expect(screen.getByTestId('totals-sheet')).toBeTruthy();
-    click(RECORD);
-    await flush(400);
-    expect((await ledger(app, fresh)).length).toBe(before);
-    expect(screen.getByTestId('totals-sheet')).toBeTruthy();
   });
 });

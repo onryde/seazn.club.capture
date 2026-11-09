@@ -30,6 +30,11 @@ type HistoryCoverProps = {
   readonly empty: string;
   readonly groups: readonly HistoryGroupWords[];
   readonly onClose: () => void;
+  /**
+   * A sport whose sentences are long (cricket's ball and wicket, S2-4 Task 18 fix round) lets every row wrap with no line
+   * cap, so none is cut. Absent, a row's sentence is held to `layout.padHistoryLines` as the other sports' rows are.
+   */
+  readonly uncapped?: boolean;
 };
 
 /**
@@ -44,6 +49,7 @@ export const HistoryCover = memo(function HistoryCover({
   empty,
   groups,
   onClose,
+  uncapped = false,
 }: HistoryCoverProps) {
   return (
     <View testID="history" accessibilityViewIsModal aria-modal style={styles.cover}>
@@ -57,21 +63,27 @@ export const HistoryCover = memo(function HistoryCover({
         {groups.length === 0 ? (
           <Text variant="body">{empty}</Text>
         ) : (
-          groups.map((group, at) => <HistoryGroup key={at} group={group} />)
+          groups.map((group, at) => <HistoryGroup key={at} group={group} uncapped={uncapped} />)
         )}
       </ScrollView>
     </View>
   );
 });
 
-const HistoryGroup = memo(function HistoryGroup({ group }: { readonly group: HistoryGroupWords }) {
+const HistoryGroup = memo(function HistoryGroup({
+  group,
+  uncapped,
+}: {
+  readonly group: HistoryGroupWords;
+  readonly uncapped: boolean;
+}) {
   return (
     <View testID="history-group" style={styles.group}>
       <Text variant="state" accessibilityRole="header" style={styles.heading}>
         {group.heading}
       </Text>
       {group.rows.map((row, at) => (
-        <HistoryRow key={at} row={row} />
+        <HistoryRow key={at} row={row} uncapped={uncapped} />
       ))}
     </View>
   );
@@ -80,19 +92,25 @@ const HistoryGroup = memo(function HistoryGroup({ group }: { readonly group: His
 const isWords = (words: string | null): words is string => words !== null;
 
 /**
- * The sentence at the left in at most `padHistoryLines` (struck through and inert when undone), and at the right, in a
+ * The sentence at the left in at most `padHistoryLines` (no limit when `uncapped`; struck through and inert when undone), and at the right, in a
  * column of `padHistorySide`, never cut, the score, who recorded it and "Undone" or "Sending". One stop for a screen reader, read as
  * one line: "Rally recorded — A. Sharma, 7–3, This phone". `accessible` groups the children on native;
  * react-native-web drops it.
  */
-const HistoryRow = memo(function HistoryRow({ row }: { readonly row: HistoryRowWords }) {
+const HistoryRow = memo(function HistoryRow({
+  row,
+  uncapped,
+}: {
+  readonly row: HistoryRowWords;
+  readonly uncapped: boolean;
+}) {
   const label = [row.said, row.score, row.by, row.undone, row.sending].filter(isWords).join(', ');
   return (
     <View testID="history-row" accessible accessibilityLabel={label} style={styles.row}>
       <Text
         testID="history-said"
         variant="control"
-        numberOfLines={layout.padHistoryLines}
+        numberOfLines={uncapped ? undefined : layout.padHistoryLines}
         style={row.undone === null ? styles.said : styles.saidUndone}
       >
         {row.said}

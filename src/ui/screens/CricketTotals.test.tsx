@@ -4,11 +4,10 @@ import type { CricketTotalsEntry, CricketTotalsTied } from '@/domain/scoring/cri
 import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
 import { STORE_KEYS } from '@/services/modeStore';
-import { CricketTotalsPanel, CricketTotalsSheet } from '@/ui/screens/CricketTotals';
+import { CricketTotalsPanel } from '@/ui/screens/CricketTotals';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
-// Over totals (S2-4 plan Task 17): the entry the phone draws while a side's players are not entered, and the same entry in
-// a sheet over the over-end sheet. The numbers that may be entered are the domain's (`totalsView`'s `fits`, its own tests
+// Over totals (S2-4 plan Task 17): the entry the phone draws while a side's players are not entered. The numbers that may be entered are the domain's (`totalsView`'s `fits`, its own tests
 // and the hook's), stood in for here by a rule written out in each test; what these tests pin is what the operator sees
 // and which call each button makes. Whether the thumb finds the steppers is the device check's.
 
@@ -38,12 +37,6 @@ describe('the over totals entry on the pad', () => {
     expect(screen.getByText('Players not entered — ask the organiser')).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Over 3 totals' })).toBeTruthy();
     expect([valueOf('runs'), valueOf('wickets'), valueOf('balls')]).toEqual(['0', '0', '6']);
-  });
-
-  it('draws no note when there is none (the over-end sheet’s case)', () => {
-    renderWithPorts(<CricketTotalsPanel totals={entry({ note: null })} onRecord={vi.fn()} />);
-    expect(screen.queryByTestId('totals-note')).toBeNull();
-    expect(screen.getByRole('heading', { name: 'Over 3 totals' })).toBeTruthy();
   });
 
   it('the steppers move each field by one, and Record over hands the three numbers on', () => {
@@ -144,7 +137,7 @@ describe('the over totals entry on the pad', () => {
       <CricketTotalsPanel totals={entry()} onRecord={vi.fn()} />,
     );
     more('Runs');
-    rerender(<CricketTotalsPanel totals={entry({ note: null })} onRecord={vi.fn()} />);
+    rerender(<CricketTotalsPanel totals={entry()} onRecord={vi.fn()} />);
     expect(valueOf('runs')).toBe('1');
   });
 
@@ -165,52 +158,5 @@ describe('the over totals entry on the pad', () => {
     expect(screen.getByRole('button', { name: 'Carreras: 1 más' })).toBeTruthy();
     expect(screen.getByRole('button', { name: es['scoring.cricket.totals.record'] })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Totales del over 3' })).toBeTruthy();
-  });
-});
-
-describe('the over totals sheet', () => {
-  it('is a modal sheet titled with the over, with the same entry, and Record over hands the figures on', () => {
-    const onRecord = vi.fn();
-    renderWithPorts(
-      <CricketTotalsSheet totals={entry({ note: null })} onRecord={onRecord} onCancel={vi.fn()} />,
-    );
-    const sheet = screen.getByTestId('totals-sheet');
-    expect(within(sheet).getByRole('heading', { name: 'Over 3 totals' })).toBeTruthy();
-    more('Runs');
-    more('Runs');
-    record();
-    expect(onRecord).toHaveBeenCalledWith({ runs: 2, wickets: 0, balls: 6 });
-  });
-
-  // The ledger moves under the open sheet (another scorer's over): it starts again from the next over's figures.
-  it('starts again from the next over’s figures when the over moves on under it', () => {
-    const { rerender } = renderWithPorts(
-      <CricketTotalsSheet totals={entry({ note: null })} onRecord={vi.fn()} onCancel={vi.fn()} />,
-    );
-    more('Runs');
-    rerender(
-      <CricketTotalsSheet
-        totals={entry({ note: null, over: 4, start: { runs: 0, wickets: 0, balls: 3 } })}
-        onRecord={vi.fn()}
-        onCancel={vi.fn()}
-      />,
-    );
-    expect(
-      within(screen.getByTestId('totals-sheet')).getByRole('heading', { name: 'Over 4 totals' }),
-    ).toBeTruthy();
-    expect([valueOf('runs'), valueOf('balls')]).toEqual(['0', '3']);
-  });
-
-  it('Cancel and the dim close it with nothing recorded', () => {
-    const onRecord = vi.fn();
-    const onCancel = vi.fn();
-    renderWithPorts(
-      <CricketTotalsSheet totals={entry({ note: null })} onRecord={onRecord} onCancel={onCancel} />,
-    );
-    press(en['scoring.sheet.cancel']);
-    expect(onCancel).toHaveBeenCalledTimes(1);
-    act(() => fireEvent.click(screen.getByTestId('totals-dim')));
-    expect(onCancel).toHaveBeenCalledTimes(2);
-    expect(onRecord).not.toHaveBeenCalled();
   });
 });
