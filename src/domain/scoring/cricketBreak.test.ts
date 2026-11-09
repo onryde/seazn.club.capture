@@ -525,9 +525,13 @@ describe('the status line at a break (T19 D13)', () => {
       });
     });
 
-    it('each of them with the next innings’ openers and bowler picked: still silent', () => {
+    it('over totals that close it, with the next innings’ openers and bowler picked: still silent', () => {
       const picked = { 'openers.i2': [A(1), A(2)], 'bowler.i2.0': [H(11)] };
-      expect(lineOf([...OPENING, summary(8, 0, 12)], [3], picked).text).toBeNull();
+      expect(lineOf([...OPENING, summary(8, 0, 12)], [3], picked)).toStrictEqual({
+        stage: 'break',
+        text: null,
+        undo: true,
+      });
     });
   });
 
@@ -547,7 +551,11 @@ describe('the status line at a break (T19 D13)', () => {
       undo: true,
     });
     // The second innings' over totals before it ended it: silent, the follow-on's question is on the card.
-    expect(lineOf(followed.slice(0, -1), [4], NO_PICKS, two).text).toBeNull();
+    expect(lineOf(followed.slice(0, -1), [4], NO_PICKS, two)).toStrictEqual({
+      stage: 'break',
+      text: null,
+      undo: true,
+    });
   });
 
   it('over totals keep their line: a side with no players is in totals, not at a break', () => {
@@ -560,6 +568,18 @@ describe('the status line at a break (T19 D13)', () => {
     expect(totals).toStrictEqual({
       stage: 'totals',
       text: 'Over recorded · 9/0 (1 ov)',
+      undo: true,
+    });
+  });
+
+  // The controller's ruling: the over totals' line stays in the totals pad's stages, as the entry's confirmation. A tie
+  // of two sides scored in over totals (8/0 and 8/1 off two overs; the away side has no players) is the tie card's
+  // `tiedNoPlayers`, not a break: it is not silenced.
+  it('a tie in over totals keeps its line: “Over recorded”, not silenced like a break’s', () => {
+    const tied = [...OPENING, summary(8, 0, 12), summary(8, 1, 12)];
+    expect(lineOf(tied, [4], NO_PICKS, NO_AWAY_PLAYERS)).toStrictEqual({
+      stage: 'tiedNoPlayers',
+      text: 'Over recorded · 8/1 (2 ov)',
       undo: true,
     });
   });

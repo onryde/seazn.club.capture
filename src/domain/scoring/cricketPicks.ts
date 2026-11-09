@@ -206,21 +206,23 @@ export function pickedOf(
 }
 
 /**
- * Whether the tap can be the one that ended an innings: a ball, over totals, a retirement, a declaration or More's close.
- * At a break the last tap is the news the break card carries when it is one, and the line says nothing of it (T19 D13).
+ * Whether the tap can be the one that ended an innings: a ball, over totals, a retirement, a declaration or More's
+ * close. At a break the last tap is the news the break card carries when it is one, and the line says nothing of it
+ * (T19 D13).
  */
-export const endsInnings = (tap: CricketLastTap): boolean =>
+export const tapEndedInnings = (tap: CricketLastTap): boolean =>
   tap.kind === 'ball' ||
   tap.kind === 'summary' ||
   tap.kind === 'retire' ||
   (tap.kind === 'more' && ENDING_MORE.has(tap.type));
 
 /**
- * Whether a Start innings standing after the tap came after it: a tap that ends an innings, or the follow-on, which sets
- * the next one. The follow-on is not an end: it is made at the break, so the line keeps its own words there (`endsInnings`).
+ * Whether a Start innings standing after the tap came after it: a tap that ends an innings, or the follow-on, which
+ * sets the next one. The follow-on is not an end: it is made at the break, so the line keeps its own words there
+ * (`tapEndedInnings`).
  */
 const closes = (tap: CricketLastTap): boolean =>
-  endsInnings(tap) || (tap.kind === 'more' && tap.type === 'cricket.followon');
+  tapEndedInnings(tap) || (tap.kind === 'more' && tap.type === 'cricket.followon');
 
 // ---------------------------------------------------------------------------------------------------------------
 // Writing a pick

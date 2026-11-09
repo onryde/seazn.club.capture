@@ -7,7 +7,7 @@ import {
   undoneSaid,
   type CricketWords,
 } from '@/domain/scoring/cricketHistory';
-import { endsInnings } from '@/domain/scoring/cricketPicks';
+import { tapEndedInnings } from '@/domain/scoring/cricketPicks';
 import { cricketResultWords } from '@/domain/scoring/cricketResult';
 import { cricketRuleRows } from '@/domain/scoring/cricketRules';
 import { padSideOf, superOverNumber, turnOf, type CricketTurn } from '@/domain/scoring/cricketTurn';
@@ -149,17 +149,17 @@ function tallyOf(display: CricketDisplay): PadTally<CricketPadKey> {
  * phone's balls stands under it, so a second Undo takes that one back (T19 D8: every sport's pad chains; each tap takes
  * back the current last ball, never an older one). An Undo's line is never covered by a pick.
  *
- * At an innings break, a tie or a super over's setup, a tap that ended the innings (`endsInnings`: a ball, over totals, a
- * retirement, a declaration, More's close) has no words until the next action, the break's card being the news (T19 D13);
- * its Undo stays, since it takes that tap back. An Undo's line, a tap made at the break (a stoppage, a revision, the
- * follow-on) and Start innings (`picked`, which is the live stage's) speak as ever.
+ * At an innings break, a tie or a super over's setup, a tap that ended the innings (`tapEndedInnings`: a ball, over
+ * totals, a retirement, a declaration, More's close) has no words until the next action, the break's card being the
+ * news (T19 D13); its Undo stays, since it takes that tap back. An Undo's line, a tap made at the break (a stoppage, a
+ * revision, the follow-on) and Start innings (`picked`, which is the live stage's) speak as ever.
  */
 function lastTapOf(display: CricketDisplay): PadLastTap<CricketPadKey> | null {
   const did = display.lastTap;
   if (did === null) return null;
   const words = wordsOf(display);
   if (did.kind === 'undone') return { text: undoneSaid(did.tap, words), undo: display.undoable };
-  if (BREAK_STAGES.has(display.stage) && endsInnings(did)) {
+  if (BREAK_STAGES.has(display.stage) && tapEndedInnings(did)) {
     return { text: null, undo: display.undoable };
   }
   const text = display.picked === null ? doneSaid(did, words) : pickedSaid(display.picked, words);
