@@ -304,6 +304,8 @@ describe('every path the navigation moves to has its route file, and each Settin
       'src/ui/screens/CricketBoard.tsx',
       // The keys under the board (S2-4 Task 11): no pad either.
       'src/ui/screens/CricketKeys.tsx',
+      // More's typed numbers (S2-4 Task 15): a sheet, no pad.
+      'src/ui/screens/CricketEntrySheet.tsx',
       // Players, from a tap on the board (S2-4 Task 14), with the setup's ▲▼ (its order list): no pads either.
       'src/ui/screens/CricketPlayersSheet.tsx',
       'src/ui/screens/CricketOrderList.tsx',

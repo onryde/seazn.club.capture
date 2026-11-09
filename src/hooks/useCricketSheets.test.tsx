@@ -209,3 +209,38 @@ describe('Players (plan Task 14)', () => {
     expect(pad(view).display.bowler?.id).toBe(bowler);
   });
 });
+
+describe('More’s typed numbers (Task 15)', () => {
+  /** The entry sheet on screen, by name, or none. */
+  const entryName = (view: View) => {
+    const sheet = pad(view).sheet;
+    return sheet?.kind === 'entry' ? sheet.step.name : null;
+  };
+
+  it('Record with values that make no event records nothing and leaves the sheet open; values that do, once', async () => {
+    const { fakes, view } = await opened();
+    const before = await count(fakes);
+    act(() => pad(view).actions.openMore());
+    await wait();
+    act(() => pad(view).actions.choose('revise'));
+    expect(entryName(view)).toBe('entry.revise');
+    await wait();
+    act(() => pad(view).actions.enter(['2', '']));
+    await flush();
+    expect([entryName(view), await count(fakes)]).toEqual(['entry.revise', before]);
+    act(() => {
+      pad(view).actions.enter(['2', '41']);
+      pad(view).actions.enter(['2', '41']);
+    });
+    await flush();
+    expect([entryName(view), await count(fakes)]).toEqual([null, before + 1]);
+  });
+
+  it('Record with no entry sheet open does nothing', async () => {
+    const { fakes, view } = await opened();
+    const before = await count(fakes);
+    act(() => pad(view).actions.enter(['', '41']));
+    await flush();
+    expect(await count(fakes)).toBe(before);
+  });
+});

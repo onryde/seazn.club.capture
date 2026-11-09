@@ -11,7 +11,19 @@ import {
   chooseBowler,
   chooseChange,
 } from '@/domain/scoring/cricketBowling';
-import { MORE_CHANGE, MORE_SWAP, moreStep } from '@/domain/scoring/cricketMore';
+import {
+  MORE_CHANGE,
+  MORE_SWAP,
+  cricketMoreItems,
+  moreStep,
+  type CricketMoreItem,
+} from '@/domain/scoring/cricketMore';
+import {
+  moreFlowChoice,
+  moreFlowStep,
+  type CricketEntryFlow,
+  type MoreFlow,
+} from '@/domain/scoring/cricketMoreSteps';
 import type { CricketPick } from '@/domain/scoring/cricketPicks';
 import type { CricketDisplay, CricketStep, CricketTap } from '@/domain/scoring/cricketTypes';
 import {
@@ -34,13 +46,19 @@ export type CricketFlow =
   | { readonly kind: 'bowler' }
   | { readonly kind: 'more' }
   /** More's mid-over change: who finishes the over (none yet), then why. */
-  | { readonly kind: 'change'; readonly bowler: string | null };
+  | { readonly kind: 'change'; readonly bowler: string | null }
+  /** A step of one of More's other rows (`cricketMoreSteps.ts`). */
+  | { readonly kind: 'moreRow'; readonly row: MoreFlow };
 
-/** What a choice comes to: the next step, a tap the sheet records as it closes, or a pick it keeps as it closes. */
+/**
+ * What a choice comes to: the next step, a tap the sheet records as it closes, a pick it keeps as it closes, or the
+ * sheet of typed numbers (`cricketEntry.ts`) in its place.
+ */
 export type FlowOutcome =
   | { readonly kind: 'next'; readonly flow: CricketFlow }
   | { readonly kind: 'tap'; readonly tap: CricketTap }
-  | { readonly kind: 'pick'; readonly pick: CricketPick };
+  | { readonly kind: 'pick'; readonly pick: CricketPick }
+  | { readonly kind: 'entry'; readonly entry: CricketEntryFlow };
 
 /** The step of `flow` on screen. */
 export function flowStep(flow: CricketFlow, display: CricketDisplay): CricketStep {
@@ -55,6 +73,8 @@ export function flowStep(flow: CricketFlow, display: CricketDisplay): CricketSte
       return moreStep(display);
     case 'change':
       return changeStep(display, flow.bowler);
+    case 'moreRow':
+      return moreFlowStep(flow.row, display);
   }
 }
 
@@ -96,15 +116,42 @@ export function flowChoice(
       if ('next' in chosen) return { kind: 'next', flow: { kind: 'change', bowler: chosen.next } };
       return { kind: 'tap', tap: chosen.done };
     }
+    case 'moreRow': {
+      const chosen = moreFlowChoice(flow.row, display, id);
+      if (chosen === null) return null;
+      if ('next' in chosen) return { kind: 'next', flow: { kind: 'moreRow', row: chosen.next } };
+      return 'tap' in chosen
+        ? { kind: 'tap', tap: chosen.tap }
+        : { kind: 'entry', entry: chosen.entry };
+    }
   }
 }
 
 /** A choice on More: only what it offers now. */
 function moreOutcome(display: CricketDisplay, id: string): FlowOutcome | null {
-  if (!moreStep(display).options.some((one) => one.id === id)) return null;
-  if (id === MORE_CHANGE) return { kind: 'next', flow: { kind: 'change', bowler: null } };
-  return id === MORE_SWAP ? { kind: 'pick', pick: { kind: 'swap' } } : null;
+  const item = cricketMoreItems(display).find((one) => one === id);
+  if (item === undefined) return null;
+  if (item === MORE_CHANGE) return { kind: 'next', flow: { kind: 'change', bowler: null } };
+  if (item === MORE_SWAP) return { kind: 'pick', pick: { kind: 'swap' } };
+  if (item === 'revise') return { kind: 'entry', entry: { kind: 'revise' } };
+  return { kind: 'next', flow: { kind: 'moreRow', row: FIRST_STEP[item] } };
 }
+
+/** The first step of each of More's rows that asks something. */
+const FIRST_STEP: Readonly<
+  Record<Exclude<CricketMoreItem, 'changeBowler' | 'swapStrike' | 'revise'>, MoreFlow>
+> = {
+  otherRuns: { kind: 'otherRuns' },
+  retire: { kind: 'retire', person: null, reason: null },
+  review: { kind: 'review', by: null, review: null },
+  newBall: { kind: 'confirm', item: 'newBall' },
+  powerplay: { kind: 'powerplay' },
+  interruption: { kind: 'interruption' },
+  declare: { kind: 'confirm', item: 'declare' },
+  close: { kind: 'close' },
+  followOn: { kind: 'confirm', item: 'followOn' },
+  matchClose: { kind: 'confirm', item: 'matchClose' },
+};
 
 /** The wicket steps for a fair ball, from the pad's Out. */
 export function outFlow(): CricketFlow {

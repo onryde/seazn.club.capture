@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import { entryStep, entryTap, type CricketEntryStep } from '@/domain/scoring/cricketEntry';
 import type { SheetExtra } from '@/domain/scoring/cricketExtras';
 import {
   flowChoice,
@@ -8,6 +9,7 @@ import {
   standingFlow,
   type CricketFlow,
 } from '@/domain/scoring/cricketFlow';
+import type { CricketEntryFlow } from '@/domain/scoring/cricketMoreSteps';
 import type { CricketPick } from '@/domain/scoring/cricketPicks';
 import {
   playersBowler,
@@ -56,6 +58,12 @@ export type CricketSheetView =
   | { readonly kind: 'history'; readonly groups: readonly PadHistoryGroup<CricketPadKey>[] }
   | { readonly kind: 'step'; readonly step: CricketStep; readonly standing: boolean }
   | { readonly kind: 'players'; readonly tab: PlayersTab; readonly players: CricketPlayersView }
+  /** Numbers More asks typed (a revision, a rain break's overs lost); `accepts` greys Record while they make no event. */
+  | {
+      readonly kind: 'entry';
+      readonly step: CricketEntryStep;
+      readonly accepts: (values: readonly string[]) => boolean;
+    }
   | AskView;
 
 type Sheet =
@@ -64,6 +72,7 @@ type Sheet =
   | { readonly kind: 'discard' }
   | { readonly kind: 'flow'; readonly flow: CricketFlow }
   | { readonly kind: 'players'; readonly tab: PlayersTab }
+  | { readonly kind: 'entry'; readonly entry: CricketEntryFlow }
   | null;
 
 const DETAILS: Sheet = { kind: 'details' };
@@ -131,6 +140,7 @@ export function useCricketSheets(
   const openOut = useCallback(() => openFlow(outFlow()), [openFlow]);
   const openMore = useCallback(() => openFlow(moreFlow()), [openFlow]);
   const choose = useChoose({ sheet, snapshot, justShown, taps, send, setSheet });
+  const enter = useEnter({ sheet, snapshot, justShown, taps, send, setSheet });
   const players = usePlayersActions({ snapshot, justShown, taps, send, setSheet });
   const actions = useMemo(
     () => ({
@@ -142,9 +152,10 @@ export function useCricketSheets(
       openOut,
       openMore,
       choose,
+      enter,
       ...players,
     }),
-    [details, history, dismiss, askDiscard, openExtras, openOut, openMore, choose, players],
+    [details, history, dismiss, askDiscard, openExtras, openOut, openMore, choose, enter, players],
   );
   return { open: sheet !== null, cancel, actions, view, justShown };
 }
@@ -229,6 +240,10 @@ function useChoose({ sheet, snapshot, justShown, taps, send, setSheet }: ChooseP
         setSheet({ kind: 'flow', flow: outcome.flow });
         return;
       }
+      if (outcome.kind === 'entry') {
+        setSheet({ kind: 'entry', entry: outcome.entry });
+        return;
+      }
       setSheet(null);
       if (outcome.kind === 'tap') {
         opening(JSON.stringify(outcome.tap), () => send.tap(outcome.tap));
@@ -244,9 +259,27 @@ function useChoose({ sheet, snapshot, justShown, taps, send, setSheet }: ChooseP
 }
 
 /**
+ * Record on the sheet of typed numbers: the event they make, recorded as an opening tap as the sheet goes; nothing while
+ * they make none (Record is greyed then), and nothing on the heels of the sheet appearing.
+ */
+function useEnter({ sheet, snapshot, justShown, taps, send, setSheet }: ChooseParts) {
+  const { opening } = taps;
+  return useCallback(
+    (values: readonly string[]) => {
+      if (snapshot === null || sheet?.kind !== 'entry' || justShown()) return;
+      const made = entryTap(sheet.entry, snapshot.display, values);
+      if (made === null) return;
+      setSheet(null);
+      opening(JSON.stringify(made), () => send.tap(made));
+    },
+    [sheet, snapshot, justShown, opening, send, setSheet],
+  );
+}
+
+/**
  * The step on screen a double tap can reach, by name: Match details (whose dim takes the second touch on its icon), the
- * question and its confirm, and every step of a sheet that goes step by step. Not History: its one button is not under
- * its icon.
+ * question and its confirm, every step of a sheet that goes step by step, and More's typed numbers (`entry`, which ends
+ * its flow, so never follows another). Not History: its one button is not under its icon.
  */
 function guardedStep(view: CricketSheetView | null): string | null {
   if (view === null || view.kind === 'history') return null;
@@ -275,5 +308,11 @@ function sheetView(sheet: Sheet, snapshot: CricketSheetSnapshot | null): Cricket
       return { kind: 'step', step: flowStep(sheet.flow, snapshot.display), standing: false };
     case 'players':
       return { kind: 'players', tab: sheet.tab, players: playersView(snapshot.display) };
+    case 'entry': {
+      const { entry } = sheet;
+      const { display } = snapshot;
+      const accepts = (values: readonly string[]) => entryTap(entry, display, values) !== null;
+      return { kind: 'entry', step: entryStep(entry, display), accepts };
+    }
   }
 }

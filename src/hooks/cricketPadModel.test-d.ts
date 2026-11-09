@@ -31,7 +31,20 @@ type CricketOwn =
   | 'moveBatter'
   | 'setOpeners'
   | 'setBowler'
-  | 'changeOrder';
+  | 'changeOrder'
+  // The keys and their sheets (Tasks 11 to 13): a run, an extra's sheet, Out, More, a step's choice.
+  | 'run'
+  | 'openExtras'
+  | 'openOut'
+  | 'openMore'
+  | 'choose'
+  // Players (Task 14).
+  | 'openPlayers'
+  | 'playersTab'
+  | 'moveYet'
+  | 'pickBowler'
+  // More's typed numbers (Task 15).
+  | 'enter';
 
 describe('cricket’s words', () => {
   // The kit takes `PadView<MessageKey>`: a pad key the dictionaries lack must fail to compile, here and at the screen.

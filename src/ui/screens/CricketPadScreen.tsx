@@ -9,6 +9,7 @@ import { PadContent } from '@/ui/components/PadContent';
 import { DiscardAsk, MatchDetailsView, MatchHistory } from '@/ui/components/PadSheets';
 import { CricketBoard } from '@/ui/screens/CricketBoard';
 import { CricketKeys } from '@/ui/screens/CricketKeys';
+import { CricketEntrySheet } from '@/ui/screens/CricketEntrySheet';
 import { CricketPlayersSheet } from '@/ui/screens/CricketPlayersSheet';
 import { CricketSetup } from '@/ui/screens/CricketSetup';
 import { CricketStepSheet } from '@/ui/screens/CricketSheets';
@@ -64,8 +65,9 @@ function CricketBody({ model, keys }: { readonly model: CricketPadModel; readonl
 }
 
 /**
- * The sheet over the pad: Match details, History, a step, Players, or the reconnect question and its confirm. The over-end sheet
- * stands by itself: its way back is Undo of this phone's last ball, when there is one (the owner-tested preview's).
+ * The sheet over the pad: Match details, History, a step, Players, More's typed numbers, or the reconnect question and its
+ * confirm. The over-end sheet stands by itself: its way back is Undo of this phone's last ball, when there is one (the
+ * owner-tested preview's).
  */
 const PadSheet = memo(function PadSheet({
   sheet,
@@ -104,6 +106,15 @@ const PadSheet = memo(function PadSheet({
           onMove={actions.moveYet}
           onBowler={actions.pickBowler}
           onClose={actions.dismiss}
+        />
+      );
+    case 'entry':
+      return (
+        <CricketEntrySheet
+          step={sheet.step}
+          accepts={sheet.accepts}
+          onRecord={actions.enter}
+          onCancel={actions.dismiss}
         />
       );
     case 'discard':

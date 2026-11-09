@@ -630,6 +630,32 @@ the rest of the cricket words.
 | {figures} · {why}                  | {figures} · {why}                         | {figures} · {why}                      | {figures} · {why}                           | `players.cannot`: O-M-R-W, then `bowling.lastOver` or `bowling.outOfOvers`.                        |
 | {figures} · {count} over(s) left   | {figures} · le queda(n) {count} over(s)   | {figures} · {count} over(s) restant(s) | {figures} · nog {count} over(s)             | `players.figures.one` / `.other`: O-M-R-W and the overs left of the quota.                         |
 
+### Cricket's More (S2-4 Task 15, 2026-11-08)
+
+More's rows beyond Task 13's (`scoring.cricket.more.*`) and their steps (`other.*`, `retire.*`, `review.*`, `confirm.*`,
+`closing.*`, `powerplay.*`, `interruption.*`, `revise.*`, `entry.*`). Titles are one line at 320 dp in all four, so
+several are shorter than their row (es and fr `other.title`, nl `review.by`). _Powerplay_, _follow-on_, _over_ and
+_review_ (nl) are the game's own words. fr has a no-break space before `?`. **es, fr and nl are unreviewed drafts, for
+the owner's review**, as the rest of the cricket words.
+
+| English                 | Español                       | Français                    | Nederlands                 | Notes                                                                                                                    |
+| ----------------------- | ----------------------------- | --------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Other runs and penalty  | Otras carreras y penalización | Autres courses et pénalité  | Andere runs en straf       | `more.otherRuns`: More's first row (ruling 79); `other.title` its step, shorter in es and fr to keep one line at 320 dp. |
+| {runs} all run          | {runs} corridas               | {runs} courues              | {runs} gelopen             | `other.ran`: 4 or 6 run, no boundary.                                                                                    |
+| +{runs} penalty runs    | +{runs} de penalización       | +{runs} courses de pénalité | +{runs} strafruns          | `other.penalty`: the row and the step's title (Law 41.2.1's five); then `extras.bat` 0-6.                                |
+| Retire a batter         | Retirar a un bateador         | Retirer un batteur          | Batter terugtrekken        | `more.retire`; `retire.who`, `retire.why`, then `wicket.incoming`.                                                       |
+| Retired hurt            | Retirado lesionado            | Retiré blessé               | Geblesseerd teruggetrokken | `retire.reason.*`: hurt, out (a wicket, Law 25.4.3), other.                                                              |
+| Review                  | Revisión                      | Révision                    | Review                     | `more.review`; `review.by` (a side), `review.kind`, `review.outcome`.                                                    |
+| Struck down             | Rechazada                     | Rejetée                     | Afgewezen                  | `review.outcome.*`: upheld, struck down (a review lost), umpire's call.                                                  |
+| No reviews left         | Sin revisiones                | Plus de révisions           | Geen reviews meer          | `review.noneLeft`: why a player review is greyed (`cfg.reviews`).                                                        |
+| Nobody left to walk in  | No queda nadie por entrar     | Plus personne pour entrer   | Geen batter meer over      | `retire.nobody`: why retired hurt or other is greyed: nobody can replace the batter, so the engine refuses.              |
+| Start a powerplay       | Iniciar un powerplay          | Lancer un powerplay         | Powerplay starten          | `more.powerplay` / `more.powerplayEnd`; `powerplay.kind.*` as the Players tabs.                                          |
+| Rain or bad light       | Lluvia o mala luz             | Pluie ou mauvaise lumière   | Regen of slecht licht      | `more.interruption`; `interruption.title` asks the kind, then `interruption.lost`, typed.                                |
+| Revised overs or target | Overs u objetivo revisados    | Overs ou objectif révisés   | Herziene overs of doel     | `more.revise`; `revise.overs`, `revise.target`, typed, never computed.                                                   |
+| Close the innings       | Cerrar la entrada             | Clore la manche             | Innings sluiten            | `more.close`; `closing.title` asks time, weather or other.                                                               |
+| Close as a draw?        | ¿Partido inconcluso?          | Clore le match nul ?        | Onbeslist sluiten?         | `confirm.*.title` / `.do`: Declare, New ball, Follow-on and the draw ask once.                                           |
+| Record                  | Registrar                     | Enregistrer                 | Vastleggen                 | `entry.record`: the typed numbers' button.                                                                               |
+
 ## App settings (2026-11-02)
 
 The app's own Settings, from the gear in Home's top-right corner (owner, 2026-11-02: "we should have common setting in a top

@@ -297,13 +297,20 @@ function assistOptions(flow: WicketFlow, display: CricketDisplay): readonly Cric
   ];
 }
 
-/**
- * Who walks in, the suggestion first and marked chosen (ruling 82): the next of the phone's order not yet in, else a
- * retired batter resuming, said "Retired".
- */
+/** Who walks in after this wicket. */
 function incomingOptions(flow: WicketFlow, display: CricketDisplay): readonly CricketStepOption[] {
+  return incomingRows(display, incomingFor(flow, display));
+}
+
+/**
+ * Batters who may walk in (`ids`, the engine's), the suggestion first and marked chosen (ruling 82): the next of the
+ * phone's order not yet in, else a retired batter resuming, said "Retired". More's retirement asks with it too.
+ */
+export function incomingRows(
+  display: CricketDisplay,
+  ids: readonly string[],
+): readonly CricketStepOption[] {
   const retired = turnOf(display.state)?.innings?.fine?.retiredNotOut ?? [];
-  const ids = incomingFor(flow, display);
   const suggested = ids.find((id) => !retired.includes(id)) ?? ids[0];
   const ordered = [
     ...ids.filter((id) => id === suggested),

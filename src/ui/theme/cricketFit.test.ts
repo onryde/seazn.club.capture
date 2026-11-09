@@ -582,3 +582,114 @@ it('Players’ out note takes its second line in es at 320 (anti-vacuity: the tw
   const column = 320 - 2 * space.md - space.lg - space.md - 2 * space.sm;
   expect(linesOf(note, column, unitWidth)).toBe(2);
 });
+
+/**
+ * S2-4 plan Task 15: More's rows and their steps, at 320 and 360 dp in four languages. Each row's label one line at
+ * `controlInk` inside the row's padding, as Task 13's; each step's title one line (with the penalty's five runs); a greyed
+ * review's note one line; a typed number's label at most two lines beside its field (the kit's `PointsField`: the label
+ * flexes beside a field two touch targets wide, `space.sm` apart).
+ */
+const MORE_ROWS = [
+  'otherRuns',
+  'retire',
+  'review',
+  'newBall',
+  'powerplay',
+  'powerplayEnd',
+  'interruption',
+  'revise',
+  'declare',
+  'close',
+  'followOn',
+  'matchClose',
+].map((row) => `scoring.cricket.more.${row}`);
+const MORE_STEP_ROWS = [
+  'scoring.cricket.retire.reason.hurt',
+  'scoring.cricket.retire.reason.out',
+  'scoring.cricket.retire.reason.other',
+  'scoring.cricket.review.kind.player',
+  'scoring.cricket.review.kind.umpire',
+  'scoring.cricket.review.outcome.upheld',
+  'scoring.cricket.review.outcome.struck_down',
+  'scoring.cricket.review.outcome.umpires_call',
+  'scoring.cricket.confirm.declare.do',
+  'scoring.cricket.confirm.newBall.do',
+  'scoring.cricket.confirm.followOn.do',
+  'scoring.cricket.confirm.matchClose.do',
+  'scoring.cricket.closing.reason.time',
+  'scoring.cricket.closing.reason.weather',
+  'scoring.cricket.closing.reason.other',
+  'scoring.cricket.powerplay.end',
+  'scoring.cricket.powerplay.kind.mandatory',
+  'scoring.cricket.powerplay.kind.batting',
+  'scoring.cricket.powerplay.kind.bowling',
+  'scoring.cricket.interruption.kind.rain',
+  'scoring.cricket.interruption.kind.light',
+  'scoring.cricket.interruption.kind.other',
+  'scoring.cricket.other.title',
+];
+const MORE_TITLES = [
+  'scoring.cricket.other.title',
+  'scoring.cricket.retire.who',
+  'scoring.cricket.retire.why',
+  'scoring.cricket.review.by',
+  'scoring.cricket.review.kind',
+  'scoring.cricket.review.outcome',
+  'scoring.cricket.confirm.declare.title',
+  'scoring.cricket.confirm.newBall.title',
+  'scoring.cricket.confirm.followOn.title',
+  'scoring.cricket.confirm.matchClose.title',
+  'scoring.cricket.closing.title',
+  'scoring.cricket.powerplay.title',
+  'scoring.cricket.powerplay.endTitle',
+  'scoring.cricket.interruption.title',
+  'scoring.cricket.interruption.lostTitle',
+  'scoring.cricket.revise.title',
+];
+const ENTRY_LABELS = [
+  'scoring.cricket.interruption.lost',
+  'scoring.cricket.revise.overs',
+  'scoring.cricket.revise.target',
+];
+
+describe.each(WIDTHS)('More’s rows and steps at %i dp', (width) => {
+  const sheetText = width - 2 * space.md;
+  const rowText = sheetText - 2 * space.md;
+  const rowWidth = (text: string) => geist500.width(text, typeScale.controlInk.fontSize);
+  const fieldLabel = sheetText - 2 * layout.touch - space.sm;
+
+  it.each(LANGUAGES)('%s: rows one line, titles one line, field labels two', (_, dictionary) => {
+    const ran = fill(said(dictionary, 'scoring.cricket.other.ran'), { runs: 6 });
+    const penalty = fill(said(dictionary, 'scoring.cricket.other.penalty'), { runs: 5 });
+    for (const row of [...MORE_ROWS, ...MORE_STEP_ROWS].map((key) => said(dictionary, key))) {
+      expect(rowWidth(row), row).toBeLessThanOrEqual(rowText);
+    }
+    for (const row of [ran, penalty]) expect(rowWidth(row), row).toBeLessThanOrEqual(rowText);
+    for (const title of [penalty, ...MORE_TITLES.map((key) => said(dictionary, key))]) {
+      expect(linesOf(title, sheetText, sheetTitleWidth), title).toBe(1);
+    }
+    for (const key of ['scoring.cricket.review.noneLeft', 'scoring.cricket.retire.nobody']) {
+      const note = said(dictionary, key);
+      expect(unitWidth(note), note).toBeLessThanOrEqual(rowText);
+    }
+    for (const label of ENTRY_LABELS.map((key) => said(dictionary, key))) {
+      expect(linesOf(label, fieldLabel, rowWidth), label).toBeLessThanOrEqual(2);
+    }
+  });
+});
+
+it('a typed number’s label takes its second line in nl at 320 (anti-vacuity: the two-line allowance is used)', () => {
+  const label = said(nl, 'scoring.cricket.interruption.lost');
+  const room = 320 - 2 * space.md - 2 * layout.touch - space.sm;
+  const width = (text: string) => geist500.width(text, typeScale.controlInk.fontSize);
+  expect(linesOf(label, room, width)).toBe(2);
+});
+
+it('More’s widest step title is within a tenth of the sheet at 320 (anti-vacuity: titles are measured uppercase)', () => {
+  const widest = Math.max(
+    ...LANGUAGES.flatMap(([, dictionary]) =>
+      MORE_TITLES.map((key) => sheetTitleWidth(said(dictionary, key))),
+    ),
+  );
+  expect(widest).toBeGreaterThan(0.9 * (320 - 2 * space.md));
+});

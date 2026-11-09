@@ -78,6 +78,21 @@ export type CricketMoreType =
 /** Why a bowler left an over (CK-BC-1, Law 17.8), or not said. */
 export type CricketChangeReason = 'incapacitated' | 'suspended' | 'other';
 
+/** More's rows beyond Task 13's change and swap (S2-4 spec §4.8), each its words' key. */
+export type CricketMoreRow =
+  | 'otherRuns'
+  | 'retire'
+  | 'review'
+  | 'newBall'
+  | 'powerplay'
+  | 'powerplayEnd'
+  | 'interruption'
+  | 'revise'
+  | 'declare'
+  | 'close'
+  | 'followOn'
+  | 'matchClose';
+
 /** Why a batter retired (`cricket.retire`). */
 export type CricketRetireReason = 'hurt' | 'out' | 'other';
 
@@ -359,7 +374,21 @@ export type CricketSheetKey =
   | `scoring.cricket.bowling.${'title' | 'body' | 'lastOver' | 'outOfOvers' | 'none' | 'totals' | 'undo'}`
   | `scoring.cricket.change.${'title' | 'why'}`
   | `scoring.cricket.change.reason.${CricketChangeReason}`
-  | `scoring.cricket.more.${'change' | 'swap'}`
+  | `scoring.cricket.more.${'change' | 'swap' | CricketMoreRow}`
+  | `scoring.cricket.other.${'title' | 'ran' | 'penalty'}`
+  | `scoring.cricket.retire.${'who' | 'why' | 'nobody'}`
+  | `scoring.cricket.retire.reason.${CricketRetireReason}`
+  | `scoring.cricket.review.${'by' | 'kind' | 'outcome' | 'noneLeft'}`
+  | `scoring.cricket.review.kind.${'player' | 'umpire'}`
+  | `scoring.cricket.review.outcome.${'upheld' | 'struck_down' | 'umpires_call'}`
+  | `scoring.cricket.confirm.${'declare' | 'newBall' | 'followOn' | 'matchClose'}.${'title' | 'do'}`
+  | `scoring.cricket.closing.${'title' | 'reason.time' | 'reason.weather' | 'reason.other'}`
+  | `scoring.cricket.powerplay.${'title' | 'endTitle' | 'end'}`
+  | `scoring.cricket.powerplay.kind.${'mandatory' | 'batting' | 'bowling'}`
+  | `scoring.cricket.interruption.${'title' | 'lost' | 'lostTitle'}`
+  | `scoring.cricket.interruption.kind.${'rain' | 'light' | 'other'}`
+  | `scoring.cricket.revise.${'title' | 'overs' | 'target'}`
+  | 'scoring.cricket.entry.record'
   | `scoring.cricket.players.${'in' | 'out' | 'outPlain' | 'retired' | 'yet' | 'cannot'}`
   | Counted<'scoring.cricket.players.figures'>;
 

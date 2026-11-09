@@ -220,8 +220,12 @@ describe('More (ruling 84)', () => {
   const ids = (display: ReturnType<typeof displayOf>) =>
     moreStep(display).options.map((one) => one.id);
 
-  it('mid-over offers the change and the swap', () => {
-    expect(ids(displayOf(SPLIT_START, FOUR_EACH))).toEqual([MORE_CHANGE, MORE_SWAP]);
+  it('mid-over offers the swap and the change (after Other runs, Task 15)', () => {
+    const offered = ids(displayOf(SPLIT_START, FOUR_EACH));
+    expect(offered.filter((id) => id === MORE_CHANGE || id === MORE_SWAP)).toEqual([
+      MORE_SWAP,
+      MORE_CHANGE,
+    ]);
   });
 
   it('at an over’s end offers no change: the next over’s bowler rides its first ball', () => {
@@ -231,12 +235,14 @@ describe('More (ruling 84)', () => {
       FOUR_EACH,
       withPick(NO_PICKS, display, { kind: 'bowler', bowler: A(9) }),
     );
-    expect(ids(picked)).toEqual([MORE_SWAP]);
+    expect(ids(picked)).toContain(MORE_SWAP);
+    expect(ids(picked)).not.toContain(MORE_CHANGE);
   });
 
-  it('before the openers are in, More offers nothing', () => {
+  it('before the openers are in, More offers no swap and no change (rain and a revision need none: Task 15)', () => {
     expect(displayOf(OPENING).crease).toBeNull();
-    expect(ids(displayOf(OPENING))).toEqual([]);
+    expect(ids(displayOf(OPENING))).not.toContain(MORE_SWAP);
+    expect(ids(displayOf(OPENING))).not.toContain(MORE_CHANGE);
   });
 
   it('a choice More does not offer does nothing', () => {
