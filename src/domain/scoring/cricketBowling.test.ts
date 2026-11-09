@@ -7,6 +7,7 @@ import {
   changeStep,
   chooseBowler,
   chooseChange,
+  totalsOffered,
 } from '@/domain/scoring/cricketBowling';
 import { flowChoice, moreFlow, standingFlow } from '@/domain/scoring/cricketFlow';
 import { foldCricket } from '@/domain/scoring/cricketFold';
@@ -155,6 +156,21 @@ describe('the over-end sheet', () => {
       id: OVER_TOTALS,
       label: { key: 'scoring.cricket.bowling.totals' },
     });
+  });
+
+  // Controller ruling M8 (Batch 4 review): a row on the sheet must do something. Enter over totals opens the totals entry
+  // (Task 17); an id the sheet does not offer chooses nothing.
+  it('choosing Enter over totals opens the totals entry, only while the sheet offers it', () => {
+    const two = [...OPENING, ...inningsOf('H', [A(1), A(2)], times(12, DOT))];
+    const offered = { ...displayOf(two, TWO_FIELDERS), deliveries: 0 };
+    expect(totalsOffered(offered)).toBe(true);
+    expect(flowChoice({ kind: 'bowler' }, offered, OVER_TOTALS)).toEqual({ kind: 'totals' });
+    const afterBall = displayOf(two, TWO_FIELDERS);
+    expect(totalsOffered(afterBall)).toBe(false);
+    expect(flowChoice({ kind: 'bowler' }, afterBall, OVER_TOTALS)).toBeNull();
+    const someoneCan = displayOf(OVER_ONE_DONE, FOUR_EACH);
+    expect(totalsOffered(someoneCan)).toBe(false);
+    expect(flowChoice({ kind: 'bowler' }, someoneCan, OVER_TOTALS)).toBeNull();
   });
 });
 

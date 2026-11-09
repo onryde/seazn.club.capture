@@ -1,6 +1,12 @@
 import type { EventEnvelope, LineupPair } from '@seazn/engine/core';
-import { cricket, orderFromLineup, type CricketCfg } from '@seazn/engine/sports/cricket';
+import {
+  cricket,
+  orderFromLineup,
+  type CricketCfg,
+  type CricketState,
+} from '@seazn/engine/sports/cricket';
 import { engineRefusalOf, type EngineRefusal } from '@/domain/scoring/engineRefusal';
+import type { SportEvent } from '@/domain/scoring/scoringSport';
 import type { EngineMatch } from '@/domain/scoring/setBasedEngine';
 import { teamSheetOf } from '@/domain/scoring/teamSheet';
 import type { Bootstrap } from '@/domain/scoring/wire';
@@ -43,6 +49,28 @@ export const cricketRefusalOf = (
   match: CricketEngineMatch,
   events: readonly EventEnvelope[],
 ): EngineRefusal | null => engineRefusalOf(cricket, match, events);
+
+/**
+ * The state after one candidate event, judged strictly as the server judges an append, or null when the engine refuses it:
+ * a trial, nothing is recorded (the wicket steps' `endsInnings`, the over totals' `totalsTap`). `apply` parses the payload
+ * itself, as the server's fold does: its type is the module's to check, not this caller's.
+ */
+export function cricketTrial(state: CricketState, event: SportEvent): CricketState | null {
+  const envelope = {
+    id: 'pad-trial',
+    fixtureId: '',
+    seq: Number.MAX_SAFE_INTEGER,
+    type: event.type,
+    payload: event.payload,
+    recordedAt: new Date(0).toISOString(),
+    recordedBy: null,
+  } satisfies EventEnvelope as Parameters<typeof cricket.apply>[1];
+  try {
+    return cricket.apply(state, envelope, { strict: true });
+  } catch {
+    return null;
+  }
+}
 
 /** The fewest players a side bats with: an innings opens with two at the crease (engine `createInnings`). */
 const OPENING_PAIR = 2;

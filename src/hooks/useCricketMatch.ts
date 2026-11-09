@@ -5,9 +5,11 @@ import { cricketBoard, type CricketBoardView } from '@/domain/scoring/cricketPad
 import { withPick, type CricketPick } from '@/domain/scoring/cricketPicks';
 import type { PlayersTab } from '@/domain/scoring/cricketPlayers';
 import { cricketSport } from '@/domain/scoring/cricketSport';
+import { totalsView, type CricketTotals, type TotalsOver } from '@/domain/scoring/cricketTotals';
 import type {
   CricketDisplay,
   CricketPadKey,
+  CricketStage,
   CricketTap,
   CricketTypes,
 } from '@/domain/scoring/cricketTypes';
@@ -72,6 +74,8 @@ export type CricketPadActions = PadActions &
     readonly undoStanding: () => void;
     /** Record on the sheet of typed numbers (More's revision and rain break, Task 15): the fields as typed. */
     readonly enter: (values: readonly string[]) => void;
+    /** Record over, on the over totals' entry (Task 17): the over's own runs, wickets and legal balls. */
+    readonly enterTotals: (over: TotalsOver) => void;
     /** Players (Task 14): a tap on the board opens it on Batting; its tabs. */
     readonly openPlayers: () => void;
     readonly playersTab: (tab: PlayersTab) => void;
@@ -91,6 +95,8 @@ export type CricketPadModel = PadScreenModel<CricketPadKey, CricketSheetView> & 
   readonly setup: CricketSetupModel | null;
   /** More has something to offer now: the key is greyed when it has not. */
   readonly more: boolean;
+  /** The over totals' entry (or the organiser's line for a tie) in the board's place, while a side is scored in totals. */
+  readonly totals: CricketTotals | null;
   readonly actions: CricketPadActions;
 };
 
@@ -135,19 +141,33 @@ function useCricketPad(
   const actions = useActions({ sender, runner, pad, taps, sheets, setup, setCardNote });
   useBackCloses(sheets.open, sheets.cancel);
   const board = useMemo(() => (pad === null ? null : cricketBoard(pad.display)), [pad]);
+  const totals = useMemo(() => (pad === null ? null : totalsOf(pad.display)), [pad]);
   return useMemo(
-    () => modelOf(pad, { board, setup: setup.model }, sheets.view, cardNote, actions),
-    [pad, board, setup.model, sheets.view, cardNote, actions],
+    () => modelOf(pad, { board, setup: setup.model, totals }, sheets.view, cardNote, actions),
+    [pad, board, setup.model, totals, sheets.view, cardNote, actions],
   );
 }
 
-/** What cricket draws in the halves' place: the board, or the setup while the match is before its first ball. */
-type Body = { readonly board: CricketBoardView | null; readonly setup: CricketSetupModel | null };
+/** The stages the over totals stand in the board's place for: a side scored in totals, and its tie (`totalsView`). */
+const TOTALS_STAGES: ReadonlySet<CricketStage> = new Set<CricketStage>(['totals', 'tiedNoPlayers']);
+
+const totalsOf = (display: CricketDisplay): CricketTotals | null =>
+  TOTALS_STAGES.has(display.stage) ? totalsView(display) : null;
+
+/**
+ * What cricket draws in the halves' place: the board, the setup while the match is before its first ball, or the over
+ * totals while a side's players are not entered.
+ */
+type Body = {
+  readonly board: CricketBoardView | null;
+  readonly setup: CricketSetupModel | null;
+  readonly totals: CricketTotals | null;
+};
 
 /** What the screen is drawn from, or none while the match is loading. */
 function modelOf(
   pad: PadFacts | null,
-  { board, setup }: Body,
+  { board, setup, totals }: Body,
   sheet: CricketSheetView | null,
   cardNote: MessageKey | null,
   actions: CricketPadActions,
@@ -164,6 +184,7 @@ function modelOf(
     board,
     display: pad.display,
     setup,
+    totals,
     more: moreOffered(pad.display),
     actions,
   };

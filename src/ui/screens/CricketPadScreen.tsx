@@ -7,12 +7,13 @@ import { AskSheet } from '@/ui/components/AskSheet';
 import { KeepScreenOn } from '@/ui/components/KeepScreenOn';
 import { PadContent } from '@/ui/components/PadContent';
 import { DiscardAsk, MatchDetailsView, MatchHistory } from '@/ui/components/PadSheets';
-import { CricketBoard } from '@/ui/screens/CricketBoard';
+import { CricketBoard, ScorePanel } from '@/ui/screens/CricketBoard';
 import { CricketKeys } from '@/ui/screens/CricketKeys';
 import { CricketEntrySheet } from '@/ui/screens/CricketEntrySheet';
 import { CricketPlayersSheet } from '@/ui/screens/CricketPlayersSheet';
 import { CricketSetup } from '@/ui/screens/CricketSetup';
 import { CricketStandingSheet, CricketStepSheet } from '@/ui/screens/CricketSheets';
+import { CricketTotalsPanel, CricketTotalsSheet } from '@/ui/screens/CricketTotals';
 import { colour, space } from '@/ui/theme/tokens';
 
 /**
@@ -24,7 +25,10 @@ import { colour, space } from '@/ui/theme/tokens';
  * the extras, and Out, Undo and More, which carries the pad's one Undo, so the line has none). Before the first ball the
  * setup stands there instead (`CricketSetup`: the toss on the whole screen, the batting order, the first bowler, Start),
  * and the line keeps Undo, which takes the toss back. At an innings break and before a super over the same setup stands
- * under the break's card until Start innings (Task 16), and the line's Undo takes back the innings' last ball. The screen is held on while the pad is (`holdsScreen`). Sheets and
+ * under the break's card until Start innings (Task 16), and the line's Undo takes back the innings' last ball. A side with
+ * no players entered stands in totals (Task 17): the score and, in the keys' place, the over to enter
+ * (`CricketTotalsPanel`), and the same entry in a sheet where the over-end sheet has nobody to bowl
+ * (`CricketTotalsSheet`). The screen is held on while the pad is (`holdsScreen`). Sheets and
  * History cover the pad, which is hidden from a screen reader while they show, and every key is disabled under them.
  */
 export function CricketPadScreen({ model }: { readonly model: CricketPadModel }) {
@@ -56,6 +60,7 @@ function CricketBody({ model, keys }: { readonly model: CricketPadModel; readonl
     return (
       <CricketSetup setup={setup} details={view.details} more={model.more} actions={actions} />
     );
+  if (model.totals !== null) return <TotalsBody model={model} />;
   return (
     <View style={styles.body}>
       <CricketBoard view={board} onOpenPlayers={actions.openPlayers} />
@@ -68,6 +73,18 @@ function CricketBody({ model, keys }: { readonly model: CricketPadModel; readonl
           actions={actions}
         />
       ) : null}
+    </View>
+  );
+}
+
+/** Over totals (Task 17): the score, and under it the over to enter or the organiser's line for a tie. */
+function TotalsBody({ model }: { readonly model: CricketPadModel }) {
+  const { totals, board, actions } = model;
+  if (totals === null) return null;
+  return (
+    <View style={styles.body}>
+      <ScorePanel score={board.score} />
+      <CricketTotalsPanel totals={totals} onRecord={actions.enterTotals} />
     </View>
   );
 }
@@ -133,6 +150,14 @@ const PadSheet = memo(function PadSheet({
           step={sheet.step}
           accepts={sheet.accepts}
           onRecord={actions.enter}
+          onCancel={actions.dismiss}
+        />
+      );
+    case 'totals':
+      return (
+        <CricketTotalsSheet
+          totals={sheet.totals}
+          onRecord={actions.enterTotals}
           onCancel={actions.dismiss}
         />
       );

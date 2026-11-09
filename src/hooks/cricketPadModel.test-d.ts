@@ -48,7 +48,9 @@ type CricketOwn =
   | 'moveYet'
   | 'pickBowler'
   // More's typed numbers (Task 15).
-  | 'enter';
+  | 'enter'
+  // Over totals: Record over (Task 17).
+  | 'enterTotals';
 
 describe('cricket’s words', () => {
   // The kit takes `PadView<MessageKey>`: a pad key the dictionaries lack must fail to compile, here and at the screen.

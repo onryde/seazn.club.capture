@@ -1,6 +1,6 @@
-import type { EventEnvelope } from '@seazn/engine/core';
 import { cricketPadRules } from '@seazn/engine/pad';
-import { activeInnings, cricket, eligibleIncomingBatters } from '@seazn/engine/sports/cricket';
+import { activeInnings, eligibleIncomingBatters } from '@seazn/engine/sports/cricket';
+import { cricketTrial } from '@/domain/scoring/cricketEngine';
 import { ballEventOf } from '@/domain/scoring/cricketEvents';
 import { turnOf } from '@/domain/scoring/cricketTurn';
 import type {
@@ -169,26 +169,13 @@ export function endsInnings(display: CricketDisplay, ball: CricketBallTap): bool
     display,
   );
   if (candidate === null) return false;
-  // `apply` parses the payload itself, as the server's fold does: its type is the module's to check, not this caller's.
-  const envelope = {
-    id: 'pad-trial',
-    fixtureId: '',
-    seq: Number.MAX_SAFE_INTEGER,
-    type: candidate.type,
-    payload: candidate.payload,
-    recordedAt: new Date(0).toISOString(),
-    recordedBy: null,
-  } satisfies EventEnvelope as Parameters<typeof cricket.apply>[1];
   const { state } = display;
-  try {
-    const { list } = activeInnings(state);
-    const index = list.length > 0 && list.at(-1)?.closed !== true ? list.length - 1 : list.length;
-    const after = cricket.apply(state, envelope, { strict: true });
-    if (after.phase !== state.phase) return true;
-    return activeInnings(after).list[index]?.closed === true;
-  } catch {
-    return false;
-  }
+  const after = cricketTrial(state, candidate);
+  if (after === null) return false;
+  if (after.phase !== state.phase) return true;
+  const { list } = activeInnings(state);
+  const index = list.length > 0 && list.at(-1)?.closed !== true ? list.length - 1 : list.length;
+  return activeInnings(after).list[index]?.closed === true;
 }
 
 /**

@@ -373,6 +373,13 @@ export type CricketBreakKey =
   | `scoring.cricket.break.${'title' | 'tied' | 'superOver' | 'closed' | 'line' | 'need' | 'level'}`
   | Counted<`scoring.cricket.break.${'chase' | 'lead'}`>;
 
+/**
+ * Over totals (`cricketTotals.ts`, Task 17): the lines above the entry (players not entered, an innings that stays in
+ * totals, a tie nobody can bat a super over for), the over's title, its three fields, the steppers' spoken names, Record.
+ */
+export type CricketTotalsKey =
+  `scoring.cricket.totals.${'noPlayers' | 'stays' | 'tied' | 'title' | 'runs' | 'wickets' | 'balls' | 'less' | 'more' | 'record'}`;
+
 /** The pad's keys and its sheets' words (Tasks 11 to 15). */
 export type CricketSheetKey =
   | `scoring.cricket.key.${'wide' | 'noBall' | 'bye' | 'legBye' | 'out' | 'more'}`
@@ -416,6 +423,7 @@ export type CricketPadKey =
   | 'scoring.cricket.tallyNone'
   | CricketBoardKey
   | CricketBreakKey
+  | CricketTotalsKey
   | 'scoring.pad.tap';
 
 /** The types cricket's pad works in. */

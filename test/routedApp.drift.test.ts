@@ -314,6 +314,8 @@ describe('every path the navigation moves to has its route file, and each Settin
       'src/ui/screens/CricketToss.tsx',
       // The sheets' steps over the pad (S2-4 Task 11): no pad.
       'src/ui/screens/CricketSheets.tsx',
+      // Over totals, in the keys' place and in a sheet (S2-4 Task 17): no pad.
+      'src/ui/screens/CricketTotals.tsx',
     ]);
   });
 

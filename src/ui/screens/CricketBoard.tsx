@@ -31,12 +31,13 @@ export const CricketBoard = memo(function CricketBoard({
   );
 });
 
-/** Runs/wickets large in lime with the overs beside them, then the innings and the chase: nothing before an innings is due. */
 /**
- * The score; with Players offered, a tap on it opens Players too (spec §4.8a: "the score, the crease, the bowler line").
- * Only the crease is the button a screen reader names "Players", so the score is still read as the score.
+ * Runs/wickets large in lime with the overs beside them, then the innings and the chase: nothing before an innings is due.
+ * With Players offered, a tap on it opens Players too (spec §4.8a: "the score, the crease, the bowler line"). Only the
+ * crease is the button a screen reader names "Players", so the score is still read as the score. Over totals draws it
+ * alone, over the entry (Task 17), with no Players to open.
  */
-const ScorePanel = memo(function ScorePanel({
+export const ScorePanel = memo(function ScorePanel({
   score,
   onOpenPlayers,
 }: {

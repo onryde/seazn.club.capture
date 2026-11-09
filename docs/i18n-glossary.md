@@ -673,6 +673,24 @@ as the rest of the cricket words.
 | Scores level                           | Empate a carreras                            | Égalité de courses                            | Gelijke stand                                  | `break.level`.                                                                                 |
 | Start innings                          | Empezar entrada                              | Débuter la manche                             | Innings starten                                | `setup.startInnings`: records nothing; the picks ride the first ball.                          |
 
+### Cricket over totals (S2-4 Task 17, 2026-11-09)
+
+The entry for a side whose players are not entered (`scoring.cricket.totals.*`; spec §4.10, rulings 66 and 74). _Over_ is
+the game's word in all four, as in History and the board. The note above the entry is the spec's wording; the organiser
+decides a tied super over (_el organizador_, _l'organisateur_, _de organisator_ as in the toss words). A stepper's spoken
+label counts ("1 more"): numerals, never the gendered _una_ / _un_, and fr keeps the no-break space before the colon.
+**es, fr and nl are unreviewed drafts, for the owner's review**, as the rest of the cricket words.
+
+| English                                     | Español                                            | Français                                       | Nederlands                                         | Notes                                                                           |
+| ------------------------------------------- | -------------------------------------------------- | ---------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Players not entered — ask the organiser     | Jugadores sin introducir — pregunta al organizador | Joueurs non saisis — demandez à l'organisateur | Spelers niet ingevoerd — vraag het de organisator  | `totals.noPlayers`: the note over the entry while a side has no players.        |
+| This innings stays in over totals           | Esta entrada sigue en totales por over             | Cette manche reste en totaux par over          | Deze innings blijft in overtotalen                 | `totals.stays`: players entered mid-innings; the ball pad returns next innings. |
+| Tied — the organiser decides the super over | Empate — el organizador decide el super over       | Égalité — l'organisateur décide du super over  | Gelijk — de organisator beslist over de super over | `totals.tied`: a tie with a super over in the rules and nobody to bat it.       |
+| Over {number} totals                        | Totales del over {number}                          | Totaux de l'over {number}                      | Totalen van over {number}                          | `totals.title`: the entry's heading, and the sheet's title.                     |
+| Runs / Wickets / Balls                      | Carreras / Wickets / Bolas                         | Courses / Wickets / Balles                     | Runs / Wickets / Ballen                            | `totals.runs`, `.wickets`, `.balls`: the three fields (legal balls).            |
+| {field}: 1 fewer / {field}: 1 more          | {field}: 1 menos / {field}: 1 más                  | {field} : 1 de moins / {field} : 1 de plus     | {field}: 1 minder / {field}: 1 meer                | `totals.less`, `.more`: a stepper's spoken label, never drawn.                  |
+| Record over                                 | Registrar over                                     | Enregistrer l'over                             | Over vastleggen                                    | `totals.record`: the plate; sends the innings' running totals.                  |
+
 ## App settings (2026-11-02)
 
 The app's own Settings, from the gear in Home's top-right corner (owner, 2026-11-02: "we should have common setting in a top

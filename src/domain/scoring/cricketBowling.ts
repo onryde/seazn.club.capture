@@ -104,22 +104,30 @@ export function changeRows(display: CricketDisplay): readonly BowlerRow[] {
   return ids.map((id) => rowOf(display, fielding, id, true));
 }
 
+/** Nobody on the fielding side may bowl the next over. */
+const nobodyCanBowl = (display: CricketDisplay): boolean =>
+  !bowlerRows(display).some((one) => one.can);
+
+/**
+ * Whether the sheet offers over totals: nobody may bowl, and the innings has no ball yet, since the engine refuses a
+ * summary for an innings recorded ball by ball (spec §4.4, preflight F5). The row opens the totals entry (`cricketTotals`).
+ */
+export const totalsOffered = (display: CricketDisplay): boolean =>
+  nobodyCanBowl(display) && display.deliveries === 0;
+
 /**
  * The over-end sheet: the fielders, those who may bowl first with their figures, the rest greyed with why. With nobody
- * to bowl, it says so and to ask the organiser; over totals are offered only while the innings has no ball, since the
- * engine refuses a summary for an innings recorded ball by ball (preflight F5).
+ * to bowl, it says so and to ask the organiser, and offers over totals while the innings has no ball (`totalsOffered`).
  */
 export function bowlerStep(display: CricketDisplay): CricketStep {
   const rows = bowlerRows(display);
-  const nobody = !rows.some((one) => one.can);
-  const totals: CricketStepOption[] =
-    nobody && display.deliveries === 0
-      ? [{ id: OVER_TOTALS, label: { key: 'scoring.cricket.bowling.totals' }, tone: 'standard' }]
-      : [];
+  const totals: CricketStepOption[] = totalsOffered(display)
+    ? [{ id: OVER_TOTALS, label: { key: 'scoring.cricket.bowling.totals' }, tone: 'standard' }]
+    : [];
   return {
     name: 'bowler.next',
     title: { key: 'scoring.cricket.bowling.title', vars: { number: display.over.number } },
-    body: nobody ? { key: 'scoring.cricket.bowling.none' } : bodyOf(display),
+    body: nobodyCanBowl(display) ? { key: 'scoring.cricket.bowling.none' } : bodyOf(display),
     options: [...rows.map((row) => bowlerOption(row, display)), ...totals],
   };
 }

@@ -103,7 +103,7 @@ function wicketOf(wicket: CricketWicketTap, superOver: boolean): Record<string, 
 }
 
 /** Over totals (§4.10): the innings' running totals, never closing it by themselves. */
-function summaryEvent(tap: Extract<CricketTap, { readonly kind: 'summary' }>): SportEvent {
+export function summaryEvent(tap: Extract<CricketTap, { readonly kind: 'summary' }>): SportEvent {
   const { runs, wickets, legalBalls } = tap;
   return {
     type: 'cricket.innings.summary',
