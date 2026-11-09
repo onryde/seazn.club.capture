@@ -2,7 +2,7 @@ import { act, fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { CricketStep } from '@/domain/scoring/cricketTypes';
 import en from '@/i18n/en.json';
-import { CricketStepSheet } from '@/ui/screens/CricketSheets';
+import { CricketStandingSheet, CricketStepSheet } from '@/ui/screens/CricketSheets';
 import { colour, layout } from '@/ui/theme/tokens';
 import { edgeOf } from '../../../test/pressState';
 import { renderWithPorts } from '../../../test/renderWithPorts';
@@ -34,11 +34,21 @@ const STEP: CricketStep = {
 function renderSheet(step: CricketStep = STEP) {
   const onChoose = vi.fn();
   const onCancel = vi.fn();
-  renderWithPorts(<CricketStepSheet step={step} onChoose={onChoose} onCancel={onCancel} />);
-  return { onChoose, onCancel };
+  const onDim = vi.fn();
+  renderWithPorts(
+    <CricketStepSheet step={step} onChoose={onChoose} onDim={onDim} onCancel={onCancel} />,
+  );
+  return { onChoose, onCancel, onDim };
 }
 
 const sheet = () => screen.getByTestId('step-sheet');
+const button = (name: string) => screen.getByRole('button', { name });
+/** The last `count` buttons of the sheet, by their names. */
+const lastButtons = (count: number) =>
+  within(sheet())
+    .getAllByRole('button')
+    .map((one) => one.getAttribute('aria-label') ?? one.textContent)
+    .slice(-count);
 
 describe('CricketStepSheet', () => {
   it('draws the title, each group as a row of keys under its name, then the full rows and Cancel', () => {
@@ -90,40 +100,149 @@ describe('CricketStepSheet', () => {
     ]);
   });
 
-  it('Cancel and the dim cancel, and choose nothing', () => {
-    const { onChoose, onCancel } = renderSheet();
+  // Batch 4 review I4: the dim is clicked here (it was only promised), and what it does is the caller's (`onDim`).
+  it('Cancel and the dim each ask to close, and choose nothing', () => {
+    const { onChoose, onCancel, onDim } = renderSheet();
     act(() => fireEvent.click(screen.getByRole('button', { name: en['scoring.sheet.cancel'] })));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onDim).not.toHaveBeenCalled();
+    act(() => fireEvent.click(screen.getByTestId('step-dim')));
+    expect(onDim).toHaveBeenCalledTimes(1);
     expect(onCancel).toHaveBeenCalledTimes(1);
     expect(onChoose).not.toHaveBeenCalled();
   });
 
-  it('a sheet that stands by itself names its own way back, or has none, and then its dim takes no tap', () => {
+  // Batch 4 review C1 and I4: the standing over-end sheet's dim covers the board, the top bar and the keys, and a touch on
+  // it must take nothing back. Its way back is the button, named by the caller.
+  it('a sheet that stands by itself: its dim takes no tap, its own button is the way back', () => {
     const onChoose = vi.fn();
     const onUndo = vi.fn();
-    const { unmount } = renderWithPorts(
+    renderWithPorts(
       <CricketStepSheet
         step={STEP}
         onChoose={onChoose}
+        onDim={null}
         onCancel={onUndo}
-        cancelKey="scoring.cricket.bowling.undo"
+        cancelKey="scoring.pad.undo"
       />,
     );
     expect(screen.queryByRole('button', { name: en['scoring.sheet.cancel'] })).toBeNull();
-    act(() =>
-      fireEvent.click(screen.getByRole('button', { name: en['scoring.cricket.bowling.undo'] })),
-    );
+    act(() => fireEvent.click(screen.getByTestId('step-dim')));
+    expect(onUndo).not.toHaveBeenCalled();
+    expect(onChoose).not.toHaveBeenCalled();
+    act(() => fireEvent.click(screen.getByRole('button', { name: en['scoring.pad.undo'] })));
     expect(onUndo).toHaveBeenCalledTimes(1);
-    unmount();
-    renderWithPorts(<CricketStepSheet step={STEP} onChoose={onChoose} onCancel={null} />);
+  });
+
+  it('a sheet that stands by itself with no way back has no button for one, and its dim takes no tap', () => {
+    const onChoose = vi.fn();
+    renderWithPorts(
+      <CricketStepSheet step={STEP} onChoose={onChoose} onDim={null} onCancel={null} />,
+    );
     const buttons = within(sheet())
       .getAllByRole('button')
       .map((one) => one.textContent);
     expect(buttons).not.toContain(en['scoring.sheet.cancel']);
-    expect(buttons).not.toContain(en['scoring.cricket.bowling.undo']);
+    expect(buttons).not.toContain(en['scoring.pad.undo']);
+    act(() => fireEvent.click(screen.getByTestId('step-dim')));
+    expect(onChoose).not.toHaveBeenCalled();
+  });
+
+  it('buttons beside the way back are drawn in order above it, and each asks for its own', () => {
+    const [onPlayers, onMore, onUndo] = [vi.fn(), vi.fn(), vi.fn()];
+    renderWithPorts(
+      <CricketStepSheet
+        step={STEP}
+        onChoose={vi.fn()}
+        onDim={null}
+        onCancel={onUndo}
+        cancelKey="scoring.pad.undo"
+        also={[
+          { label: 'scoring.cricket.players.title', onPress: onPlayers },
+          { label: 'scoring.cricket.key.more', onPress: onMore },
+        ]}
+      />,
+    );
+    expect(lastButtons(3)).toEqual([
+      en['scoring.cricket.players.title'],
+      en['scoring.cricket.key.more'],
+      en['scoring.pad.undo'],
+    ]);
+    act(() => fireEvent.click(button(en['scoring.cricket.key.more'])));
+    expect([onPlayers, onMore, onUndo].map((one) => one.mock.calls.length)).toEqual([0, 1, 0]);
+    act(() => fireEvent.click(button(en['scoring.cricket.players.title'])));
+    expect([onPlayers, onMore, onUndo].map((one) => one.mock.calls.length)).toEqual([1, 1, 0]);
   });
 
   it('a step with a line under its title draws it', () => {
     renderSheet({ ...STEP, body: { key: 'scoring.cricket.wicket.how' } });
     expect(within(sheet()).getByText(en['scoring.cricket.wicket.how'])).toBeTruthy();
+  });
+});
+
+// Batch 4 review C1, I3, M1 (the controller's rulings): the over-end sheet, which no key opened. Its dim takes no tap; its
+// way back is Undo, the kit's word; Players and More are on it, since an over's end is where a scorer declares, stops for
+// rain, closes for time or retires a batter, and "Nobody can bowl this over" would dead-end the pad without them.
+describe('CricketStandingSheet', () => {
+  function renderStanding(over: { readonly undo?: boolean; readonly more?: boolean } = {}) {
+    const calls = { onChoose: vi.fn(), onUndo: vi.fn(), onPlayers: vi.fn(), onMore: vi.fn() };
+    renderWithPorts(<CricketStandingSheet step={STEP} undo more {...over} {...calls} />);
+    return calls;
+  }
+
+  it('draws Players, More and Undo, in that order, under its choices, and no Cancel', () => {
+    renderStanding();
+    expect(lastButtons(3)).toEqual([
+      en['scoring.cricket.players.title'],
+      en['scoring.cricket.key.more'],
+      en['scoring.pad.undo'],
+    ]);
+    expect(screen.queryByRole('button', { name: en['scoring.sheet.cancel'] })).toBeNull();
+  });
+
+  it('each button asks for its own, and a choice sends its id', () => {
+    const { onChoose, onUndo, onPlayers, onMore } = renderStanding();
+    act(() => fireEvent.click(button(en['scoring.cricket.players.title'])));
+    act(() => fireEvent.click(button(en['scoring.cricket.key.more'])));
+    act(() => fireEvent.click(button(en['scoring.pad.undo'])));
+    act(() => fireEvent.click(button('Off the bat: 4')));
+    expect([onPlayers, onMore, onUndo].map((one) => one.mock.calls.length)).toEqual([1, 1, 1]);
+    expect(onChoose.mock.calls).toEqual([['bat.4']]);
+  });
+
+  it('its dim takes no tap: a touch on it asks for nothing', () => {
+    const { onChoose, onUndo, onPlayers, onMore } = renderStanding();
+    act(() => fireEvent.click(screen.getByTestId('step-dim')));
+    expect([onChoose, onUndo, onPlayers, onMore].map((one) => one.mock.calls.length)).toEqual([
+      0, 0, 0, 0,
+    ]);
+  });
+
+  it('More is not drawn when the engine takes nothing more now; Undo not when this phone has nothing to take back', () => {
+    renderStanding({ more: false, undo: false });
+    expect(lastButtons(1)).toEqual([en['scoring.cricket.players.title']]);
+    expect(screen.queryByRole('button', { name: en['scoring.cricket.key.more'] })).toBeNull();
+    expect(screen.queryByRole('button', { name: en['scoring.pad.undo'] })).toBeNull();
+  });
+
+  it('with More but no Undo, More is last; with Undo but no More, Players then Undo', () => {
+    const { unmount } = renderWithPorts(
+      <CricketStandingSheet
+        step={STEP}
+        undo={false}
+        more
+        onChoose={vi.fn()}
+        onUndo={vi.fn()}
+        onPlayers={vi.fn()}
+        onMore={vi.fn()}
+      />,
+    );
+    expect(lastButtons(2)).toEqual([
+      en['scoring.cricket.players.title'],
+      en['scoring.cricket.key.more'],
+    ]);
+    unmount();
+    renderStanding({ more: false });
+    expect(lastButtons(2)).toEqual([en['scoring.cricket.players.title'], en['scoring.pad.undo']]);
   });
 });

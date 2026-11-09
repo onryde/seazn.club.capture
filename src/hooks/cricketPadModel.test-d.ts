@@ -38,6 +38,8 @@ type CricketOwn =
   | 'openOut'
   | 'openMore'
   | 'choose'
+  // The over-end sheet's Undo, through the sheet-appearing guard (Batch 4 review C1).
+  | 'undoStanding'
   // Players (Task 14).
   | 'openPlayers'
   | 'playersTab'

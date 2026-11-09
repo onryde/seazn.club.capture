@@ -452,7 +452,8 @@ it('the widest wicket title is wider than half the sheet at 320 (anti-vacuity: t
 /**
  * S2-4 plan Task 13: the over-end sheet, More, and the change's steps, at 320 and 360 dp in four languages. Titles one
  * line (the title with the widest over number a format has, 50); each row's label and note one line; the sheet's own way
- * back ("Undo last ball") one line at `control`; the line under the title (`body`) at most two.
+ * back ("Undo", the kit's word) one line at `control`, and the standing sheet's Players and More, each half the sheet's row
+ * less the gap, its padding and its border, one line at `control`; the line under the title (`body`) at most two.
  */
 const BOWLING_TITLES = ['scoring.cricket.change.title', 'scoring.cricket.change.why'];
 const BOWLING_ROWS = [
@@ -468,11 +469,12 @@ const LONG_CLUB = 'Bishops Stortford Cricket Club';
 describe.each(WIDTHS)('the next bowler and More at %i dp', (width) => {
   const sheetText = width - 2 * space.md;
   const rowText = sheetText - 2 * space.md;
+  const halfButton = (sheetText - space.sm) / 2 - 2 * space.md - 2 * layout.iconBorder;
   const rowWidth = (text: string) => geist500.width(text, typeScale.controlInk.fontSize);
   const bodyWidth = (text: string) => geist400.width(text, typeScale.body.fontSize);
 
   it.each(LANGUAGES)(
-    '%s: titles one line, rows and notes one line, Undo last ball one line',
+    '%s: titles one line, rows and notes one line, Undo, Players and More one line',
     (_, dictionary) => {
       const over = fill(said(dictionary, 'scoring.cricket.bowling.title'), { number: 50 });
       for (const title of [over, ...BOWLING_TITLES.map((key) => said(dictionary, key))]) {
@@ -487,8 +489,12 @@ describe.each(WIDTHS)('the next bowler and More at %i dp', (width) => {
         '10.0-10-100-10',
       ];
       for (const note of notes) expect(unitWidth(note), note).toBeLessThanOrEqual(rowText);
-      const undo = said(dictionary, 'scoring.cricket.bowling.undo');
+      const undo = said(dictionary, 'scoring.pad.undo');
       expect(geist500.width(undo, typeScale.control.fontSize)).toBeLessThanOrEqual(rowText);
+      for (const key of ['scoring.cricket.players.title', 'scoring.cricket.key.more']) {
+        const word = geist500.width(said(dictionary, key), typeScale.control.fontSize);
+        expect(word, key).toBeLessThanOrEqual(halfButton);
+      }
     },
   );
 

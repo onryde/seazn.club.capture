@@ -12,7 +12,7 @@ import { CricketKeys } from '@/ui/screens/CricketKeys';
 import { CricketEntrySheet } from '@/ui/screens/CricketEntrySheet';
 import { CricketPlayersSheet } from '@/ui/screens/CricketPlayersSheet';
 import { CricketSetup } from '@/ui/screens/CricketSetup';
-import { CricketStepSheet } from '@/ui/screens/CricketSheets';
+import { CricketStandingSheet, CricketStepSheet } from '@/ui/screens/CricketSheets';
 import { colour, space } from '@/ui/theme/tokens';
 
 /**
@@ -38,7 +38,12 @@ export function CricketPadScreen({ model }: { readonly model: CricketPadModel })
         body={<CricketBody model={model} keys={keys} />}
         lineUndo={!keys}
       />
-      <PadSheet sheet={sheet} undo={view.lastTap?.undo === true} actions={model.actions} />
+      <PadSheet
+        sheet={sheet}
+        undo={view.lastTap?.undo === true}
+        more={model.more}
+        actions={model.actions}
+      />
     </View>
   );
 }
@@ -66,16 +71,19 @@ function CricketBody({ model, keys }: { readonly model: CricketPadModel; readonl
 
 /**
  * The sheet over the pad: Match details, History, a step, Players, More's typed numbers, or the reconnect question and its
- * confirm. The over-end sheet stands by itself: its way back is Undo of this phone's last ball, when there is one (the
- * owner-tested preview's).
+ * confirm. The over-end sheet stands by itself (`CricketStandingSheet`): its dim takes no tap, its way back is Undo of this
+ * phone's last tap when there is one (guarded: the thumb that lifted off the over's last key lands there), and it carries
+ * Players and More.
  */
 const PadSheet = memo(function PadSheet({
   sheet,
   undo,
+  more,
   actions,
 }: {
   readonly sheet: CricketSheetView | null;
   readonly undo: boolean;
+  readonly more: boolean;
   readonly actions: CricketPadActions;
 }) {
   if (sheet === null) return null;
@@ -88,14 +96,22 @@ const PadSheet = memo(function PadSheet({
       return <AskSheet ask={sheet.ask} onSend={actions.sendTaps} onDiscard={actions.askDiscard} />;
     case 'step':
       return sheet.standing ? (
+        <CricketStandingSheet
+          step={sheet.step}
+          undo={undo}
+          more={more}
+          onChoose={actions.choose}
+          onUndo={actions.undoStanding}
+          onPlayers={actions.openPlayers}
+          onMore={actions.openMore}
+        />
+      ) : (
         <CricketStepSheet
           step={sheet.step}
           onChoose={actions.choose}
-          onCancel={undo ? actions.undo : null}
-          cancelKey="scoring.cricket.bowling.undo"
+          onDim={actions.dismiss}
+          onCancel={actions.dismiss}
         />
-      ) : (
-        <CricketStepSheet step={sheet.step} onChoose={actions.choose} onCancel={actions.dismiss} />
       );
     case 'players':
       return (

@@ -89,6 +89,8 @@ export type SheetTaps = {
   readonly opening: Opening;
   readonly choose: Choose;
   readonly secondTouch: () => boolean;
+  /** Undo of this phone's last tap (`useTaps`): the standing sheet's button reaches it through the sheet-appearing guard. */
+  readonly undo: () => void;
 };
 
 /** What a choice on a step sends: a tap to the match, or the whole pending picks with one more kept. */
@@ -101,8 +103,9 @@ export type SheetSender = {
  * The sheet over the cricket pad. Match details and History open from the top bar; Close, the dim and Back close them.
  * Every close by touch (`dismiss`) arms the bounce window without making a tap, so the second touch of a double tap on
  * Close cannot reach what was under it. A key that opens a sheet is ignored as the second touch of a tap that left the
- * screen (`secondTouch`); a step's choice on the heels of the step appearing is ignored (`useJustShown`). A choice that
- * records is an opening tap: the sheet goes, and the second touch lands on the keys.
+ * screen (`secondTouch`), and a button on a sheet that has just appeared is ignored (`useJustShown`): a step's choice, the
+ * standing sheet's Undo, More and Players. A choice that records is an opening tap: the sheet goes, and the second touch
+ * lands on the keys.
  */
 export function useCricketSheets(
   snapshot: CricketSheetSnapshot | null,
@@ -115,23 +118,63 @@ export function useCricketSheets(
   const justShown = useJustShown(guardedStep(view));
   // No match to put a sheet over, or the question over it: no sheet stays open behind it.
   if (sheet !== null && (snapshot === null || staleByAsk(sheet.kind, snapshot))) setSheet(null);
-  const details = useCallback(() => setSheet(DETAILS), []);
-  const history = useCallback(() => setSheet(HISTORY), []);
-  const { arm, secondTouch } = taps;
+  const actions = useSheetActions({ sheet, snapshot, justShown, taps, send, setSheet });
+  return { open: sheet !== null, cancel, actions, view, justShown };
+}
+
+/** Every button the sheets answer to, each its own guarded callback (below). */
+function useSheetActions(parts: ChooseParts) {
+  const closing = useClosing(parts);
+  const opening = useOpening(parts);
+  const choose = useChoose(parts);
+  const enter = useEnter(parts);
+  const players = usePlayersActions(parts);
+  return useMemo(
+    () => ({ ...closing, ...opening, choose, enter, ...players }),
+    [closing, opening, choose, enter, players],
+  );
+}
+
+/**
+ * The ways off a sheet by touch. Close arms the bounce window and goes (`dismiss`); Discard asks again before it deletes
+ * (`askDiscard`), quiet in the bounce window of the question appearing; the standing sheet's Undo (`undoStanding`) takes
+ * back this phone's last tap, quiet in the window of the sheet appearing, since it stands where the thumb that lifted off
+ * the over's last key lands (Batch 4 review C1).
+ */
+function useClosing({ snapshot, justShown, taps, setSheet }: ChooseParts) {
+  const { arm, undo } = taps;
   const dismiss = useCallback(() => {
     if (justShown()) return;
     arm(CLOSE_TAP);
-    cancel();
-  }, [justShown, arm, cancel]);
-  // Discard asks again before it deletes: quiet in the bounce window of the question appearing.
+    setSheet(null);
+  }, [justShown, arm, setSheet]);
   const askDiscard = useCallback(() => {
     if (snapshot !== null && !justShown()) setSheet(DISCARD);
-  }, [snapshot, justShown]);
+  }, [snapshot, justShown, setSheet]);
+  const undoStanding = useCallback(() => {
+    if (!justShown()) undo();
+  }, [justShown, undo]);
+  return useMemo(
+    () => ({ dismiss, askDiscard, undoStanding }),
+    [dismiss, askDiscard, undoStanding],
+  );
+}
+
+/**
+ * The buttons that open a sheet. Match details and History open from the top bar. The keys' Out, More and extras, and the
+ * standing sheet's More, open a step: ignored as the second touch of a tap that left the screen (`secondTouch`), and in the
+ * window of a sheet that has just appeared (`justShown`), where a double tap's second touch lands on the standing sheet's
+ * More (Batch 4 review I3).
+ */
+function useOpening({ snapshot, justShown, taps, setSheet }: ChooseParts) {
+  const { secondTouch } = taps;
+  const details = useCallback(() => setSheet(DETAILS), [setSheet]);
+  const history = useCallback(() => setSheet(HISTORY), [setSheet]);
   const openFlow = useCallback(
     (flow: CricketFlow) => {
-      if (snapshot !== null && !secondTouch()) setSheet({ kind: 'flow', flow });
+      if (snapshot !== null && !justShown() && !secondTouch()) setSheet({ kind: 'flow', flow });
     },
-    [snapshot, secondTouch],
+    [snapshot, justShown, secondTouch, setSheet],
   );
   const openExtras = useCallback(
     (extra: SheetExtra) => openFlow({ kind: 'extras', extra }),
@@ -139,25 +182,10 @@ export function useCricketSheets(
   );
   const openOut = useCallback(() => openFlow(outFlow()), [openFlow]);
   const openMore = useCallback(() => openFlow(moreFlow()), [openFlow]);
-  const choose = useChoose({ sheet, snapshot, justShown, taps, send, setSheet });
-  const enter = useEnter({ sheet, snapshot, justShown, taps, send, setSheet });
-  const players = usePlayersActions({ snapshot, justShown, taps, send, setSheet });
-  const actions = useMemo(
-    () => ({
-      details,
-      history,
-      dismiss,
-      askDiscard,
-      openExtras,
-      openOut,
-      openMore,
-      choose,
-      enter,
-      ...players,
-    }),
-    [details, history, dismiss, askDiscard, openExtras, openOut, openMore, choose, enter, players],
+  return useMemo(
+    () => ({ details, history, openExtras, openOut, openMore }),
+    [details, history, openExtras, openOut, openMore],
   );
-  return { open: sheet !== null, cancel, actions, view, justShown };
 }
 
 type ChooseParts = {
@@ -170,8 +198,8 @@ type ChooseParts = {
 };
 
 /**
- * Players (S2-4 spec §4.8a; rulings 77 and 78): a tap on the board opens it on Batting (ignored as the second touch of a
- * tap that left the screen). ▲▼ on one yet to bat, and between overs a tap on one who may bowl the next, keep a pick,
+ * Players (S2-4 spec §4.8a; rulings 77 and 78): a tap on the board, or the standing sheet's button, opens it on Batting
+ * (ignored as the second touch of a tap that left the screen, and in the window of a sheet that has just appeared). ▲▼ on one yet to bat, and between overs a tap on one who may bowl the next, keep a pick,
  * recording nothing; each is one choice in the bounce memory (▲▼ keyed by row and direction: the second touch of a
  * double tap lands on the same row's button, now another batter's), and nothing on the heels of the sheet appearing.
  */
@@ -184,8 +212,8 @@ function usePlayersActions({
 }: Omit<ChooseParts, 'sheet'>) {
   const { secondTouch, choose } = taps;
   const openPlayers = useCallback(() => {
-    if (snapshot !== null && !secondTouch()) setSheet(PLAYERS);
-  }, [snapshot, secondTouch, setSheet]);
+    if (snapshot !== null && !justShown() && !secondTouch()) setSheet(PLAYERS);
+  }, [snapshot, justShown, secondTouch, setSheet]);
   const playersTab = useCallback(
     (tab: PlayersTab) => setSheet({ kind: 'players', tab }),
     [setSheet],

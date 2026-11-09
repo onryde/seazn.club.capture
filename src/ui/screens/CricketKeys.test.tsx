@@ -360,6 +360,20 @@ describe('the wicket steps (plan Task 12)', () => {
   });
 });
 
+/** The first over finished from the console: three dots after `LIVE_EVENTS`' three balls, none of this phone's. */
+const consoleDot = (ballInOver: number) => ({
+  type: 'cricket.ball',
+  payload: {
+    over: 0,
+    ballInOver,
+    striker: playerOf(HOME_ENTRANT, 2),
+    nonStriker: playerOf(HOME_ENTRANT, 1),
+    bowler: playerOf(AWAY_ENTRANT, 11),
+    runs: { bat: 0 },
+  },
+});
+const OVER_BY_CONSOLE = [...LIVE_EVENTS, consoleDot(4), consoleDot(5), consoleDot(6)];
+
 describe('the next bowler, a mid-over change, a strike swap (plan Task 13)', () => {
   const idOf = (name: string) =>
     [...LIVE.sides.home.members, ...LIVE.sides.away.members].find((one) => one.fullName === name)
@@ -405,13 +419,153 @@ describe('the next bowler, a mid-over change, a strike swap (plan Task 13)', () 
     });
   });
 
-  it('Undo last ball on the sheet takes the over’s last ball back, and the sheet goes', async () => {
+  it('Undo on the sheet takes the over’s last ball back, and the sheet goes', async () => {
     const app = await scanned();
     await overOut(app);
-    await press(app, en['scoring.cricket.bowling.undo']);
+    await press(app, en['scoring.pad.undo']);
     expect(sheet()).toBeNull();
     expect((await ledger(app)).at(-1)?.type).toBe('core.void');
     expect(screen.getByTestId('board-overs').textContent).toContain('0.5');
+  });
+
+  // Batch 4 review C1 (the controller's ruling): the standing sheet's dim covers the board, the top bar and the keys, so a
+  // touch on it, a double tap's second touch or a reach for Home, must not take the over's last ball back.
+  it('a tap on the standing sheet’s dim records nothing, and the sheet stays', async () => {
+    const app = await scanned();
+    await overOut(app);
+    const before = await count(app);
+    aSecondOn(app);
+    act(() => fireEvent.click(screen.getByTestId('step-dim')));
+    await flush(400);
+    expect(await count(app)).toBe(before);
+    expect((await ledger(app)).at(-1)?.type).toBe('cricket.ball');
+    expect(heading()?.toUpperCase()).toBe(over2);
+  });
+
+  it('a double tap on the over’s last run key, its second touch on the dim, records one ball and no void', async () => {
+    const app = await scanned();
+    await press(app, en['scoring.cricket.ball.dot']);
+    await press(app, en['scoring.cricket.ball.dot']);
+    const before = await count(app);
+    aSecondOn(app);
+    act(() => fireEvent.click(key(en['scoring.cricket.ball.dot'])));
+    await flush(50);
+    expect(heading()?.toUpperCase()).toBe(over2);
+    act(() => fireEvent.click(screen.getByTestId('step-dim')));
+    await flush(400);
+    expect((await ledger(app)).slice(before).map((one) => one.type)).toEqual(['cricket.ball']);
+    expect(heading()?.toUpperCase()).toBe(over2);
+  });
+
+  // The sheet-appearing window (`useJustShown`, as every other sheet's close): Undo is a button under the thumb that just
+  // lifted off the run key, so it takes nothing for 250 ms of the sheet showing, and works after.
+  it('Undo on the standing sheet in the moment the sheet appears records nothing; a second on, it takes the ball back', async () => {
+    const app = await scanned();
+    await press(app, en['scoring.cricket.ball.dot']);
+    await press(app, en['scoring.cricket.ball.dot']);
+    const before = await count(app);
+    aSecondOn(app);
+    act(() => fireEvent.click(key(en['scoring.cricket.ball.dot'])));
+    await flush(50);
+    act(() => fireEvent.click(key(en['scoring.pad.undo'])));
+    await flush(400);
+    expect((await ledger(app)).slice(before).map((one) => one.type)).toEqual(['cricket.ball']);
+    await press(app, en['scoring.pad.undo']);
+    expect((await ledger(app)).slice(before).map((one) => one.type)).toEqual([
+      'cricket.ball',
+      'core.void',
+    ]);
+    expect(sheet()).toBeNull();
+  });
+
+  // Back is the only way off the screen at an over's end with the dim and the top bar covered; it leaves to Home, writes
+  // nothing, and the sheet stands again on return, since it is drawn from the display (the controller's ruling).
+  it('Back on the standing sheet leaves to Home and records nothing; on return the sheet stands again', async () => {
+    const app = await scanned();
+    await overOut(app);
+    const before = await count(app);
+    let handled = false;
+    act(() => {
+      handled = app.back.press();
+    });
+    await flush(400);
+    expect(handled).toBe(true);
+    expect(app.nav.current()).toBe('home');
+    expect(await count(app)).toBe(before);
+    aSecondOn(app);
+    act(() => app.ports.navigation.go('scoring'));
+    await flush(400);
+    expect(app.nav.current()).toBe('scoring');
+    expect(heading()?.toUpperCase()).toBe(over2);
+    expect(await count(app)).toBe(before);
+  });
+
+  // Batch 4 review I3: an over's end is the usual moment to declare, stop for rain, close for time or retire a batter, and
+  // the sheet disables every key under it; More and Players are on the sheet, with no bowler picked.
+  it('More on the standing sheet opens More without a bowler picked; Cancel brings the sheet back', async () => {
+    const app = await scanned();
+    await overOut(app);
+    const before = await count(app);
+    await press(app, en['scoring.cricket.key.more']);
+    expect(heading()).toBe(en['scoring.cricket.key.more']);
+    const rows = within(screen.getByTestId('step-sheet'))
+      .getAllByRole('button')
+      .map((one) => one.textContent);
+    expect(rows).toContain(en['scoring.cricket.more.retire']);
+    expect(rows).not.toContain(en['scoring.cricket.more.otherRuns']);
+    await press(app, en['scoring.sheet.cancel']);
+    expect(heading()?.toUpperCase()).toBe(over2);
+    expect(await count(app)).toBe(before);
+  });
+
+  it('Declare at an over’s end is reachable with no bowler picked: More, Declare, its confirm', async () => {
+    const twoInnings = liveCricketSeed({
+      cfg: {
+        inningsPerSide: 2,
+        ballsPerInnings: null,
+        followOn: { enabled: true, lead: 200 },
+        minOversForResult: 0,
+      },
+      events: OVER_BY_CONSOLE,
+    });
+    const app = await scanned(twoInnings);
+    expect(heading()?.toUpperCase()).toBe(over2);
+    await press(app, en['scoring.cricket.key.more']);
+    await press(app, en['scoring.cricket.more.declare']);
+    expect(heading()).toBe(en['scoring.cricket.confirm.declare.title']);
+    await press(app, en['scoring.cricket.confirm.declare.do']);
+    expect((await ledger(app, twoInnings)).at(-1)?.type).toBe('cricket.innings.declare');
+  });
+
+  it('Players on the standing sheet opens Players; closing it brings the sheet back, nothing recorded', async () => {
+    const app = await scanned();
+    await overOut(app);
+    const before = await count(app);
+    await press(app, en['scoring.cricket.players.title']);
+    expect(screen.getByTestId('players-sheet')).toBeTruthy();
+    expect(sheet()).toBeNull();
+    await press(app, en['panel.close']);
+    expect(screen.queryByTestId('players-sheet')).toBeNull();
+    expect(heading()?.toUpperCase()).toBe(over2);
+    expect(await count(app)).toBe(before);
+  });
+
+  // The thumb that lifted off the over's last run key lands where the sheet's buttons now are: More and Players take
+  // nothing for the 250 ms of the sheet appearing (`useJustShown`), as every other sheet's buttons.
+  it('More and Players in the moment the standing sheet appears open nothing; a second on they do', async () => {
+    const app = await scanned();
+    await press(app, en['scoring.cricket.ball.dot']);
+    await press(app, en['scoring.cricket.ball.dot']);
+    aSecondOn(app);
+    act(() => fireEvent.click(key(en['scoring.cricket.ball.dot'])));
+    await flush(50);
+    act(() => fireEvent.click(key(en['scoring.cricket.key.more'])));
+    act(() => fireEvent.click(key(en['scoring.cricket.players.title'])));
+    await flush(400);
+    expect(heading()?.toUpperCase()).toBe(over2);
+    expect(screen.queryByTestId('players-sheet')).toBeNull();
+    await press(app, en['scoring.cricket.key.more']);
+    expect(heading()).toBe(en['scoring.cricket.key.more']);
   });
 
   it('More, Change bowler (injury), a bowler, why: cricket.bowler.change; both are greyed for the next over', async () => {
@@ -439,23 +593,12 @@ describe('the next bowler, a mid-over change, a strike swap (plan Task 13)', () 
   });
 
   it('an over the console finished has no way back on the sheet: nothing of this phone’s to undo', async () => {
-    const dot = (ballInOver: number) => ({
-      type: 'cricket.ball',
-      payload: {
-        over: 0,
-        ballInOver,
-        striker: playerOf(HOME_ENTRANT, 2),
-        nonStriker: playerOf(HOME_ENTRANT, 1),
-        bowler: playerOf(AWAY_ENTRANT, 11),
-        runs: { bat: 0 },
-      },
-    });
-    await scanned(liveCricketSeed({ events: [...LIVE_EVENTS, dot(4), dot(5), dot(6)] }));
+    await scanned(liveCricketSeed({ events: OVER_BY_CONSOLE }));
     expect(heading()?.toUpperCase()).toBe(over2);
     const words = within(screen.getByTestId('step-sheet'))
       .getAllByRole('button')
       .map((one) => one.textContent);
-    expect(words).not.toContain(en['scoring.cricket.bowling.undo']);
+    expect(words).not.toContain(en['scoring.pad.undo']);
     expect(words).not.toContain(en['scoring.sheet.cancel']);
   });
 

@@ -9,7 +9,7 @@ import type {
 import { useT } from '@/hooks/useLanguage';
 import { usePadText } from '@/hooks/usePadText';
 import { GhostButton } from '@/ui/components/GhostButton';
-import { padSheet } from '@/ui/components/padSheet';
+import { SheetFrame } from '@/ui/components/SheetFrame';
 import { sheetRow, sheetRowLabel, sheetRowStyles } from '@/ui/components/sheetRow';
 import { StepRow, type StepOption } from '@/ui/components/StepSheet';
 import { Text } from '@/ui/components/Text';
@@ -42,28 +42,20 @@ export const CricketPlayersSheet = memo(function CricketPlayersSheet({
 }: Props) {
   const { t } = useT();
   return (
-    <View style={padSheet.overlay}>
-      <Pressable aria-hidden onPress={onClose} style={padSheet.dim} />
-      <View
-        testID="players-sheet"
-        accessibilityViewIsModal
-        aria-modal
-        style={[padSheet.sheet, styles.sheet]}
-      >
-        <Text variant="title" accessibilityRole="header">
-          {t('scoring.cricket.players.title')}
-        </Text>
-        <PlayersTabs tab={tab} onTab={onTab} />
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-          {tab === 'batting' ? (
-            <BattingList rows={players.batting} onMove={onMove} />
-          ) : (
-            <BowlingList players={players} onBowler={onBowler} />
-          )}
-        </ScrollView>
-        <GhostButton label={t('panel.close')} onPress={onClose} />
-      </View>
-    </View>
+    <SheetFrame testID="players-sheet" dimTestID="players-dim" onDim={onClose} style={styles.sheet}>
+      <Text variant="title" accessibilityRole="header">
+        {t('scoring.cricket.players.title')}
+      </Text>
+      <PlayersTabs tab={tab} onTab={onTab} />
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+        {tab === 'batting' ? (
+          <BattingList rows={players.batting} onMove={onMove} />
+        ) : (
+          <BowlingList players={players} onBowler={onBowler} />
+        )}
+      </ScrollView>
+      <GhostButton label={t('panel.close')} onPress={onClose} />
+    </SheetFrame>
   );
 });
 

@@ -731,7 +731,6 @@
   "scoring.cricket.bowling.outOfOvers": "Out of overs ({max})",
   "scoring.cricket.bowling.none": "Nobody can bowl this over. Ask the organiser.",
   "scoring.cricket.bowling.totals": "Enter over totals",
-  "scoring.cricket.bowling.undo": "Undo last ball",
   "scoring.cricket.change.title": "Who finishes the over?",
   "scoring.cricket.change.why": "Why the change?",
   "scoring.cricket.change.reason.incapacitated": "Injured or ill",

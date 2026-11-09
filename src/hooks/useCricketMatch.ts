@@ -68,6 +68,8 @@ export type CricketPadActions = PadActions &
     readonly openMore: () => void;
     /** A choice on the step on screen (`useCricketSheets`). */
     readonly choose: (id: string) => void;
+    /** The over-end sheet's Undo: the pad's Undo (this phone's last tap), quiet in the moment the sheet appears. */
+    readonly undoStanding: () => void;
     /** Record on the sheet of typed numbers (More's revision and rain break, Task 15): the fields as typed. */
     readonly enter: (values: readonly string[]) => void;
     /** Players (Task 14): a tap on the board opens it on Batting; its tabs. */
