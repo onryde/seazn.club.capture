@@ -23,7 +23,9 @@ import {
   inningsOf,
   ledgerOf,
   player,
+  retire,
   summary,
+  times,
   withCfg,
   type Spec,
 } from '../../../test/cricketLedger';
@@ -48,6 +50,7 @@ function boardOf(specs: readonly Spec[], bootstrap: Bootstrap = MATCH) {
 
 const en = createTranslator('en');
 const H = (n: number) => player('H', n);
+const A = (n: number) => player('A', n);
 
 describe('cricketBoard', () => {
   it('no score before the toss, and no crease or bowler', () => {
@@ -174,5 +177,96 @@ describe('cricketBoard', () => {
     expect(
       boardOf([...OPENING, ...inningsOf('H', AWAY_BOWLERS, [NO_BALL, ONE])]).status,
     ).toBeNull();
+  });
+});
+
+// T19 D6 (the controller's ruling, 2026-11-09): once a match is decided the board keeps the bowler's line and shows the
+// batters left not out, `name runs (balls)`, with no striker mark: no ball is due. Home made 8 off two overs, so the
+// away side chases 9. Every name, run and ball below is worked out by hand from the script.
+describe('cricketBoard at a result (T19 D6)', () => {
+  const chased = (script: Parameters<typeof inningsOf>[2]) => [
+    ...FIRST_INNINGS_8,
+    ...inningsOf('A', HOME_BOWLERS, script),
+  ];
+
+  it('a chase won by 10 wickets shows both openers, runs (balls), neither on strike, beside the bowler', () => {
+    // A-p1 hits a four then a single (5 off 2) and crosses; A-p2 hits a four (4 off 1): 9 runs, won by 10 wickets.
+    const board = boardOf(chased([FOUR, ONE, FOUR]));
+    expect(board.crease).toStrictEqual([
+      { id: A(1), name: 'Away Player 1', runs: 5, balls: 2, striker: false },
+      { id: A(2), name: 'Away Player 2', runs: 4, balls: 1, striker: false },
+    ]);
+    expect(board.bowler).toStrictEqual({
+      id: H(11),
+      name: 'Home Player 11',
+      figures: '0.3-0-9-0',
+    });
+  });
+
+  it('a win by fewer wickets shows the pair at the crease when it ended, in the order they came in', () => {
+    // A-p1 is bowled first ball; A-p3 and A-p2 run a single each, then A-p3 hits two fours: 1 + 1 + 4 + 4 = 10, 9
+    // wickets.
+    const board = boardOf(chased([OUT, ONE, ONE, FOUR, FOUR]));
+    expect(board.crease).toStrictEqual([
+      { id: A(2), name: 'Away Player 2', runs: 1, balls: 1, striker: false },
+      { id: A(3), name: 'Away Player 3', runs: 9, balls: 3, striker: false },
+    ]);
+  });
+
+  it('an all-out result shows the one batter left not out, alone', () => {
+    // Away: a single, five wickets, a single after the over, five more wickets. A-p1 survives on 2 off 2; all out for
+    // 2.
+    const board = boardOf(chased([ONE, ...times(5, OUT), ONE, ...times(5, OUT)]));
+    expect(board.crease).toStrictEqual([
+      { id: A(1), name: 'Away Player 1', runs: 2, balls: 2, striker: false },
+      null,
+    ]);
+  });
+
+  it('a batter who retired hurt and did not return is not at the crease at the result', () => {
+    // A-p1 takes a single (1 off 1) and retires hurt for A-p3; then A-p2 hits two fours (8 off 2), 9 in all.
+    const board = boardOf([
+      ...FIRST_INNINGS_8,
+      ...inningsOf('A', HOME_BOWLERS, [ONE]),
+      retire(A(1), 'hurt', A(3)),
+      ball({
+        over: 0,
+        ballInOver: 2,
+        striker: A(2),
+        nonStriker: A(3),
+        bowler: H(11),
+        bat: 4,
+        boundary: 4,
+      }),
+      ball({
+        over: 0,
+        ballInOver: 3,
+        striker: A(2),
+        nonStriker: A(3),
+        bowler: H(11),
+        bat: 4,
+        boundary: 4,
+      }),
+    ]);
+    expect(board.crease).toStrictEqual([
+      { id: A(2), name: 'Away Player 2', runs: 8, balls: 2, striker: false },
+      { id: A(3), name: 'Away Player 3', runs: 0, balls: 0, striker: false },
+    ]);
+  });
+
+  it('over totals have no players to show at the result', () => {
+    const board = boardOf([...OPENING, summary(8, 0, 12), summary(9, 0, 10)]);
+    expect(board.score === null ? null : [board.score.runs, board.score.wickets]).toStrictEqual([
+      9, 0,
+    ]);
+    expect(board.crease).toBeNull();
+  });
+
+  it('a match still being played keeps the striker first and marked', () => {
+    const board = boardOf(chased([FOUR, ONE]));
+    expect(board.crease).toStrictEqual([
+      { id: A(2), name: 'Away Player 2', runs: 0, balls: 0, striker: true },
+      { id: A(1), name: 'Away Player 1', runs: 5, balls: 2, striker: false },
+    ]);
   });
 });

@@ -81,6 +81,39 @@ describe('CricketBoard', () => {
     expect(screen.queryAllByTestId('over-chip')).toHaveLength(0);
   });
 
+  // T19 D6: at a result the crease holds the batters left not out, none on strike; an all-out side leaves one, so the
+  // second row is the same empty row as before a pair is picked.
+  it('a result board names both not-out batters with no striker mark, and the bowler beside them', () => {
+    const view: CricketBoardView = {
+      ...BOARD,
+      crease: [
+        { id: 'A-p1', name: 'Away Player 1', runs: 5, balls: 2, striker: false },
+        { id: 'A-p2', name: 'Away Player 2', runs: 4, balls: 1, striker: false },
+      ],
+    };
+    renderWithPorts(<CricketBoard view={view} />);
+    const first = screen.getByTestId('board-batter-first');
+    expect(within(first).getByText('Away Player 1')).toBeTruthy();
+    expect(within(first).getByText('5 (2)')).toBeTruthy();
+    const second = screen.getByTestId('board-batter-second');
+    expect(within(second).getByText('Away Player 2')).toBeTruthy();
+    expect(within(second).getByText('4 (1)')).toBeTruthy();
+    expect(screen.queryByTestId('on-strike')).toBeNull();
+    expect(within(screen.getByTestId('board-bowler')).getByText('Away Player 11')).toBeTruthy();
+  });
+
+  it('a lone not-out batter fills the first row and leaves the second empty', () => {
+    const view: CricketBoardView = {
+      ...BOARD,
+      crease: [{ id: 'A-p1', name: 'Away Player 1', runs: 2, balls: 2, striker: false }, null],
+    };
+    renderWithPorts(<CricketBoard view={view} />);
+    expect(within(screen.getByTestId('board-batter-first')).getByText('2 (2)')).toBeTruthy();
+    expect(screen.getByTestId('board-batter-second').textContent).toBe('');
+    expect(screen.queryByTestId('on-strike')).toBeNull();
+    expect(heightOf('board-batter-second')).toBe(`${layout.creaseRow}px`);
+  });
+
   it('this over’s deliveries in order, a free hit and the chase', () => {
     renderWithPorts(
       <CricketBoard view={{ ...CHASING, over: { number: 1, chips: EIGHT_CHIPS } }} />,

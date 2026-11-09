@@ -85,7 +85,7 @@ const Crease = memo(function Crease({
   bowler,
   onOpenPlayers,
 }: {
-  readonly crease: readonly [CreaseLine, CreaseLine] | null;
+  readonly crease: CricketBoardView['crease'];
   readonly bowler: CricketBowler | null;
   readonly onOpenPlayers?: () => void;
 }) {

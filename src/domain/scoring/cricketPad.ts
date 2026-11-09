@@ -174,27 +174,22 @@ export type BoardScore = {
 /**
  * The cricket board (S2-4 spec §5 rows 2 to 4), read only: the score of the innings now, the crease (striker first,
  * marked), the bowler with O-M-R-W, this over's deliveries, and a free hit when one is due. No score before an innings
- * is due; no crease or bowler until they are picked. Every fact is the display's, which is the engine's fold.
+ * is due; no crease or bowler until they are picked. Once the match is decided the crease holds the batters left not
+ * out, none marked, and a lone one when the side was all out (T19 D6). Every fact is the display's, which is the
+ * engine's fold.
  */
 export type CricketBoardView = {
   readonly score: BoardScore | null;
-  readonly crease: readonly [CreaseLine, CreaseLine] | null;
+  readonly crease: readonly [CreaseLine, CreaseLine | null] | null;
   readonly bowler: CricketBowler | null;
   readonly over: { readonly number: number; readonly chips: readonly OverChip[] };
   readonly status: PadText<CricketPadKey> | null;
 };
 
 export function cricketBoard(display: CricketDisplay): CricketBoardView {
-  const { crease } = display;
   return {
     score: display.innings === null ? null : scoreOfInnings(display, display.innings),
-    crease:
-      crease === null
-        ? null
-        : [
-            { ...crease.striker, striker: true },
-            { ...crease.nonStriker, striker: false },
-          ],
+    crease: display.stage === 'decided' ? notOutAtResult(display) : creaseOf(display),
     bowler: display.bowler,
     over: display.over,
     status: display.freeHit ? { key: 'scoring.cricket.board.freeHit' } : null,
@@ -203,6 +198,39 @@ export function cricketBoard(display: CricketDisplay): CricketBoardView {
 
 function scoreOfInnings(display: CricketDisplay, innings: CricketInnings): BoardScore {
   const words = wordsOf(display);
+/** The pair that bats the next ball, the striker first and marked. */
+function creaseOf({ crease }: CricketDisplay): CricketBoardView['crease'] {
+  if (crease === null) return null;
+  return [
+    { ...crease.striker, striker: true },
+    { ...crease.nonStriker, striker: false },
+  ];
+}
+
+/**
+ * The batters left at the crease when the match was decided (T19 D6; the fold's crease is who bats the NEXT ball, so it
+ * is empty by then): the engine's card of the last innings names them not out, in the order they came in, and the
+ * fold's pair is who was at the crease when it closed, which leaves out a batter who retired hurt and did not return.
+ * None is marked: no ball is due. An all-out side leaves one, an innings in over totals none.
+ */
+function notOutAtResult(display: CricketDisplay): CricketBoardView['crease'] {
+  const card = display.scorecard.innings.at(-1);
+  const fine = turnOf(display.state)?.innings?.fine;
+  if (card === undefined || fine === null || fine === undefined) return null;
+  const names = wordsOf(display).names;
+  const atCrease = [fine.striker, fine.nonStriker];
+  const [first, second] = card.batting
+    .filter(({ dismissal, person }) => dismissal.kind === 'not_out' && atCrease.includes(person))
+    .map(({ person, runs, balls }): CreaseLine => ({
+      id: person,
+      name: names.get(person) ?? person,
+      runs,
+      balls,
+      striker: false,
+    }));
+  return first === undefined ? null : [first, second ?? null];
+}
+
   return {
     runs: innings.runs,
     wickets: innings.wickets,

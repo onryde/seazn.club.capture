@@ -98,7 +98,9 @@ describe('useCricketMatch', () => {
     const { board } = pad(view);
     const score = board.score;
     expect(score === null ? null : [score.runs, score.wickets, score.overs]).toEqual([5, 0, '0.3']);
-    expect(board.crease?.map((line) => [line.name, line.runs, line.balls, line.striker])).toEqual([
+    expect(
+      board.crease?.map((line) => [line?.name, line?.runs, line?.balls, line?.striker]),
+    ).toEqual([
       ['B. Okafor', 4, 2, true],
       ['A. Sharma', 1, 1, false],
     ]);
@@ -198,7 +200,7 @@ describe('useCricketMatch', () => {
     });
     act(() => pad(view).actions.setPicks(picks));
     await flush();
-    expect(pad(view).board.crease?.map((line) => [line.name, line.striker])).toEqual([
+    expect(pad(view).board.crease?.map((line) => [line?.name, line?.striker])).toEqual([
       ['O. Kowalski', true],
       ['M. Chen', false],
     ]);
