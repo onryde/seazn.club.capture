@@ -691,6 +691,30 @@ label counts ("1 more"): numerals, never the gendered _una_ / _un_, and fr keeps
 | {field}: 1 fewer / {field}: 1 more          | {field}: 1 menos / {field}: 1 más                  | {field} : 1 de moins / {field} : 1 de plus     | {field}: 1 minder / {field}: 1 meer                | `totals.less`, `.more`: a stepper's spoken label, never drawn.                  |
 | Record over                                 | Registrar over                                     | Enregistrer l'over                             | Over vastleggen                                    | `totals.record`: the plate; sends the innings' running totals.                  |
 
+### Cricket's scorecard and the shortened toss (S2-4 Task 18, 2026-11-09)
+
+The scorecard under Match details (`scoring.cricket.card.*`; spec §4.9). Its section names are Players' tabs
+(`players.batting`, `players.bowling`); its innings titles are History's (`history.innings`, `history.superOver`); a
+dismissal's kind is `out.kind.*`, which stays English in all four, as in the web's scorecards. The extras' letters (_w_,
+_nb_, _b_, _lb_, _pen_) and _ov_ are the scorebook's own in all four, and so is the _b_ before the bowler. _Declared_ and
+the did-not-bat line follow the score-sheet convention in each language. Task 18 also shortened the toss sentence in fr
+and nl (`last.toss.bat` / `.bowl`: fr "{name} gagne le tirage : frappe", nl "{name} won de toss: batten"), because a
+thirty-character club's name took three lines in a History row and four in the last-tap line at 320 dp
+(`cricketFit.test.ts`); en and es are unchanged and still run to a third line in a History row at 320. **es, fr and nl
+are unreviewed drafts, for the owner's review**, as the rest of the cricket words.
+
+| English                                | Español                                 | Français                              | Nederlands                                 | Notes                                                                                                        |
+| -------------------------------------- | --------------------------------------- | ------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| {runs}/{wickets} · {overs} ov          | {runs}/{wickets} · {overs} ov           | {runs}/{wickets} · {overs} ov         | {runs}/{wickets} · {overs} ov              | `card.total`: an innings' total under its title.                                                             |
+| {runs}/{wickets} declared · {overs} ov | {runs}/{wickets} declarado · {overs} ov | {runs}/{wickets} déclaré · {overs} ov | {runs}/{wickets} gedeclareerd · {overs} ov | `card.declared`: an innings the batting side declared.                                                       |
+| {runs} ({balls})                       | {runs} ({balls})                        | {runs} ({balls})                      | {runs} ({balls})                           | `card.score`: a batter's runs and the balls faced.                                                           |
+| not out / out                          | no eliminado / eliminado                | non éliminé / éliminé                 | niet uit / uit                             | `card.notOut`, `card.out` (a dismissal the ledger gives no kind for).                                        |
+| {how} · b {bowler}                     | {how} · b {bowler}                      | {how} · b {bowler}                    | {how} · b {bowler}                         | `card.bowledBy`: the kind and fielders, then the bowler credited.                                            |
+| Did not bat: {names}                   | No batearon: {names}                    | N'ont pas frappé : {names}            | Niet gebat: {names}                        | `card.didNotBat`: the starters yet to bat when the innings closed; fr has a no-break space before the colon. |
+| Extras {total} (w, nb, b, lb)          | Extras {total} (w, nb, b, lb)           | Extras {total} (w, nb, b, lb)         | Extra's {total} (w, nb, b, lb)             | `card.extras`; `card.extrasPen` adds ", pen {penalties}" when a penalty was awarded.                         |
+| {wicket}-{runs} ({batter}, {over} ov)  | {wicket}-{runs} ({batter}, {over} ov)   | {wicket}-{runs} ({batter}, {over} ov) | {wicket}-{runs} ({batter}, {over} ov)      | `card.fall`: one wicket; they join with ", " in one line.                                                    |
+| Fall of wickets                        | Caída de wickets                        | Chute des wickets                     | Gevallen wickets                           | `card.fallTitle`: the section's heading.                                                                     |
+
 ## App settings (2026-11-02)
 
 The app's own Settings, from the gear in Home's top-right corner (owner, 2026-11-02: "we should have common setting in a top

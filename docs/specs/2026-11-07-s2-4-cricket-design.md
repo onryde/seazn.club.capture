@@ -355,6 +355,10 @@ ellipsis, the numbers never do.
     11. `usePadTaps` gains `choose`, a quiet `once`: a choice the phone keeps (a pending pick: the batting order's ▲▼,
         the next bowler) counts once for a double tap, and leaves the last-tap line as it was, so a standing "Couldn't
         save your choice" stays until a save lands (AGENTS §6). Off by default for every other sport.
+    12. `PadStripItem.lines` (Task 18): the lines the strip gives one item, default `layout.padStripLines` (one). Cricket's
+        result asks for two, so a long club's name wraps in "Bishops Stortford Cricket Club won by 4 wickets" instead of being
+        cut (Task 16 concern 2). Match details' `sport` block (item 8) is a `ReactNode` that defaults to none, and draws no
+        wrapper when it is none.
 - **The fake's cfg** must be a full `CricketCfg`: a short format is refused without `minOversForResult` (the
   preview's finding). The real cfg comes from the bootstrap and is already whole.
 - **Rules version and epoch**: from the bootstrap and the rules read; `foldEpochOf('cricket')` (3 from the engine major of §7.3; 2 in

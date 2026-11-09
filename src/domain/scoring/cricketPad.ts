@@ -68,6 +68,9 @@ export function wordsOf(display: CricketDisplay): CricketWords {
   };
 }
 
+/** The result may take two lines in the strip: a club's whole name makes it longer than the kit's one (Task 18). */
+const RESULT_LINES = 2;
+
 /**
  * The pad for a cricket match: the sides' halves, the rules for Match details, the result in words in the strip once one
  * stands, the last tap with the one Undo, and a recorded result's card. `sync` is the transport's word, not the match's.
@@ -85,6 +88,7 @@ export function cricketPad(
       {
         slot: 'note',
         text: display.result === null ? null : cricketResultWords(display.result, display.sides),
+        lines: RESULT_LINES,
       },
     ],
     lastTap: lastTapOf(display),

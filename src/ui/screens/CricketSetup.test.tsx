@@ -297,6 +297,26 @@ describe('CricketSetup at an innings break', () => {
     expect(screen.getByRole('button', { name: en['scoring.cricket.setup.back'] })).toBeTruthy();
   });
 
+  // The controller's carried item (Task 16 concern 3): Back, More and Start innings in one wrapping row broke at 320 dp
+  // (Start innings is 200 dp at least). With two ghost buttons they share a row above it, so the break is not left to the
+  // phone's width; with one (Back before the match) it still sits beside Start. `cricketFit.test.ts` measures both rows.
+  it('Back and More share a row above Start innings, which has its own', () => {
+    renderSetup(atBreak({ step: 'ready', ready: true, view: PICKED }), true);
+    const back = screen.getByRole('button', { name: en['scoring.cricket.setup.back'] });
+    const more = moreButton();
+    if (more === null) throw new Error('expected More');
+    // Each ghost button is half of a row (a cell of its own); the row holds both and not Start innings.
+    const row = back.parentElement?.parentElement;
+    expect(row?.contains(more)).toBe(true);
+    expect(row?.contains(startInnings())).toBe(false);
+  });
+
+  it('Back alone stays beside Start, in one row', () => {
+    renderSetup(atBreak({ step: 'ready', ready: true, view: PICKED }), false);
+    const back = screen.getByRole('button', { name: en['scoring.cricket.setup.back'] });
+    expect(back.parentElement?.contains(startInnings())).toBe(true);
+  });
+
   it('no More when it offers nothing (a super over), and none before the match’s first ball', () => {
     renderSetup(atBreak({ step: 'openers' }), false);
     expect(moreButton()).toBeNull();

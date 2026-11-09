@@ -18,6 +18,7 @@ import {
   type CricketPlayersView,
   type PlayersTab,
 } from '@/domain/scoring/cricketPlayers';
+import { scorecardView, type ScorecardInnings } from '@/domain/scoring/cricketScorecard';
 import {
   totalsTap,
   totalsView,
@@ -60,7 +61,12 @@ export type CricketSheetSnapshot = AskFacts & {
  * over-end sheet) was opened by no key and has no Cancel: it goes when its choice is made or the last ball is undone.
  */
 export type CricketSheetView =
-  | { readonly kind: 'details'; readonly details: PadMatchDetails<CricketPadKey> }
+  /** The match card's rules, then the scorecard of every innings played (`scorecardView`; none before a ball). */
+  | {
+      readonly kind: 'details';
+      readonly details: PadMatchDetails<CricketPadKey>;
+      readonly scorecard: readonly ScorecardInnings[];
+    }
   | { readonly kind: 'history'; readonly groups: readonly PadHistoryGroup<CricketPadKey>[] }
   | { readonly kind: 'step'; readonly step: CricketStep; readonly standing: boolean }
   | { readonly kind: 'players'; readonly tab: PlayersTab; readonly players: CricketPlayersView }
@@ -373,7 +379,11 @@ function sheetView(sheet: Sheet, snapshot: CricketSheetSnapshot | null): Cricket
   }
   switch (sheet.kind) {
     case 'details':
-      return { kind: 'details', details: snapshot.details };
+      return {
+        kind: 'details',
+        details: snapshot.details,
+        scorecard: scorecardView(snapshot.display),
+      };
     case 'history':
       return { kind: 'history', groups: snapshot.history };
     case 'discard':

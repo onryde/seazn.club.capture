@@ -152,7 +152,7 @@ describe('the other taps', () => {
       'Away CC won the toss and chose to bowl',
     );
     expect(say('nl', { kind: 'toss', wonBy: 'first', elected: 'bat' })).toBe(
-      'Home CC won de toss en koos te batten',
+      'Home CC won de toss: batten',
     );
     expect(say('en', { kind: 'start' })).toBe('Match started');
     expect(say('en', { kind: 'summary', runs: 14, wickets: 1, legalBalls: 12 })).toBe(

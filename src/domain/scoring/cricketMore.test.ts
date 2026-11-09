@@ -2,7 +2,13 @@ import { cricket, type CricketState } from '@seazn/engine/sports/cricket';
 import { describe, expect, it } from 'vitest';
 import { ballEventOf } from '@/domain/scoring/cricketEvents';
 import { entryStep, entryTap } from '@/domain/scoring/cricketEntry';
-import { flowChoice, flowStep, moreFlow, type CricketFlow } from '@/domain/scoring/cricketFlow';
+import {
+  flowChoice,
+  flowStep,
+  moreFlow,
+  standingFlow,
+  type CricketFlow,
+} from '@/domain/scoring/cricketFlow';
 import { foldCricket } from '@/domain/scoring/cricketFold';
 import { cricketMoreItems, moreStep } from '@/domain/scoring/cricketMore';
 import type { CricketDisplay, CricketTap } from '@/domain/scoring/cricketTypes';
@@ -137,6 +143,40 @@ describe('which rows More shows (§4.8)', () => {
     expect(superOver.innings?.superOver).toBe(true);
     expect(items(superOver)).toEqual([]);
     expect(moreStep(superOver).options).toEqual([]);
+  });
+
+  // Batch 4 fix round, concern 2 (carried to Task 18): the standing over-end sheet is the only sheet that shows More beside
+  // Players, and no point of a super over stands it. Its bowler is the break card's pick (so the sheet's "no bowler" is
+  // never the case once the innings is live), and its one over ends the innings. So the sheet's More has no super-over case
+  // to be shown or pressed: not before the first ball, mid-over, or after the sixth.
+  it('no point of a super over stands the over-end sheet, so its More never has a super over to show in', () => {
+    const picks = {
+      'openers.s1': [A(1), A(2)],
+      'bowler.s1.0': [H(11)],
+      'begin.s1': ['second'],
+      'openers.s2': [H(1), H(2)],
+      'bowler.s2.0': [A(11)],
+      'begin.s2': ['first'],
+    };
+    const balls = [
+      ...superOverOf('A', H(11), times(6, DOT)),
+      ...superOverOf('H', A(11), times(6, DOT)),
+    ];
+    const prefixes = Array.from({ length: balls.length + 1 }, (_, n) => [
+      ...TIED_KO,
+      ...balls.slice(0, n),
+    ]);
+    const stages = prefixes.map((specs) => {
+      const display = displayOf(specs, MATCH, picks);
+      return [display.stage, display.needs, standingFlow(display)];
+    });
+    expect(stages).toHaveLength(13);
+    // The picks make both innings live: the sheet is absent because nothing is due, not because the innings is waiting.
+    expect(stages.filter(([stage]) => stage === 'live').length).toBeGreaterThan(8);
+    expect(stages.every(([, , standing]) => standing === null)).toBe(true);
+    // Control: the same sheet does stand in a main innings, at an over's end with no bowler picked.
+    const mainOverEnd = displayOf([...OPENING, ...inningsOf('H', AWAY_BOWLERS, times(6, DOT))]);
+    expect(standingFlow(mainOverEnd)).toEqual({ kind: 'bowler' });
   });
 
   it('before an innings’ first ball, only what needs no innings open: a ball, the swap, rain, a revision', () => {

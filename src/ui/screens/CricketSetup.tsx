@@ -167,20 +167,25 @@ const BowlerStep = memo(function BowlerStep({
   const { t } = useT();
   const { view } = setup;
   const innings = setup.begins === 'innings';
+  const back =
+    view.openers === null ? null : (
+      <GhostButton label={t('scoring.cricket.setup.back')} onPress={actions.changeOrder} />
+    );
+  const start = (
+    <Button
+      label={t(innings ? 'scoring.cricket.setup.startInnings' : 'scoring.start.confirm')}
+      onPress={innings ? actions.startInnings : actions.start}
+      disabled={!setup.ready}
+    />
+  );
   const foot = (
-    <View style={styles.pair}>
-      {view.openers === null ? null : (
-        <GhostButton label={t('scoring.cricket.setup.back')} onPress={actions.changeOrder} />
-      )}
-      <MoreButton onMore={onMore} />
-      <View style={styles.grow}>
-        <Button
-          label={t(innings ? 'scoring.cricket.setup.startInnings' : 'scoring.start.confirm')}
-          onPress={innings ? actions.startInnings : actions.start}
-          disabled={!setup.ready}
-        />
-      </View>
-    </View>
+    <BowlerFoot
+      back={back}
+      more={<MoreButton onMore={onMore} />}
+      stacked={back !== null && onMore !== null}
+    >
+      {start}
+    </BowlerFoot>
   );
   // Before the match the match card gives way to the openers once they are picked; a break's card stays above them.
   return (
@@ -191,6 +196,42 @@ const BowlerStep = memo(function BowlerStep({
     </SetupFrame>
   );
 });
+
+/**
+ * Back, More and the start button. With both ghost buttons the start button has its own row below them: three in one
+ * wrapping row broke at 320 dp (the start button is 200 dp at least), and a break should not depend on the phone's width.
+ * With one, it sits beside the start button as the order step's does.
+ */
+function BowlerFoot({
+  back,
+  more,
+  stacked,
+  children,
+}: {
+  readonly back: ReactNode;
+  readonly more: ReactNode;
+  readonly stacked: boolean;
+  readonly children: ReactNode;
+}) {
+  if (!stacked) {
+    return (
+      <View style={styles.pair}>
+        {back}
+        {more}
+        <View style={styles.grow}>{children}</View>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.stack}>
+      <View style={styles.ghosts}>
+        <View style={styles.half}>{back}</View>
+        <View style={styles.half}>{more}</View>
+      </View>
+      {children}
+    </View>
+  );
+}
 
 function Openers({ view }: { readonly view: CricketSetupView }) {
   const { t } = useT();
@@ -245,6 +286,9 @@ const styles = StyleSheet.create({
   content: { gap: space.md },
   foot: { gap: space.sm },
   pair: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  stack: { gap: space.sm },
+  ghosts: { flexDirection: 'row', gap: space.sm },
+  half: { flex: 1, minWidth: 0 },
   grow: { flexGrow: 1 },
   list: { gap: space.sm },
   ink: { color: colour.ink },

@@ -30,9 +30,12 @@ const geist500 = loadFont('geist-500');
 const geist400 = loadFont('geist-400');
 const mono = loadFont('geist-mono-400');
 
+/** Every key a fit case reads, in any language: the sweep at the end of the file asks that no cricket key is missing here. */
+const swept = new Set<string>();
 const said = (dictionary: Dictionary, key: string): string => {
   const text = dictionary[key] ?? '';
   expect(text, key).not.toBe('');
+  swept.add(key);
   return text;
 };
 const fill = (text: string, vars: Readonly<Record<string, string | number>>) =>
@@ -704,7 +707,7 @@ it('More’s widest step title is within a tenth of the sheet at 320 (anti-vacui
  * S2-4 plan Task 16: the innings break's card, its Start innings and the result's words. The card stands at the top of
  * the setup's scroll, so its line may wrap (no line limit): what can fail is a word wider than the column, or a title
  * that takes a second line. Start innings is a `Button` (`action` caps, `space.xl` a side). The result is the strip's one
- * slot, the whole column, one line (`layout.padStripLines`, `metricUnit`), cut with an ellipsis when it is wider.
+ * slot, the whole column, one line for a fixture's names (`layout.padStripLines`, `metricUnit`); two lines since Task 18.
  */
 const BREAK_TITLES = ['title', 'tied', 'superOver'].map((key) => `scoring.cricket.break.${key}`);
 const RESULT_KEYS = [
@@ -796,8 +799,9 @@ it('the widest Start innings fills nine tenths of its button at 320 (anti-vacuit
   expect(widest).toBeGreaterThan(0.9 * room);
 });
 
-// A thirty-character club's name is cut in the strip for the longer margins: the strip keeps one line (the kit's rule),
-// so the words end in an ellipsis on the phone. Pinned so a change to the strip or the words is seen.
+// A thirty-character club's name takes the result past one line at 320 (the strip's one line is the kit's rule, and
+// the cricket result asks the strip for two: `PadStripItem.lines`, Task 18). Pinned so a change to the strip or the words
+// is seen; `the result and the break’s lines` below holds it to two.
 it('a thirty-character name takes the strip past one line at 320 for an innings win in every language', () => {
   const room = 320 - 2 * space.md;
   for (const [, dictionary] of LANGUAGES) {
@@ -902,5 +906,584 @@ describe('over totals on the pad', () => {
       ),
     );
     expect(most).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// S2-4 plan Task 18: the rest of the strings, at 320 and 360 dp in four languages, then the sweep that asks for every key.
+// Rooms are written out from the components' styles (never read from them). A text that wraps is held to the lines the
+// design allows and to every word whole: a word wider than its room is the failure. What is cut with an ellipsis (the
+// last-tap line at three lines, a History sentence at two) is cut on the phone, so each such sentence is measured and the
+// ones that run over at 320 are listed literally.
+// ---------------------------------------------------------------------------------------------------------------
+
+/** A person with a long double-barrelled name, as a team sheet can hold one (26 characters). */
+const PERSON = 'M. Wolstenholme-Fitzgerald';
+
+/** `body`: Geist 400 at 15. Rules, hints, the scorecard's notes. */
+const bodyOf = (text: string) => geist400.width(text, typeScale.body.fontSize);
+/** `status`: Geist 400 at 13.5. A scorecard line's how-out. */
+const statusOf = (text: string) => geist400.width(text, typeScale.status.fontSize);
+/** Caps and letter-spacing as a display role sets them: `panelTitle`, `action`, `state`. */
+const capsOf = (role: 'panelTitle' | 'action' | 'state') => (text: string) =>
+  barlow700.width(text.toUpperCase(), typeScale[role].fontSize) +
+  typeScale[role].letterSpacing * [...text].length;
+/** A ghost button's box: its word at `control`, `space.md` padding and the border a side. */
+const ghostBox = (text: string) => controlWidth(text) + 2 * space.md + 2 * layout.iconBorder;
+/** A `Button`'s box: its caps label and `space.xl` a side, at least 200. */
+const buttonBox = (text: string) => Math.max(200, capsOf('action')(text) + 2 * space.xl);
+/**
+ * Every word of a text fits the room: what wraps is never broken mid-word, and nothing overflows. A word is what lies
+ * between spaces and hyphens: the line breaker (UAX 14, on Android ICU) may break after a hyphen, which `linesOf` does
+ * not model, so a hyphenated name is held to its halves. Whether a name really breaks there is the device check's.
+ */
+const wordsFit = (text: string, room: number, measure: (text: string) => number) =>
+  text.split(/ |(?<=-)/).every((piece) => measure(piece) <= room);
+
+describe.each(WIDTHS)('the setup steps and the bowler step’s foot at %i dp', (width) => {
+  const read = (dictionary: Dictionary, key: string) =>
+    said(dictionary, `scoring.cricket.setup.${key}`);
+  const startKeys = ['scoring.cricket.setup.startInnings', 'scoring.start.confirm'] as const;
+
+  // The order step's foot is More (a break) beside Next, the bowler step's Back (or More) beside the start button, in one
+  // wrapping row (`styles.pair`): a button that does not fit beside the ghost goes under it and takes the row. With both
+  // Back and More the two share a row above the start button (Task 16 concern 3). So each piece must fit a row alone.
+  it.each(LANGUAGES)(
+    '%s: each foot button fits a row alone, so a wrapped pair is two whole rows',
+    (_, dictionary) => {
+      const ghosts = [read(dictionary, 'back'), said(dictionary, 'scoring.cricket.key.more')];
+      const buttons = [read(dictionary, 'next'), ...startKeys.map((key) => said(dictionary, key))];
+      for (const ghost of ghosts) expect(ghostBox(ghost), ghost).toBeLessThanOrEqual(column(width));
+      for (const button of buttons)
+        expect(buttonBox(button), button).toBeLessThanOrEqual(column(width));
+    },
+  );
+
+  it.each(LANGUAGES)(
+    '%s: two ghost buttons side by side are a half-row each, the start button a row of its own',
+    (_, dictionary) => {
+      const half = (column(width) - space.sm) / 2;
+      for (const word of [read(dictionary, 'back'), said(dictionary, 'scoring.cricket.key.more')])
+        expect(ghostBox(word), word).toBeLessThanOrEqual(half);
+      for (const key of startKeys)
+        expect(buttonBox(said(dictionary, key)), key).toBeLessThanOrEqual(column(width));
+    },
+  );
+
+  // Anti-vacuity: the three in one row did not fit, which is why the foot stacks them (English is the shortest).
+  it('Back, More and Start innings in one row would not fit (English, the shortest words)', () => {
+    const row =
+      ghostBox(read(en, 'back')) +
+      ghostBox(said(en, 'scoring.cricket.key.more')) +
+      buttonBox(read(en, 'startInnings')) +
+      2 * space.sm;
+    expect(row).toBeGreaterThan(column(width));
+  });
+
+  it.each(LANGUAGES)(
+    '%s: the order and bowler headings keep every word whole in three lines with a thirty-character club',
+    (_, dictionary) => {
+      for (const key of ['order', 'bowler']) {
+        const heading = fill(read(dictionary, key), { team: THIRTY });
+        expect(wordsFit(heading, column(width), capsOf('panelTitle')), heading).toBe(true);
+        expect(linesOf(heading, column(width), capsOf('panelTitle')), heading).toBeLessThanOrEqual(
+          3,
+        );
+      }
+    },
+  );
+
+  it.each(LANGUAGES)(
+    '%s: the hint is two lines at most and the openers line keeps every word whole',
+    (_, dictionary) => {
+      const hint = read(dictionary, 'orderHint');
+      expect(linesOf(hint, column(width), bodyOf), hint).toBeLessThanOrEqual(2);
+      const openers = fill(read(dictionary, 'openers'), { striker: PERSON, nonStriker: PERSON });
+      expect(wordsFit(openers, column(width), bodyOf), openers).toBe(true);
+      expect(linesOf(openers, column(width), bodyOf), openers).toBeLessThanOrEqual(3);
+    },
+  );
+
+  it.each(LANGUAGES)('%s: Record (a typed number) is one line in its button', (_, dictionary) => {
+    const label = said(dictionary, 'scoring.cricket.entry.record');
+    expect(linesOf(label, column(width) - 2 * space.xl, capsOf('action')), label).toBe(1);
+  });
+
+  // The ▲▼ names and the tally are read, never drawn: they carry their fill in the dictionary's own place.
+  it.each(LANGUAGES)('%s: the spoken labels carry their fill', (_, dictionary) => {
+    for (const key of ['up', 'down']) expect(read(dictionary, key)).toContain('{name}');
+    expect(said(dictionary, 'scoring.cricket.tallySaid')).toContain('{score}');
+    expect(said(dictionary, 'scoring.cricket.tallyNone')).not.toBe('');
+  });
+});
+
+// Anti-vacuity: at 320 a ghost button and "Start innings" do not share a row in any language, so the wrap above is real.
+it.each(LANGUAGES)(
+  '%s: Back beside Start innings would not fit one row at 320',
+  (_, dictionary) => {
+    const pair =
+      ghostBox(said(dictionary, 'scoring.cricket.setup.back')) +
+      space.sm +
+      buttonBox(said(dictionary, 'scoring.cricket.setup.startInnings'));
+    expect(pair).toBeGreaterThan(column(320));
+  },
+);
+
+it('the order step’s hint takes a second line in some language at 320 (anti-vacuity: two lines are used)', () => {
+  const most = Math.max(
+    ...LANGUAGES.map(([, dictionary]) =>
+      linesOf(said(dictionary, 'scoring.cricket.setup.orderHint'), column(320), bodyOf),
+    ),
+  );
+  expect(most).toBe(2);
+});
+
+// Match details' rules table (`MatchCard`, in the sheet): a label column, at most `padRuleLabelMax`, then the value in
+// what is left, both at `body`, wrapping. Every word must fit; the label column is the widest label's.
+const RULE_ROWS = [
+  ['overs', { overs: '50' }, 'value'],
+  ['over', { balls: '8' }, 'value'],
+  ['players', { players: '11' }, 'value'],
+  ['bowler', { count: '10' }, 'value.other'],
+  ['superOver', {}, 'on'],
+  ['followOn', { lead: '999' }, 'value'],
+  ['reviews', { reviews: '3' }, 'value'],
+] as const;
+
+describe.each(WIDTHS)('Match details’ rules at %i dp', (width) => {
+  const valueKeys = (dictionary: Dictionary) => [
+    ...RULE_ROWS.map(([row, vars, value]) =>
+      fill(said(dictionary, `scoring.cricket.rules.${row}.${value}`), vars),
+    ),
+    fill(said(dictionary, 'scoring.cricket.rules.bowler.value.one'), { count: '1' }),
+    said(dictionary, 'scoring.cricket.rules.overs.unlimited'),
+    said(dictionary, 'scoring.cricket.rules.bowler.none'),
+    said(dictionary, 'scoring.cricket.rules.superOver.off'),
+  ];
+  const labelsOf = (dictionary: Dictionary) =>
+    RULE_ROWS.map(([row]) => said(dictionary, `scoring.cricket.rules.${row}.label`));
+
+  it.each(LANGUAGES)(
+    '%s: every label and value keeps its words whole in the card’s columns',
+    (_, dictionary) => {
+      const labels = labelsOf(dictionary);
+      const labelColumn = Math.min(
+        Math.ceil(Math.max(...labels.map(bodyOf))),
+        layout.padRuleLabelMax,
+      );
+      const valueRoom = column(width) - labelColumn - space.md;
+      for (const label of labels) {
+        expect(wordsFit(label, labelColumn, bodyOf), label).toBe(true);
+        expect(linesOf(label, labelColumn, bodyOf), label).toBeLessThanOrEqual(2);
+      }
+      for (const value of valueKeys(dictionary)) {
+        expect(wordsFit(value, valueRoom, bodyOf), value).toBe(true);
+        expect(linesOf(value, valueRoom, bodyOf), value).toBeLessThanOrEqual(2);
+      }
+    },
+  );
+});
+
+// The last-tap line (three lines of `control` beside Undo) and a History row's sentence (two lines in what the right
+// column leaves). Both are cut with an ellipsis, the head kept (the pattern of padFit's last-tap and History cases), so each
+// sentence is measured at its widest realistic fill: a club of thirty characters at the toss, short names for the rest and
+// a ball with every part. A name of 26 characters is held to its own test: every word of every sentence fits the room,
+// so the ellipsis cuts between words and never inside one.
+describe('the last-tap line and History sentences', () => {
+  const lineRoom = (width: number, dictionary: Dictionary) =>
+    column(width) - ghostBox(said(dictionary, 'scoring.pad.undo')) - space.sm;
+  const historyRoom = (width: number) => column(width) - space.sm - layout.padHistorySide;
+  const BALL_KINDS = ['wide', 'noball', 'bye', 'legbye', 'penalty'] as const;
+
+  type Who = {
+    readonly batter: string;
+    readonly person: string;
+    readonly assist: string;
+    readonly fielder: string;
+  };
+  /** The widest a roster usually goes: initial and surname. */
+  const USUAL: Who = {
+    batter: 'A. Sharma',
+    person: 'A. Sharma',
+    assist: 'R. Iyer',
+    fielder: 'A. Sharma',
+  };
+  /** The longest name a team sheet can hold, as the batter and the one the sentence is about (the fielders stay usual). */
+  const LONGEST: Who = { ...USUAL, batter: PERSON, person: PERSON };
+
+  /** One text per key, each at its widest fill, keyed by what the sentence is. */
+  const sentences = (dictionary: Dictionary, who: Who): readonly (readonly [string, string])[] => {
+    const at = (key: string, vars: Readonly<Record<string, string | number>> = {}) =>
+      fill(said(dictionary, key), vars);
+    const how = said(dictionary, 'scoring.cricket.out.kind.runout');
+    const caught = at('scoring.cricket.out.fielder', {
+      how: said(dictionary, 'scoring.cricket.out.kind.caught'),
+      fielder: who.fielder,
+    });
+    const runout = at('scoring.cricket.out.fielders', {
+      how,
+      assist: who.assist,
+      fielder: who.fielder,
+    });
+    const dismissal = at('scoring.cricket.out', { batter: who.batter, how: runout });
+    const extra = at('scoring.cricket.ball.noball.other', { count: 5 });
+    const runs = at('scoring.cricket.ball.runs.other', { count: 6 });
+    const and = (first: string, second: string) =>
+      at('scoring.cricket.ball.and', { first, second });
+    const ball = and(and(extra, runs), dismissal);
+    return [
+      ['toss bat', at('scoring.cricket.last.toss.bat', { name: THIRTY })],
+      ['toss bowl', at('scoring.cricket.last.toss.bowl', { name: THIRTY })],
+      ['start', at('scoring.cricket.last.start')],
+      ['summary', at('scoring.cricket.last.summary', { runs: 999, wickets: 10, overs: '189.5' })],
+      ['retire hurt', at('scoring.cricket.last.retire.hurt', { name: who.person })],
+      ['retire out', at('scoring.cricket.last.retire.out', { name: who.person })],
+      ['retire', at('scoring.cricket.last.retire.plain', { name: who.person })],
+      ['bowler', at('scoring.cricket.last.bowlerChange', { name: who.person })],
+      ['dot', at('scoring.cricket.ball.dot')],
+      ['four', at('scoring.cricket.ball.four')],
+      ['six', at('scoring.cricket.ball.six')],
+      ['one run', at('scoring.cricket.ball.runs.one', { count: 1 })],
+      ...BALL_KINDS.flatMap((kind): (readonly [string, string])[] => [
+        [`${kind} one`, at(`scoring.cricket.ball.${kind}.one`, { count: 1 })],
+        [`${kind} many`, at(`scoring.cricket.ball.${kind}.other`, { count: 5 })],
+      ]),
+      ['caught', at('scoring.cricket.out', { batter: who.batter, how: caught })],
+      ['run out', dismissal],
+      ['a whole ball', ball],
+      ['undone ball', at('scoring.cricket.last.undone', { what: ball })],
+      ...Object.keys(dictionary)
+        .filter((key) => key.startsWith('scoring.cricket.event.'))
+        .map((key): readonly [string, string] => [key, at(key)]),
+    ];
+  };
+
+  // Eight at the toss, a retirement and a bowler's change, four runs-or-dot words, ten extras (five kinds, one and many),
+  // four ball sentences and twenty-six events (`scoring.cricket.event.*`).
+  it('reads fifty-two sentences in each language (anti-vacuity)', () => {
+    for (const [, dictionary] of LANGUAGES) expect(sentences(dictionary, USUAL)).toHaveLength(52);
+  });
+
+  /** The two sentences that join every part of a ball; every other sentence is one clause. */
+  const COMPOSITE = ['a whole ball', 'undone ball'];
+  /** History shows a tap's own sentence; "Undone" is a word in the row's right column, so the undone wrapper is the last-tap line's alone. */
+  const IN_HISTORY = (name: string) => name !== 'undone ball';
+
+  const over = (
+    limit: number,
+    room: (width: number, dictionary: Dictionary) => number,
+    width: number,
+    only: (name: string) => boolean,
+  ) =>
+    LANGUAGES.flatMap(([lang, dictionary]) =>
+      sentences(dictionary, USUAL)
+        .filter(
+          ([name, text]) =>
+            only(name) && linesOf(text, room(width, dictionary), controlWidth) > limit,
+        )
+        .map(([name]) => `${lang} ${name}`),
+    );
+  const single = (name: string) => !COMPOSITE.includes(name);
+  const composite = (name: string) => COMPOSITE.includes(name);
+
+  it('the last-tap line holds every one-clause sentence in its three lines at 360 and 320', () => {
+    expect(over(layout.padLineLines, lineRoom, 360, single)).toEqual([]);
+    expect(over(layout.padLineLines, lineRoom, 320, single)).toEqual([]);
+  });
+
+  // The toss with a club of thirty characters: at 320 the English and Spanish sentences run to a third line in a History
+  // row (the row gives 192 dp beside the score), and the ellipsis cuts after "chose" / "eligió", the club whole. Spanish
+  // and English are the owner's words and are not shortened here; French and Dutch were (Task 18).
+  it('a History row holds every one-clause sentence in its two lines at 360 and every one but the toss at 320', () => {
+    expect(over(layout.padHistoryLines, historyRoom, 360, single)).toEqual([]);
+    expect(over(layout.padHistoryLines, historyRoom, 320, single)).toEqual([
+      'en toss bat',
+      'en toss bowl',
+      'es toss bat',
+      'es toss bowl',
+    ]);
+  });
+
+  it('keeps the club whole in the kept two lines of the toss that runs over at 320', () => {
+    for (const [, dictionary] of [LANGUAGES[0], LANGUAGES[1]]) {
+      for (const [name, text] of sentences(dictionary, USUAL).filter(([n]) =>
+        n.startsWith('toss'),
+      )) {
+        const kept = linesIn(text, historyRoom(320), controlWidth).slice(0, layout.padHistoryLines);
+        expect(kept.join(' ').startsWith(THIRTY), name).toBe(true);
+      }
+    }
+  });
+
+  it('cuts only these ball sentences in the last-tap line: one at 360, three at 320', () => {
+    expect(over(layout.padLineLines, lineRoom, 360, composite)).toEqual(['nl undone ball']);
+    expect(over(layout.padLineLines, lineRoom, 320, composite)).toEqual([
+      'es undone ball',
+      'nl a whole ball',
+      'nl undone ball',
+    ]);
+  });
+
+  it('cuts only the whole ball in a History row: two languages at 360, all four at 320', () => {
+    const inHistory = (name: string) => composite(name) && IN_HISTORY(name);
+    expect(over(layout.padHistoryLines, historyRoom, 360, inHistory)).toEqual([
+      'es a whole ball',
+      'fr a whole ball',
+    ]);
+    expect(over(layout.padHistoryLines, historyRoom, 320, inHistory)).toEqual([
+      'en a whole ball',
+      'es a whole ball',
+      'fr a whole ball',
+      'nl a whole ball',
+    ]);
+  });
+
+  // What the ellipsis cuts is the end. The head of a cut ball sentence is kept: "Undone" (or its word) and the extra, "5
+  // no-balls". The dismissal is not always kept: where the kept lines stop before the batter's " · " (the mark after
+  // "<batter> out") the wicket is cut too, and this pins where, so a copy change that moves it is seen.
+  type Cut = { readonly where: string; readonly kept: string; readonly head: string };
+  type Place = {
+    readonly name: string;
+    readonly limit: number;
+    readonly room: (width: number, dictionary: Dictionary) => number;
+    readonly which: (name: string) => boolean;
+  };
+  const PLACES: readonly Place[] = [
+    { name: 'line', limit: layout.padLineLines, room: lineRoom, which: composite },
+    {
+      name: 'history',
+      limit: layout.padHistoryLines,
+      room: historyRoom,
+      which: (name) => composite(name) && IN_HISTORY(name),
+    },
+  ];
+  const cuts = (): readonly Cut[] =>
+    PLACES.flatMap(({ name: place, limit, room, which }) =>
+      WIDTHS.flatMap((width) =>
+        LANGUAGES.flatMap(([lang, dictionary]) =>
+          sentences(dictionary, USUAL)
+            .filter(([name]) => which(name))
+            .flatMap(([name, text]): Cut[] => {
+              const lines = linesIn(text, room(width, dictionary), controlWidth);
+              if (lines.length <= limit) return [];
+              const undone = said(dictionary, 'scoring.cricket.last.undone').split('{what}')[0];
+              const noBalls = fill(said(dictionary, 'scoring.cricket.ball.noball.other'), {
+                count: 5,
+              });
+              return [
+                {
+                  where: `${place} ${width} ${lang} ${name}`,
+                  kept: lines.slice(0, limit).join(' '),
+                  head: (name === 'undone ball' ? (undone ?? '') : '') + noBalls,
+                },
+              ];
+            }),
+        ),
+      ),
+    );
+
+  it('keeps the head of every cut ball sentence, and names where the wicket goes too', () => {
+    const all = cuts();
+    // One at 360 and three at 320 in the line; two at 360 and four at 320 in History (the two lists above).
+    expect(all).toHaveLength(10);
+    expect(all.filter(({ kept, head }) => !kept.startsWith(head))).toEqual([]);
+    expect(all.filter(({ kept }) => !kept.includes(' · ')).map(({ where }) => where)).toEqual([
+      'line 320 nl undone ball',
+    ]);
+  });
+
+  it('keeps every word whole in both rooms, with the longest name as the batter and the one the sentence is about', () => {
+    for (const width of WIDTHS)
+      for (const [, dictionary] of LANGUAGES)
+        for (const [name, text] of sentences(dictionary, LONGEST)) {
+          expect(wordsFit(text, lineRoom(width, dictionary), controlWidth), name).toBe(true);
+          expect(wordsFit(text, historyRoom(width), controlWidth), name).toBe(true);
+        }
+  });
+
+  // Anti-vacuity: the whole ball is long enough to take more than one line at 320, so the limits above are measured.
+  it('the whole ball takes more than one line at 320', () => {
+    const [, ball] = sentences(en, USUAL).find(([name]) => name === 'a whole ball') ?? ['', ''];
+    expect(linesOf(ball, historyRoom(320), controlWidth)).toBeGreaterThan(1);
+  });
+
+  it.each(LANGUAGES)(
+    '%s: the heading Before play is one line in the column, in caps',
+    (_, dictionary) => {
+      const heading = said(dictionary, 'scoring.cricket.history.before');
+      for (const width of WIDTHS)
+        expect(linesOf(heading, column(width), capsOf('state')), heading).toBe(1);
+    },
+  );
+});
+
+// The result in the strip (`PadStripItem.lines`, Task 18): two lines of `metricUnit` in the whole column, so a club's
+// whole name wraps rather than being cut (T16 concern 2). Every wording, in the singular as well, with a thirty-character
+// club and the widest figures.
+describe.each(WIDTHS)('the result and the break’s lines at %i dp', (width) => {
+  const SINGULAR_RESULTS = ['runs.one', 'wickets.one', 'innings_and_runs.one'].map(
+    (key) => `scoring.cricket.result.${key}`,
+  );
+
+  it.each(LANGUAGES)(
+    '%s: every result takes two lines at most with a thirty-character club',
+    (_, dictionary) => {
+      for (const key of [...RESULT_KEYS, ...SINGULAR_RESULTS]) {
+        const words = fill(said(dictionary, key), { name: THIRTY, count: CHASE.runs });
+        expect(wordsFit(words, column(width), unitWidth), words).toBe(true);
+        expect(linesOf(words, column(width), unitWidth), words).toBeLessThanOrEqual(2);
+      }
+    },
+  );
+
+  // The break's line: the closed innings and what the next needs, the lead or level scores, in `body`, no line limit.
+  it.each(LANGUAGES)('%s: the other break lines keep every word whole', (_, dictionary) => {
+    for (const key of [
+      'scoring.cricket.break.chase.one',
+      'scoring.cricket.break.need',
+      'scoring.cricket.break.lead.one',
+      'scoring.cricket.break.lead.other',
+      'scoring.cricket.break.level',
+      'scoring.cricket.board.chase.one',
+    ]) {
+      const words = fill(said(dictionary, key), {
+        team: THIRTY,
+        target: 999,
+        count: 120,
+        runs: 999,
+      });
+      expect(wordsFit(words, column(width), bodyOf), words).toBe(true);
+    }
+  });
+});
+
+// The scorecard under Match details (`CricketScorecard`): an innings' title and total, a batter's name and how out beside
+// the figures, who has not batted, the extras, the bowling, the fall of wickets. Rooms as the component sets them: the
+// sheet's text (the screen less `space.md` a side), a row's name column less the figures and a gap.
+describe.each(WIDTHS)('the scorecard at %i dp', (width) => {
+  const BAT = '199 (120)';
+  /** A row's name column: the sheet's text less the figures (never cut) and the gap. */
+  const nameColumn = (figures: string) => column(width) - figuresWidth(figures) - space.md;
+
+  it.each(LANGUAGES)(
+    '%s: title and total keep their words whole, the total in two lines',
+    (_, dictionary) => {
+      for (const key of ['scoring.cricket.history.innings', 'scoring.cricket.history.superOver']) {
+        const title = fill(said(dictionary, key), { number: 12, side: THIRTY });
+        expect(wordsFit(title, column(width), labelWidth), title).toBe(true);
+      }
+      for (const key of ['total', 'declared']) {
+        const total = fill(said(dictionary, `scoring.cricket.card.${key}`), {
+          runs: 999,
+          wickets: 10,
+          overs: OVERS,
+        });
+        expect(wordsFit(total, column(width), figuresWidth), total).toBe(true);
+        expect(linesOf(total, column(width), figuresWidth), total).toBeLessThanOrEqual(2);
+      }
+    },
+  );
+
+  it.each(LANGUAGES)(
+    '%s: how a batter is out keeps every word whole beside the figures, four lines at most',
+    (_, dictionary) => {
+      const how = said(dictionary, 'scoring.cricket.out.kind.hitballtwice');
+      const fielders = fill(said(dictionary, 'scoring.cricket.out.fielders'), {
+        how,
+        assist: PERSON,
+        fielder: PERSON,
+      });
+      const hows = [
+        said(dictionary, 'scoring.cricket.card.notOut'),
+        said(dictionary, 'scoring.cricket.card.out'),
+        fill(said(dictionary, 'scoring.cricket.card.bowledBy'), { how: fielders, bowler: PERSON }),
+      ];
+      for (const text of hows) {
+        expect(wordsFit(text, nameColumn(BAT), statusOf), text).toBe(true);
+        expect(linesOf(text, nameColumn(BAT), statusOf), text).toBeLessThanOrEqual(4);
+      }
+      const score = fill(said(dictionary, 'scoring.cricket.card.score'), { runs: 199, balls: 120 });
+      expect(figuresWidth(score), score).toBeLessThanOrEqual(figuresWidth(BAT));
+    },
+  );
+
+  // A name is a `NameText`: one with gaps wraps at them, one without is one line, shrunk to `nameFloor` and cut beyond.
+  it('a batter’s name keeps room for its first word beside the figures, a bowler’s beside the spell', () => {
+    expect(nameColumn(BAT)).toBeGreaterThanOrEqual(
+      bodyOf('Wolstenholme-Fitzgerald') * layout.nameFloor,
+    );
+    expect(nameColumn(SPELL)).toBeGreaterThanOrEqual(bodyOf('Fitzgerald'));
+  });
+
+  it.each(LANGUAGES)(
+    '%s: the notes and the fall of wickets keep every word whole in the sheet’s column',
+    (_, dictionary) => {
+      const texts = [
+        fill(said(dictionary, 'scoring.cricket.card.didNotBat'), {
+          names: [PERSON, PERSON, PERSON].join(', '),
+        }),
+        fill(said(dictionary, 'scoring.cricket.card.extras'), {
+          total: 999,
+          wides: 99,
+          noBalls: 99,
+          byes: 99,
+          legByes: 99,
+        }),
+        fill(said(dictionary, 'scoring.cricket.card.extrasPen'), {
+          total: 999,
+          wides: 99,
+          noBalls: 99,
+          byes: 99,
+          legByes: 99,
+          penalties: 25,
+        }),
+        fill(said(dictionary, 'scoring.cricket.card.fall'), {
+          wicket: 10,
+          runs: 999,
+          batter: PERSON,
+          over: OVERS,
+        }),
+      ];
+      for (const text of texts) expect(wordsFit(text, column(width), bodyOf), text).toBe(true);
+    },
+  );
+
+  it.each(LANGUAGES)('%s: the section heading is one line in caps', (_, dictionary) => {
+    const title = said(dictionary, 'scoring.cricket.card.fallTitle');
+    expect(linesOf(title, column(width), capsOf('state')), title).toBe(1);
+  });
+});
+
+// The sweep (plan Task 18): every `scoring.cricket.` key in the dictionary has been read by a fit case above (`said` is the
+// one reader, and the fit tests take a key's text only through it). A key added to the dictionaries without a fit case is
+// a red test, listed by name. It runs last and relies on the file's order, so a run filtered by name (`-t`) fails it: run
+// the file whole.
+const CRICKET_PREFIX = 'scoring.cricket.';
+
+/** The keys no fit case read. An empty dictionary is a failure, not an empty answer: a sweep of nothing proves nothing. */
+function unmeasured(keys: readonly string[], read: ReadonlySet<string>): readonly string[] {
+  if (keys.length === 0) throw new Error(`no ${CRICKET_PREFIX} keys to sweep`);
+  return keys.filter((key) => !read.has(key));
+}
+
+describe('the sweep', () => {
+  const keys = Object.keys(en).filter((key) => key.startsWith(CRICKET_PREFIX));
+
+  it('every scoring.cricket key has a fit case', () => {
+    expect(keys.length).toBeGreaterThan(250);
+    expect(unmeasured(keys, swept)).toEqual([]);
+    expect(keys.filter((key) => swept.has(key))).toHaveLength(keys.length);
+  });
+
+  it.each(LANGUAGES)('%s has every cricket key English has, and none it lacks', (_, dictionary) => {
+    const own = Object.keys(dictionary).filter((key) => key.startsWith(CRICKET_PREFIX));
+    expect([...own].sort()).toEqual([...keys].sort());
+  });
+
+  it('a sweep of no keys is a failure, and one with a key unread names it', () => {
+    expect(() => unmeasured([], new Set(['scoring.cricket.a']))).toThrow();
+    expect(
+      unmeasured(['scoring.cricket.a', 'scoring.cricket.b'], new Set(['scoring.cricket.a'])),
+    ).toEqual(['scoring.cricket.b']);
   });
 });

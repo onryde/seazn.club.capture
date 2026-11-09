@@ -11,6 +11,7 @@ import { CricketBoard, ScorePanel } from '@/ui/screens/CricketBoard';
 import { CricketKeys } from '@/ui/screens/CricketKeys';
 import { CricketEntrySheet } from '@/ui/screens/CricketEntrySheet';
 import { CricketPlayersSheet } from '@/ui/screens/CricketPlayersSheet';
+import { CricketScorecard } from '@/ui/screens/CricketScorecard';
 import { CricketSetup } from '@/ui/screens/CricketSetup';
 import { CricketStandingSheet, CricketStepSheet } from '@/ui/screens/CricketSheets';
 import { CricketTotalsPanel, CricketTotalsSheet } from '@/ui/screens/CricketTotals';
@@ -109,7 +110,15 @@ const PadSheet = memo(function PadSheet({
   if (sheet === null) return null;
   switch (sheet.kind) {
     case 'details':
-      return <MatchDetailsView details={sheet.details} onClose={actions.dismiss} />;
+      return (
+        <MatchDetailsView
+          details={sheet.details}
+          onClose={actions.dismiss}
+          sport={
+            sheet.scorecard.length === 0 ? null : <CricketScorecard innings={sheet.scorecard} />
+          }
+        />
+      );
     case 'history':
       return <MatchHistory groups={sheet.groups} onClose={actions.cancel} />;
     case 'ask':

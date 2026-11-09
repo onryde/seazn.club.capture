@@ -309,6 +309,8 @@ describe('every path the navigation moves to has its route file, and each Settin
       // Players, from a tap on the board (S2-4 Task 14), with the setup's ▲▼ (its order list): no pads either.
       'src/ui/screens/CricketPlayersSheet.tsx',
       'src/ui/screens/CricketOrderList.tsx',
+      // The scorecard under Match details (S2-4 Task 18): no pad either.
+      'src/ui/screens/CricketScorecard.tsx',
       // The setup in the board's place before the first ball (S2-4 Task 10), and its toss: no pads either.
       'src/ui/screens/CricketSetup.tsx',
       'src/ui/screens/CricketToss.tsx',

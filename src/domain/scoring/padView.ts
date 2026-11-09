@@ -136,6 +136,11 @@ export type PadServing<K extends string> = {
 export type PadStripItem<K extends string> = {
   readonly slot: string;
   readonly text: PadText<K> | null;
+  /**
+   * The lines the fact may take before it is cut, where the kit's `padStripLines` is not enough: cricket's result names a
+   * club by its whole name (S2-4 plan Task 18). None for every other sport's fact.
+   */
+  readonly lines?: number;
 };
 
 /** What the last tap did, in a sentence, and whether Undo (the one Undo, owner 2026-10-31) is offered. */

@@ -1,4 +1,5 @@
-import { memo, useMemo } from 'react';
+import { memo, useMemo, type ReactNode } from 'react';
+import { View } from 'react-native';
 import type {
   PadHistoryGroup,
   PadHistoryRow,
@@ -178,19 +179,23 @@ const BY = {
 
 /**
  * Match details (owner ruling 15, then 2026-11-01) in the kit's sheet: the match card and Close (option A), Close the
- * sheets' close.
+ * sheets' close. A sport may add one block of its own under the card (`sport`; cricket's scorecard, S2-4 Task 18), in the
+ * same scroll; a sport that gives none (or a null) gets the sheet it always had, with no wrapper drawn.
  */
 export const MatchDetailsView = memo(function MatchDetailsView({
   details,
   onClose,
+  sport = null,
 }: {
   readonly details: PadMatchDetails<MessageKey>;
   readonly onClose: () => void;
+  readonly sport?: ReactNode;
 }) {
   const { t } = useT();
   return (
     <MatchDetailsSheet closeLabel={t('panel.close')} onClose={onClose}>
       <DetailsCard details={details} />
+      {sport === null ? null : <View testID="details-sport">{sport}</View>}
     </MatchDetailsSheet>
   );
 });

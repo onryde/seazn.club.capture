@@ -26,7 +26,7 @@ export const PadStrip = memo(function PadStrip({
           {item.text === null ? null : (
             <Text
               variant="metricUnit"
-              numberOfLines={layout.padStripLines}
+              numberOfLines={item.lines ?? layout.padStripLines}
               style={at > 0 && at === items.length - 1 ? styles.last : undefined}
             >
               {words(item.text)}

@@ -380,6 +380,14 @@ export type CricketBreakKey =
 export type CricketTotalsKey =
   `scoring.cricket.totals.${'noPlayers' | 'stays' | 'tied' | 'title' | 'runs' | 'wickets' | 'balls' | 'less' | 'more' | 'record'}`;
 
+/**
+ * The scorecard under Match details (Task 18): an innings' total, a batter's figures and how out, who has not batted, the
+ * extras with their kinds (a penalty only when there is one), the bowler who took a wicket and each wicket's fall.
+ */
+export type CricketCardKey =
+  | `scoring.cricket.card.${'total' | 'declared' | 'score' | 'notOut' | 'out' | 'bowledBy' | 'didNotBat'}`
+  | `scoring.cricket.card.${'extras' | 'extrasPen' | 'fall' | 'fallTitle'}`;
+
 /** The pad's keys and its sheets' words (Tasks 11 to 15). */
 export type CricketSheetKey =
   | `scoring.cricket.key.${'wide' | 'noBall' | 'bye' | 'legBye' | 'out' | 'more'}`
@@ -424,6 +432,7 @@ export type CricketPadKey =
   | CricketBoardKey
   | CricketBreakKey
   | CricketTotalsKey
+  | CricketCardKey
   | 'scoring.pad.tap';
 
 /** The types cricket's pad works in. */

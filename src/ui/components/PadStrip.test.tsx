@@ -70,6 +70,23 @@ describe('PadStrip', () => {
     expect(screen.getByTestId('pad-strip').textContent).not.toMatch(/[—–-]/);
   });
 
+  // S2-4 plan Task 18 (the controller's carried item): cricket's result names a club by its whole name, which a thirty-
+  // character club makes wider than the strip's line. That fact asks for two lines; every other keeps the kit's one.
+  it('lets a fact that asks for more lines have them, and no other', () => {
+    renderWithPorts(
+      <PadStrip
+        items={[
+          { slot: 'note', text: { key: 'scoring.cricket.result.tie' }, lines: 2 },
+          { slot: 'other', text: { key: 'scoring.cricket.result.draw' } },
+        ]}
+      />,
+    );
+    expect(linesAllowed(screen.getByText(en['scoring.cricket.result.tie']))).toBe(2);
+    expect(linesAllowed(screen.getByText(en['scoring.cricket.result.draw']))).toBe(
+      layout.padStripLines,
+    );
+  });
+
   it('lets a fact take its reserved lines, then cut', () => {
     renderWithPorts(
       <PadStrip items={[{ slot: 'interval', text: { key: 'scoring.badminton.intervalNow' } }]} />,
