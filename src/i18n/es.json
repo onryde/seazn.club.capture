@@ -702,7 +702,7 @@
   "scoring.cricket.board.onStrike": "Al bate",
   "scoring.cricket.break.title": "Descanso entre entradas",
   "scoring.cricket.break.tied": "Empate — super over",
-  "scoring.cricket.break.tiedAgain": "Empate de nuevo — super over {number}",
+  "scoring.cricket.break.tiedAgain": "Nuevo empate — super over {number}",
   "scoring.cricket.break.superOver": "Super over",
   "scoring.cricket.break.closed": "{team} {score} ({overs} ov)",
   "scoring.cricket.break.line": "{closed} · {next}",

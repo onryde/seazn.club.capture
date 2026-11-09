@@ -681,9 +681,12 @@ as the rest of the cricket words.
 | Start innings                          | Empezar entrada                              | Débuter la manche                             | Innings starten                                | `setup.startInnings`: records nothing; the picks ride the first ball.                          |
 
 T19 device run D12 (2026-11-09): a tied super over's card names the one that comes next, `break.tiedAgain` "Tied again —
-super over {number}" (es _Empate de nuevo — super over {number}_, fr _Encore égalité — super over {number}_, nl _Weer
-gelijk — super over {number}_), and every tie's card line gives both sides' scores (`break.line` joining two
-`break.closed`). History, the board and Match details number the super over, not its innings: 1, 1, 2, 2, 3.
+super over {number}" (es _Nuevo empate — super over {number}_, fr _Encore égalité · super over {number}_, nl _Weer gelijk — super over
+{number}_), and every tie's card line gives both sides' scores (`break.line` joining two `break.closed`). History, the
+board and Match details number the super over, not its innings: 1, 1, 2, 2, 3. T19 M1: a break title is one line at 320
+dp (288 dp column) at one digit and at 12, so es is _Nuevo empate_ (277.3 dp at 12; _Empate de nuevo_ took 303.9) and fr
+keeps _Encore égalité_ but with a middle dot for the dash (281.9 dp at 12; with the dash it takes 290.0, and _Nouvelle
+égalité_ 310.9). _Encore égaux — super over_ (275.3 dp) is the alternative that keeps the dash, for the owner's review.
 
 ### Cricket over totals (S2-4 Task 17, 2026-11-09)
 

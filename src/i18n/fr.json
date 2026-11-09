@@ -702,7 +702,7 @@
   "scoring.cricket.board.onStrike": "Face au lanceur",
   "scoring.cricket.break.title": "Pause entre les manches",
   "scoring.cricket.break.tied": "Égalité — super over",
-  "scoring.cricket.break.tiedAgain": "Encore égalité — super over {number}",
+  "scoring.cricket.break.tiedAgain": "Encore égalité · super over {number}",
   "scoring.cricket.break.superOver": "Super over",
   "scoring.cricket.break.closed": "{team} {score} ({overs} ov)",
   "scoring.cricket.break.line": "{closed} · {next}",
