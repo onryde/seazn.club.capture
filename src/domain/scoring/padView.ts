@@ -143,9 +143,13 @@ export type PadStripItem<K extends string> = {
   readonly lines?: number;
 };
 
-/** What the last tap did, in a sentence, and whether Undo (the one Undo, owner 2026-10-31) is offered. */
+/**
+ * What the last tap did, in a sentence, and whether Undo (the one Undo, owner 2026-10-31) is offered. A sport whose last
+ * tap says nothing true now (cricket at an innings break: the ball that closed the innings, T19 D13) gives no words and
+ * keeps the Undo.
+ */
 export type PadLastTap<K extends string> = {
-  readonly text: PadText<K>;
+  readonly text: PadText<K> | null;
   readonly undo: boolean;
 };
 

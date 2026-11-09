@@ -58,6 +58,19 @@ describe('LastTapLine', () => {
     expect(undo().getAttribute('aria-disabled')).toBe('true');
   });
 
+  // T19 D13: a sport whose last tap says nothing true now (cricket at an innings break) gives no words and keeps Undo.
+  it('with a tap that has no words, the sentence is empty and Undo is lit, or dim when it is not offered', () => {
+    const onUndo = vi.fn();
+    const { rerender } = renderWithPorts(
+      <LastTapLine lastTap={{ text: null, undo: true }} refusal={null} onUndo={onUndo} />,
+    );
+    expect(screen.getByTestId('last-tap-sentence').textContent).toBe('');
+    act(() => fireEvent.click(undo()));
+    expect(onUndo).toHaveBeenCalledTimes(1);
+    rerender(<LastTapLine lastTap={{ text: null, undo: false }} refusal={null} onUndo={onUndo} />);
+    expect(undo().getAttribute('aria-disabled')).toBe('true');
+  });
+
   it('says a refusal in the sentence’s place, as an alert', () => {
     const refusal = en['scoring.refusal.invalidScore'];
     renderWithPorts(

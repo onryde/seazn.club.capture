@@ -73,7 +73,7 @@ describe('useBadmintonPadPreview, given what the screen never sends', () => {
     aSecondOn(fakes);
     act(() => view.result.current.actions.choose('9'));
     // Nothing recorded: the line still says the start.
-    expect(view.result.current.view.lastTap?.text.key).toBe('scoring.badminton.last.start');
+    expect(view.result.current.view.lastTap?.text?.key).toBe('scoring.badminton.last.start');
   });
 
   it('ignores a sanction choice while Set score is up', () => {
@@ -81,7 +81,7 @@ describe('useBadmintonPadPreview, given what the screen never sends', () => {
     act(() => view.result.current.actions.tool('setScore'));
     act(() => view.result.current.actions.choose('warning'));
     expect(view.result.current.sheet).toMatchObject({ kind: 'setScore', game: 1 });
-    expect(view.result.current.view.lastTap?.text.key).toBe('scoring.badminton.last.start');
+    expect(view.result.current.view.lastTap?.text?.key).toBe('scoring.badminton.last.start');
   });
 
   it('says Undo has nothing to take back when nothing is this phone’s', () => {
@@ -780,7 +780,7 @@ describe('useBadmintonPadPreview, a sheet button that records opens the bounce w
     disqualifyAt(view, fakes, T);
     at(fakes, T + 4000);
     act(() => view.result.current.actions.recordEnding());
-    expect(view.result.current.view.lastTap?.text.key).toBe('scoring.badminton.last.ending');
+    expect(view.result.current.view.lastTap?.text?.key).toBe('scoring.badminton.last.ending');
     at(fakes, T + 4249);
     act(() => view.result.current.actions.undo());
     expect(view.result.current.line).toEqual(COUNTED_ONCE);

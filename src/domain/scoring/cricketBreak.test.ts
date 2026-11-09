@@ -9,12 +9,15 @@ import { envelopeOf } from '@/domain/scoring/setBasedEngine';
 import { translatePad } from '@/i18n/padText';
 import { createTranslator } from '@/i18n/translate';
 import {
+  AWAY_BOWLERS,
   DOT,
   FIRST_INNINGS_8,
   FOUR,
   HOME_BOWLERS,
   KO_2,
+  LEAGUE_2,
   MATCH,
+  NO_AWAY_PLAYERS,
   ONE,
   OPENING,
   OUT,
@@ -22,12 +25,17 @@ import {
   TWO,
   TWO_INNINGS,
   TWO_SUPER_OVERS_TIED,
+  ball,
+  eventId,
   inningsOf,
   ledgerOf,
   player,
+  start,
   summary,
   superOverOf,
   times,
+  toss,
+  voiding,
   withCfg,
   type Spec,
 } from '../../../test/cricketLedger';
@@ -344,5 +352,142 @@ describe('repeated super overs (T19 D12)', () => {
       'Innings 2 · Away CC',
       'Innings 1 · Home CC',
     ]);
+  });
+});
+
+// T19 device run 6, D13: the status line kept the last ball's words ("1 run", "Dot ball") on the innings-break card, on the
+// next innings' order and first-bowler steps, on the tie's card and on the super-over cards, where they say nothing true.
+// At those stages the line is empty (with its Undo, which takes that ball back) until the next action; an Undo's own line
+// stays, and so does "Innings 2 started" once Start innings is tapped, which is the live stage's.
+describe('the status line at a break (T19 D13)', () => {
+  /** The pad's status line at the end of a ledger: its words (null when it has none), and whether Undo is lit. */
+  function lineOf(
+    specs: readonly Spec[],
+    own: readonly number[] = [],
+    picks: PendingPicks = NO_PICKS,
+    bootstrap = MATCH,
+  ) {
+    const folded = foldCricket({
+      bootstrap,
+      ledger: ledgerOf(specs),
+      queued: [],
+      ownEventIds: own.map(eventId),
+      toss: null,
+      picks,
+    });
+    if (folded.kind !== 'folded') throw new Error(`did not fold: ${folded.reason}`);
+    const { lastTap } = cricketPad(folded.display);
+    const text = lastTap?.text ?? null;
+    return {
+      stage: folded.display.stage,
+      text: text === null ? null : translatePad(en, text),
+      undo: lastTap?.undo ?? false,
+    };
+  }
+
+  /** Home's innings ends on a single, as the device's did: 1/0 off 12 balls, the last "1 run". 14 events. */
+  const ENDS_ON_ONE = [...OPENING, ...inningsOf('H', AWAY_BOWLERS, [...times(11, DOT), ONE])];
+  const LAST = ENDS_ON_ONE.length;
+  const chase = (more: object = {}) =>
+    ball({ over: 0, ballInOver: 1, striker: A(1), nonStriker: A(2), bowler: H(11), ...more });
+
+  it('the innings break: the last ball’s words are gone, its Undo is lit (the ball is this phone’s)', () => {
+    expect(lineOf(ENDS_ON_ONE, [LAST])).toStrictEqual({ stage: 'break', text: null, undo: true });
+  });
+
+  it('the same ball is spoken while its innings is not over, and again once the innings is closed by it and a pick is made', () => {
+    expect(lineOf(ENDS_ON_ONE.slice(0, -1), [LAST - 1])).toStrictEqual({
+      stage: 'live',
+      text: 'Dot ball',
+      undo: true,
+    });
+    expect(lineOf(ENDS_ON_ONE, [LAST]).text).toBeNull();
+    const picked = { 'openers.i2': [A(1), A(2)], 'bowler.i2.0': [H(11)] };
+    expect(lineOf(ENDS_ON_ONE, [LAST], picked)).toStrictEqual({
+      stage: 'break',
+      text: null,
+      undo: true,
+    });
+  });
+
+  it('a console’s last ball leaves the line empty and Undo dim', () => {
+    expect(lineOf(ENDS_ON_ONE)).toStrictEqual({ stage: 'break', text: null, undo: false });
+  });
+
+  it('Start innings is a line of its own: “Innings 2 started”', () => {
+    const picked = { 'openers.i2': [A(1), A(2)], 'bowler.i2.0': [H(11)], 'begin.i2': ['second'] };
+    expect(lineOf(ENDS_ON_ONE, [LAST], picked)).toStrictEqual({
+      stage: 'live',
+      text: 'Innings 2 started',
+      undo: true,
+    });
+  });
+
+  it('the tie: neither “Dot ball” nor any ball under “Tied — super over”', () => {
+    expect(lineOf(TIED_KO, [TIED_KO.length])).toStrictEqual({
+      stage: 'superOverSetup',
+      text: null,
+      undo: true,
+    });
+    // The same tie in a league is the result, with its last ball spoken as before.
+    const league = withCfg(MATCH, LEAGUE_2);
+    expect(lineOf(TIED_KO, [TIED_KO.length], NO_PICKS, league)).toStrictEqual({
+      stage: 'decided',
+      text: 'Dot ball',
+      undo: true,
+    });
+  });
+
+  it('the super over’s own cards: its first innings’ last ball and a tied super over’s last', () => {
+    const half = [...TIED_KO, ...superOverOf('A', H(9), [ONE, ONE, DOT, DOT, DOT, DOT])];
+    expect(lineOf(half, [half.length])).toStrictEqual({
+      stage: 'superOverSetup',
+      text: null,
+      undo: true,
+    });
+    expect(lineOf(TWO_SUPER_OVERS_TIED, [TWO_SUPER_OVERS_TIED.length])).toStrictEqual({
+      stage: 'superOverSetup',
+      text: null,
+      undo: true,
+    });
+    // A super over under way speaks its last ball.
+    const under = [...TIED_KO, ...superOverOf('A', H(9), [ONE, DOT])];
+    expect(lineOf(under, [under.length])).toStrictEqual({
+      stage: 'live',
+      text: 'Dot ball',
+      undo: true,
+    });
+  });
+
+  it('an Undo that lands on the break keeps its “Undone — …” line, and Undo stays lit over the ball before', () => {
+    const undone = [...ENDS_ON_ONE, chase({ bat: 1 }), voiding(LAST + 1)];
+    expect(lineOf(undone, [LAST, LAST + 1, LAST + 2])).toStrictEqual({
+      stage: 'break',
+      text: 'Undone — 1 run',
+      undo: true,
+    });
+  });
+
+  it('a tap made at the break speaks for itself: a rain stoppage is no stale ball', () => {
+    const rain = { type: 'cricket.interruption', payload: { kind: 'rain' } };
+    expect(lineOf([...ENDS_ON_ONE, rain], [LAST, LAST + 1])).toStrictEqual({
+      stage: 'break',
+      text: 'Interruption recorded',
+      undo: true,
+    });
+  });
+
+  it('over totals keep their line: a side with no players is in totals, not at a break', () => {
+    const totals = lineOf(
+      [toss('A', 'bat'), start(), summary(9, 0, 6)],
+      [3],
+      NO_PICKS,
+      NO_AWAY_PLAYERS,
+    );
+    expect(totals).toStrictEqual({
+      stage: 'totals',
+      text: 'Over recorded · 9/0 (1 ov)',
+      undo: true,
+    });
   });
 });

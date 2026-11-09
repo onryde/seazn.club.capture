@@ -25,6 +25,7 @@ import {
   HOME,
   HOME_BOWLERS,
   OUT,
+  TIED_KO,
   inningsOf,
   player,
   times,
@@ -986,6 +987,43 @@ describe('the innings break and the result (Task 16)', () => {
     ]);
     expect(pad(view).board.bowler?.id).toBe(A(10));
     expect((await typesOf(fakes, LAST_BALL_DUE)).at(-1)).toBe('core.void');
+  });
+
+  // T19 device run 6, D13: the break kept "1 run" (the innings' last ball) under its card and on the next innings' order and
+  // first-bowler screens, and a tie kept "Dot ball". The line has no words there and keeps the Undo that takes the ball back.
+  it('the break shows no stale line, through the openers and the bowler, and keeps Undo for the last ball', async () => {
+    const { view } = await atTheBreak();
+    expect(pad(view).view.lastTap).toStrictEqual({ text: null, undo: true });
+    act(() => pad(view).actions.setOpeners({ striker: A(1), nonStriker: A(2) }));
+    await flush();
+    await wait();
+    act(() => pad(view).actions.setBowler(H(11)));
+    await flush();
+    await wait();
+    expect([pad(view).display.stage, pad(view).view.lastTap]).toStrictEqual([
+      'break',
+      { text: null, undo: true },
+    ]);
+    act(() => pad(view).actions.startInnings());
+    await flush();
+    expect(said(pad(view).view.lastTap?.text)).toBe('Innings 2 started');
+    await wait();
+    act(() => pad(view).actions.undo());
+    await flush();
+    expect(said(pad(view).view.lastTap?.text)).toBe('Undone — Dot ball');
+    await wait();
+    act(() => pad(view).actions.run(0));
+    await flush();
+    expect(pad(view).view.lastTap).toStrictEqual({ text: null, undo: true });
+  });
+
+  it('a tie shows no stale line under its card either', async () => {
+    const { view } = await opened(seedOf(TIED_KO.slice(0, -1)));
+    expect(said(pad(view).view.lastTap?.text)).toBe('Dot ball');
+    act(() => pad(view).actions.run(0));
+    await flush();
+    expect(pad(view).display.stage).toBe('superOverSetup');
+    expect(pad(view).view.lastTap).toStrictEqual({ text: null, undo: true });
   });
 
   it('Undo of the innings’ last ball after Start innings returns to it as well', async () => {

@@ -229,6 +229,38 @@ describe('the innings break, from the last ball to Start innings', () => {
     expect(screen.getByTestId('last-tap-sentence').textContent).toBe('1 run');
   });
 
+  // T19 device run 6, D13: the status line kept the last ball's words under the break card, on the next innings' order and
+  // first-bowler screens, and under a tie's card. It is empty there, its Undo lit (it takes that ball back).
+  it('the break and the tie show no stale line; Undo is lit, and Start innings speaks for itself', async () => {
+    const sentence = () => screen.getByTestId('last-tap-sentence').textContent;
+    const undoCell = () => screen.getByRole('button', { name: en['scoring.pad.undo'] });
+    const app = await scanned(seedOf(FIRST_INNINGS_8.slice(0, -1)));
+    expect(sentence()).toBe('Dot ball');
+    await tap(app, en['scoring.cricket.ball.dot']);
+    expect(screen.getByRole('heading', { name: 'Innings break' })).toBeTruthy();
+    expect(sentence()).toBe('');
+    expect(undoCell().getAttribute('aria-disabled')).not.toBe('true');
+    await tap(app, en['scoring.cricket.setup.next']);
+    expect(sentence()).toBe('');
+    await tap(app, 'Home Player 11');
+    expect(sentence()).toBe('');
+    await tap(app, en['scoring.cricket.setup.startInnings']);
+    expect(sentence()).toBe('Innings 2 started');
+  });
+
+  it('a tie’s card has no stale ball under it, and the super over starts with its own line', async () => {
+    const sentence = () => screen.getByTestId('last-tap-sentence').textContent;
+    const app = await scanned(seedOf(TIED_KO.slice(0, -1)));
+    await tap(app, en['scoring.cricket.ball.dot']);
+    expect(screen.getByRole('heading', { name: 'Tied — super over' })).toBeTruthy();
+    expect(sentence()).toBe('');
+    await tap(app, en['scoring.cricket.setup.next']);
+    expect(sentence()).toBe('');
+    await tap(app, 'Home Player 7');
+    await tap(app, en['scoring.cricket.setup.startInnings']);
+    expect(sentence()).toBe('Super over 1 started');
+  });
+
   // The controller's ruling on Task 16's concern 1: Undo of the innings' last ball after Start innings drops the stale
   // Start innings, so the ball recorded again brings the break back, its target on the card, the openers kept.
   it('Start innings, Undo of the last ball, the ball again: the break card again, the openers pre-picked', async () => {

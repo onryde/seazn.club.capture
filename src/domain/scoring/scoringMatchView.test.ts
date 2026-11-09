@@ -523,13 +523,13 @@ describe('the last-tap line', () => {
       { kind: 'tap', tap: { kind: 'rally', side: 'second' }, key: 'k2', at: AT },
       NOW,
     ).state;
-    expect(padOf(moved).view.lastTap?.text.key).toBe('scoring.badminton.last.rally');
+    expect(padOf(moved).view.lastTap?.text?.key).toBe('scoring.badminton.last.rally');
     const grown = step(
       undone,
       { kind: 'fetched', events: ledgerOf([start(), rally('A')]).slice(1) },
       NOW,
     ).state;
-    expect(padOf(grown).view.lastTap?.text.key).not.toBe('scoring.badminton.undone.rally');
+    expect(padOf(grown).view.lastTap?.text?.key).not.toBe('scoring.badminton.undone.rally');
   });
 });
 

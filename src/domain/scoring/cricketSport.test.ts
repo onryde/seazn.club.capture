@@ -37,6 +37,12 @@ import {
 // Cricket as the match runtime scores it (S2-4 plan Task 7): the sport's table row, its stages as the runtime asks them,
 // Home's result line and the pad's halves. Every expected value is written out from the spec, never read from the fold.
 
+/** A status line's words in a language, or null for a line with none (T19 D13: a break's line has no words). */
+const wordsIn = (
+  translator: ReturnType<typeof createTranslator>,
+  text: Parameters<typeof translatePad>[1] | null,
+) => (text === null ? null : translatePad(translator, text));
+
 function displayOf(
   specs: readonly Spec[],
   own: readonly number[] = [],
@@ -135,12 +141,9 @@ describe('cricketPad', () => {
 
   it('the last tap in words, with Undo while this phone’s own tap stands', () => {
     const own = cricketPad(displayOf([...OPENING, single(1)], [3])).lastTap;
-    expect(own === null ? null : [translatePad(en, own.text), own.undo]).toStrictEqual([
-      '1 run',
-      true,
-    ]);
+    expect(own === null ? null : [wordsIn(en, own.text), own.undo]).toStrictEqual(['1 run', true]);
     const theirs = cricketPad(displayOf([...OPENING, single(1)])).lastTap;
-    expect(theirs === null ? null : [translatePad(en, theirs.text), theirs.undo]).toStrictEqual([
+    expect(theirs === null ? null : [wordsIn(en, theirs.text), theirs.undo]).toStrictEqual([
       '1 run',
       false,
     ]);
@@ -152,7 +155,7 @@ describe('cricketPad', () => {
   describe('Undo chains through this phone’s own balls (T19 D8)', () => {
     const lineAt = (display: ReturnType<typeof displayOf>) => {
       const line = cricketPad(display).lastTap;
-      return line === null ? null : [translatePad(en, line.text), line.undo];
+      return line === null ? null : [wordsIn(en, line.text), line.undo];
     };
 
     it('a tap Undo took back is said as undone, and a first own ball under it keeps Undo lit', () => {
@@ -235,7 +238,7 @@ describe('cricketPad', () => {
 describe('the last-tap line says a pick made since the last tap', () => {
   const lineOf = (display: ReturnType<typeof displayOf>) => {
     const line = cricketPad(display).lastTap;
-    return line === null ? null : [translatePad(en, line.text), line.undo];
+    return line === null ? null : [wordsIn(en, line.text), line.undo];
   };
   /** Innings 2's openers and first bowler (the home side bowls): what Start innings waits on. */
   const SECOND_SET = {
@@ -295,13 +298,14 @@ describe('the last-tap line says a pick made since the last tap', () => {
     ]);
   });
 
-  it('Start innings after the innings before closed: "Innings 2 started"; before it, the last ball', () => {
+  // T19 D13 (device run 6): before Start innings the break stands, and the closing ball's words are stale there: no words.
+  it('Start innings after the innings before closed: "Innings 2 started"; before it, no words', () => {
     const begun = { ...SECOND_SET, 'begin.i2': ['second'] };
     expect(lineOf(displayOf(FIRST_INNINGS_8, [], begun))).toStrictEqual([
       'Innings 2 started',
       false,
     ]);
-    expect(lineOf(displayOf(FIRST_INNINGS_8, [], SECOND_SET))).toStrictEqual(['Dot ball', false]);
+    expect(lineOf(displayOf(FIRST_INNINGS_8, [], SECOND_SET))).toStrictEqual([null, false]);
   });
 
   // Every tap that closes an innings, or sets the next (the follow-on), is older than a Start innings standing after
@@ -350,7 +354,7 @@ describe('the last-tap line says a pick made since the last tap', () => {
     const nl = createTranslator('nl');
     const said = (display: ReturnType<typeof displayOf>) => {
       const line = cricketPad(display).lastTap;
-      return line === null ? null : translatePad(nl, line.text);
+      return line === null ? null : wordsIn(nl, line.text);
     };
     const swap = { 'swap.i1.1': [player('H', 1), player('H', 2)] };
     expect(said(displayOf([...OPENING, single(1)], [], swap))).toBe('Nu aan slag: Home Player 1');

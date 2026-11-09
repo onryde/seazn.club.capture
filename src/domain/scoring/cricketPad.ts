@@ -7,6 +7,7 @@ import {
   undoneSaid,
   type CricketWords,
 } from '@/domain/scoring/cricketHistory';
+import { closesInnings } from '@/domain/scoring/cricketPicks';
 import { cricketResultWords } from '@/domain/scoring/cricketResult';
 import { cricketRuleRows } from '@/domain/scoring/cricketRules';
 import { padSideOf, superOverNumber, turnOf, type CricketTurn } from '@/domain/scoring/cricketTurn';
@@ -147,12 +148,20 @@ function tallyOf(display: CricketDisplay): PadTally<CricketPadKey> {
  * last standing on the ledger. After an Undo the line names what was undone and Undo stays lit while another of this
  * phone's balls stands under it, so a second Undo takes that one back (T19 D8: every sport's pad chains; each tap takes
  * back the current last ball, never an older one). An Undo's line is never covered by a pick.
+ *
+ * At an innings break, a tie or a super over's setup, the tap that closed the innings says nothing true now, so the line
+ * has no words until the next action (T19 D13); its Undo stays, since it takes that tap back. A tap made at the break
+ * (a stoppage, a revision) and an Undo's line speak as ever, and so does Start innings (`picked`), which is the live
+ * stage's.
  */
 function lastTapOf(display: CricketDisplay): PadLastTap<CricketPadKey> | null {
   const did = display.lastTap;
   if (did === null) return null;
   const words = wordsOf(display);
   if (did.kind === 'undone') return { text: undoneSaid(did.tap, words), undo: display.undoable };
+  if (BREAK_STAGES.has(display.stage) && closesInnings(did)) {
+    return { text: null, undo: display.undoable };
+  }
   const text = display.picked === null ? doneSaid(did, words) : pickedSaid(display.picked, words);
   return { text, undo: display.undoable };
 }

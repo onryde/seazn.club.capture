@@ -195,7 +195,7 @@ export function pickedOf(
   // An innings not yet opened after a closing tap is a later one: the first opens on the match's start, which no tap
   // closes.
   if (turn.innings === null) {
-    return closes(lastTap) ? { kind: 'begin', ordinal: ordinalOf(turn) } : null;
+    return closesInnings(lastTap) ? { kind: 'begin', ordinal: ordinalOf(turn) } : null;
   }
   if (lastTap.kind !== 'ball') return null;
   // The over's bowler is a pick only before its first ball; after it, the fold's.
@@ -205,7 +205,11 @@ export function pickedOf(
   return striker === null ? null : { kind: 'swap', striker };
 }
 
-const closes = (tap: CricketLastTap): boolean =>
+/**
+ * Whether the tap can be the one that closed an innings: a ball, over totals, a retirement or More's close. At a break
+ * the last tap is stale (the innings is over and nothing was tapped since) when it is one.
+ */
+export const closesInnings = (tap: CricketLastTap): boolean =>
   tap.kind === 'ball' ||
   tap.kind === 'summary' ||
   tap.kind === 'retire' ||

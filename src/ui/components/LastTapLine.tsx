@@ -44,7 +44,7 @@ export const LastTapLine = memo(function LastTapLine({
 }: LastTapLineProps) {
   const { t } = useT();
   const words = usePadText();
-  const sentence = lastTap === null ? '' : words(lastTap.text);
+  const sentence = lastTap === null || lastTap.text === null ? '' : words(lastTap.text);
   return (
     <View testID="last-tap" style={styles.line}>
       <View style={styles.message}>
