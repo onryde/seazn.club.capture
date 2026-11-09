@@ -184,12 +184,12 @@ describe('withPick', () => {
 
 // Spec §4.5: Start innings records nothing; it is a pick of the innings due, which the fold reads to end the break.
 describe('Start innings', () => {
-  it('writes the innings due as begun, naming nobody', () => {
+  it('writes the innings due as begun, naming the side batting it', () => {
     expect(withPick(NO_PICKS, displayOf(FIRST_INNINGS_8), { kind: 'begin' })).toStrictEqual({
-      'begin.i2': [],
+      'begin.i2': ['second'],
     });
     expect(withPick(NO_PICKS, displayOf(TIED_KO), { kind: 'begin' })).toStrictEqual({
-      'begin.s1': [],
+      'begin.s1': ['second'],
     });
   });
 

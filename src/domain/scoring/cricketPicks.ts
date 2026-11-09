@@ -7,6 +7,7 @@ import {
   ordinalOf,
   otherSide,
   overOf,
+  padSideOf,
   rankOfOrdinal,
   turnOf,
   type CricketTurn,
@@ -24,7 +25,8 @@ import type { PendingPicks } from '@/domain/scoring/pendingPicks';
  * - `incoming.<ordinal>`: a super over's replacement batter, who rides the next ball (§4.6);
  * - `swap.<ordinal>.<deliveries>`: the crease reversed by hand for the next ball (rulings 76, 84);
  * - `begin.<ordinal>`: Start innings, tapped at a break once the innings' openers and bowler are picked (spec §4.5). It
- *   names nobody and records nothing: the innings opens on its first ball, which carries the picks.
+ *   names the side batting the innings (a pad side) and records nothing: the innings opens on its first ball, which
+ *   carries the picks. The side tells a Start innings an Undo of the follow-on left stale (`withoutStaleBegin`).
  *
  * A pick the match no longer allows is ignored, never shown: a person no longer in the lineup (the organiser edited the
  * sheet), a bowler the Laws bar from the over, a pair that is not the fold's. A pick for an innings or an over already
@@ -202,7 +204,7 @@ function entryOf(
     case 'swap':
       return swapEntry(display, turn, ordinal);
     case 'begin':
-      return { key: beginKey(ordinal), ids: [] };
+      return { key: beginKey(ordinal), ids: [padSideOf(turn.battingSide)] };
   }
 }
 
@@ -249,18 +251,23 @@ function isPast(key: string, now: number, over: number, deliveries: number): boo
 }
 
 /**
- * The picks without a Start innings for an innings not yet due (the controller's ruling on Task 16's concern 1). One
- * stands only once the ledger has gone back past the innings it was for: an Undo of the ball that closed the innings
- * before (or a void from the console). It is dropped so that ball, recorded again, brings the break back with its
- * target; the innings' openers and bowler stay, the choice already made. The same map when nothing is stale.
+ * The picks without a stale Start innings (the controller's rulings on Task 16's concern 1). One is stale once the
+ * ledger has gone back past it: for an innings not yet due (an Undo of the ball that closed the innings before, or a
+ * void from the console), or for the innings due with another side batting it (an Undo of the enforced follow-on). It
+ * is dropped so the break, with its card, asks Start innings again; the innings' openers and bowler stay, the choice
+ * already made. The same map when nothing is stale.
  */
 export function withoutStaleBegin(picks: PendingPicks, state: CricketState): PendingPicks {
   const turn = turnOf(state);
   const now = turn === null ? 0 : (rankOfOrdinal(ordinalOf(turn)) ?? 0);
-  const stale = (key: string) => {
+  const side = turn === null ? null : padSideOf(turn.battingSide);
+  const stale = ([key, ids]: readonly [string, readonly string[]]) => {
     const [kind, ordinal] = key.split('.');
-    return kind === 'begin' && (rankOfOrdinal(ordinal ?? '') ?? 0) > now;
+    if (kind !== 'begin') return false;
+    const rank = rankOfOrdinal(ordinal ?? '') ?? 0;
+    return rank > now || (rank === now && ids[0] !== side);
   };
-  if (!Object.keys(picks).some(stale)) return picks;
-  return Object.fromEntries(Object.entries(picks).filter(([key]) => !stale(key)));
+  const entries = Object.entries(picks);
+  if (!entries.some(stale)) return picks;
+  return Object.fromEntries(entries.filter((entry) => !stale(entry)));
 }

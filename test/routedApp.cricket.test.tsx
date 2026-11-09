@@ -251,6 +251,41 @@ describe('the innings break, from the last ball to Start innings', () => {
     expect(orderHeading('Away CC')).toBeTruthy();
   });
 
+  // The controller's ruling (follow-on): Undo of the enforced follow-on after Start innings drops the stale Start innings;
+  // the follow-on enforced again brings the break back with the openers and the bowler already picked.
+  it('follow-on, Start innings, Undo of the follow-on: the break again, Start innings asked again', async () => {
+    const seed = seedOf([...OPENING, summary(300, 10, 300), summary(50, 10, 120)], TWO_INNINGS);
+    const enforce = async () => {
+      await tap(app, en['scoring.cricket.key.more']);
+      await tap(app, en['scoring.cricket.more.followOn']);
+      await tap(app, en['scoring.cricket.confirm.followOn.do']);
+    };
+    const app = await scanned(seed);
+    await enforce();
+    await tap(app, en['scoring.cricket.setup.next']);
+    await tap(app, 'Home Player 11');
+    await tap(app, en['scoring.cricket.setup.startInnings']);
+    expect(screen.getByTestId('cricket-board')).toBeTruthy();
+    await tap(app, en['scoring.pad.undo']);
+    expect((await ledger(app, seed)).at(-1)?.type).toBe('core.void');
+    expect(screen.getByTestId('break-line').textContent).toBe(
+      'Away CC 50/10 (20 ov) · Home CC lead by 250 runs',
+    );
+    expect(orderHeading('Home CC')).toBeTruthy();
+    await enforce();
+    expect(screen.queryByTestId('cricket-board')).toBeNull();
+    expect(screen.getByTestId('break-card')).toBeTruthy();
+    expect(
+      screen.getByText(
+        en['scoring.cricket.setup.openers']
+          .replace('{striker}', 'Away Player 1')
+          .replace('{nonStriker}', 'Away Player 2'),
+      ),
+    ).toBeTruthy();
+    const start = screen.getByRole('button', { name: en['scoring.cricket.setup.startInnings'] });
+    expect(start.getAttribute('aria-disabled')).not.toBe('true');
+  });
+
   it('a knockout tie: the super over’s setup, the side batting second first, and no More', async () => {
     const app = await scanned(seedOf(TIED_KO));
     expect(screen.getByRole('heading', { name: 'Tied — super over' })).toBeTruthy();

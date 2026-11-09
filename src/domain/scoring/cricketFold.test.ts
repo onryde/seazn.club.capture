@@ -482,7 +482,7 @@ describe('the chase and the super over', () => {
   // the break (and its target) stands again when the ball that closes the innings is recorded again. Its openers and
   // bowler stay, the choice already made.
   it('after Start innings, a void of the innings’ last ball drops its Start innings and keeps the openers and the bowler', () => {
-    const picks = { 'openers.i2': [A(1), A(2)], 'bowler.i2.0': [H(11)], 'begin.i2': [] };
+    const picks = { 'openers.i2': [A(1), A(2)], 'bowler.i2.0': [H(11)], 'begin.i2': ['second'] };
     const last = FIRST_INNINGS_8.length;
     const back = [...FIRST_INNINGS_8, voiding(last)];
     const kept = withoutStaleBegin(picks, displayOf(back, { picks, own: [last, last + 1] }).state);
@@ -498,12 +498,44 @@ describe('the chase and the super over', () => {
   });
 
   it('a Start innings for the innings due, or one under way, is not stale: the same picks', () => {
-    const due = { 'openers.i2': [A(1), A(2)], 'bowler.i2.0': [H(11)], 'begin.i2': [] };
+    const due = { 'openers.i2': [A(1), A(2)], 'bowler.i2.0': [H(11)], 'begin.i2': ['second'] };
     expect(withoutStaleBegin(due, displayOf(FIRST_INNINGS_8, { picks: due }).state)).toBe(due);
     const begun = displayOf([...FIRST_INNINGS_8, ...inningsOf('A', HOME_BOWLERS, [ONE])], {
       picks: due,
     });
     expect(withoutStaleBegin(due, begun.state)).toBe(due);
+  });
+
+  // The controller's ruling (follow-on): Start innings names the side batting the innings. An Undo of the enforced
+  // follow-on hands the third innings back to the side that batted first, so its Start innings is stale and goes; the
+  // picks stay, and the follow-on enforced again asks Start innings again, the openers and the bowler already in.
+  it('a void of the enforced follow-on drops the third innings’ Start innings and keeps its openers and bowler', () => {
+    const bootstrap = withCfg(MATCH, TWO_INNINGS);
+    const followed = [
+      ...OPENING,
+      summary(300, 10, 300),
+      summary(50, 10, 120),
+      { type: 'cricket.followon', payload: {} },
+    ];
+    const picks = { 'openers.i3': [A(1), A(2)], 'bowler.i3.0': [H(11)], 'begin.i3': ['second'] };
+    expect(displayOf(followed, { bootstrap, picks }).stage).toBe('live');
+    expect(withoutStaleBegin(picks, displayOf(followed, { bootstrap, picks }).state)).toBe(picks);
+    const at = followed.length;
+    const undone = [...followed, voiding(at)];
+    const back = displayOf(undone, { bootstrap, picks, own: [at, at + 1] });
+    expect([back.stage, back.innings?.batting]).toEqual(['break', 'first']);
+    const kept = withoutStaleBegin(picks, back.state);
+    expect(kept).toEqual({ 'openers.i3': [A(1), A(2)], 'bowler.i3.0': [H(11)] });
+    const again = displayOf([...undone, { type: 'cricket.followon', payload: {} }], {
+      bootstrap,
+      picks: kept,
+    });
+    expect([again.stage, again.needs, again.innings?.batting, again.crease?.striker.id]).toEqual([
+      'break',
+      null,
+      'second',
+      A(1),
+    ]);
   });
 
   it('a knockout tie waits on the super over’s setup, the side that batted second batting first', () => {
