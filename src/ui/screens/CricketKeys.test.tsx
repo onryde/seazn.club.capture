@@ -281,7 +281,7 @@ describe('Undo and the status line', () => {
     expect(screen.getAllByRole('button', { name: en['scoring.pad.undo'] })).toHaveLength(1);
   });
 
-  it('a no-ball says Free hit on the status line, and the next fair ball takes it away', async () => {
+  it('a no-ball says Free hit on the board’s over strip, and the next fair ball takes it away', async () => {
     const app = await scanned();
     expect(screen.queryByTestId('board-status')).toBeNull();
     await press(app, en['scoring.cricket.key.noBall']);

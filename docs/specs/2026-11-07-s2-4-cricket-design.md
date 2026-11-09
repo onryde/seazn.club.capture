@@ -348,6 +348,13 @@ ellipsis, the numbers never do.
        chess's tie-break sheet) and chess's `HowSheet` rows take the borders.
     7. `TossPicker` takes generic options, `fill` and `disabled` (ruling 83).
     8. Match details takes a sport's block (§4.9).
+    9. `PadContent.lineUndo`, default yes: a sport whose body carries the pad's one Undo (cricket's Out, Undo, More row,
+       ruling 79) says no, so the last-tap line has none (Batch 4 review M3).
+    10. `ScoreEntrySheet` exports `PointsField` (the labelled whole-number field), which cricket's typed numbers (More's
+        revision and rain break, Task 15) use; `ScoreEntrySheet` itself does not fit optional fields.
+    11. `usePadTaps` gains `choose`, a quiet `once`: a choice the phone keeps (a pending pick: the batting order's ▲▼,
+        the next bowler) counts once for a double tap, and leaves the last-tap line as it was, so a standing "Couldn't
+        save your choice" stays until a save lands (AGENTS §6). Off by default for every other sport.
 - **The fake's cfg** must be a full `CricketCfg`: a short format is refused without `minOversForResult` (the
   preview's finding). The real cfg comes from the bootstrap and is already whole.
 - **Rules version and epoch**: from the bootstrap and the rules read; `foldEpochOf('cricket')` (3 from the engine major of §7.3; 2 in
