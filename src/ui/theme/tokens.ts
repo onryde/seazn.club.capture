@@ -420,6 +420,13 @@ const base = {
    * `scoreCompact` (68), then the innings line and the chase line in `control` (18 each), `space.xs` between them.
    */
   scorePanel: 112,
+  /**
+   * The overs beside the score, a fixed box at least this wide (T19 device run D1): on the phone a whole over's shorter
+   * text ("(1 ov)") was cut to "(1" in a box measured to its own width. The widest overs the board shows, three digits
+   * at Barlow's widest ("(888.8 ov)", 71.0 in `label`), with the score's widest it fits 320's column
+   * (`cricketFit.test.ts`).
+   */
+  boardOvers: 72,
   /** A crease row (a batter, or the bowler): one line of `label` (22) with `space.xs` above and below. */
   creaseRow: 30,
   /** This over: its label in `metricUnit` (16), `space.xs`, then the row of chips, each `overStrip` less those two tall. */

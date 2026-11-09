@@ -75,6 +75,8 @@ const nameRoom = (width: number, figures: string) =>
 /** The longest numbers a board can show: an unlimited innings' score and overs, a long chase, a long spell. */
 const SCORE = '999/10';
 const OVERS = '189.5';
+/** Three digits of overs at Barlow's widest digit: the overs' box (`layout.boardOvers`) holds any the board shows. */
+const WIDEST_OVERS = '888.8';
 const CHASE = { runs: 999, count: 120 };
 const BATTER = '199 (120)';
 const SPELL = '35.4-10-120-10';
@@ -86,7 +88,8 @@ describe.each(WIDTHS)('the cricket board at %i dp', (width) => {
     'the score line holds the longest score and its overs: %s',
     (_, dictionary) => {
       const overs = fill(said(dictionary, 'scoring.cricket.board.overs'), { overs: OVERS });
-      expect(scoreWidth(SCORE) + space.sm + labelWidth(overs)).toBeLessThanOrEqual(column(width));
+      expect(labelWidth(overs)).toBeLessThanOrEqual(layout.boardOvers);
+      expect(scoreWidth(SCORE) + space.sm + layout.boardOvers).toBeLessThanOrEqual(column(width));
     },
   );
 
@@ -122,6 +125,22 @@ describe.each(WIDTHS)('the cricket board at %i dp', (width) => {
       const label = fill(said(dictionary, 'scoring.cricket.board.over'), { number: 50 });
       const status = said(dictionary, 'scoring.cricket.board.freeHit');
       expect(unitWidth(label) + space.sm + unitWidth(status)).toBeLessThanOrEqual(column(width));
+    },
+  );
+});
+
+// T19 device run D1: the overs' box is a fixed width (CricketBoard's `overs`), so a whole over's shorter text is never
+// laid out in a box measured a hair short of it on the phone. It holds the widest overs in every language, with no
+// more than 2 dp to spare, so the box is the widest text's and not a guess.
+describe('the overs’ box', () => {
+  it.each(LANGUAGES)(
+    'holds three digits of overs at the widest digit, and is that wide: %s',
+    (_, dictionary) => {
+      const widest = labelWidth(
+        fill(said(dictionary, 'scoring.cricket.board.overs'), { overs: WIDEST_OVERS }),
+      );
+      expect(widest).toBeLessThanOrEqual(layout.boardOvers);
+      expect(layout.boardOvers - widest).toBeLessThan(2);
     },
   );
 });

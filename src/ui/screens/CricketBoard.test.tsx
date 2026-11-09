@@ -115,6 +115,19 @@ describe('CricketBoard', () => {
     }
   });
 
+  // T19 device run D1 (device-only): on the phone the overs read "(1", "(2", "(10" at every whole over, the rest of the
+  // line cut, while "(0.5 ov)" read whole. The label now takes a fixed box at least as wide as the widest overs
+  // (`layout.boardOvers`, cricketFit.test.ts) and never shrinks, so its width does not hang on how a whole over's
+  // shorter text is measured; it keeps the score's baseline. That the cut is gone is the device check's.
+  it.each(['0.5', '1', '10', '189.5'])(
+    'the overs (%s) sit in their fixed box, which never shrinks',
+    (overs) => {
+      renderWithPorts(<CricketBoard view={{ ...BOARD, score: { ...BOARD.score!, overs } }} />);
+      const label = getComputedStyle(screen.getByTestId('board-overs'));
+      expect([label.minWidth, label.flexShrink]).toEqual([`${layout.boardOvers}px`, '0']);
+    },
+  );
+
   it.each([
     ['en', en],
     ['es', es],
