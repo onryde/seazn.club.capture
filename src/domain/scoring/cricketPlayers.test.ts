@@ -159,6 +159,27 @@ describe('playersView: bowling', () => {
     });
   });
 
+  // Batch 5's N1: a line ledger's bowler has no maiden count (the engine says null). Players, as the scorecard, draws a
+  // dash, never a nought it does not know.
+  it('a maiden count the engine does not know is a dash, as on the scorecard', () => {
+    const display = displayOf(SCRIPTED);
+    const unknown = {
+      ...display,
+      scorecard: {
+        ...display.scorecard,
+        innings: display.scorecard.innings.map((card) => ({
+          ...card,
+          bowling: card.bowling.map((line) => ({ ...line, maidens: null })),
+        })),
+      },
+    };
+    const row = playersView(unknown).bowling.find((one) => one.id === A(11));
+    expect(row?.note).toEqual({
+      key: 'scoring.cricket.players.cannot',
+      vars: { figures: '1.0-–-9-1', why: { key: 'scoring.cricket.bowling.lastOver' } },
+    });
+  });
+
   it('between overs one out of overs says so, with the format’s quota; the last over’s bowler says that', () => {
     const three = withCfg(MATCH, { ...KO_2, ballsPerInnings: 18 });
     const two = displayOf([...OPENING, ...inningsOf('H', AWAY_BOWLERS, times(12, DOT))], three);

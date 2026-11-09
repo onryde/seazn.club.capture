@@ -5,11 +5,11 @@ import type { CricketDisplay, CricketPadKey } from '@/domain/scoring/cricketType
 import type { PadText } from '@/domain/scoring/padView';
 
 /**
- * The scorecard under Match details (S2-4 spec §6; plan Task 18): every innings played, in the order it was played, with
- * its batting (how each batter is out, runs and balls faced), who has not batted, the extras, the bowling (O-M-R-W) and
- * the fall of wickets. Every figure is the engine scorecard's (`deriveCricketScorecard`, through the fold, which is
- * `display.scorecard`), never a sum of the phone's. An innings scored in over totals has its total and nothing of the
- * player lines, since the engine has none to give.
+ * The scorecard under Match details (S2-4 spec §6; plan Task 18): every innings played, in the order it was played,
+ * with its batting (how each batter is out, runs and balls faced), who has not batted, the extras, the bowling
+ * (O-M-R-W) and the fall of wickets. Every figure is the engine scorecard's (`deriveCricketScorecard`, through the
+ * fold, which is `display.scorecard`), never a sum of the phone's. An innings scored in over totals has its total and
+ * nothing of the player lines, since the engine has none to give.
  */
 
 type Text = PadText<CricketPadKey>;
@@ -46,7 +46,7 @@ export function scorecardView(display: CricketDisplay): readonly ScorecardInning
   const side = (id: string): string => sides.get(id) ?? id;
   const cards = display.scorecard.innings;
   return cards.map((card, index) => {
-    // History numbers a super over from 1, two innings each (T19 D12); the engine numbers every innings in the order played.
+    // History numbers a super over from 1, two innings each (T19 D12); the engine numbers every innings as played.
     const number = card.isSuperOver
       ? superOverNumber(cards.slice(0, index).filter((one) => one.isSuperOver).length)
       : card.number;
@@ -58,6 +58,14 @@ type NameOf = (id: string) => string;
 
 /** What a figure the engine does not know is drawn as (a maiden count a line ledger did not give): never a nought. */
 const NOT_KNOWN = '–';
+
+/**
+ * A bowler's O-M-R-W off the engine's line, wherever the phone draws it: the board, Players and the scorecard (N1 of
+ * the Batch 5 review). A maiden count the engine does not know is a dash.
+ */
+export const bowlingFigures = (
+  line: Pick<CricketInningsCard['bowling'][number], 'overs' | 'maidens' | 'runs' | 'wickets'>,
+): string => `${line.overs}-${line.maidens ?? NOT_KNOWN}-${line.runs}-${line.wickets}`;
 
 function inningsOf(
   card: CricketInningsCard,
@@ -81,7 +89,7 @@ function inningsOf(
     extras: extrasOf(card.extras),
     bowling: card.bowling.map((line) => ({
       name: nameOf(line.person),
-      figures: `${line.overs}-${line.maidens ?? NOT_KNOWN}-${line.runs}-${line.wickets}`,
+      figures: bowlingFigures(line),
     })),
     fall: card.fallOfWickets.map((fall) => ({
       key: 'scoring.cricket.card.fall',

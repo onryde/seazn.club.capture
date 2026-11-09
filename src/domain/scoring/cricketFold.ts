@@ -23,6 +23,7 @@ import {
   type CricketHistoryEntry,
 } from '@/domain/scoring/cricketHistory';
 import { wordsOf } from '@/domain/scoring/cricketPad';
+import { bowlingFigures } from '@/domain/scoring/cricketScorecard';
 import {
   cricketMatchOf,
   cricketRefusalOf,
@@ -489,9 +490,7 @@ export function figuresIn(
   id: string,
 ): string {
   const line = cardIn(scorecard, state, turn)?.bowling.find((one) => one.person === id);
-  return line === undefined
-    ? NO_FIGURES
-    : `${line.overs}-${line.maidens ?? 0}-${line.runs}-${line.wickets}`;
+  return line === undefined ? NO_FIGURES : bowlingFigures(line);
 }
 
 const NO_FIGURES = '0-0-0-0';

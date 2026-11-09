@@ -16,9 +16,9 @@ import { Text } from '@/ui/components/Text';
 import { colour, layout, space } from '@/ui/theme/tokens';
 
 /**
- * Over totals (S2-4 spec §4.10; plan Task 17), drawn in the keys' place while a side's players are not entered: the note
- * ("Players not entered — ask the organiser"), then the over to enter, three steppers (runs, wickets, legal balls) that
- * start at nothing scored and the rest of the over, and Record over. A tie nobody can bat a super over for is the
+ * Over totals (S2-4 spec §4.10; plan Task 17), drawn in the keys' place while a side's players are not entered: the
+ * note ("Players not entered — ask the organiser"), then the over to enter, three steppers (runs, wickets, legal balls)
+ * that start at nothing scored and the rest of the over, and Record over. A tie nobody can bat a super over for is the
  * organiser's line and nothing to enter (ruling 74). The domain says what the engine takes (`totals.fits`): a stepper
  * greys at the figure it would refuse, and Record over while the figures make no over. The entry starts again whenever
  * it is a new one (keyed by `entryKey`: the innings and its legal balls, not the over number, which a part over and the
@@ -64,7 +64,7 @@ const FIELDS: readonly { readonly field: TotalsField; readonly label: MessageKey
   { field: 'balls', label: 'scoring.cricket.totals.balls' },
 ];
 
-/** What each field's two steppers may do now: down where it is above its floor, up where the engine takes the next figure. */
+/** What each field's two steppers may do now: down above its floor, up where the engine takes the next figure. */
 type Reach = { readonly down: boolean; readonly up: boolean };
 
 function reachOf(over: TotalsOver, totals: CricketTotalsEntry): readonly Reach[] {

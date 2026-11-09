@@ -4,12 +4,13 @@ import type { CricketDisplay, CricketPadKey, CricketTap } from '@/domain/scoring
 import type { PadText } from '@/domain/scoring/padView';
 
 /**
- * Players not entered: over totals (S2-4 spec §4.10, rulings 66 and 74; plan Task 17). A side with fewer than two starting
- * players is scored over by over: runs and wickets, and the over's legal balls, sent as `cricket.innings.summary` with the
- * innings' running totals and `partial: true` (`summaryEvent`). The engine needs no ids for it. Once an innings has a
- * summary it takes no balls, so players entered mid-innings return the ball pad from the next innings (the fold's
- * `totals` stage). Which overs the engine takes is the engine's: a candidate summary is tried against the fold's state
- * (`cricketTrial`), as the wicket steps try a ball, so the entry offers exactly what the server will take.
+ * Players not entered: over totals (S2-4 spec §4.10, rulings 66 and 74; plan Task 17). A side with fewer than two
+ * starting players is scored over by over: runs and wickets, and the over's legal balls, sent as
+ * `cricket.innings.summary` with the innings' running totals and `partial: true` (`summaryEvent`). The engine needs no
+ * ids for it. Once an innings has a summary it takes no balls, so players entered mid-innings return the ball pad from
+ * the next innings (the fold's `totals` stage). Which overs the engine takes is the engine's: a candidate summary is
+ * tried against the fold's state (`cricketTrial`), as the wicket steps try a ball, so the entry offers exactly what the
+ * server will take.
  */
 
 /** One over as the scorer enters it: its own runs and wickets, and the legal balls it took. */
@@ -96,9 +97,9 @@ function ballsLeft(display: CricketDisplay): number {
 }
 
 /**
- * The summary an over makes: the innings' running totals with the over added. None for an over that is not a whole number
- * of runs and wickets, one with no balls or more than an over has, or one the engine would refuse now (more wickets than
- * the side has, more balls than the innings has left, a chase total past its winning run).
+ * The summary an over makes: the innings' running totals with the over added. None for an over that is not a whole
+ * number of runs and wickets, one with no balls or more than an over has, or one the engine would refuse now (more
+ * wickets than the side has, more balls than the innings has left, a chase total past its winning run).
  */
 export function totalsTap(display: CricketDisplay, over: TotalsOver): CricketTap | null {
   const { innings } = display;
