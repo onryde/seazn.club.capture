@@ -30,7 +30,14 @@ export type CricketTotalsEntry = {
   readonly note: Note;
   /** The over now, counted from 1. */
   readonly over: number;
-  /** What the entry starts at: nothing scored, and a whole over, or what is left of the innings if that is less. */
+  /**
+   * What makes this entry a new one: the innings and its legal balls so far. The screen starts its figures again when
+   * it changes, so a part over, a recorded over and the next innings each open fresh, and a re-render keeps them. The
+   * over number is not enough: a part over leaves it where it was, and an innings that ends in its first over leaves
+   * the next innings' first over with the same one.
+   */
+  readonly entryKey: string;
+  /** What the entry starts at: nothing scored, and the rest of the over, or what is left of the innings if that is less. */
   readonly start: TotalsOver;
   /** The most legal balls an over has: the format's balls to an over. */
   readonly ballsMax: number;
@@ -62,6 +69,7 @@ export function totalsView(display: CricketDisplay): CricketTotals | null {
     kind: 'entry',
     note,
     over: Math.floor(innings.legalBalls / ballsPerOver) + 1,
+    entryKey: `${innings.ordinal}.${innings.legalBalls}`,
     start: { runs: 0, wickets: 0, balls: ballsLeft(display) },
     ballsMax: ballsPerOver,
     fits: (over) => totalsTap(display, over) !== null,
@@ -74,12 +82,17 @@ function entryNote(display: CricketDisplay): Note | undefined {
   return display.entered.first && display.entered.second ? STAYS : NO_PLAYERS;
 }
 
-/** A whole over, or what the innings has left when that is less (a format that is not a whole number of overs). */
+/**
+ * What is left of the over under way (a whole one at its start, three after a part over of three), or what the innings
+ * has left when that is less (a format that is not a whole number of overs).
+ */
 function ballsLeft(display: CricketDisplay): number {
   const { innings } = display;
   const { ballsPerOver } = display.cfg;
-  if (innings === null || innings.ballsLimit === null) return ballsPerOver;
-  return Math.max(1, Math.min(ballsPerOver, innings.ballsLimit - innings.legalBalls));
+  if (innings === null) return ballsPerOver;
+  const inOver = ballsPerOver - (innings.legalBalls % ballsPerOver);
+  if (innings.ballsLimit === null) return inOver;
+  return Math.max(1, Math.min(inOver, innings.ballsLimit - innings.legalBalls));
 }
 
 /**

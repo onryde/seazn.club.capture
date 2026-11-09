@@ -17,6 +17,7 @@ const entry = (over: Partial<CricketTotalsEntry> = {}): CricketTotalsEntry => ({
   kind: 'entry',
   note: NOTE,
   over: 3,
+  entryKey: 'i1.12',
   start: { runs: 0, wickets: 0, balls: 6 },
   ballsMax: 6,
   fits: () => true,
@@ -123,12 +124,37 @@ describe('the over totals entry on the pad', () => {
     expect(valueOf('runs')).toBe('1');
     rerender(
       <CricketTotalsPanel
-        totals={entry({ over: 4, start: { runs: 0, wickets: 0, balls: 3 } })}
+        totals={entry({ over: 4, entryKey: 'i1.18', start: { runs: 0, wickets: 0, balls: 3 } })}
         onRecord={vi.fn()}
       />,
     );
     expect(screen.getByRole('heading', { name: 'Over 4 totals' })).toBeTruthy();
     expect([valueOf('runs'), valueOf('wickets'), valueOf('balls')]).toEqual(['0', '0', '3']);
+  });
+
+  // Review of Batch 5, I1: a part over leaves the over number where it was, and the next innings' first over has the
+  // number the last one's had; the figures start again at either, because the entry's key is not the number.
+  it('the entry starts again when the entry is a new one under the same over number', () => {
+    const { rerender } = renderWithPorts(
+      <CricketTotalsPanel totals={entry({ over: 1, entryKey: 'i1.0' })} onRecord={vi.fn()} />,
+    );
+    more('Runs');
+    more('Runs');
+    less('Balls');
+    expect([valueOf('runs'), valueOf('balls')]).toEqual(['2', '5']);
+    rerender(
+      <CricketTotalsPanel
+        totals={entry({ over: 1, entryKey: 'i1.3', start: { runs: 0, wickets: 0, balls: 3 } })}
+        onRecord={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('heading', { name: 'Over 1 totals' })).toBeTruthy();
+    expect([valueOf('runs'), valueOf('wickets'), valueOf('balls')]).toEqual(['0', '0', '3']);
+    more('Runs');
+    rerender(
+      <CricketTotalsPanel totals={entry({ over: 1, entryKey: 'i2.0' })} onRecord={vi.fn()} />,
+    );
+    expect([valueOf('runs'), valueOf('wickets'), valueOf('balls')]).toEqual(['0', '0', '6']);
   });
 
   // A re-render of the same over (the clock ticking, a sync) is not a new over: the scorer's figures stay.

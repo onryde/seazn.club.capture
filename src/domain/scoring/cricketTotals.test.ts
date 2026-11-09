@@ -126,6 +126,24 @@ describe('the over to enter', () => {
     expect(entryOf(displayOf([...OPENING, summary(8, 0, 6)])).start.balls).toBe(6);
   });
 
+  // Review of Batch 5, I1: a part over leaves the rest of its over, not a whole one, to enter.
+  it('after a part over, the balls start at what is left of that over', () => {
+    const third = entryOf(displayOf([...OPENING, summary(4, 0, 3)]));
+    expect(third.over).toBe(1);
+    expect(third.start).toStrictEqual({ runs: 0, wickets: 0, balls: 3 });
+    // Anti-vacuity: a part over inside the second over leaves the rest of that one.
+    const later = entryOf(displayOf([...OPENING, summary(8, 0, 6), summary(10, 0, 10)]));
+    expect(later.over).toBe(2);
+    expect(later.start.balls).toBe(2);
+  });
+
+  it('what is left of the innings caps it when that is less than what is left of the over', () => {
+    // Fifteen balls of six: after thirteen, two are left of the innings and five of the over.
+    const PART = withCfg(NO_AWAY_PLAYERS, { ...KO_2, ballsPerInnings: 15 });
+    const display = displayOf([...OPENING, summary(8, 0, 6), summary(15, 1, 13)], PART);
+    expect(entryOf(display).start.balls).toBe(2);
+  });
+
   it('a chase that passes the target mid-over sends the balls it took', () => {
     // KO_2: 8 off the first innings' two overs, so the reply needs 9. Four runs off the first over, then five off the
     // first four balls of the second wins it: ten legal balls.
@@ -190,6 +208,24 @@ describe('what an over may hold', () => {
     expect(disagreed).toStrictEqual([]);
     expect(grid.some((over) => totalsTap(display, over) === null)).toBe(true);
     expect(grid.some((over) => totalsTap(display, over) !== null)).toBe(true);
+  });
+});
+
+// Review of Batch 5, I1: the screen starts its figures again whenever the entry is a new one, which is a different
+// innings or a different count of legal balls, not a different over number (a part over is still the same over).
+describe('what makes the entry a new one', () => {
+  it('a part over, and the next innings, are each a new entry; the same display is the same entry', () => {
+    const first = entryOf(displayOf(OPENING)).entryKey;
+    expect(entryOf(displayOf(OPENING)).entryKey).toBe(first);
+    const part = entryOf(displayOf([...OPENING, summary(4, 0, 3)]));
+    expect(part.over).toBe(1);
+    expect(part.entryKey).not.toBe(first);
+    // Innings 1 all out in its first over: innings 2's over 1 is not innings 1's over 1.
+    const chase = entryOf(displayOf([...OPENING, summary(3, 10, 4)]));
+    expect(chase.over).toBe(1);
+    expect(chase.start).toStrictEqual({ runs: 0, wickets: 0, balls: 6 });
+    expect(chase.entryKey).not.toBe(first);
+    expect(chase.entryKey).not.toBe(part.entryKey);
   });
 });
 
