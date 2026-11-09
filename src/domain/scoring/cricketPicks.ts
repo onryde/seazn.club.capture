@@ -192,7 +192,8 @@ export function pickedOf(
   lastTap: CricketLastTap | null,
 ): CricketPicked | null {
   if (turn === null || stage !== 'live' || lastTap === null) return null;
-  // An innings not yet opened after a closing tap is a later one: the first opens on the match's start, which no tap closes.
+  // An innings not yet opened after a closing tap is a later one: the first opens on the match's start, which no tap
+  // closes.
   if (turn.innings === null) {
     return closes(lastTap) ? { kind: 'begin', ordinal: ordinalOf(turn) } : null;
   }
@@ -328,8 +329,8 @@ export function withoutStalePicks(
 }
 
 /**
- * Where the ledger stands: the innings due or under way (its rank and its side), its over, its deliveries, and whether a
- * wicket has left an end of its crease empty.
+ * Where the ledger stands: the innings due or under way (its rank and its side), its over, its deliveries, and whether
+ * a wicket has left an end of its crease empty.
  */
 type Now = {
   readonly rank: number;

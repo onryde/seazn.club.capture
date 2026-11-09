@@ -230,8 +230,8 @@ describe('cricketPad', () => {
 });
 
 // T19 device run D2/D3: a pick records nothing until the next ball carries it, so the line said the tap before it (the
-// leg-bye after a hand swap, "Dot ball" after the next over's bowler, innings 1's last wicket once innings 2 had begun).
-// The line now says the pick. Expected words are the dictionary's English, written out.
+// leg-bye after a hand swap, "Dot ball" after the next over's bowler, innings 1's last wicket once innings 2 had
+// begun). The line now says the pick. Expected words are the dictionary's English, written out.
 describe('the last-tap line says a pick made since the last tap', () => {
   const lineOf = (display: ReturnType<typeof displayOf>) => {
     const line = cricketPad(display).lastTap;
@@ -304,7 +304,8 @@ describe('the last-tap line says a pick made since the last tap', () => {
     expect(lineOf(displayOf(FIRST_INNINGS_8, [], SECOND_SET))).toStrictEqual(['Dot ball', false]);
   });
 
-  // Every tap that closes an innings, or sets the next (the follow-on), is older than a Start innings standing after it.
+  // Every tap that closes an innings, or sets the next (the follow-on), is older than a Start innings standing after
+  // it.
   it('Start innings after over totals, a retirement that ends the innings, a close or a declaration', () => {
     const begun = { ...SECOND_SET, 'begin.i2': ['second'] };
     const totals = displayOf([...OPENING, summary(8, 0, 12)], [], begun);

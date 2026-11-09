@@ -438,13 +438,15 @@ describe('who walks in', () => {
   });
 });
 
-// T19 device run D10 (Critical): the super over's first wicket left an end empty and nothing asked who takes it, so every
-// ball after it was refused and the pad was stuck. Spec §4.6: "After the first wicket the Next batter step still asks,
-// but its answer rides the next ball as its striker or nonStriker"; the second wicket ends it with no Next batter. The
-// wicket's own steps ask none in a super over (the engine ignores `incoming` there), so the sheet stands after the ball,
-// as the over's end's does, and keeps a pick the next ball carries (`incoming.<ordinal>`).
+// T19 device run D10 (Critical): the super over's first wicket left an end empty and nothing asked who takes it, so
+// every ball after it was refused and the pad was stuck. Spec §4.6: "After the first wicket the Next batter step still
+// asks, but its answer rides the next ball as its striker or nonStriker"; the second wicket ends it with no Next
+// batter. The wicket's own steps ask none in a super over (the engine ignores `incoming` there), so the sheet stands
+// after the ball, as the over's end's does, and keeps a pick the next ball carries (`incoming.<ordinal>`).
 describe('the super over’s next batter (T19 D10)', () => {
-  /** Away bats the super over first (A-p1 and A-p2), H-p11 bowling: a single puts A-p2 on strike, then A-p2 is bowled. */
+  /**
+   * Away bats the super over first (A-p1 and A-p2), H-p11 bowling: a single puts A-p2 on strike, then A-p2 is bowled.
+   */
   const ONE_DOWN = [...TIED_KO, ...superOverOf('A', H(11), [ONE, OUT])];
   const NEXT: PendingPicks = { 'incoming.s1': [A(3)] };
   /** The third ball, A-p3 in at the striker's end; bowled too when `out`. */

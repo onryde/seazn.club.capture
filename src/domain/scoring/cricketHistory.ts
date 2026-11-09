@@ -323,8 +323,8 @@ const groupKey = (group: CricketGroup): string => group?.ordinal ?? BEFORE;
 const rankOf = (key: string): number => rankOfOrdinal(key) ?? 0;
 
 /**
- * An innings by its place and the side batting ("Innings 1 · Home CC", "Super over 1 · Away CC"), or before play. A super
- * over's two innings share its number (T19 D12).
+ * An innings by its place and the side batting ("Innings 1 · Home CC", "Super over 1 · Away CC"), or before play. A
+ * super over's two innings share its number (T19 D12).
  */
 export function headingOf(group: CricketGroup, words: CricketWords): Text {
   if (group === null) return { key: 'scoring.cricket.history.before' };

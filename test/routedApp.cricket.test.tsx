@@ -309,7 +309,8 @@ describe('the innings break, from the last ball to Start innings', () => {
 
   // T19 device run D10 (Critical): the super over's first wicket stood no Next batter, the board had nobody at the
   // crease, and every ball after it was refused. Spec §4.6: the Next batter step still asks, its answer riding the next
-  // ball; the second wicket ends the side's super over with none. Away bats it first (A-p1, A-p2), Home Player 11 bowling.
+  // ball; the second wicket ends the side's super over with none. Away bats it first (A-p1, A-p2), Home Player 11
+  // bowling.
   const nextBatter = () =>
     screen.queryByRole('heading', { name: en['scoring.cricket.wicket.incoming'] });
   async function chooseRow(app: Awaited<ReturnType<typeof scanned>>, row: HTMLElement) {

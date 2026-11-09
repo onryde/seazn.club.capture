@@ -214,7 +214,8 @@ const styles = StyleSheet.create({
   board: { flex: 1, gap: space.sm },
   score: { height: layout.scorePanel, gap: space.xs, overflow: 'hidden' },
   scoreLine: { flexDirection: 'row', alignItems: 'baseline', gap: space.sm },
-  // A fixed box that never shrinks (T19 D1): the whole over's shorter text was cut on the phone in a box of its own width.
+  // A fixed box that never shrinks (T19 D1): the whole over's shorter text was cut on the phone in a box of its own
+  // width.
   overs: { minWidth: layout.boardOvers, flexShrink: 0, color: colour.ink2 },
   innings: { color: colour.ink2 },
   chase: { color: colour.ink },

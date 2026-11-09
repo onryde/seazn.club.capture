@@ -66,7 +66,9 @@ export const ordinalOf = (turn: CricketTurn): CricketOrdinal =>
  */
 export const superOverNumber = (index: number): number => Math.floor(index / 2) + 1;
 
-/** The number the words give an innings by its ordinal: a main innings' own (`i2`: 2), else its super over's (`s4`: 2). */
+/**
+ * The number the words give an innings by its ordinal: a main innings' own (`i2`: 2), else its super over's (`s4`: 2).
+ */
 export function numberOfOrdinal(ordinal: CricketOrdinal): number {
   const place = Number(ordinal.slice(1));
   return ordinal.startsWith('s') ? superOverNumber(place - 1) : place;

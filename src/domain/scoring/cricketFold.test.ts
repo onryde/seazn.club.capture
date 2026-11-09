@@ -541,7 +541,8 @@ describe('the chase and the super over', () => {
   });
 
   // T19 D4 (the device run): over 1's last ball, the next bowler picked, Undo of that ball. The pick is for an over the
-  // ledger no longer reaches, and the board no longer shows it, so it goes; the over ended again asks its bowler afresh.
+  // ledger no longer reaches, and the board no longer shows it, so it goes; the over ended again asks its bowler
+  // afresh.
   it('a void of the over’s last ball drops the next over’s bowler, and the over ended again asks for one', () => {
     const last = OVER_ONE_DONE.length;
     const next = { 'bowler.i1.1': [A(10)] };

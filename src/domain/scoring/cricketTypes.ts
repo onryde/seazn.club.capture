@@ -137,8 +137,9 @@ export type CricketLastTap =
 
 /**
  * A pick made since the last tap, which no event records until the next ball carries it, so the last-tap line says it
- * (T19 device run D2, D3): Start innings of a later innings or a super over's, after the tap that closed the one before;
- * or, after a ball, the next over's bowler (with a hand swap's striker when one stands too), or a hand swap alone.
+ * (T19 device run D2, D3): Start innings of a later innings or a super over's, after the tap that closed the one
+ * before; or, after a ball, the next over's bowler (with a hand swap's striker when one stands too), or a hand swap
+ * alone.
  */
 export type CricketPicked =
   | { readonly kind: 'begin'; readonly ordinal: CricketOrdinal }

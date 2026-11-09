@@ -198,8 +198,6 @@ export function cricketBoard(display: CricketDisplay): CricketBoardView {
   };
 }
 
-function scoreOfInnings(display: CricketDisplay, innings: CricketInnings): BoardScore {
-  const words = wordsOf(display);
 /** The pair that bats the next ball, the striker first and marked. */
 function creaseOf({ crease }: CricketDisplay): CricketBoardView['crease'] {
   if (crease === null) return null;
@@ -233,6 +231,8 @@ function notOutAtResult(display: CricketDisplay): CricketBoardView['crease'] {
   return first === undefined ? null : [first, second ?? null];
 }
 
+function scoreOfInnings(display: CricketDisplay, innings: CricketInnings): BoardScore {
+  const words = wordsOf(display);
   return {
     runs: innings.runs,
     wickets: innings.wickets,
@@ -266,9 +266,9 @@ const BREAK_STAGES: ReadonlySet<CricketStage> = new Set(['break', 'superOverSetu
 /**
  * The innings break (S2-4 spec §4.5, §4.6), while the next innings waits on its openers, its bowler or Start innings: the
  * innings just closed ("Home CC 8/0 (2 ov)"), then what the next needs, its target and balls shown before its first ball
- * (the web shows them only after it), or, two innings a side, the lead. A tie's super over is "Tied — super over", a tied
- * super over's next "Tied again — super over 2", each with the tied pair's scores (T19 D12); the super over's second
- * innings "Super over", with its chase. Null when no break stands.
+ * (the web shows them only after it), or, two innings a side, the lead. A tie's super over is "Tied — super over", a
+ * tied super over's next "Tied again — super over 2", each with the tied pair's scores (T19 D12); the super over's
+ * second innings "Super over", with its chase. Null when no break stands.
  */
 export function cricketBreakCard(display: CricketDisplay): CricketBreakCard | null {
   const turn = turnOf(display.state);
