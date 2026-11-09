@@ -9,6 +9,7 @@ import {
   OVER_ONE_DONE,
   TIED_KO,
   ball,
+  entrant,
   ledgerOf,
   player,
   superOverOf,
@@ -87,6 +88,23 @@ describe('withPick', () => {
     const twice = withPick(once, swapped, { kind: 'swap' });
     expect(twice).toStrictEqual({ 'swap.i1.1': [H(1), H(2)] });
     expect(displayOf(DOT_ONE, twice).crease?.striker.id).toBe(H(1));
+  });
+
+  // Batch 4 review I2 (the controller's ruling): with no innings opened the crease IS the openers' pick, so Swap strike
+  // rewrites that pick reversed; a swap key there would be read by nothing, and the first ball would go unswapped.
+  it('a swap before the innings’ first ball rewrites the openers’ pick reversed, and a second puts it back', () => {
+    const picks = { 'openers.i1': [H(1), H(2)], 'bowler.i1.0': [A(11)] };
+    const before = displayOf(OPENING, picks);
+    expect(before.crease?.striker.id).toBe(H(1));
+    const once = withPick(picks, before, { kind: 'swap' });
+    expect(once).toStrictEqual({ 'openers.i1': [H(2), H(1)], 'bowler.i1.0': [A(11)] });
+    const swapped = displayOf(OPENING, once);
+    expect([swapped.crease?.striker.id, swapped.crease?.nonStriker.id]).toEqual([H(2), H(1)]);
+    expect(withPick(once, swapped, { kind: 'swap' })).toStrictEqual(picks);
+  });
+
+  it('a swap before the first ball with no openers picked writes nothing', () => {
+    expect(withPick(NO_PICKS, displayOf(OPENING), { kind: 'swap' })).toStrictEqual(NO_PICKS);
   });
 
   // The controller's ruling (Batch 2 fix round 1): keyed to the deliveries, a wide counts though no legal ball moved.
@@ -202,5 +220,53 @@ describe('picksFor', () => {
     const now = picksFor(picks, displayOf(DOT_ONE, picks));
     expect(now.openers).toBeNull();
     expect(now.incoming).toBeNull();
+  });
+});
+
+// Batch 4 review M4: the web's pad lost a hand swap when a non-ball event moved the fold's picks key. The phone keys it by
+// the innings' deliveries, which only a ball moves, and reads it only while it names the fold's own pair.
+describe('a pending swap across an event that is no ball', () => {
+  const swap = { 'swap.i1.1': [H(2), H(1)] };
+  const crease = (specs: readonly Spec[]) => {
+    const display = displayOf(specs, swap);
+    return [display.deliveries, display.crease?.striker.id, display.crease?.nonStriker.id];
+  };
+
+  it.each([
+    [
+      'a bowler change',
+      { type: 'cricket.bowler.change', payload: { bowler: A(10), reason: 'other' } },
+    ],
+    [
+      'a review',
+      {
+        type: 'cricket.review',
+        payload: { by: entrant('A'), kind: 'player', outcome: 'struck_down' },
+      },
+    ],
+    ['a new ball', { type: 'cricket.newball', payload: {} }],
+  ] as const)('survives %s: the next ball is still reversed', (_, event) => {
+    expect(crease([...DOT_ONE, event])).toEqual([1, H(2), H(1)]);
+  });
+
+  it('survives a new ball and a review in turn', () => {
+    const newBall = { type: 'cricket.newball', payload: {} };
+    const review = {
+      type: 'cricket.review',
+      payload: { by: entrant('H'), kind: 'umpire', outcome: 'upheld' },
+    };
+    expect(crease([...DOT_ONE, newBall, review])).toEqual([1, H(2), H(1)]);
+  });
+
+  it('a retirement drops it: the fold’s pair changed, so the key names a pair that is no longer there', () => {
+    const retire = {
+      type: 'cricket.retire',
+      payload: { person: H(1), reason: 'hurt', incoming: H(3) },
+    };
+    const display = displayOf([...DOT_ONE, retire], swap);
+    expect([display.deliveries, display.crease?.striker.id, display.crease?.nonStriker.id]).toEqual(
+      [1, H(3), H(2)],
+    );
+    expect(picksFor(swap, display).swap).toBeNull();
   });
 });

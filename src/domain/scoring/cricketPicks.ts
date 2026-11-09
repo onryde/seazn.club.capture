@@ -190,18 +190,25 @@ function entryOf(
     case 'incoming':
       return { key: incomingKey(ordinal), ids: [pick.batter] };
     case 'swap':
-      return swapEntry(display, ordinal, display.deliveries);
+      return swapEntry(display, turn, ordinal);
   }
 }
 
+/**
+ * The crease reversed for the next ball. Once the innings is under way that is a swap pick for the next delivery, which
+ * the fold reads (`swapOf`); before its first ball the crease is the openers' pick, so the swap rewrites that pick
+ * reversed (a swap key there would be read by nothing: Batch 4 review I2).
+ */
 function swapEntry(
   display: CricketDisplay,
+  turn: CricketTurn,
   ordinal: CricketOrdinal,
-  deliveries: number,
 ): Entry | null {
   const { crease } = display;
   if (crease === null) return null;
-  return { key: swapKey(ordinal, deliveries), ids: [crease.nonStriker.id, crease.striker.id] };
+  const ids = [crease.nonStriker.id, crease.striker.id];
+  if (turn.innings === null) return { key: openersKey(ordinal), ids };
+  return { key: swapKey(ordinal, display.deliveries), ids };
 }
 
 /** An innings's place in the match's order: the main innings, then the super over's. */

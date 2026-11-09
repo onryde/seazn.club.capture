@@ -2,6 +2,7 @@ import { cricketPadRules } from '@seazn/engine/pad';
 import { describe, expect, it } from 'vitest';
 import { cricketEventFor, cricketPayloadForSend } from '@/domain/scoring/cricketEvents';
 import { foldCricket } from '@/domain/scoring/cricketFold';
+import { withPick } from '@/domain/scoring/cricketPicks';
 import type { CricketBallTap, CricketTap, CricketWicketTap } from '@/domain/scoring/cricketTypes';
 import { NO_PICKS, type PendingPicks } from '@/domain/scoring/pendingPicks';
 import type { SportEvent } from '@/domain/scoring/scoringSport';
@@ -225,6 +226,21 @@ describe('a ball', () => {
     const next = [...specs, { type: 'cricket.ball', payload: payloadOf(swapped) }];
     expect(payloadOf(eventOf(next, tapOf({}), picks))).toMatchObject({
       ballInOver: 3,
+      striker: H(1),
+      nonStriker: H(2),
+    });
+  });
+
+  // Batch 4 review I2: Swap strike before the innings' first ball is the openers' pick reversed, so the first ball names
+  // the pair the scorer saw walk out, and the engine takes it.
+  it('Swap strike before the first ball: the first ball names the openers reversed, and the engine takes it', () => {
+    const swapped = withPick(READY, displayOf(OPENING, READY), { kind: 'swap' });
+    const first = eventOf(OPENING, tapOf({ bat: 1 }), swapped);
+    expect(payloadOf(first)).toMatchObject({ ballInOver: 1, striker: H(2), nonStriker: H(1) });
+    expect(taken(OPENING, first, swapped)).toBe(true);
+    // Swapped again, it is the scorer's own pair back.
+    const back = withPick(swapped, displayOf(OPENING, swapped), { kind: 'swap' });
+    expect(payloadOf(eventOf(OPENING, tapOf({ bat: 1 }), back))).toMatchObject({
       striker: H(1),
       nonStriker: H(2),
     });
