@@ -1,6 +1,7 @@
 import { cricket } from '@seazn/engine/sports/cricket';
 import { describe, expect, it } from 'vitest';
 import { foldCricket, KEEPER_POSITION, KEEPER_ROLE } from '@/domain/scoring/cricketFold';
+import { withoutStaleBegin } from '@/domain/scoring/cricketPicks';
 import { NO_PICKS, type PendingPicks } from '@/domain/scoring/pendingPicks';
 import type { QueuedEvent } from '@/domain/scoring/queue';
 import type { Bootstrap } from '@/domain/scoring/wire';
@@ -459,7 +460,7 @@ describe('the chase and the super over', () => {
   });
 
   // Ruling 81: Undo takes back this phone's last tap. The innings' last ball undone, the pad is back in the first
-  // innings' last over, the second innings' picks (Start innings too) kept for when it closes again.
+  // innings' last over (the fold alone; the hook then drops the stale Start innings, below).
   it('a void of the innings’ last ball takes the pad back into the first innings', () => {
     const picks = { 'openers.i2': [A(1), A(2)], 'bowler.i2.0': [H(11)], 'begin.i2': [] };
     const last = FIRST_INNINGS_8.length;
@@ -475,6 +476,34 @@ describe('the chase and the super over', () => {
     expect([display.innings?.runs, display.innings?.wickets]).toEqual([8, 0]);
     expect(display.bowler?.id).toBe(A(10));
     expect(display.over.number).toBe(2);
+  });
+
+  // The controller's ruling on Task 16's concern 1: the Start innings of an innings the ledger went back from is stale, so
+  // the break (and its target) stands again when the ball that closes the innings is recorded again. Its openers and
+  // bowler stay, the choice already made.
+  it('after Start innings, a void of the innings’ last ball drops its Start innings and keeps the openers and the bowler', () => {
+    const picks = { 'openers.i2': [A(1), A(2)], 'bowler.i2.0': [H(11)], 'begin.i2': [] };
+    const last = FIRST_INNINGS_8.length;
+    const back = [...FIRST_INNINGS_8, voiding(last)];
+    const kept = withoutStaleBegin(picks, displayOf(back, { picks, own: [last, last + 1] }).state);
+    expect(kept).toEqual({ 'openers.i2': [A(1), A(2)], 'bowler.i2.0': [H(11)] });
+    // The innings' last ball again: the break stands, ready for Start innings, on the picks kept.
+    const again = [...back, FIRST_INNINGS_8[last - 1]!];
+    const display = displayOf(again, { picks: kept });
+    expect([display.stage, display.needs, display.crease?.striker.id]).toEqual([
+      'break',
+      null,
+      A(1),
+    ]);
+  });
+
+  it('a Start innings for the innings due, or one under way, is not stale: the same picks', () => {
+    const due = { 'openers.i2': [A(1), A(2)], 'bowler.i2.0': [H(11)], 'begin.i2': [] };
+    expect(withoutStaleBegin(due, displayOf(FIRST_INNINGS_8, { picks: due }).state)).toBe(due);
+    const begun = displayOf([...FIRST_INNINGS_8, ...inningsOf('A', HOME_BOWLERS, [ONE])], {
+      picks: due,
+    });
+    expect(withoutStaleBegin(due, begun.state)).toBe(due);
   });
 
   it('a knockout tie waits on the super over’s setup, the side that batted second batting first', () => {

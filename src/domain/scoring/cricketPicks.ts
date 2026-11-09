@@ -247,3 +247,20 @@ function isPast(key: string, now: number, over: number, deliveries: number): boo
   if (kind === 'bowler') return Number(at) < over;
   return kind === 'swap' && Number(at) < deliveries;
 }
+
+/**
+ * The picks without a Start innings for an innings not yet due (the controller's ruling on Task 16's concern 1). One
+ * stands only once the ledger has gone back past the innings it was for: an Undo of the ball that closed the innings
+ * before (or a void from the console). It is dropped so that ball, recorded again, brings the break back with its
+ * target; the innings' openers and bowler stay, the choice already made. The same map when nothing is stale.
+ */
+export function withoutStaleBegin(picks: PendingPicks, state: CricketState): PendingPicks {
+  const turn = turnOf(state);
+  const now = turn === null ? 0 : (rankOfOrdinal(ordinalOf(turn)) ?? 0);
+  const stale = (key: string) => {
+    const [kind, ordinal] = key.split('.');
+    return kind === 'begin' && (rankOfOrdinal(ordinal ?? '') ?? 0) > now;
+  };
+  if (!Object.keys(picks).some(stale)) return picks;
+  return Object.fromEntries(Object.entries(picks).filter(([key]) => !stale(key)));
+}

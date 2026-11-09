@@ -209,6 +209,34 @@ describe('the innings break, from the last ball to Start innings', () => {
     expect(ball?.payload).toMatchObject({ striker: 'A-p1', nonStriker: 'A-p2', bowler: 'H-p11' });
   });
 
+  // The controller's ruling on Task 16's concern 1: Undo of the innings' last ball after Start innings drops the stale
+  // Start innings, so the ball recorded again brings the break back, its target on the card, the openers kept.
+  it('Start innings, Undo of the last ball, the ball again: the break card again, the openers pre-picked', async () => {
+    const seed = seedOf(FIRST_INNINGS_8.slice(0, -1));
+    const app = await scanned(seed);
+    await tap(app, en['scoring.cricket.ball.dot']);
+    await tap(app, en['scoring.cricket.setup.next']);
+    await tap(app, 'Home Player 11');
+    await tap(app, en['scoring.cricket.setup.startInnings']);
+    expect(screen.getByTestId('cricket-board')).toBeTruthy();
+    await tap(app, en['scoring.pad.undo']);
+    expect(screen.getByTestId('board-innings').textContent).toBe('Innings 1 · Home CC');
+    expect((await ledger(app, seed)).at(-1)?.type).toBe('core.void');
+    await tap(app, en['scoring.cricket.ball.dot']);
+    expect(screen.getByTestId('break-line').textContent).toBe(
+      'Home CC 8/0 (2 ov) · Away CC need 9 off 12 balls',
+    );
+    expect(
+      screen.getByText(
+        en['scoring.cricket.setup.openers']
+          .replace('{striker}', 'Away Player 1')
+          .replace('{nonStriker}', 'Away Player 2'),
+      ),
+    ).toBeTruthy();
+    const start = screen.getByRole('button', { name: en['scoring.cricket.setup.startInnings'] });
+    expect(start.getAttribute('aria-disabled')).not.toBe('true');
+  });
+
   it('two innings a side: the lead on the card, and More’s follow-on makes the other side bat', async () => {
     const seed = seedOf([...OPENING, summary(300, 10, 300), summary(50, 10, 120)], TWO_INNINGS);
     const app = await scanned(seed);
