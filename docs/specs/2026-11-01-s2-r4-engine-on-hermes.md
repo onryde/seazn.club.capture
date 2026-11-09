@@ -125,6 +125,10 @@ phone scores moves from 2.0.0 to the snapshot of engine PR onryde/seazn.club.eng
 `44699f16`): badminton, table tennis and chess now, cricket from Batch 2 on. The snapshot pin lives on
 `feat/s2-4-cricket` only; Task 20 repins to the release before the branch merges.
 
+**The release (2026-11-09).** The pin is now `4.0.0`, exact: engine release PR onryde/seazn.club.engine#29
+(merge `6c30c584`, tag `v4.0.0`). Its epoch report raises cricket only (2 → 3), as at the snapshot, and
+`engineEpochs.test.ts`'s literals hold unchanged. The table below is the snapshot's, kept as the record.
+
 | Package                 | Declared                                                                              | Installed |
 | ----------------------- | ------------------------------------------------------------------------------------- | --------- |
 | `@seazn/engine` (alias) | `npm:@onryde/seazn-engine@0.0.0-pr28.44699f16400a367a87747b8390c40fe16e1ff8f2`, exact | the same  |
