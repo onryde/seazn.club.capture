@@ -19,6 +19,7 @@ import { seatsOf } from '@/domain/scoring/setBasedSides';
 import { translatePad } from '@/i18n/padText';
 import { createTranslator } from '@/i18n/translate';
 import {
+  DOT,
   FIRST_INNINGS_8,
   MATCH,
   NO_AWAY_PLAYERS,
@@ -34,6 +35,7 @@ import {
   queuedOf,
   start,
   summary,
+  superBall,
   superOverOf,
   toss,
   voiding,
@@ -372,6 +374,127 @@ describe('History', () => {
       'Innings 1 · Home CC',
     ]);
     expect(history[0]?.rows).toStrictEqual([['1 run', '1/0', 'otherScorer', false, false]]);
+  });
+
+  // T19 device run 6, D14: a ball Undo took back leaves no state for the fold to file it under, so it was filed under the
+  // event before it, which is the previous innings' last ball when the voided one opened its innings.
+  describe('a ball Undo took back sits under the innings it was recorded in (T19 D14)', () => {
+    const chaseBall = (n: number, more: object = {}) =>
+      ball({ over: 0, ballInOver: n, striker: A(1), nonStriker: A(2), bowler: H(11), ...more });
+
+    it('the chase’s first ball, voided and recorded again: both rows are under innings 2', () => {
+      // FIRST_INNINGS_8 is 14 events: the voided ball is seq 15, its void 16, the ball again 17.
+      const history = read(
+        historyOf([
+          ...FIRST_INNINGS_8,
+          chaseBall(1, { bat: 1 }),
+          voiding(15),
+          chaseBall(1, { bat: 1 }),
+        ]),
+      );
+      expect(history.map((group) => group.heading)).toStrictEqual([
+        'Innings 2 · Away CC',
+        'Innings 1 · Home CC',
+      ]);
+      expect(history[0]?.rows).toStrictEqual([
+        ['1 run', '1/0', 'otherScorer', false, false],
+        ['1 run', null, 'otherScorer', true, false],
+      ]);
+      expect(history[1]?.rows[0]).toStrictEqual(['Dot ball', '8/0', 'otherScorer', false, false]);
+    });
+
+    it('the first innings’ last ball, voided with the second innings begun, stays under innings 1', () => {
+      const lastDot = FIRST_INNINGS_8.at(-1)!;
+      const history = read(
+        historyOf([
+          ...FIRST_INNINGS_8.slice(0, -1),
+          lastDot,
+          voiding(14),
+          lastDot,
+          chaseBall(1, { bat: 1 }),
+        ]),
+      );
+      expect(history.map((group) => group.heading)).toStrictEqual([
+        'Innings 2 · Away CC',
+        'Innings 1 · Home CC',
+      ]);
+      expect(history[0]?.rows).toStrictEqual([['1 run', '1/0', 'otherScorer', false, false]]);
+      expect(history[1]?.rows.slice(0, 2)).toStrictEqual([
+        ['Dot ball', '8/0', 'otherScorer', false, false],
+        ['Dot ball', null, 'otherScorer', true, false],
+      ]);
+    });
+
+    it('a super over’s first ball, voided: under the super over, not the innings before it', () => {
+      const so = superBall({
+        over: 0,
+        ballInOver: 1,
+        striker: A(1),
+        nonStriker: A(2),
+        bowler: H(9),
+        bat: 1,
+      });
+      // TIED_KO is 26 events: the voided ball is seq 27, its void 28, the ball again 29.
+      const history = read(historyOf([...TIED_KO, so, voiding(27), so]));
+      expect(history.map((group) => group.heading)).toStrictEqual([
+        'Super over 1 · Away CC',
+        'Innings 2 · Away CC',
+        'Innings 1 · Home CC',
+      ]);
+      expect(history[0]?.rows).toStrictEqual([
+        ['1 run', '1/0', 'otherScorer', false, false],
+        ['1 run', null, 'otherScorer', true, false],
+      ]);
+      expect(history[1]?.rows.some((row) => row[3] === true)).toBe(false);
+    });
+
+    it('a super over’s second innings’ first ball, voided: under that innings, not the first’s', () => {
+      const first = superOverOf('A', H(9), [ONE, ONE, DOT, DOT, DOT, DOT]);
+      const reply = superBall({
+        over: 0,
+        ballInOver: 1,
+        striker: H(1),
+        nonStriker: H(2),
+        bowler: A(9),
+        bat: 6,
+        boundary: 6,
+      });
+      // TIED_KO (26) and the six balls of the first super over: the voided Six is seq 33, its void 34, the Six again 35.
+      const history = read(historyOf([...TIED_KO, ...first, reply, voiding(33), reply]));
+      expect(history.map((group) => group.heading)).toStrictEqual([
+        'Super over 1 · Home CC',
+        'Super over 1 · Away CC',
+        'Innings 2 · Away CC',
+        'Innings 1 · Home CC',
+      ]);
+      expect(history[0]?.rows).toStrictEqual([
+        ['Six', '6/0', 'otherScorer', false, false],
+        ['Six', null, 'otherScorer', true, false],
+      ]);
+      expect(history[1]?.rows.some((row) => row[3] === true)).toBe(false);
+    });
+
+    it('the match’s first ball, voided: under innings 1 where the start left the next ball going, not before play', () => {
+      // OPENING is the toss and the start: the voided ball is seq 3, its void 4, the ball again 5.
+      const history = read(
+        historyOf([...OPENING, first(1, { bat: 2 }), voiding(3), first(1, { bat: 2 })]),
+      );
+      expect(history.map((group) => group.heading)).toStrictEqual(['Innings 1 · Home CC']);
+      expect(history[0]?.rows.slice(0, 2)).toStrictEqual([
+        ['2 runs', '2/0', 'otherScorer', false, false],
+        ['2 runs', null, 'otherScorer', true, false],
+      ]);
+    });
+
+    it('a toss Undo took back is before play: no innings is named yet', () => {
+      const history = read(historyOf([toss('H', 'bat'), voiding(1)]));
+      expect(history).toStrictEqual([
+        {
+          heading: 'Before play',
+          rows: [['Home CC won the toss and chose to bat', null, 'otherScorer', true, false]],
+        },
+      ]);
+    });
   });
 
   it('this phone’s queued tap is on top, sending', () => {

@@ -99,8 +99,16 @@ type BallSeen = {
   readonly ball: CricketBallEv;
 };
 
-/** What History says of an event the fold took: the innings it belongs to, and that innings' score after a ball or totals. */
-type CricketFacts = { readonly group: CricketGroup; readonly score: string | null };
+/**
+ * What History says of an event the fold took: the innings it belongs to, and that innings' score after a ball or totals;
+ * and the innings a ball recorded next would go into (`next`), which is where an event the fold does not hold is filed
+ * (T19 D14).
+ */
+type CricketFacts = {
+  readonly group: CricketGroup;
+  readonly score: string | null;
+  readonly next: CricketGroup;
+};
 
 type CricketFolded = {
   readonly state: CricketState;
@@ -196,13 +204,19 @@ function factsOf(
   after: Readonly<CricketState>,
   event: EventEnvelope,
 ): CricketFacts {
+  const next = turnOf(after);
   const scored = scoredIn(after, event.type);
   if (scored !== null) {
-    return { group: groupOf(scored), score: `${scored.innings.runs}/${scored.innings.wickets}` };
+    const score = `${scored.innings.runs}/${scored.innings.wickets}`;
+    return { group: groupOf(scored), score, next: next === null ? null : groupOf(next) };
   }
   const underWay = before?.innings?.closed === false ? before : null;
-  const turn = underWay ?? turnOf(after);
-  return { group: turn === null ? null : groupOf(turn), score: null };
+  const turn = underWay ?? next;
+  return {
+    group: turn === null ? null : groupOf(turn),
+    score: null,
+    next: next === null ? null : groupOf(next),
+  };
 }
 
 /** The innings a ball or over totals went into: the last of its list, the super over's for a super-over ball. */
@@ -227,8 +241,9 @@ const groupOf = (turn: CricketTurn): CricketGroup => ({
 
 /**
  * History's rows: every event of the stream with words, in order, this phone's queued taps on top as sending, an event a
- * void took back struck in its place under the innings it was recorded in (the one before it, since the fold no longer
- * holds it).
+ * void took back struck in its place under the innings it was recorded in. The fold no longer holds it, so that is the
+ * innings the ledger stood in just before it: where the event standing before it left the next ball going (`next`), not
+ * that event's own innings, which is the one before when the struck event opened an innings (T19 D14).
  */
 function historyOf(
   match: CricketMatch,
@@ -237,11 +252,12 @@ function historyOf(
   display: CricketDisplay,
 ): readonly PadHistoryGroup<CricketPadKey>[] {
   const voided = voidedIn(stream.envelopes);
-  let group: CricketGroup = null;
+  let next: CricketGroup = null;
   const entries = stream.entries.flatMap((entry): CricketHistoryEntry[] => {
     const { envelope } = entry;
     const facts = folded.facts.get(envelope.id);
-    group = facts === undefined ? group : facts.group;
+    const group = facts === undefined ? next : facts.group;
+    next = facts === undefined ? next : facts.next;
     const did = historyDoneOf(envelope, match.seats);
     if (did === null) return [];
     const { own, sending } = entry;
