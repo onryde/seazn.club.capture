@@ -639,6 +639,7 @@
   "scoring.cricket.event.matchClose": "Wedstrijd gesloten",
   "scoring.cricket.event.interruption": "Onderbreking vastgelegd",
   "scoring.cricket.event.revise": "Doel herzien",
+  "scoring.cricket.event.reviseOvers": "Overs herzien",
   "scoring.cricket.event.followOn": "Follow-on afgedwongen",
   "scoring.cricket.event.playerLine": "Scorekaartregel vastgelegd",
   "scoring.cricket.event.retire": "Terugtrekking vastgelegd",

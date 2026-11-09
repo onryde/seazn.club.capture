@@ -173,6 +173,33 @@ describe('the other taps', () => {
       'Nieuwe bal genomen',
     );
   });
+
+  // Batch 4 review M5: "Target revised" was untrue of a revision of the overs alone, and the payload is to hand.
+  it.each([
+    ['en', 'Target revised', 'Overs revised'],
+    ['es', 'Objetivo revisado', 'Overs revisados'],
+    ['fr', 'Objectif révisé', 'Overs révisés'],
+    ['nl', 'Doel herzien', 'Overs herzien'],
+  ] as const)(
+    '%s: a revision says what it revised: the target, or the overs alone',
+    (lang, target, overs) => {
+      const revise = (payload: unknown) =>
+        say(lang, { kind: 'more', type: 'cricket.revise', payload });
+      expect(revise({ target: 41 })).toBe(target);
+      expect(revise({ oversPerSide: 15 })).toBe(overs);
+      // Both: a target was set, so the target is what changed the chase.
+      expect(revise({ oversPerSide: 15, target: 120 })).toBe(target);
+      // A payload the pad cannot read, or one that names neither, keeps the type's own words.
+      expect(revise({ unread: true })).toBe(target);
+      expect(revise({})).toBe(target);
+    },
+  );
+
+  it('only a revision is read for what it revised: another type with such a payload keeps its own words', () => {
+    expect(
+      say('en', { kind: 'more', type: 'cricket.interruption', payload: { oversPerSide: 15 } }),
+    ).toBe('Interruption recorded');
+  });
 });
 
 /** An envelope of `type` whose payload no tap of the pad's reads back. */

@@ -639,6 +639,7 @@
   "scoring.cricket.event.matchClose": "Partido cerrado",
   "scoring.cricket.event.interruption": "Interrupción registrada",
   "scoring.cricket.event.revise": "Objetivo revisado",
+  "scoring.cricket.event.reviseOvers": "Overs revisados",
   "scoring.cricket.event.followOn": "Follow-on impuesto",
   "scoring.cricket.event.playerLine": "Línea de tarjeta registrada",
   "scoring.cricket.event.retire": "Retiro registrado",

@@ -328,6 +328,7 @@ export type CricketEventKey = `scoring.cricket.event.${
   | 'matchClose'
   | 'interruption'
   | 'revise'
+  | 'reviseOvers'
   | 'followOn'
   | 'playerLine'
   | 'retire'

@@ -1,9 +1,11 @@
 import type { EventEnvelope } from '@seazn/engine/core';
+import { CricketRevise } from '@seazn/engine/sports/cricket';
 import { doneOf } from '@/domain/scoring/cricketDone';
 import { rankOfOrdinal } from '@/domain/scoring/cricketTurn';
 import type {
   CricketBallSeen,
   CricketEventKey,
+  CricketMoreType,
   CricketOrdinal,
   CricketPadKey,
   CricketSide,
@@ -142,9 +144,22 @@ export function doneSaid(did: CricketDone, words: CricketWords): Text {
         vars: { name: nameOf(words, did.bowler) },
       };
     case 'more':
+      return { key: moreWords(did.type, did.payload) };
     case 'event':
       return { key: EVENT_WORDS[did.type] };
   }
+}
+
+/**
+ * A More tap's words: its type's, except a revision, which says what it revised (Batch 4 review M5). A revision that sets
+ * a target says "Target revised"; one of the overs alone says "Overs revised", since a target was not set. A payload the
+ * pad cannot read keeps the type's own words.
+ */
+function moreWords(type: CricketMoreType, payload: unknown): CricketEventKey {
+  const revise = type === 'cricket.revise' ? CricketRevise.safeParse(payload) : null;
+  // The schema needs the overs, the target or both, so a read revision without a target is of the overs alone.
+  const oversAlone = revise?.success === true && revise.data.target === undefined;
+  return oversAlone ? 'scoring.cricket.event.reviseOvers' : EVENT_WORDS[type];
 }
 
 /** The line after an Undo took a tap back: "Undone — " and the tap in its own words. */
