@@ -309,6 +309,15 @@ describe('the rows’ steps', () => {
     expect(incoming.options.map((one) => one.id)).not.toContain(H(2));
   });
 
+  it('Retire asks who first: the two at the crease, the striker first and said so, then the non-striker', () => {
+    const display = displayOf(MID);
+    const { flow } = chosen(display, moreFlow(), ['retire', H(2)]);
+    expect(flowStep(flow, display).options.map((one) => [one.id, one.note])).toEqual([
+      [H(2), { key: 'scoring.cricket.board.onStrike' }],
+      [H(1), { key: 'scoring.cricket.wicket.nonStriker' }],
+    ]);
+  });
+
   it('Retired out as the last wicket: nobody walks in, so it records at once with no incoming', () => {
     const nine = displayOf([...OPENING, ...inningsOf('H', AWAY_BOWLERS, times(9, OUT))]);
     expect(nine.innings?.wickets).toBe(9);

@@ -204,43 +204,42 @@ function retireStep(
   flow: Extract<MoreFlow, { kind: 'retire' }>,
   display: CricketDisplay,
 ): CricketStep {
-  if (flow.person === null) {
-    const crease = display.crease;
-    const ends = crease === null ? [] : [crease.striker, crease.nonStriker];
-    return step(
-      'retire.who',
-      'scoring.cricket.retire.who',
-      ends.map((one, index) =>
-        option(one.id, one.name, {
-          note: {
-            key:
-              index === 0 ? 'scoring.cricket.board.onStrike' : 'scoring.cricket.wicket.nonStriker',
-          },
-        }),
-      ),
-    );
-  }
-  if (flow.reason === null) {
-    // Only retired out may leave nobody to walk in: it is the last wicket. Any other, the engine refuses (`resolveIncoming`).
-    const nobody = retireIncoming(display, flow.person).length === 0;
-    return step(
-      'retire.why',
-      'scoring.cricket.retire.why',
-      RETIRE_REASONS.map((reason) =>
-        option(
-          reason,
-          { key: `scoring.cricket.retire.reason.${reason}` },
-          nobody && reason !== 'out'
-            ? { disabled: true, note: { key: 'scoring.cricket.retire.nobody' } }
-            : {},
-        ),
-      ),
-    );
-  }
+  if (flow.person === null) return retireWho(display);
+  if (flow.reason === null) return retireWhy(display, flow.person);
   return step(
     'retire.incoming',
     'scoring.cricket.wicket.incoming',
     incomingRows(display, retireIncoming(display, flow.person)),
+  );
+}
+
+/** Who retires: the two at the crease, the striker first. */
+function retireWho(display: CricketDisplay): CricketStep {
+  const crease = display.crease;
+  const ends = crease === null ? [] : [crease.striker, crease.nonStriker];
+  const note = (index: number): CricketPadKey =>
+    index === 0 ? 'scoring.cricket.board.onStrike' : 'scoring.cricket.wicket.nonStriker';
+  return step(
+    'retire.who',
+    'scoring.cricket.retire.who',
+    ends.map((one, index) => option(one.id, one.name, { note: { key: note(index) } })),
+  );
+}
+
+/** Why: only retired out may leave nobody to walk in (the last wicket); any other, the engine refuses (`resolveIncoming`). */
+function retireWhy(display: CricketDisplay, person: string): CricketStep {
+  const nobody = retireIncoming(display, person).length === 0;
+  const greyed = { disabled: true, note: { key: 'scoring.cricket.retire.nobody' } } as const;
+  return step(
+    'retire.why',
+    'scoring.cricket.retire.why',
+    RETIRE_REASONS.map((reason) =>
+      option(
+        reason,
+        { key: `scoring.cricket.retire.reason.${reason}` },
+        nobody && reason !== 'out' ? greyed : {},
+      ),
+    ),
   );
 }
 
@@ -289,27 +288,29 @@ function reviewStep(
       SIDES.map((side) => option(side, display.sides[padSideOf(side)].name)),
     );
   }
-  if (flow.review === null) {
-    const spent = reviewsLeft(display, flow.by) === 0;
-    return step(
-      'review.kind',
-      'scoring.cricket.review.kind',
-      REVIEW_KINDS.map((kind) =>
-        option(
-          kind,
-          { key: `scoring.cricket.review.kind.${kind}` },
-          kind === 'player' && spent
-            ? { disabled: true, note: { key: 'scoring.cricket.review.noneLeft' } }
-            : {},
-        ),
-      ),
-    );
-  }
+  if (flow.review === null) return reviewKind(display, flow.by);
   return step(
     'review.outcome',
     'scoring.cricket.review.outcome',
     OUTCOMES.map((outcome) =>
       option(outcome, { key: `scoring.cricket.review.outcome.${outcome}` }),
+    ),
+  );
+}
+
+/** Which kind of review: a player review is greyed once the side has none left. */
+function reviewKind(display: CricketDisplay, by: EngineSide): CricketStep {
+  const spent = reviewsLeft(display, by) === 0;
+  const greyed = { disabled: true, note: { key: 'scoring.cricket.review.noneLeft' } } as const;
+  return step(
+    'review.kind',
+    'scoring.cricket.review.kind',
+    REVIEW_KINDS.map((kind) =>
+      option(
+        kind,
+        { key: `scoring.cricket.review.kind.${kind}` },
+        kind === 'player' && spent ? greyed : {},
+      ),
     ),
   );
 }
