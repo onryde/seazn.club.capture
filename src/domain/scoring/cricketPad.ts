@@ -200,11 +200,19 @@ export type CricketBoardView = {
 export function cricketBoard(display: CricketDisplay): CricketBoardView {
   return {
     score: display.innings === null ? null : scoreOfInnings(display, display.innings),
-    crease: display.stage === 'decided' ? notOutAtResult(display) : creaseOf(display),
+    crease: creaseShown(display),
     bowler: display.bowler,
     over: display.over,
     status: display.freeHit ? { key: 'scoring.cricket.board.freeHit' } : null,
   };
+}
+
+/**
+ * The batters the board shows at the crease, and the Players sheet lists as in (T19 P1: one source for both): who bats
+ * the next ball while the match is played, who was left not out once it is decided.
+ */
+export function creaseShown(display: CricketDisplay): CricketBoardView['crease'] {
+  return display.stage === 'decided' ? notOutAtResult(display) : creaseOf(display);
 }
 
 /** The pair that bats the next ball, the striker first and marked. */

@@ -7,7 +7,9 @@ import type { Bootstrap } from '@/domain/scoring/wire';
 import {
   AWAY_BOWLERS,
   DOT,
+  FIRST_INNINGS_8,
   FOUR,
+  HOME_BOWLERS,
   KO_2,
   LEAGUE_2,
   MATCH,
@@ -18,9 +20,11 @@ import {
   OUT,
   T20,
   inningsOf,
+  ball,
   ledgerOf,
   player,
   retire,
+  summary,
   superOverOf,
   times,
   withCfg,
@@ -321,5 +325,89 @@ describe('yetMoved (ruling 78)', () => {
     expect(yetMoved(display, 2, 3)).toBeNull();
     expect(yetMoved(display, 0, 1)).toBeNull();
     expect(yetMoved(display, 10, 11)).toBeNull();
+  });
+});
+
+// T19 P1 (the controller's ruling, 2026-11-09): at a decided result the not-out pair is who the board shows (D6), so the
+// sheet the board opens lists them as in, never "yet to bat". Home made 8 off two overs, so the away side chases 9. Every
+// figure is worked out by hand from the script.
+describe('playersView at a result (T19 P1)', () => {
+  const chased = (script: Parameters<typeof inningsOf>[2]) =>
+    displayOf([...FIRST_INNINGS_8, ...inningsOf('A', HOME_BOWLERS, script)], MATCH);
+  const rowsOf = (display: ReturnType<typeof displayOf>) =>
+    playersView(display).batting.map((one) => [one.id, one.state, one.striker]);
+
+  it('a chase won by 10 wickets lists both openers as in, with runs (balls), neither on strike', () => {
+    // A-p1 hits a four then a single (5 off 2) and crosses; A-p2 hits a four (4 off 1): 9 runs, won by 10 wickets.
+    const display = chased([FOUR, ONE, FOUR]);
+    expect(display.stage).toBe('decided');
+    const { batting } = playersView(display);
+    expect(batting.slice(0, 2).map((one) => [one.id, one.state, one.striker, one.note])).toEqual([
+      [A(1), 'in', false, { key: 'scoring.cricket.players.in', vars: { runs: 5, balls: 2 } }],
+      [A(2), 'in', false, { key: 'scoring.cricket.players.in', vars: { runs: 4, balls: 1 } }],
+    ]);
+    expect(batting.slice(2).every((one) => one.state === 'yet')).toBe(true);
+    expect(batting).toHaveLength(11);
+  });
+
+  it('a win with a wicket down lists the pair at the crease as in and the dismissed batter as out', () => {
+    // A-p1 is bowled first ball; A-p3 and A-p2 run a single each, then A-p3 hits two fours: 10 runs, 9 wickets.
+    const display = chased([OUT, ONE, ONE, FOUR, FOUR]);
+    expect(rowsOf(display).slice(0, 4)).toEqual([
+      [A(1), 'out', false],
+      [A(2), 'in', false],
+      [A(3), 'in', false],
+      [A(4), 'yet', false],
+    ]);
+  });
+
+  it('an all-out side lists the one batter left as in, and the ten dismissed as out', () => {
+    // A single, five wickets, a single after the over, five more wickets: A-p1 survives on 2 off 2; all out for 2.
+    const display = chased([ONE, ...times(5, OUT), ONE, ...times(5, OUT)]);
+    const rows = rowsOf(display);
+    expect(rows.filter(([, state]) => state === 'in')).toEqual([[A(1), 'in', false]]);
+    expect(rows.filter(([, state]) => state === 'out')).toHaveLength(10);
+    expect(rows.filter(([, state]) => state === 'yet')).toHaveLength(0);
+  });
+
+  it('a batter who retired hurt and did not return is retired, not in', () => {
+    const display = displayOf(
+      [
+        ...FIRST_INNINGS_8,
+        ...inningsOf('A', HOME_BOWLERS, [ONE]),
+        retire(A(1), 'hurt', A(3)),
+        ...[2, 3].map((n) =>
+          ball({
+            over: 0,
+            ballInOver: n,
+            striker: A(2),
+            nonStriker: A(3),
+            bowler: H(11),
+            bat: 4,
+            boundary: 4,
+          }),
+        ),
+      ],
+      MATCH,
+    );
+    expect(display.stage).toBe('decided');
+    expect(rowsOf(display).slice(0, 3)).toEqual([
+      [A(1), 'retired', false],
+      [A(2), 'in', false],
+      [A(3), 'in', false],
+    ]);
+  });
+
+  it('while the match is still played, the striker is marked as before', () => {
+    expect(rowsOf(chased([FOUR, ONE])).slice(0, 2)).toEqual([
+      [A(1), 'in', false],
+      [A(2), 'in', true],
+    ]);
+  });
+
+  it('over totals have no batters in at the result', () => {
+    const display = displayOf([...OPENING, summary(8, 0, 12), summary(9, 0, 10)], MATCH);
+    expect(display.stage).toBe('decided');
+    expect(playersView(display).batting.some((one) => one.state === 'in')).toBe(false);
   });
 });

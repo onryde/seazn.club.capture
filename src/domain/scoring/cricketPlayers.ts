@@ -1,5 +1,6 @@
 import { bowlerRows, reasonText, type BowlerRow } from '@/domain/scoring/cricketBowling';
 import { cardIn } from '@/domain/scoring/cricketFold';
+import { creaseShown } from '@/domain/scoring/cricketPad';
 import type { CricketPick } from '@/domain/scoring/cricketPicks';
 import { turnOf } from '@/domain/scoring/cricketTurn';
 import type {
@@ -56,16 +57,20 @@ export function playersView(display: CricketDisplay): CricketPlayersView {
   };
 }
 
-/** What the fold says of the innings under way: the crease, who is out, who retired, and the scorecard's lines. */
+/**
+ * What the fold says of the innings under way: the crease (at a result, the batters left not out, as the board shows
+ * them: T19 P1), who is out, who retired, and the scorecard's lines.
+ */
 function inningsFacts(display: CricketDisplay) {
   const turn = turnOf(display.state);
   const fine = turn?.innings?.fine ?? null;
   const card = turn === null ? undefined : cardIn(display.scorecard, display.state, turn);
+  const crease = (creaseShown(display) ?? []).flatMap((line) => (line === null ? [] : [line]));
   return {
     fine,
     lines: new Map((card?.batting ?? []).map((line) => [line.person, line])),
-    striker: display.crease?.striker.id ?? null,
-    crease: [display.crease?.striker.id, display.crease?.nonStriker.id],
+    striker: crease.find((line) => line.striker)?.id ?? null,
+    crease: crease.map((line) => line.id),
   };
 }
 
