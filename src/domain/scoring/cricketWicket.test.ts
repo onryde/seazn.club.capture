@@ -310,7 +310,10 @@ describe('who walks in', () => {
   });
 
   it('a run out on the chase’s last ball that ties it into a super over asks no next batter', () => {
-    const chase = [...FIRST_INNINGS_8, ...inningsOf('A', HOME_BOWLERS, [...times(7, ONE), ...times(4, DOT)])];
+    const chase = [
+      ...FIRST_INNINGS_8,
+      ...inningsOf('A', HOME_BOWLERS, [...times(7, ONE), ...times(4, DOT)]),
+    ];
     expect([displayOf(chase).innings?.runs, displayOf(chase).innings?.legalBalls]).toEqual([7, 11]);
     const tie = answer(displayOf(chase), FAIR, 'runout', A(1), H(5), 'none', '1');
     expect(tie.done?.wicket?.incoming).toBeNull();
