@@ -254,6 +254,19 @@ describe('the scorecard under Match details', () => {
       expect(crafted((card) => ({ ...card, extras: null }))?.extras).toBeNull();
     });
 
+    // Review of Batch 5, M2: a line ledger's bowler has no maiden count (the engine says null), and the phone never
+    // invents one: an unknown figure is a dash, a known nought is still a nought.
+    it('a maiden count the engine does not know is a dash, not a nought', () => {
+      const unknown = crafted((card) => ({
+        ...card,
+        bowling: card.bowling.map((line, i) => (i === 0 ? { ...line, maidens: null } : line)),
+      }));
+      expect(unknown?.bowling).toEqual([
+        { name: 'Away Player 11', figures: '1.0-–-7-1' },
+        { name: 'Away Player 10', figures: '1.0-0-5-1' },
+      ]);
+    });
+
     it('a name the team sheets lack is the id itself', () => {
       const stranger = {
         kind: 'bowled',

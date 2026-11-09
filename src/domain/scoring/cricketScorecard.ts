@@ -55,6 +55,9 @@ export function scorecardView(display: CricketDisplay): readonly ScorecardInning
 
 type NameOf = (id: string) => string;
 
+/** What a figure the engine does not know is drawn as (a maiden count a line ledger did not give): never a nought. */
+const NOT_KNOWN = '–';
+
 function inningsOf(
   card: CricketInningsCard,
   number: number,
@@ -77,7 +80,7 @@ function inningsOf(
     extras: extrasOf(card.extras),
     bowling: card.bowling.map((line) => ({
       name: nameOf(line.person),
-      figures: `${line.overs}-${line.maidens ?? 0}-${line.runs}-${line.wickets}`,
+      figures: `${line.overs}-${line.maidens ?? NOT_KNOWN}-${line.runs}-${line.wickets}`,
     })),
     fall: card.fallOfWickets.map((fall) => ({
       key: 'scoring.cricket.card.fall',
