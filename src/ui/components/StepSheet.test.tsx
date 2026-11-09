@@ -2,8 +2,9 @@ import { act, fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import en from '@/i18n/en.json';
 import { StepSheet } from '@/ui/components/StepSheet';
-import { colour, layout } from '@/ui/theme/tokens';
-import { edgeOf, fillOf } from '../../../test/pressState';
+import { colour, layout, plateInk, pressedOpacity } from '@/ui/theme/tokens';
+import { pressIn, pressOut } from '../../../test/press';
+import { edgeOf, fillOf, paintOf } from '../../../test/pressState';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
 const options = [
@@ -192,4 +193,57 @@ describe('StepSheet rows (rulings 82, 85)', () => {
     act(() => fireEvent.click(row(en['scoring.sanction.disqualification'])));
     expect(onChoose.mock.calls).toEqual([['chen'], ['patel'], ['end']]);
   });
+});
+
+// T19 M2: a held row is a fill that steps to `pressFill` (cream at 20%) with its label where it was, which on the
+// picked row's lime plate would put night ink on a dark translucent fill. The picked row dims its plate as `Button`
+// does, and stays lime. Every other row keeps the press fill. jsdom reads the style a held row carries; how a press
+// reads on a phone, outdoors, is the device check's (plan Task 19, exit item 13).
+describe('StepSheet rows held (T19 M2)', () => {
+  const ROWS = [
+    { id: 'chen', label: 'M. Chen', tone: 'standard' },
+    { id: 'patel', label: 'N. Patel', tone: 'standard', selected: true },
+    { id: 'okafor', label: 'B. Okafor', tone: 'standard', chosen: true },
+    { id: 'end', label: en['scoring.sanction.disqualification'], tone: 'destructive' },
+  ] as const;
+  const row = (name: string) => screen.getByRole('button', { name });
+  const label = (element: HTMLElement) => element.firstElementChild as HTMLElement;
+
+  function renderRows() {
+    renderWithPorts(
+      <StepSheet
+        title={en['scoring.sanction.title']}
+        body={null}
+        options={ROWS}
+        cancelLabel={en['scoring.sheet.cancel']}
+        onChoose={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+  }
+
+  it('a held picked row dims its lime plate and keeps its night ink, and comes back on release', () => {
+    renderRows();
+    const resting = paintOf(row('N. Patel'));
+    expect(resting.fill).toBe(fillOf(colour.lime));
+    pressIn(row('N. Patel'));
+    expect(paintOf(row('N. Patel'))).toEqual({ ...resting, opacity: String(pressedOpacity.plate) });
+    expect(resting.opacity).not.toBe(String(pressedOpacity.plate)); // anti-vacuity: the press changed something
+    expect(getComputedStyle(label(row('N. Patel'))).color).toBe(edgeOf(plateInk));
+    pressOut(row('N. Patel'));
+    expect(paintOf(row('N. Patel'))).toEqual(resting);
+  });
+
+  it.each(['M. Chen', 'B. Okafor', en['scoring.sanction.disqualification']])(
+    'a held %s still takes the press fill, with no dim',
+    (name) => {
+      renderRows();
+      const resting = paintOf(row(name));
+      pressIn(row(name));
+      const held = paintOf(row(name));
+      expect(held.fill).toBe(fillOf(colour.pressFill));
+      expect(held.opacity).toBe(resting.opacity);
+      pressOut(row(name));
+    },
+  );
 });

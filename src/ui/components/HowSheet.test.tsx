@@ -2,8 +2,9 @@ import { act, fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import en from '@/i18n/en.json';
 import { HowSheet } from '@/ui/components/HowSheet';
-import { colour, layout, plateInk } from '@/ui/theme/tokens';
-import { edgeOf, fillOf } from '../../../test/pressState';
+import { colour, layout, plateInk, pressedOpacity } from '@/ui/theme/tokens';
+import { pressIn, pressOut } from '../../../test/press';
+import { edgeOf, fillOf, paintOf } from '../../../test/pressState';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
 // The sheet that asks How a game ended (plan S2-3 Task 3): a title, the methods as one choice among them or none, Record
@@ -128,5 +129,21 @@ describe('HowSheet rows (rulings 82, 85; T19 D11)', () => {
     expect(
       getComputedStyle(within(screen.getByRole('radio', { name: 'Time' })).getByText('Time')).color,
     ).toBe(edgeOf(colour.ink));
+  });
+
+  // T19 M2: the shared row's press. A held picked chip dims its plate (the press fill would put night ink on a dark
+  // fill); a held plain chip takes the press fill. The look on a phone, outdoors, is the device check's.
+  it('a held picked chip dims its lime plate; a held plain chip takes the press fill', () => {
+    render({ picked: 'resign' });
+    const chip = () => screen.getByRole('radio', { name: 'Resignation' });
+    const resting = paintOf(chip());
+    pressIn(chip());
+    expect(paintOf(chip())).toEqual({ ...resting, opacity: String(pressedOpacity.plate) });
+    expect(resting.fill).toBe(fillOf(colour.lime));
+    pressOut(chip());
+    const plain = () => screen.getByRole('radio', { name: 'Time' });
+    pressIn(plain());
+    expect(paintOf(plain()).fill).toBe(fillOf(colour.pressFill));
+    pressOut(plain());
   });
 });

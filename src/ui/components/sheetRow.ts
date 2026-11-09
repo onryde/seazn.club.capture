@@ -5,7 +5,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
-import { colour, layout, plateInk, radius, space } from '@/ui/theme/tokens';
+import { colour, layout, plateInk, pressedOpacity, radius, space } from '@/ui/theme/tokens';
 
 /**
  * A choice in one of the pad's sheets (owner rulings 82 and 85, 2026-11-07: every sport's sheets, "player tap is not clear
@@ -65,6 +65,9 @@ export const sheetRow = StyleSheet.create({
   },
   off: { borderColor: colour.ink3 },
   pressed: { backgroundColor: colour.pressFill },
+  // The picked row is a lime plate with night ink: the press fill would put night ink on a dark translucent fill, so it
+  // dims the plate as `Button` does (T19 M2).
+  pressedPlate: { opacity: pressedOpacity.plate },
 });
 
 /**
@@ -83,9 +86,12 @@ export const sheetRowLabel: Readonly<Record<SheetRowTone, StyleProp<TextStyle>>>
 type RowStyle =
   StyleProp<ViewStyle> | ((state: PressableStateCallbackType) => StyleProp<ViewStyle>);
 
-/** Module-level so render allocates no function; pressed takes the press fill, as GhostButton. */
-function pressable(rest: StyleProp<ViewStyle>) {
-  const down = [rest, sheetRow.pressed];
+/**
+ * Module-level so render allocates no function; pressed takes the press fill, as GhostButton, or `held` when a tone has
+ * its own (the picked row's dim).
+ */
+function pressable(rest: StyleProp<ViewStyle>, held: StyleProp<ViewStyle> = sheetRow.pressed) {
+  const down = [rest, held];
   return ({ pressed }: PressableStateCallbackType) => (pressed ? down : rest);
 }
 
@@ -100,7 +106,7 @@ export function sheetRowStyles(
     standard: pressable(base),
     destructive: pressable([base, sheetRow.destructive]),
     chosen: pressable([base, sheetRow.chosen]),
-    selected: pressable([base, sheetRow.selected]),
+    selected: pressable([base, sheetRow.selected], sheetRow.pressedPlate),
     off: [base, sheetRow.off],
   };
 }
