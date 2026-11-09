@@ -364,6 +364,10 @@ ellipsis, the numbers never do.
         result asks for two, so a long club's name wraps in "Bishops Stortford Cricket Club won by 4 wickets" instead of being
         cut (Task 16 concern 2). Match details' `sport` block (item 8) is a `ReactNode` that defaults to none, and draws no
         wrapper when it is none.
+    13. `HistoryCover`'s `uncapped` prop, which `MatchHistory` passes on (Task 18 fix round): when passed, a row's sentence
+        wraps with no line cap, so a long ball or wicket is never cut. Default off, and only cricket's pad screen passes
+        it; every other sport's rows keep the kit's two-line cap (_the controller's_ "History cap scope" ruling,
+        2026-11-09). The last-tap line is not affected and stays at three lines.
 - **The fake's cfg** must be a full `CricketCfg`: a short format is refused without `minOversForResult` (the
   preview's finding). The real cfg comes from the bootstrap and is already whole.
 - **Rules version and epoch**: from the bootstrap and the rules read; `foldEpochOf('cricket')` (3 from the engine major of §7.3; 2 in
