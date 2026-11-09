@@ -101,6 +101,15 @@ caution border, and every other row that takes a tap is lime. §5's caution mean
 border warns before a destructive tap. The owner's words name only lime, so this is the controller's reading, open to
 the owner's correction (§12).
 
+Amended (_the controller's, 2026-11-09, T19 D11_): rulings 82 and 85 above read "the chosen row is a heavier lime border on
+`surface`". That stands for a row whose tap acts, where `chosen` is a suggestion. On a list whose tap only picks and a
+separate button confirms (the first bowler before Start innings, How's methods before Record), the picked row is the
+lime plate with night ink, as the toss's picked half, keeping the heavier border, and says `accessibilityState.selected`.
+The owner, on the device run: "there is no differance when selecting the bowler, highlight it?". It is the shared row
+style, so every sport's such lists match (ruling 85). A held picked row dims its plate (`pressedOpacity.plate`, as
+`Button`) instead of taking the press fill, which would put night ink on a dark translucent fill (T19 M2); every other
+row keeps the press fill.
+
 ## 4. How a scorer meets it
 
 As the S2 design §4 (scan, Not started card, pad, History, result), with these differences.
@@ -224,6 +233,12 @@ ball as its `striker` or `nonStriker`: in a super over `wicket.incoming` is igno
 replacement (1551-1569). Two wickets end it (1982), with no Next batter (gap 7). The super over takes nothing but its own
 balls: More is empty (3144-3150). The format's `superOverStillTied` decides a second tie (1999-2012).
 
+Amended (_the controller's, 2026-11-09, T19 D12_): when a super over is tied again, the card is titled "Tied again —
+super over {n}", {n} being the one that comes next, and every tie card (the first included) gives both sides' scores,
+"Home CC 8/0 (2 ov) · Away CC 8/0 (2 ov)". The half-way card is the chase with its target, as before. A super over is
+two innings, so History, the board, the last-tap line and Match details number them by pair: 1, 1, 2, 2, 3, never one
+number an innings. The repeat itself is the engine's (`superOverStillTied`, ICC), not a restart.
+
 ### 4.7 Result and Undo
 
 The result card says the engine's margin ("won by 12 runs", "won by 4 wickets", "won on the super over", "won on
@@ -232,6 +247,14 @@ boundaries", "won by an innings and N runs", "drawn", "no result", "tied"; every
 "Result recorded — the organiser finalizes it", as every sport. Undo is the S2 rule: this phone's own last tap, voided
 (`core.void`); the 45 s window on a deciding ball (S2 ruling 47). The engine refolds from the start after a void, so
 Undo across an innings break or into a super over is the engine's to get right; the plan proves it on staging.
+
+Amended (_the controller's, 2026-11-09, T19 D8_): Undo chains through this phone's own consecutive balls, one at a time,
+as every other sport's pad does (`undoTarget`). Each tap takes back the current last ledger ball, while it is this
+phone's own and undoable, so two wrong balls take two taps and the second takes back the first. That is what ruling 81's
+"Undo last only" means: never an older ball picked from History. A ball behind another scorer's ball, or after the
+organiser finalizes, stays the organiser's on the web, and Undo is dimmed. The line after an Undo names what was undone
+("Undone — 1 run"), and Undo is not dimmed by a pick line ("New bowler: …"): it takes back the ball before the pick
+(T19 M3), which drops a pick that no longer fits.
 
 ### 4.8 More
 
@@ -309,6 +332,13 @@ height:
 
 Over totals (§4.10) replace rows 3–7 with an entry for the over: runs and wickets steppers and the over's legal balls
 (six, or fewer for a chase that ends mid-over), then Record over.
+
+Amended (_the controller's, 2026-11-09, T19 D6_): row 3 at a decided result. The fold's crease is who bats the next
+ball, so it is empty once the match is decided, which left the batter rows blank beside a bowler line that stays. At a
+result the board shows the last innings' batters left not out, each "name runs (balls)", with no ● (there is no next
+ball), beside the bowler line: both openers after a win by 10 wickets, the pair at the crease when the chase ended, the
+one batter left when the side was all out. Over totals (no players) show none. The fold's crease rule is unchanged, and
+the Next batter step (§4.6) still reads it.
 
 Fit is the plan's (`padFit.test.ts` at 320 and 360 dp, en/es/fr/nl). Cricket names are long; a name gives way to an
 ellipsis, the numbers never do.
