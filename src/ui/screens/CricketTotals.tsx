@@ -18,11 +18,12 @@ import { colour, layout, space } from '@/ui/theme/tokens';
 /**
  * Over totals (S2-4 spec §4.10; plan Task 17), drawn in the keys' place while a side's players are not entered: the note
  * ("Players not entered — ask the organiser"), then the over to enter, three steppers (runs, wickets, legal balls) that
- * start at nothing scored and the rest of the over, and Record over. A tie nobody can bat a super over for is the organiser's
- * line and nothing to enter (ruling 74). The domain says what the engine takes (`totals.fits`): a stepper
- * greys at the figure it would refuse, and Record over while the figures make no over. The entry starts again whenever it
- * is a new one (keyed by `entryKey`: the innings and its legal balls, not the over number, which a part over and the next
- * innings' first over leave where it was), so a tap on Record never leaves the last over's figures under the thumb.
+ * start at nothing scored and the rest of the over, and Record over. A tie nobody can bat a super over for is the
+ * organiser's line and nothing to enter (ruling 74). The domain says what the engine takes (`totals.fits`): a stepper
+ * greys at the figure it would refuse, and Record over while the figures make no over. The entry starts again whenever
+ * it is a new one (keyed by `entryKey`: the innings and its legal balls, not the over number, which a part over and the
+ * next innings' first over leave where it was), so a tap on Record never leaves the last over's figures under the
+ * thumb.
  */
 export const CricketTotalsPanel = memo(function CricketTotalsPanel({
   totals,

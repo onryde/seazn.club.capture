@@ -37,7 +37,7 @@ export type CricketTotalsEntry = {
    * the next innings' first over with the same one.
    */
   readonly entryKey: string;
-  /** What the entry starts at: nothing scored, and the rest of the over, or what is left of the innings if that is less. */
+  /** What the entry starts at: nothing scored and the rest of the over, or what the innings has left if less. */
   readonly start: TotalsOver;
   /** The most legal balls an over has: the format's balls to an over. */
   readonly ballsMax: number;

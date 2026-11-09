@@ -14,8 +14,9 @@ import { colour, layout, space } from '@/ui/theme/tokens';
 /**
  * The scorecard under Match details (S2-4 spec §6; plan Task 18): each innings played, in the order played, with its
  * total, batting (how out, runs and balls), who has not batted, the extras, the bowling and the fall of wickets. The
- * screen draws it only when an innings has been played. A section an innings has nothing for is not drawn (an innings scored in over totals has only its total). The figures are
- * the domain's (`scorecardView`); this only sets them out. Names wrap at their gaps and are never cut; the sheet scrolls.
+ * screen draws it only when an innings has been played. A section an innings has nothing for is not drawn (an innings
+ * scored in over totals has only its total). The figures are the domain's (`scorecardView`); this only sets them out.
+ * Names wrap at their gaps and are never cut; the sheet scrolls.
  */
 export const CricketScorecard = memo(function CricketScorecard({
   innings,
@@ -87,17 +88,13 @@ const BattingTable = memo(function BattingTable({
     <View testID="card-batting" style={styles.table}>
       <Heading text={t('scoring.cricket.players.batting')} />
       {rows.map((row, at) => (
-        <View key={at} testID="card-batter" style={styles.row}>
-          <View style={styles.who}>
-            <NameText variant="body" style={styles.ink}>
-              {row.name}
-            </NameText>
-            <Text variant="status">{words(row.how)}</Text>
-          </View>
-          <Text variant="metricValue" style={styles.figures}>
-            {words(row.score)}
-          </Text>
-        </View>
+        <CardRow
+          key={at}
+          testID="card-batter"
+          name={row.name}
+          how={words(row.how)}
+          figures={words(row.score)}
+        />
       ))}
     </View>
   );
@@ -113,17 +110,35 @@ const BowlingTable = memo(function BowlingTable({
     <View testID="card-bowling" style={styles.table}>
       <Heading text={t('scoring.cricket.players.bowling')} />
       {rows.map((row, at) => (
-        <View key={at} testID="card-bowler" style={styles.row}>
-          <View style={styles.who}>
-            <NameText variant="body" style={styles.ink}>
-              {row.name}
-            </NameText>
-          </View>
-          <Text variant="metricValue" style={styles.figures}>
-            {row.figures}
-          </Text>
-        </View>
+        <CardRow key={at} testID="card-bowler" name={row.name} figures={row.figures} />
       ))}
+    </View>
+  );
+});
+
+/** One player's line: the name, with how out under it where there is one, and the figures at the right. */
+const CardRow = memo(function CardRow({
+  testID,
+  name,
+  how,
+  figures,
+}: {
+  readonly testID: string;
+  readonly name: string;
+  readonly how?: string;
+  readonly figures: string;
+}) {
+  return (
+    <View testID={testID} style={styles.row}>
+      <View style={styles.who}>
+        <NameText variant="body" style={styles.ink}>
+          {name}
+        </NameText>
+        {how === undefined ? null : <Text variant="status">{how}</Text>}
+      </View>
+      <Text variant="metricValue" style={styles.figures}>
+        {figures}
+      </Text>
     </View>
   );
 });

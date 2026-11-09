@@ -31,8 +31,9 @@ type HistoryCoverProps = {
   readonly groups: readonly HistoryGroupWords[];
   readonly onClose: () => void;
   /**
-   * A sport whose sentences are long (cricket's ball and wicket, S2-4 Task 18 fix round) lets every row wrap with no line
-   * cap, so none is cut. Absent, a row's sentence is held to `layout.padHistoryLines` as the other sports' rows are.
+   * A sport whose sentences are long (cricket's ball and wicket, S2-4 Task 18 fix round) lets every row wrap with no
+   * line cap, so none is cut. Absent, a row's sentence is held to `layout.padHistoryLines`, as the other sports' rows
+   * are.
    */
   readonly uncapped?: boolean;
 };
@@ -92,10 +93,10 @@ const HistoryGroup = memo(function HistoryGroup({
 const isWords = (words: string | null): words is string => words !== null;
 
 /**
- * The sentence at the left in at most `padHistoryLines` (no limit when `uncapped`; struck through and inert when undone), and at the right, in a
- * column of `padHistorySide`, never cut, the score, who recorded it and "Undone" or "Sending". One stop for a screen reader, read as
- * one line: "Rally recorded — A. Sharma, 7–3, This phone". `accessible` groups the children on native;
- * react-native-web drops it.
+ * The sentence at the left in at most `padHistoryLines` (no limit when `uncapped`; struck through and inert when
+ * undone), and at the right, in a column of `padHistorySide`, never cut, the score, who recorded it and "Undone" or
+ * "Sending". One stop for a screen reader, read as one line: "Rally recorded — A. Sharma, 7–3, This phone".
+ * `accessible` groups the children on native; react-native-web drops it.
  */
 const HistoryRow = memo(function HistoryRow({
   row,
