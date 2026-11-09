@@ -1,4 +1,5 @@
-import type { CreasePair } from '@/domain/scoring/cricketPicks';
+import { openersAllowed, type CreasePair } from '@/domain/scoring/cricketPicks';
+import { turnOf } from '@/domain/scoring/cricketTurn';
 import type { CricketDisplay } from '@/domain/scoring/cricketTypes';
 import type { PadSide } from '@/domain/scoring/padView';
 
@@ -11,7 +12,7 @@ import type { PadSide } from '@/domain/scoring/padView';
  *
  * - `toss`: no toss yet.
  * - `order`: before Start, the openers are not picked: the batting order, whose first two open (the first on strike).
- * - `openers`: a later innings, or a super over's, has no openers yet (Task 15 draws it; the order is set by then).
+ * - `openers`: a later innings, or a super over's, has no openers yet: its side's order, as before Start (spec §4.5).
  * - `bowler`: the openers are picked and the over due has no bowler.
  * - `ready`: nothing the first ball needs is missing; before Start, Start match is ready. A side with no players entered
  *   needs no pick (it scores over totals, spec §4.10), so it is ready at once.
@@ -41,7 +42,10 @@ export type CricketSetupView = {
   /** The side batting first and the side bowling: none until the toss says. */
   readonly batting: SetupTeam | null;
   readonly fielding: SetupTeam | null;
-  /** The batting side's order (the engine's starters, the scorer's order over it), the first two marked as openers. */
+  /**
+   * The batting side's order (the engine's starters, the scorer's order over it), the first two marked as openers. Before
+   * a super over's first ball, only those who may open it: a batter an earlier super over dismissed is left out (§4.6).
+   */
   readonly order: readonly SetupBatter[];
   /** The openers the order names: its first two, the first on strike; none with fewer than two. */
   readonly nextOpeners: CreasePair | null;
@@ -88,11 +92,22 @@ const playerOf = ({ id, name }: SetupPlayer): SetupPlayer => ({ id, name });
 
 function orderOf(display: CricketDisplay, side: PadSide): SetupBatter[] {
   const names = new Map(display.players[side].map((one) => [one.id, one.name]));
-  return display.battingOrder.map((id, i) => ({
+  return offeredOrder(display).map((id, i) => ({
     id,
     name: names.get(id) ?? id,
     opener: i < OPENERS,
   }));
+}
+
+/**
+ * The batting order as the setup offers it: in an innings not yet opened, only those the engine lets open it (in a super
+ * over, not one an earlier super over dismissed: `openersAllowed`, the openers' pick's own rule); the whole order else.
+ */
+function offeredOrder(display: CricketDisplay): readonly string[] {
+  const turn = turnOf(display.state);
+  if (turn?.innings !== null) return display.battingOrder;
+  const allowed = openersAllowed(display.state, turn);
+  return display.battingOrder.filter((id) => allowed.includes(id));
 }
 
 function bowlersOf(display: CricketDisplay, side: PadSide): SetupBowler[] {
@@ -102,6 +117,22 @@ function bowlersOf(display: CricketDisplay, side: PadSide): SetupBowler[] {
     name: one.name,
     chosen: one.id === picked,
   }));
+}
+
+/**
+ * The display's whole batting order with the batter at row `from` of the order the setup offers moved to row `to` (▲▼).
+ * Those it offers swap places among themselves; one it leaves out (a batter a super over dismissed) keeps theirs.
+ */
+export function orderMoved(display: CricketDisplay, from: number, to: number): readonly string[] {
+  const offered = offeredOrder(display);
+  const next = moved(offered, from, to);
+  let at = 0;
+  return display.battingOrder.map((id) => {
+    if (!offered.includes(id)) return id;
+    const placed = next[at] ?? id;
+    at += 1;
+    return placed;
+  });
 }
 
 /**

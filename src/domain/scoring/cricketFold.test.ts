@@ -437,13 +437,44 @@ describe('the chase and the super over', () => {
     expect(display.stage).toBe('live');
   });
 
-  it('the break ends once the next innings has its openers and its bowler', () => {
+  // Spec §4.5: the openers, the bowler, then Start innings, which records nothing (the picks ride the first ball).
+  it('the break ends once the next innings has its openers and its bowler, and Start innings is tapped', () => {
     const picks = { 'openers.i2': [A(1), A(2)], 'bowler.i2.0': [H(11)] };
-    const display = displayOf(FIRST_INNINGS_8, { picks });
+    const waiting = displayOf(FIRST_INNINGS_8, { picks });
+    expect([waiting.stage, waiting.needs]).toEqual(['break', null]);
+    const display = displayOf(FIRST_INNINGS_8, { picks: { ...picks, 'begin.i2': [] } });
     expect(display.stage).toBe('live');
     expect(display.needs).toBeNull();
     expect(display.crease?.striker.id).toBe(A(1));
     expect(display.battingOrder[0]).toBe(A(1));
+  });
+
+  it('Start innings alone ends no break: the openers and the bowler are still asked', () => {
+    expect(displayOf(FIRST_INNINGS_8, { picks: { 'begin.i2': [] } }).stage).toBe('break');
+    const begun = { 'openers.s1': [A(1), A(2)], 'bowler.s1.0': [H(11)], 'begin.s1': [] };
+    expect(displayOf(TIED_KO, { picks: { 'begin.s1': [] } }).stage).toBe('superOverSetup');
+    expect(displayOf(TIED_KO, { picks: begun }).stage).toBe('live');
+    // A Start innings kept for another innings is not this one's.
+    expect(displayOf(FIRST_INNINGS_8, { picks: { ...begun, 'begin.i3': [] } }).stage).toBe('break');
+  });
+
+  // Ruling 81: Undo takes back this phone's last tap. The innings' last ball undone, the pad is back in the first
+  // innings' last over, the second innings' picks (Start innings too) kept for when it closes again.
+  it('a void of the innings’ last ball takes the pad back into the first innings', () => {
+    const picks = { 'openers.i2': [A(1), A(2)], 'bowler.i2.0': [H(11)], 'begin.i2': [] };
+    const last = FIRST_INNINGS_8.length;
+    const display = displayOf([...FIRST_INNINGS_8, voiding(last)], {
+      picks,
+      own: [last, last + 1],
+    });
+    expect([display.stage, display.innings?.ordinal, display.innings?.legalBalls]).toEqual([
+      'live',
+      'i1',
+      11,
+    ]);
+    expect([display.innings?.runs, display.innings?.wickets]).toEqual([8, 0]);
+    expect(display.bowler?.id).toBe(A(10));
+    expect(display.over.number).toBe(2);
   });
 
   it('a knockout tie waits on the super over’s setup, the side that batted second batting first', () => {

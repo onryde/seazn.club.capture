@@ -23,7 +23,8 @@ import { colour, space } from '@/ui/theme/tokens';
  * over with a free hit when one is due, which opens Players on a tap (Task 14); under it, while an innings is being scored, the keys (`CricketKeys`: the runs,
  * the extras, and Out, Undo and More, which carries the pad's one Undo, so the line has none). Before the first ball the
  * setup stands there instead (`CricketSetup`: the toss on the whole screen, the batting order, the first bowler, Start),
- * and the line keeps Undo, which takes the toss back. The screen is held on while the pad is (`holdsScreen`). Sheets and
+ * and the line keeps Undo, which takes the toss back. At an innings break and before a super over the same setup stands
+ * under the break's card until Start innings (Task 16), and the line's Undo takes back the innings' last ball. The screen is held on while the pad is (`holdsScreen`). Sheets and
  * History cover the pad, which is hidden from a screen reader while they show, and every key is disabled under them.
  */
 export function CricketPadScreen({ model }: { readonly model: CricketPadModel }) {
@@ -52,7 +53,9 @@ export function CricketPadScreen({ model }: { readonly model: CricketPadModel })
 function CricketBody({ model, keys }: { readonly model: CricketPadModel; readonly keys: boolean }) {
   const { view, sheet, actions, board, setup } = model;
   if (setup !== null)
-    return <CricketSetup setup={setup} details={view.details} actions={actions} />;
+    return (
+      <CricketSetup setup={setup} details={view.details} more={model.more} actions={actions} />
+    );
   return (
     <View style={styles.body}>
       <CricketBoard view={board} onOpenPlayers={actions.openPlayers} />

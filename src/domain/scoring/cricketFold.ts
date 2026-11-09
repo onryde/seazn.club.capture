@@ -265,7 +265,7 @@ function displayOf(
   return {
     sides: sidesOf(match.seats),
     context: match.context,
-    stage: stageOf(state, turn, entered.first && entered.second, needs),
+    stage: stageOf(state, turn, entered.first && entered.second, { needs, begun: picks.begun }),
     toss: tossOf(scorecard, match.seats),
     innings: turn === null ? null : inningsOf(state, turn),
     crease: at.crease,
@@ -303,31 +303,32 @@ function tossOf(scorecard: CricketScorecard, seats: Seats): CricketDisplay['toss
     : { wonBy, elected: scorecard.toss.elected };
 }
 
+/** What a later innings, or a super over's, waits on before its first ball: its picks, and Start innings (§4.5). */
+type Due = { readonly needs: CricketDisplay['needs']; readonly begun: boolean };
+
 /**
  * Where the match stands for the pad's screens (`CricketStage`). A super over nobody can bat in is the organiser's
  * (ruling 74); an innings scored in over totals stays so until the next innings (§4.10); a later innings, or a super
- * over's, waits on its setup while its openers or its bowler are not picked.
+ * over's, waits on its setup while its openers or its bowler are not picked, or Start innings is not tapped.
  */
 function stageOf(
   state: CricketState,
   turn: CricketTurn | null,
   entered: boolean,
-  needs: CricketDisplay['needs'],
+  due: Due,
 ): CricketStage {
   if (!state.tossTaken) return 'toss';
   if (state.phase === 'pre') return 'setup';
   if (isDecided(state)) return 'decided';
   if (state.phase === 'super_over')
-    return entered ? dueStage(turn, needs, 'superOverSetup') : 'tiedNoPlayers';
+    return entered ? dueStage(turn, due, 'superOverSetup') : 'tiedNoPlayers';
   if (turn?.innings?.fine === null || !entered) return 'totals';
-  return turn !== null && turn.index > 0 ? dueStage(turn, needs, 'break') : 'live';
+  return turn !== null && turn.index > 0 ? dueStage(turn, due, 'break') : 'live';
 }
 
-const dueStage = (
-  turn: CricketTurn | null,
-  needs: CricketDisplay['needs'],
-  waiting: CricketStage,
-): CricketStage => (turn?.innings === null && needs !== null ? waiting : 'live');
+/** The setup's stage while the innings due is not yet opened and waits on a pick or on Start innings; else live. */
+const dueStage = (turn: CricketTurn | null, due: Due, waiting: CricketStage): CricketStage =>
+  turn?.innings === null && (due.needs !== null || !due.begun) ? waiting : 'live';
 
 /**
  * What the next ball cannot go without (only while both sides' players are entered, in an innings scored ball by ball):

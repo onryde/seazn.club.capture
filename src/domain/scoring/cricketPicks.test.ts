@@ -182,6 +182,28 @@ describe('withPick', () => {
   });
 });
 
+// Spec §4.5: Start innings records nothing; it is a pick of the innings due, which the fold reads to end the break.
+describe('Start innings', () => {
+  it('writes the innings due as begun, naming nobody', () => {
+    expect(withPick(NO_PICKS, displayOf(FIRST_INNINGS_8), { kind: 'begin' })).toStrictEqual({
+      'begin.i2': [],
+    });
+    expect(withPick(NO_PICKS, displayOf(TIED_KO), { kind: 'begin' })).toStrictEqual({
+      'begin.s1': [],
+    });
+  });
+
+  it('is read for the innings due only, and dropped once its innings is past', () => {
+    expect(picksFor({ 'begin.i2': [] }, displayOf(FIRST_INNINGS_8)).begun).toBe(true);
+    expect(picksFor({ 'begin.i1': [] }, displayOf(FIRST_INNINGS_8)).begun).toBe(false);
+    expect(picksFor({ 'begin.i2': [] }, displayOf(OPENING)).begun).toBe(false);
+    const past = { 'begin.i1': [], 'begin.i2': [] };
+    expect(
+      withPick(past, displayOf(FIRST_INNINGS_8), { kind: 'bowler', bowler: H(11) }),
+    ).toStrictEqual({ 'begin.i2': [], 'bowler.i2.0': [H(11)] });
+  });
+});
+
 describe('picksFor', () => {
   it('reads the picks for the display’s next ball, each one the match allows', () => {
     const picks = {

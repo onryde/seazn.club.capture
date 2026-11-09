@@ -655,6 +655,24 @@ the owner's review**, as the rest of the cricket words.
 | Close as a draw?        | ¿Partido inconcluso?          | Clore le match nul ?        | Onbeslist sluiten?         | `confirm.*.title` / `.do`: Declare, New ball, Follow-on and the draw ask once.                                           |
 | Record                  | Registrar                     | Enregistrer                 | Vastleggen                 | `entry.record`: the typed numbers' button.                                                                               |
 
+### Cricket's innings break and Start innings (S2-4 Task 16, 2026-11-09)
+
+The break's card over the next innings' setup (`scoring.cricket.break.*`) and its last button (`setup.startInnings`).
+_Super over_ is the game's word in all four, as in History; _innings_ is the History word (entrada, manche, innings).
+Start innings is one line in its button at 320 dp, so fr is _Débuter la manche_ (_Commencer la manche_ takes two). The
+card's line joins the innings closed and what the next one needs (`break.line`, "{closed} · {next}"; `break.closed`
+"{team} {score} ({overs} ov)" is the same in all four). **es, fr and nl are unreviewed drafts, for the owner's review**,
+as the rest of the cricket words.
+
+| English                                | Español                                      | Français                                      | Nederlands                                     | Notes                                                                                          |
+| -------------------------------------- | -------------------------------------------- | --------------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Innings break                          | Descanso entre entradas                      | Pause entre les manches                       | Inningspauze                                   | `break.title`: the card over a later innings' setup.                                           |
+| Tied — super over                      | Empate — super over                          | Égalité — super over                          | Gelijk — super over                            | `break.tied`: a tie's super over; `break.superOver` "Super over" its second innings.           |
+| {team} need {target} off {count} balls | A {team} le faltan {target} en {count} bolas | {team} a besoin de {target} en {count} balles | {team} heeft {target} nodig uit {count} ballen | `break.chase` (counted); `break.need` with no ball limit. Shown before the chase's first ball. |
+| {team} lead by {count} runs            | {team} lidera por {count} carreras           | {team} mène de {count} courses                | {team} staat {count} runs voor                 | `break.lead` (counted): two innings a side, the main innings' runs.                            |
+| Scores level                           | Empate a carreras                            | Égalité de courses                            | Gelijke stand                                  | `break.level`.                                                                                 |
+| Start innings                          | Empezar entrada                              | Débuter la manche                             | Innings starten                                | `setup.startInnings`: records nothing; the picks ride the first ball.                          |
+
 ## App settings (2026-11-02)
 
 The app's own Settings, from the gear in Home's top-right corner (owner, 2026-11-02: "we should have common setting in a top

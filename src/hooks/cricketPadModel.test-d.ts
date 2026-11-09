@@ -32,6 +32,8 @@ type CricketOwn =
   | 'setOpeners'
   | 'setBowler'
   | 'changeOrder'
+  // The innings break's Start innings (Task 16).
+  | 'startInnings'
   // The keys and their sheets (Tasks 11 to 13): a run, an extra's sheet, Out, More, a step's choice.
   | 'run'
   | 'openExtras'

@@ -223,7 +223,8 @@ describe('playersView: bowling', () => {
   });
 
   it('a super over set up, before its ball, is read-only: its bowler is the setup’s', () => {
-    const picks = { 'openers.s1': [A(1), A(2)], 'bowler.s1.0': [H(11)] };
+    // Set up and started (Start innings), so the pad is live before the super over's first ball.
+    const picks = { 'openers.s1': [A(1), A(2)], 'bowler.s1.0': [H(11)], 'begin.s1': [] };
     const one = displayOf(TIED_KO, MATCH, picks);
     expect([one.stage, one.innings?.superOver, one.deliveries]).toEqual(['live', true, 0]);
     expect(playersView(one).betweenOvers).toBe(false);

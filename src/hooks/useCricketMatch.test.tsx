@@ -18,6 +18,18 @@ import {
 import type { FakeMatchSeed } from '@/services/fakeScoringPort';
 import { saveScoringLink } from '@/services/scoringLinkStore';
 import { FAKE_SCORING_SECRET } from '../../test/fakeScoringLinkPort';
+import {
+  AWAY,
+  FIRST_INNINGS_8,
+  FOUR,
+  HOME,
+  HOME_BOWLERS,
+  OUT,
+  inningsOf,
+  player,
+  times,
+  type Spec,
+} from '../../test/cricketLedger';
 import { createFakePorts, timerClock, type FakePorts } from '../../test/fakePorts';
 import { wrapperFor } from '../../test/renderWithPorts';
 
@@ -747,5 +759,280 @@ describe('a ▲▼ move and a choice the disk refused', () => {
     land();
     await flush();
     expect(pad(view).line).toBeNull();
+  });
+});
+
+// The innings break, the super over and the result (S2-4 spec §4.5 to §4.7; plan Task 16), on the ledger fixtures'
+// sides ("Home CC", "Away CC"): this phone records the ball that ends an innings or the match, and the break's setup
+// stands in the board's place until Start innings, which records nothing.
+describe('the innings break and the result (Task 16)', () => {
+  const H = (n: number) => player('H', n);
+  const A = (n: number) => player('A', n);
+
+  /** A match on the fixtures' sides, the ledger as the specs say (the browser's). */
+  const seedOf = (specs: readonly Spec[]): FakeMatchSeed => ({
+    ...cricketSeed({ events: specs.map(({ type, payload }) => ({ type, payload })) }),
+    sides: { home: HOME, away: AWAY },
+  });
+
+  /** The home side's innings one ball short: 8/0 off 1.5 overs, the last ball (a dot) is this phone's to record. */
+  const LAST_BALL_DUE = seedOf(FIRST_INNINGS_8.slice(0, -1));
+
+  /** The away side chasing 9: 8/6 off 1.2 overs, the next ball (a single) wins it by 4 wickets. */
+  const WINNING_BALL_DUE = seedOf([
+    ...FIRST_INNINGS_8,
+    ...inningsOf('A', HOME_BOWLERS, [...times(6, OUT), FOUR, FOUR]),
+  ]);
+
+  /** This phone's dot ends the first innings: the break stands, a second on. */
+  async function atTheBreak() {
+    const opening = await opened(LAST_BALL_DUE);
+    act(() => pad(opening.view).actions.run(0));
+    await flush();
+    await wait();
+    return opening;
+  }
+
+  /** At the break with the openers (A-p1 on strike, A-p2) and H-p11 to bowl picked. */
+  async function setUp() {
+    const opening = await atTheBreak();
+    act(() => pad(opening.view).actions.setOpeners({ striker: A(1), nonStriker: A(2) }));
+    await flush();
+    await wait();
+    act(() => pad(opening.view).actions.setBowler(H(11)));
+    await flush();
+    await wait();
+    return opening;
+  }
+
+  const said = (text: Parameters<typeof translatePad>[1] | null | undefined) =>
+    text === null || text === undefined ? null : translatePad(en, text);
+
+  it('the break stands in the board’s place with its card, asking the openers of the side batting next', async () => {
+    const { view } = await atTheBreak();
+    expect(pad(view).display.stage).toBe('break');
+    const setup = setupOf(view);
+    expect([setup.step, setup.begins, setup.view.batting?.label]).toEqual([
+      'openers',
+      'innings',
+      'Away CC',
+    ]);
+    expect([said(setup.card?.title), said(setup.card?.line)]).toEqual([
+      'Innings break',
+      'Home CC 8/0 (2 ov) · Away CC need 9 off 12 balls',
+    ]);
+  });
+
+  it('before the match’s first ball the setup starts the match, with no break card', async () => {
+    const { view } = await opened(cricketSeed());
+    act(() => pad(view).actions.pickTossWinner('first'));
+    act(() => pad(view).actions.recordToss('bat'));
+    await flush();
+    expect([setupOf(view).begins, setupOf(view).card]).toEqual(['match', null]);
+  });
+
+  // Back, then Next: the order's Next stands where Start innings will, so its second touch lands there.
+  it('Start innings on the heels of Next is the second touch: nothing starts', async () => {
+    const { view } = await setUp();
+    act(() => pad(view).actions.changeOrder());
+    await wait();
+    act(() => pad(view).actions.setOpeners({ striker: A(1), nonStriker: A(2) }));
+    await flush();
+    expect(setupOf(view).step).toBe('ready');
+    act(() => pad(view).actions.startInnings());
+    await flush();
+    expect(pad(view).display.stage).toBe('break');
+    expect(pad(view).line).toEqual({ kind: 'note', key: 'scoring.pad.countedOnce' });
+    await wait();
+    act(() => pad(view).actions.startInnings());
+    await flush();
+    expect(pad(view).display.stage).toBe('live');
+  });
+
+  it('Start innings queues nothing', async () => {
+    const { fakes, view } = await setUp();
+    expect(setupOf(view).ready).toBe(true);
+    const before = await ledgerOf(fakes, LAST_BALL_DUE);
+    const queue = await fakes.tapQueue.load(LAST_BALL_DUE.fixtureId);
+    const line = pad(view).line;
+    act(() => pad(view).actions.startInnings());
+    await flush();
+    expect(await ledgerOf(fakes, LAST_BALL_DUE)).toEqual(before);
+    expect(await fakes.tapQueue.load(LAST_BALL_DUE.fixtureId)).toEqual(queue);
+    expect(queue?.pending).toEqual([]);
+    expect(pad(view).line).toEqual(line);
+    expect([pad(view).setup, pad(view).display.stage]).toEqual([null, 'live']);
+  });
+
+  it('the chase’s first ball carries the openers and the bowler', async () => {
+    const { fakes, view } = await setUp();
+    act(() => pad(view).actions.startInnings());
+    await flush();
+    await wait();
+    act(() => pad(view).actions.run(1));
+    await flush();
+    const ball = (await ledgerOf(fakes, LAST_BALL_DUE)).at(-1);
+    expect([ball?.type, ball?.payload]).toMatchObject([
+      'cricket.ball',
+      { over: 0, ballInOver: 1, striker: A(1), nonStriker: A(2), bowler: H(11) },
+    ]);
+  });
+
+  it('Start innings waits for the openers and the bowler', async () => {
+    const { view } = await atTheBreak();
+    act(() => pad(view).actions.startInnings());
+    await flush();
+    await wait();
+    expect([pad(view).display.stage, setupOf(view).step]).toEqual(['break', 'openers']);
+    act(() => pad(view).actions.setOpeners({ striker: A(1), nonStriker: A(2) }));
+    await flush();
+    await wait();
+    act(() => pad(view).actions.startInnings());
+    await flush();
+    await wait();
+    expect([pad(view).display.stage, setupOf(view).step]).toEqual(['break', 'bowler']);
+    // Nothing of those early taps is kept: the bowler's pick leaves the break standing until Start innings.
+    act(() => pad(view).actions.setBowler(H(11)));
+    await flush();
+    await wait();
+    expect([pad(view).display.stage, setupOf(view).step]).toEqual(['break', 'ready']);
+  });
+
+  it('a double tap on Start innings is one: the second touch lands on the keys and records nothing', async () => {
+    const { fakes, view } = await setUp();
+    const before = (await ledgerOf(fakes, LAST_BALL_DUE)).length;
+    act(() => pad(view).actions.startInnings());
+    await flush();
+    act(() => pad(view).actions.run(1));
+    await flush();
+    expect((await ledgerOf(fakes, LAST_BALL_DUE)).length).toBe(before);
+    expect(pad(view).line).toEqual({ kind: 'note', key: 'scoring.pad.countedOnce' });
+  });
+
+  // The thumb that lifted off the innings' last key lands on the setup now in the board's place: ▲▼, Next, a bowler and
+  // Start innings take nothing for the 250 ms of the break appearing, and say nothing.
+  it('the setup’s controls on the heels of the innings’ last ball take nothing', async () => {
+    const { view } = await opened(LAST_BALL_DUE);
+    act(() => pad(view).actions.run(0));
+    await flush();
+    const line = pad(view).line;
+    act(() => pad(view).actions.moveBatter(1, 0));
+    act(() => pad(view).actions.setOpeners({ striker: A(1), nonStriker: A(2) }));
+    await flush();
+    expect(
+      setupOf(view)
+        .view.order.slice(0, 2)
+        .map((row) => row.id),
+    ).toEqual([A(1), A(2)]);
+    expect(setupOf(view).step).toBe('openers');
+    expect(pad(view).line).toEqual(line);
+    await wait();
+    act(() => pad(view).actions.moveBatter(1, 0));
+    await flush();
+    expect(
+      setupOf(view)
+        .view.order.slice(0, 2)
+        .map((row) => row.id),
+    ).toEqual([A(2), A(1)]);
+  });
+
+  // The picks for the next innings outlive an Undo of the ball that ended this one, so the break comes back on the step
+  // they left: the bowler, then Start innings, each in the moment of the break appearing.
+  it('a bowler and Start innings on the heels of the break appearing take nothing', async () => {
+    const { view } = await atTheBreak();
+    act(() => pad(view).actions.setOpeners({ striker: A(1), nonStriker: A(2) }));
+    await flush();
+    await wait();
+    const again = async () => {
+      act(() => pad(view).actions.undo());
+      await flush();
+      await wait();
+      expect(pad(view).display.stage).toBe('live');
+      act(() => pad(view).actions.run(0));
+      await flush();
+    };
+    await again();
+    act(() => pad(view).actions.setBowler(H(11)));
+    await flush();
+    expect([pad(view).display.stage, setupOf(view).step]).toEqual(['break', 'bowler']);
+    await wait();
+    act(() => pad(view).actions.setBowler(H(11)));
+    await flush();
+    await wait();
+    expect(setupOf(view).step).toBe('ready');
+    await again();
+    act(() => pad(view).actions.startInnings());
+    await flush();
+    expect([pad(view).display.stage, setupOf(view).step]).toEqual(['break', 'ready']);
+    await wait();
+    act(() => pad(view).actions.startInnings());
+    await flush();
+    expect(pad(view).display.stage).toBe('live');
+  });
+
+  it('Undo across the innings break returns to the last ball of innings 1', async () => {
+    const { fakes, view } = await atTheBreak();
+    act(() => pad(view).actions.undo());
+    await flush();
+    expect([pad(view).display.stage, pad(view).setup]).toEqual(['live', null]);
+    const score = pad(view).board.score;
+    expect([score?.runs, score?.wickets, score?.overs, said(score?.innings)]).toEqual([
+      8,
+      0,
+      '1.5',
+      'Innings 1 · Home CC',
+    ]);
+    expect(pad(view).board.bowler?.id).toBe(A(10));
+    expect((await typesOf(fakes, LAST_BALL_DUE)).at(-1)).toBe('core.void');
+  });
+
+  it('Undo of the innings’ last ball after Start innings returns to it as well', async () => {
+    const { view } = await setUp();
+    act(() => pad(view).actions.startInnings());
+    await flush();
+    await wait();
+    act(() => pad(view).actions.undo());
+    await flush();
+    const score = pad(view).board.score;
+    expect([score?.runs, score?.overs, said(score?.innings)]).toEqual([
+      8,
+      '1.5',
+      'Innings 1 · Home CC',
+    ]);
+  });
+
+  it('Undo of the deciding ball inside 45 s reopens; after, it does not', async () => {
+    const { fakes, view } = await opened(WINNING_BALL_DUE);
+    act(() => pad(view).actions.run(1));
+    await flush();
+    await wait();
+    expect(pad(view).display.stage).toBe('decided');
+    expect(said(pad(view).view.strip[0]?.text)).toBe('Away CC won by 4 wickets');
+    expect(pad(view).view.card).toMatchObject({
+      kind: 'resultRecorded',
+      undoLeft: expect.any(Number),
+    });
+    act(() => pad(view).actions.undo());
+    await flush();
+    expect([pad(view).display.stage, pad(view).display.result]).toEqual(['live', null]);
+    expect(pad(view).board.score?.runs).toBe(8);
+    await wait();
+    act(() => pad(view).actions.run(1));
+    await flush();
+    await wait(46_000);
+    expect(pad(view).view.card).toEqual({ kind: 'resultRecorded', undoLeft: null });
+    expect(pad(view).view.lastTap?.undo).toBe(false);
+    const before = await typesOf(fakes, WINNING_BALL_DUE);
+    act(() => pad(view).actions.undo());
+    await flush();
+    expect(await typesOf(fakes, WINNING_BALL_DUE)).toEqual(before);
+    expect(pad(view).display.stage).toBe('decided');
+  });
+
+  it('a decided match shows no setup and no break card', async () => {
+    const { view } = await opened(WINNING_BALL_DUE);
+    act(() => pad(view).actions.run(1));
+    await flush();
+    expect(pad(view).setup).toBeNull();
   });
 });

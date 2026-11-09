@@ -89,12 +89,13 @@ function newBallTaken(display: CricketDisplay): boolean {
 
 /**
  * The follow-on (4010-4017): two innings a side with it on, both first innings closed and the third not begun, and the
- * side that batted first ahead by the format's lead.
+ * side that batted first ahead by the format's lead; once only (the engine takes a second as a no-op, and its own
+ * generator offers none once `followOnEnforced`, cricket.js:3830).
  */
 function followOnDue(display: CricketDisplay): boolean {
   const { state } = display;
   const followOn = state.cfg.followOn;
-  if (followOn?.enabled !== true || state.phase !== 'live') return false;
+  if (followOn?.enabled !== true || state.phase !== 'live' || state.followOnEnforced) return false;
   const [first, second] = state.innings;
   if (state.innings.length !== 2 || first === undefined || second?.closed !== true) return false;
   return first.runs - second.runs >= followOn.lead;

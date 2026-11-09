@@ -71,9 +71,9 @@ function spies(): CricketPadActions {
   });
 }
 
-function renderSetup(setup: CricketSetupModel) {
+function renderSetup(setup: CricketSetupModel, more = false) {
   const actions = spies();
-  renderWithPorts(<CricketSetup setup={setup} details={DETAILS} actions={actions} />);
+  renderWithPorts(<CricketSetup setup={setup} details={DETAILS} more={more} actions={actions} />);
   return actions;
 }
 
@@ -82,6 +82,8 @@ const model = (over: Partial<CricketSetupModel>): CricketSetupModel => ({
   view: VIEW,
   tossWinner: null,
   ready: false,
+  begins: 'match',
+  card: null,
   ...over,
 });
 
@@ -175,5 +177,133 @@ describe('CricketSetup', () => {
     expect(screen.queryByTestId('first-bowler')).toBeNull();
     expect(screen.queryByRole('button', { name: en['scoring.cricket.setup.back'] })).toBeNull();
     expect(startMatch().getAttribute('aria-disabled')).not.toBe('true');
+  });
+});
+
+// The innings break (spec §4.5, §4.6; plan Task 16): the same steps under the break's card, Start innings for Start
+// match, and More in the foot while it offers something. Which step and card come when is the hook's and the domain's.
+describe('CricketSetup at an innings break', () => {
+  const HILLCREST_BATS: CricketSetupView = {
+    ...VIEW,
+    batting: HILLCREST,
+    fielding: RIVERSIDE,
+    order: [
+      { id: 'h1', name: 'M. Chen', opener: true },
+      { id: 'h2', name: 'N. Patel', opener: true },
+      { id: 'h3', name: 'O. Kowalski', opener: false },
+    ],
+    nextOpeners: { striker: 'h1', nonStriker: 'h2' },
+    bowlers: [
+      { id: 'r10', name: 'J. Mwangi', chosen: false },
+      { id: 'r11', name: 'K. Doyle', chosen: true },
+    ],
+  };
+  const PICKED: CricketSetupView = {
+    ...HILLCREST_BATS,
+    openers: {
+      striker: { id: 'h1', name: 'M. Chen' },
+      nonStriker: { id: 'h2', name: 'N. Patel' },
+    },
+  };
+  // The card as the domain hands it: a title, and a line over two parts (written out, not computed).
+  const CARD = {
+    title: { key: 'scoring.cricket.break.title' },
+    line: {
+      key: 'scoring.cricket.break.line',
+      vars: {
+        closed: {
+          key: 'scoring.cricket.break.closed',
+          vars: { team: 'Riverside CC', score: '8/0', overs: '2' },
+        },
+        next: {
+          key: 'scoring.cricket.break.chase.other',
+          count: 12,
+          vars: { team: 'Hillcrest CC', target: 9 },
+        },
+      },
+    },
+  } as const;
+  const atBreak = (over: Partial<CricketSetupModel>) =>
+    model({ begins: 'innings', card: CARD, view: HILLCREST_BATS, ...over });
+  const startInnings = () =>
+    screen.getByRole('button', { name: en['scoring.cricket.setup.startInnings'] });
+  const moreButton = () => screen.queryByRole('button', { name: en['scoring.cricket.key.more'] });
+
+  it('the openers step is the order step under the break’s card, not the match card', () => {
+    const actions = renderSetup(atBreak({ step: 'openers' }));
+    const card = screen.getByTestId('break-card');
+    expect(within(card).getByRole('heading', { name: 'Innings break' })).toBeTruthy();
+    expect(screen.getByTestId('break-line').textContent).toBe(
+      'Riverside CC 8/0 (2 ov) · Hillcrest CC need 9 off 12 balls',
+    );
+    expect(screen.queryByTestId('match-card')).toBeNull();
+    expect(
+      screen.getByRole('heading', {
+        name: en['scoring.cricket.setup.order'].replace('{team}', 'Hillcrest CC'),
+      }),
+    ).toBeTruthy();
+    act(() =>
+      fireEvent.click(screen.getByRole('button', { name: en['scoring.cricket.setup.next'] })),
+    );
+    expect(actions.setOpeners).toHaveBeenCalledWith({ striker: 'h1', nonStriker: 'h2' });
+  });
+
+  it('a break card with no line (the super over’s first) draws the title alone', () => {
+    renderSetup(
+      atBreak({
+        step: 'openers',
+        card: { title: { key: 'scoring.cricket.break.tied' }, line: null },
+      }),
+    );
+    expect(screen.getByRole('heading', { name: 'Tied — super over' })).toBeTruthy();
+    expect(screen.queryByTestId('break-line')).toBeNull();
+  });
+
+  it('ready, Start innings starts the innings, never the match; the card stays above the openers', () => {
+    const actions = renderSetup(atBreak({ step: 'ready', ready: true, view: PICKED }));
+    expect(screen.getByTestId('break-card')).toBeTruthy();
+    expect(
+      screen.getByText(
+        en['scoring.cricket.setup.openers']
+          .replace('{striker}', 'M. Chen')
+          .replace('{nonStriker}', 'N. Patel'),
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: en['scoring.start.confirm'] })).toBeNull();
+    act(() => fireEvent.click(startInnings()));
+    expect(
+      [actions.startInnings, actions.start].map((spy) => vi.mocked(spy).mock.calls.length),
+    ).toEqual([1, 0]);
+  });
+
+  it('Start innings waits for the bowler: greyed and pressless', () => {
+    const actions = renderSetup(atBreak({ step: 'bowler', ready: false, view: PICKED }));
+    expect(startInnings().getAttribute('aria-disabled')).toBe('true');
+    act(() => fireEvent.click(startInnings()));
+    expect(actions.startInnings).not.toHaveBeenCalled();
+  });
+
+  it('More stands in the foot while it offers something, and opens More', () => {
+    const actions = renderSetup(atBreak({ step: 'openers' }), true);
+    const more = moreButton();
+    if (more === null) throw new Error('expected More');
+    act(() => fireEvent.click(more));
+    expect(actions.openMore).toHaveBeenCalledTimes(1);
+  });
+
+  it('More is in the bowler step’s foot too, beside Back', () => {
+    renderSetup(atBreak({ step: 'ready', ready: true, view: PICKED }), true);
+    expect(moreButton()).toBeTruthy();
+    expect(screen.getByRole('button', { name: en['scoring.cricket.setup.back'] })).toBeTruthy();
+  });
+
+  it('no More when it offers nothing (a super over), and none before the match’s first ball', () => {
+    renderSetup(atBreak({ step: 'openers' }), false);
+    expect(moreButton()).toBeNull();
+  });
+
+  it('no More before the match’s first ball, even with something offered', () => {
+    renderSetup(model({ step: 'order' }), true);
+    expect(moreButton()).toBeNull();
   });
 });

@@ -1,3 +1,4 @@
+import { activeInnings, type CricketState, type InningsState } from '@seazn/engine/sports/cricket';
 import {
   doneSaid,
   headingOf,
@@ -7,12 +8,14 @@ import {
 } from '@/domain/scoring/cricketHistory';
 import { cricketResultWords } from '@/domain/scoring/cricketResult';
 import { cricketRuleRows } from '@/domain/scoring/cricketRules';
+import { padSideOf, turnOf, type CricketTurn } from '@/domain/scoring/cricketTurn';
 import type {
   BatterLine,
   CricketBowler,
   CricketDisplay,
   CricketInnings,
   CricketPadKey,
+  CricketStage,
   OverChip,
 } from '@/domain/scoring/cricketTypes';
 import {
@@ -207,4 +210,89 @@ function chaseOf(innings: CricketInnings): PadText<CricketPadKey> | null {
   const runs = chase.need;
   if (chase.balls === null) return { key: 'scoring.cricket.board.need', vars: { runs } };
   return { key: 'scoring.cricket.board.chase.other', count: chase.balls, vars: { runs } };
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The innings break (plan Task 16): the card over the next innings' setup
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The break's card: its title, and the innings just closed with what the next one needs (or the lead). */
+export type CricketBreakCard = {
+  readonly title: PadText<CricketPadKey>;
+  readonly line: PadText<CricketPadKey> | null;
+};
+
+const BREAK_STAGES: ReadonlySet<CricketStage> = new Set(['break', 'superOverSetup']);
+
+/**
+ * The innings break (S2-4 spec §4.5, §4.6), while the next innings waits on its openers, its bowler or Start innings: the
+ * innings just closed ("Home CC 8/0 (2 ov)"), then what the next needs, its target and balls shown before its first ball
+ * (the web shows them only after it), or, two innings a side, the lead. A tie's super over is "Tied — super over", the
+ * super over's second innings "Super over". Null when no break stands.
+ */
+export function cricketBreakCard(display: CricketDisplay): CricketBreakCard | null {
+  const turn = turnOf(display.state);
+  const { innings } = display;
+  if (!BREAK_STAGES.has(display.stage) || turn === null || innings === null) return null;
+  const closed = closedBefore(display.state, turn);
+  if (closed === undefined) return null;
+  const said = closedSaid(display, closed);
+  const next = nextSaid(display, innings);
+  return {
+    title: breakTitle(turn),
+    line:
+      next === null ? said : { key: 'scoring.cricket.break.line', vars: { closed: said, next } },
+  };
+}
+
+/** A main innings' break, a tie's super over (the first of a pair), or the super over's second innings. */
+function breakTitle(turn: CricketTurn): PadText<CricketPadKey> {
+  if (!turn.superOver) return { key: 'scoring.cricket.break.title' };
+  return {
+    key: turn.index % 2 === 0 ? 'scoring.cricket.break.tied' : 'scoring.cricket.break.superOver',
+  };
+}
+
+/** The innings before the one due: the last of its list, or the match's last main innings before a first super over. */
+function closedBefore(state: CricketState, turn: CricketTurn): InningsState | undefined {
+  const { list } = activeInnings(state);
+  return turn.index > 0 ? list[turn.index - 1] : state.innings[state.innings.length - 1];
+}
+
+function closedSaid(display: CricketDisplay, closed: InningsState): PadText<CricketPadKey> {
+  return {
+    key: 'scoring.cricket.break.closed',
+    vars: {
+      team: display.sides[padSideOf(closed.battingSide)].name,
+      score: `${closed.runs}/${closed.wickets}`,
+      overs: oversText(closed.legalBalls, display.cfg.ballsPerOver),
+    },
+  };
+}
+
+/** "Away CC need 9 off 12 balls", "Away CC need 42" with no ball limit, the lead two innings a side, else nothing. */
+function nextSaid(display: CricketDisplay, innings: CricketInnings): PadText<CricketPadKey> | null {
+  const { chase } = innings;
+  if (chase === null) return leadOf(display);
+  const vars = { team: display.sides[innings.batting].name, target: chase.target };
+  if (chase.balls === null) return { key: 'scoring.cricket.break.need', vars };
+  return { key: 'scoring.cricket.break.chase.other', count: chase.balls, vars };
+}
+
+/** Two innings a side: the side ahead on the main innings' runs and by how many, or level. Nothing in a match of one. */
+function leadOf(display: CricketDisplay): PadText<CricketPadKey> | null {
+  const { state } = display;
+  if (state.cfg.inningsPerSide < 2) return null;
+  const runsOf = (side: PadSide) =>
+    state.innings
+      .filter((one) => padSideOf(one.battingSide) === side)
+      .reduce((sum, one) => sum + one.runs, 0);
+  const lead = runsOf('first') - runsOf('second');
+  if (lead === 0) return { key: 'scoring.cricket.break.level' };
+  const ahead: PadSide = lead > 0 ? 'first' : 'second';
+  return {
+    key: 'scoring.cricket.break.lead.other',
+    count: Math.abs(lead),
+    vars: { team: display.sides[ahead].name },
+  };
 }

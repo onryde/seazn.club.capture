@@ -365,6 +365,14 @@ export type CricketBoardKey =
   | 'scoring.cricket.board.freeHit'
   | 'scoring.cricket.board.onStrike';
 
+/**
+ * The innings break's card (`cricketBreakCard`, Task 16): its title (a break, a tie's super over, a super over's second
+ * innings), the innings just closed, then the chase or, two innings a side, the lead.
+ */
+export type CricketBreakKey =
+  | `scoring.cricket.break.${'title' | 'tied' | 'superOver' | 'closed' | 'line' | 'need' | 'level'}`
+  | Counted<`scoring.cricket.break.${'chase' | 'lead'}`>;
+
 /** The pad's keys and its sheets' words (Tasks 11 to 15). */
 export type CricketSheetKey =
   | `scoring.cricket.key.${'wide' | 'noBall' | 'bye' | 'legBye' | 'out' | 'more'}`
@@ -407,6 +415,7 @@ export type CricketPadKey =
   | 'scoring.cricket.tallySaid'
   | 'scoring.cricket.tallyNone'
   | CricketBoardKey
+  | CricketBreakKey
   | 'scoring.pad.tap';
 
 /** The types cricket's pad works in. */

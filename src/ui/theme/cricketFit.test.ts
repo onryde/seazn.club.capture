@@ -699,3 +699,112 @@ it('More’s widest step title is within a tenth of the sheet at 320 (anti-vacui
   );
   expect(widest).toBeGreaterThan(0.9 * (320 - 2 * space.md));
 });
+
+/**
+ * S2-4 plan Task 16: the innings break's card, its Start innings and the result's words. The card stands at the top of
+ * the setup's scroll, so its line may wrap (no line limit): what can fail is a word wider than the column, or a title
+ * that takes a second line. Start innings is a `Button` (`action` caps, `space.xl` a side). The result is the strip's one
+ * slot, the whole column, one line (`layout.padStripLines`, `metricUnit`), cut with an ellipsis when it is wider.
+ */
+const BREAK_TITLES = ['title', 'tied', 'superOver'].map((key) => `scoring.cricket.break.${key}`);
+const RESULT_KEYS = [
+  'runs.other',
+  'wickets.other',
+  'innings_and_runs.other',
+  'super_over',
+  'boundary_count',
+  'win',
+  'award',
+  'tie',
+  'draw',
+  'no_result',
+  'double_walkover',
+].map((key) => `scoring.cricket.result.${key}`);
+/** The fixtures' side names are twelve characters; a thirty-character club's is the long case. */
+const TWELVE = 'Hillcrest CC';
+const THIRTY = 'Bishops Stortford Cricket Club';
+
+describe.each(WIDTHS)('the innings break and the result at %i dp', (width) => {
+  const capsWidth = (role: 'panelTitle' | 'action') => (text: string) =>
+    barlow700.width(text.toUpperCase(), typeScale[role].fontSize) +
+    typeScale[role].letterSpacing * [...text].length;
+  const bodyWidth = (text: string) => geist400.width(text, typeScale.body.fontSize);
+  /** A Button's label: the column less its padding, `space.xl` a side. */
+  const startText = column(width) - 2 * space.xl;
+  /** The break's line at its longest numbers: a 999/10 innings of 189.5 overs, then 999 off 120 balls. */
+  const breakLine = (dictionary: Dictionary, team: string) =>
+    fill(said(dictionary, 'scoring.cricket.break.line'), {
+      closed: fill(said(dictionary, 'scoring.cricket.break.closed'), {
+        team,
+        score: SCORE,
+        overs: OVERS,
+      }),
+      next: fill(said(dictionary, 'scoring.cricket.break.chase.other'), {
+        team,
+        target: CHASE.runs,
+        count: CHASE.count,
+      }),
+    });
+
+  it.each(LANGUAGES)('%s: each break title is one line in the column', (_, dictionary) => {
+    for (const key of BREAK_TITLES) {
+      const title = said(dictionary, key);
+      expect(linesOf(title, column(width), capsWidth('panelTitle')), title).toBe(1);
+    }
+  });
+
+  it.each(LANGUAGES)('%s: Start innings is one line in its button', (_, dictionary) => {
+    const label = said(dictionary, 'scoring.cricket.setup.startInnings');
+    expect(linesOf(label, startText, capsWidth('action')), label).toBe(1);
+  });
+
+  it.each(LANGUAGES)(
+    '%s: the break’s line keeps every word whole, two lines at most with the fixtures’ names',
+    (_, dictionary) => {
+      for (const team of [TWELVE, THIRTY]) {
+        for (const word of breakLine(dictionary, team).split(' ')) {
+          expect(bodyWidth(word), word).toBeLessThanOrEqual(column(width));
+        }
+      }
+      expect(linesOf(breakLine(dictionary, TWELVE), column(width), bodyWidth)).toBeLessThanOrEqual(
+        2,
+      );
+    },
+  );
+
+  it.each(LANGUAGES)(
+    '%s: every result is one line in the strip with the fixtures’ names',
+    (_, dictionary) => {
+      for (const key of RESULT_KEYS) {
+        const words = fill(said(dictionary, key), { name: TWELVE, count: CHASE.runs });
+        expect(linesOf(words, column(width), unitWidth), words).toBe(layout.padStripLines);
+      }
+    },
+  );
+});
+
+it('the widest Start innings fills nine tenths of its button at 320 (anti-vacuity: it is measured in caps)', () => {
+  const room = 320 - 2 * space.md - 2 * space.xl;
+  const caps = (text: string) =>
+    barlow700.width(text.toUpperCase(), typeScale.action.fontSize) +
+    typeScale.action.letterSpacing * [...text].length;
+  const widest = Math.max(
+    ...LANGUAGES.map(([, dictionary]) =>
+      caps(said(dictionary, 'scoring.cricket.setup.startInnings')),
+    ),
+  );
+  expect(widest).toBeGreaterThan(0.9 * room);
+});
+
+// A thirty-character club's name is cut in the strip for the longer margins: the strip keeps one line (the kit's rule),
+// so the words end in an ellipsis on the phone. Pinned so a change to the strip or the words is seen.
+it('a thirty-character name takes the strip past one line at 320 for an innings win in every language', () => {
+  const room = 320 - 2 * space.md;
+  for (const [, dictionary] of LANGUAGES) {
+    const words = fill(said(dictionary, 'scoring.cricket.result.innings_and_runs.other'), {
+      name: THIRTY,
+      count: CHASE.runs,
+    });
+    expect(linesOf(words, room, unitWidth), words).toBe(2);
+  }
+});

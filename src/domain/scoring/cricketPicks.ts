@@ -22,7 +22,9 @@ import type { PendingPicks } from '@/domain/scoring/pendingPicks';
  * - `openers.<ordinal>`: an innings' striker and non-striker before its first ball;
  * - `bowler.<ordinal>.<over>`: the bowler of an over (counted from 0) before its first ball;
  * - `incoming.<ordinal>`: a super over's replacement batter, who rides the next ball (§4.6);
- * - `swap.<ordinal>.<legalBalls>`: the crease reversed by hand for the next ball (rulings 76, 84).
+ * - `swap.<ordinal>.<deliveries>`: the crease reversed by hand for the next ball (rulings 76, 84);
+ * - `begin.<ordinal>`: Start innings, tapped at a break once the innings' openers and bowler are picked (spec §4.5). It
+ *   names nobody and records nothing: the innings opens on its first ball, which carries the picks.
  *
  * A pick the match no longer allows is ignored, never shown: a person no longer in the lineup (the organiser edited the
  * sheet), a bowler the Laws bar from the over, a pair that is not the fold's. A pick for an innings or an over already
@@ -35,7 +37,9 @@ export type CricketPick =
   | { readonly kind: 'bowler'; readonly bowler: string }
   | { readonly kind: 'incoming'; readonly batter: string }
   /** The crease reversed for the next ball: the display's pair, swapped. */
-  | { readonly kind: 'swap' };
+  | { readonly kind: 'swap' }
+  /** Start innings, at a break: the innings due may take its first ball (spec §4.5). */
+  | { readonly kind: 'begin' };
 
 export type CreasePair = { readonly striker: string; readonly nonStriker: string };
 
@@ -47,6 +51,8 @@ export type CricketPicksNow = {
   readonly bowler: string | null;
   readonly incoming: string | null;
   readonly swap: CreasePair | null;
+  /** Start innings was tapped for the innings due. */
+  readonly begun: boolean;
 };
 
 export const orderKey = (side: PadSide): string => `order.${side}`;
@@ -61,6 +67,7 @@ export const incomingKey = (ordinal: CricketOrdinal): string => `incoming.${ordi
  */
 export const swapKey = (ordinal: CricketOrdinal, deliveries: number): string =>
   `swap.${ordinal}.${deliveries}`;
+export const beginKey = (ordinal: CricketOrdinal): string => `begin.${ordinal}`;
 
 /** The picks that apply to the display's next ball (`picksAt` on the display's own fold). */
 export const picksFor = (picks: PendingPicks, display: CricketDisplay): CricketPicksNow =>
@@ -77,7 +84,9 @@ export function picksAt(
     second: mergedOrder(picks[orderKey('second')], state.orders.away),
   };
   const turn = turnOf(state);
-  if (turn === null) return { order, openers: null, bowler: null, incoming: null, swap: null };
+  if (turn === null) {
+    return { order, openers: null, bowler: null, incoming: null, swap: null, begun: false };
+  }
   const ordinal = ordinalOf(turn);
   return {
     order,
@@ -88,6 +97,7 @@ export function picksAt(
     ),
     incoming: oneIn(picks[incomingKey(ordinal)], incomingAllowed(state, turn)),
     swap: swapOf(picks[swapKey(ordinal, deliveries)], turn),
+    begun: picks[beginKey(ordinal)] !== undefined,
   };
 }
 
@@ -115,7 +125,7 @@ function pairIn(ids: readonly string[] | undefined, allowed: readonly string[]):
 }
 
 /** Who may open an innings not yet opened: its side's order; in a super over, those a super over has not dismissed. */
-function openersAllowed(state: CricketState, turn: CricketTurn): readonly string[] {
+export function openersAllowed(state: CricketState, turn: CricketTurn): readonly string[] {
   if (turn.innings !== null) return [];
   const order = state.orders[turn.battingSide];
   const spent = state.superOver?.dismissed[turn.battingSide] ?? [];
@@ -191,6 +201,8 @@ function entryOf(
       return { key: incomingKey(ordinal), ids: [pick.batter] };
     case 'swap':
       return swapEntry(display, turn, ordinal);
+    case 'begin':
+      return { key: beginKey(ordinal), ids: [] };
   }
 }
 

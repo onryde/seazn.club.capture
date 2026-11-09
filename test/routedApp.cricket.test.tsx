@@ -3,6 +3,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import en from '@/i18n/en.json';
 import { cricketSeed, liveCricketSeed } from '@/services/fakeCricketPad';
 import type { FakeMatchSeed } from '@/services/fakeScoringPort';
+import {
+  AWAY,
+  FIRST_INNINGS_8,
+  HOME,
+  OPENING,
+  TIED_KO,
+  TWO_INNINGS,
+  summary,
+  type Spec,
+} from './cricketLedger';
 import { FAKE_SCORING_SECRET } from './fakeScoringLinkPort';
 import { TEST_NOW } from './fakePorts';
 import { RAW } from './scoringHomeFixtures';
@@ -141,5 +151,83 @@ describe('a cricket match from the toss to the first ball', () => {
         name: en['scoring.cricket.toss.chose'].replace('{team}', en['scoring.cricket.toss.team']),
       }),
     ).toBeTruthy();
+  });
+});
+
+// S2-4 plan Task 16: the innings break from the scan, on the ledger fixtures' sides ("Home CC", "Away CC"; "Home Player
+// 11"): the ball that ends an innings, the break's card over the next innings' setup, Start innings (nothing recorded),
+// More's follow-on at a two-innings break, and a super over's setup, which offers no More.
+describe('the innings break, from the last ball to Start innings', () => {
+  const LINK = { origin: 'https://stg.seazn.club', token: FAKE_SCORING_SECRET };
+  const seedOf = (specs: readonly Spec[], cfg?: unknown): FakeMatchSeed => ({
+    ...cricketSeed({
+      events: specs.map(({ type, payload }) => ({ type, payload })),
+      ...(cfg === undefined ? {} : { cfg }),
+    }),
+    sides: { home: HOME, away: AWAY },
+  });
+  let seconds = 0;
+  beforeEach(() => {
+    seconds = 0;
+  });
+  async function tap(app: Awaited<ReturnType<typeof scanned>>, name: string) {
+    seconds += 1;
+    app.setNow(new Date(TEST_NOW.getTime() + seconds * 1000));
+    act(() => fireEvent.click(screen.getByRole('button', { name })));
+    await flush(400);
+  }
+  const ledger = async (app: Awaited<ReturnType<typeof scanned>>, seed: FakeMatchSeed) => {
+    const events = await app.scoring.events(LINK, seed.fixtureId, 0);
+    return Array.isArray(events) ? events : [];
+  };
+  const orderHeading = (team: string) =>
+    screen.getByRole('heading', {
+      name: en['scoring.cricket.setup.order'].replace('{team}', team),
+    });
+
+  it('the innings’ last ball, the card with the target, the openers, the bowler, then Start innings', async () => {
+    const seed = seedOf(FIRST_INNINGS_8.slice(0, -1));
+    const app = await scanned(seed);
+    await tap(app, en['scoring.cricket.ball.dot']);
+    const card = screen.getByTestId('break-card');
+    expect(within(card).getByRole('heading', { name: 'Innings break' })).toBeTruthy();
+    expect(screen.getByTestId('break-line').textContent).toBe(
+      'Home CC 8/0 (2 ov) · Away CC need 9 off 12 balls',
+    );
+    expect(screen.queryByTestId('cricket-board')).toBeNull();
+    expect(orderHeading('Away CC')).toBeTruthy();
+    await tap(app, en['scoring.cricket.setup.next']);
+    await tap(app, 'Home Player 11');
+    const before = (await ledger(app, seed)).length;
+    await tap(app, en['scoring.cricket.setup.startInnings']);
+    expect((await ledger(app, seed)).length).toBe(before);
+    expect(screen.getByTestId('cricket-board')).toBeTruthy();
+    expect(screen.queryByTestId('cricket-setup')).toBeNull();
+    expect(screen.getByTestId('board-innings').textContent).toBe('Innings 2 · Away CC');
+    await tap(app, '1 run');
+    const ball = (await ledger(app, seed)).at(-1);
+    expect(ball?.payload).toMatchObject({ striker: 'A-p1', nonStriker: 'A-p2', bowler: 'H-p11' });
+  });
+
+  it('two innings a side: the lead on the card, and More’s follow-on makes the other side bat', async () => {
+    const seed = seedOf([...OPENING, summary(300, 10, 300), summary(50, 10, 120)], TWO_INNINGS);
+    const app = await scanned(seed);
+    expect(screen.getByTestId('break-line').textContent).toBe(
+      'Away CC 50/10 (20 ov) · Home CC lead by 250 runs',
+    );
+    expect(orderHeading('Home CC')).toBeTruthy();
+    await tap(app, en['scoring.cricket.key.more']);
+    await tap(app, en['scoring.cricket.more.followOn']);
+    await tap(app, en['scoring.cricket.confirm.followOn.do']);
+    expect((await ledger(app, seed)).at(-1)?.type).toBe('cricket.followon');
+    expect(orderHeading('Away CC')).toBeTruthy();
+  });
+
+  it('a knockout tie: the super over’s setup, the side batting second first, and no More', async () => {
+    const app = await scanned(seedOf(TIED_KO));
+    expect(screen.getByRole('heading', { name: 'Tied — super over' })).toBeTruthy();
+    expect(screen.getByTestId('break-line').textContent).toBe('Away CC 8/0 (2 ov)');
+    expect(orderHeading('Away CC')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: en['scoring.cricket.key.more'] })).toBeNull();
   });
 });
