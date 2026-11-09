@@ -300,6 +300,38 @@ describe('Undo and the status line', () => {
     expect(screen.getAllByRole('button', { name: en['scoring.pad.undo'] })).toHaveLength(1);
   });
 
+  // T19 D8 (the controller's ruling, 2026-11-09): "Undo last only" (ruling 81) is the current last ball, taken one tap
+  // at a time, never an older one picked from History: two own balls need two Undos, and the second takes the first
+  // ball back.
+  it('Undo chains through this phone’s own balls: the second takes back the first ball, then it dims', async () => {
+    const app = await scanned();
+    const undo = () => key(en['scoring.pad.undo']);
+    const overs = () => screen.getByTestId('board-overs').textContent;
+    expect([runs(), overs()]).toEqual(['5/0', '(0.3 ov)']);
+    await press(app, '2 runs');
+    await press(app, '1 run');
+    expect([runs(), overs()]).toEqual(['8/0', '(0.5 ov)']);
+    const [first, second] = (await ledger(app)).slice(-2);
+    await press(app, en['scoring.pad.undo']);
+    const voiding = (await ledger(app)).at(-1);
+    expect([
+      voiding?.type,
+      (voiding?.payload as { event_id?: string } | undefined)?.event_id,
+    ]).toEqual(['core.void', second?.id]);
+    expect([runs(), overs()]).toEqual(['7/0', '(0.4 ov)']);
+    expect(undo().getAttribute('aria-disabled')).not.toBe('true');
+    expect(screen.getByTestId('last-tap-sentence').textContent).toBe('Undone — 1 run');
+    await press(app, en['scoring.pad.undo']);
+    const again = (await ledger(app)).at(-1);
+    expect([again?.type, (again?.payload as { event_id?: string } | undefined)?.event_id]).toEqual([
+      'core.void',
+      first?.id,
+    ]);
+    expect([runs(), overs()]).toEqual(['5/0', '(0.3 ov)']);
+    expect(screen.getByTestId('last-tap-sentence').textContent).toBe('Undone — 2 runs');
+    expect(undo().getAttribute('aria-disabled')).toBe('true');
+  });
+
   it('a no-ball says Free hit on the board’s over strip, and the next fair ball takes it away', async () => {
     const app = await scanned();
     expect(screen.queryByTestId('board-status')).toBeNull();

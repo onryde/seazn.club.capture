@@ -143,14 +143,16 @@ function tallyOf(display: CricketDisplay): PadTally<CricketPadKey> {
 }
 
 /**
- * What the last tap did, or a pick made since it (`CricketPicked`), and the one Undo while this phone has a standing tap
- * of its own. An Undo's line is never covered by a pick.
+ * What the last tap did, or a pick made since it (`CricketPicked`), and the one Undo while this phone's own tap is the
+ * last standing on the ledger. After an Undo the line names what was undone and Undo stays lit while another of this
+ * phone's balls stands under it, so a second Undo takes that one back (T19 D8: every sport's pad chains; each tap takes
+ * back the current last ball, never an older one). An Undo's line is never covered by a pick.
  */
 function lastTapOf(display: CricketDisplay): PadLastTap<CricketPadKey> | null {
   const did = display.lastTap;
   if (did === null) return null;
   const words = wordsOf(display);
-  if (did.kind === 'undone') return { text: undoneSaid(did.tap, words), undo: false };
+  if (did.kind === 'undone') return { text: undoneSaid(did.tap, words), undo: display.undoable };
   const text = display.picked === null ? doneSaid(did, words) : pickedSaid(display.picked, words);
   return { text, undo: display.undoable };
 }

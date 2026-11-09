@@ -146,14 +146,55 @@ describe('cricketPad', () => {
     ]);
   });
 
-  it('a tap Undo took back is said as undone, with no Undo of its own', () => {
-    const display = displayOf([...OPENING, single(1)], [3]);
-    const undone = cricketSport.showUndone(display, { kind: 'ball', ball: ONE_RUN });
-    const line = cricketPad(undone).lastTap;
-    expect(line === null ? null : [translatePad(en, line.text), line.undo]).toStrictEqual([
-      'Undone — 1 run',
-      false,
-    ]);
+  // T19 D8 (the controller's ruling, 2026-11-09): Undo chains through this phone's own consecutive balls, one at a
+  // time, like every other sport's pad. The line after an Undo names what was undone, and its Undo follows the display:
+  // lit while the current last ledger event is this phone's own ball, dim when it is not.
+  describe('Undo chains through this phone’s own balls (T19 D8)', () => {
+    const lineAt = (display: ReturnType<typeof displayOf>) => {
+      const line = cricketPad(display).lastTap;
+      return line === null ? null : [translatePad(en, line.text), line.undo];
+    };
+
+    it('a tap Undo took back is said as undone, and a first own ball under it keeps Undo lit', () => {
+      // ev-3 and ev-4 are this phone's balls, ev-5 its void of ev-4: ball 1 is the last ball standing.
+      const voided = displayOf([...OPENING, single(1), single(2), voiding(4)], [3, 4, 5]);
+      expect(lineAt(voided)).toStrictEqual(['Undone — 1 run', true]);
+    });
+
+    it('the second Undo has a ball to take back, and after it nothing of this phone’s stands: dim', () => {
+      const bothVoided = displayOf(
+        [...OPENING, single(1), single(2), voiding(4), voiding(3)],
+        [3, 4, 5, 6],
+      );
+      expect(lineAt(bothVoided)).toStrictEqual(['Undone — 1 run', false]);
+    });
+
+    it('a tap Undo just took back while a first own ball stands keeps Undo lit through the runtime’s own line', () => {
+      const display = displayOf([...OPENING, single(1)], [3]);
+      const shown = cricketSport.showUndone(display, { kind: 'ball', ball: ONE_RUN });
+      expect(lineAt(shown)).toStrictEqual(['Undone — 1 run', true]);
+    });
+
+    it('nothing of this phone’s under an Undo (the console’s balls only): dim', () => {
+      const display = displayOf([...OPENING, single(1), single(2), voiding(4)], [5]);
+      expect(lineAt(display)).toStrictEqual(['Undone — 1 run', false]);
+    });
+
+    it('an own ball with another scorer’s ball after it: Undo is dim, the ball is the organiser’s', () => {
+      expect(lineAt(displayOf([...OPENING, single(1), single(2)], [3]))).toStrictEqual([
+        '1 run',
+        false,
+      ]);
+    });
+
+    // DECIDED is 15 events: the toss, the start, eleven balls of the home innings, then the away side's two singles
+    // (ev-14 and ev-15). This phone scored the deciding ball; the organiser's finalize (ev-16) closes the ledger over
+    // it.
+    it('after the organiser finalizes, the deciding ball under it is out of reach too', () => {
+      const finalized: Spec = { type: 'core.finalize', payload: {} };
+      expect(lineAt(displayOf(DECIDED, [15]))).toStrictEqual(['1 run', true]);
+      expect(lineAt(displayOf([...DECIDED, finalized], [15]))).toStrictEqual(['1 run', false]);
+    });
   });
 
   it('a screen reader hears the innings now, or that there is no score yet', () => {
@@ -352,6 +393,7 @@ describe('the last-tap line says a pick made since the last tap', () => {
       kind: 'ball',
       ball: ONE_RUN,
     });
-    expect(lineOf(shown)).toStrictEqual(['Undone — 1 run', false]);
+    // This phone's ball 1 (ev-3) still stands, so the line after the Undo keeps its Undo (T19 D8).
+    expect(lineOf(shown)).toStrictEqual(['Undone — 1 run', true]);
   });
 });
