@@ -419,6 +419,22 @@ export const TIED_KO: readonly Spec[] = [
   ...inningsOf('A', HOME_BOWLERS, [...times(8, ONE), ...times(4, DOT)]),
 ];
 
+/** Two runs off a super over: two singles and four dots, no wicket, so every batter may bat in the next one. */
+const TWO_OFF_SIX: readonly Delivery[] = [ONE, ONE, ...times(4, DOT)];
+
+/**
+ * The knockout's tie, then two super overs tied at 2/0 a side (KO_2's `superOverStillTied` is the engine's default,
+ * `repeat`): the away side bats the first first, the home side the second (ICC's alternation), a new bowler each. The
+ * third super over is due, the away side to bat first (T19 device run D12).
+ */
+export const TWO_SUPER_OVERS_TIED: readonly Spec[] = [
+  ...TIED_KO,
+  ...superOverOf('A', player('H', 9), TWO_OFF_SIX),
+  ...superOverOf('H', player('A', 9), TWO_OFF_SIX),
+  ...superOverOf('H', player('A', 8), TWO_OFF_SIX),
+  ...superOverOf('A', player('H', 8), TWO_OFF_SIX),
+];
+
 /** A T20's five bowlers a side, each bowling every fifth over (four overs, the cap). */
 const t20Bowlers = (side: Seat): string[] =>
   Array.from({ length: 20 }, (_, over) => player(side, 7 + (over % 5)));

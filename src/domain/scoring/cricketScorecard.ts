@@ -1,5 +1,6 @@
 import type { CricketInningsCard } from '@seazn/engine/sports/cricket';
 import { wordsOf } from '@/domain/scoring/cricketPad';
+import { superOverNumber } from '@/domain/scoring/cricketTurn';
 import type { CricketDisplay, CricketPadKey } from '@/domain/scoring/cricketTypes';
 import type { PadText } from '@/domain/scoring/padView';
 
@@ -45,9 +46,9 @@ export function scorecardView(display: CricketDisplay): readonly ScorecardInning
   const side = (id: string): string => sides.get(id) ?? id;
   const cards = display.scorecard.innings;
   return cards.map((card, index) => {
-    // History numbers a super over from 1 (its own ordinal); the engine numbers every innings in the order played.
+    // History numbers a super over from 1, two innings each (T19 D12); the engine numbers every innings in the order played.
     const number = card.isSuperOver
-      ? cards.slice(0, index).filter((one) => one.isSuperOver).length + 1
+      ? superOverNumber(cards.slice(0, index).filter((one) => one.isSuperOver).length)
       : card.number;
     return inningsOf(card, number, nameOf, side);
   });

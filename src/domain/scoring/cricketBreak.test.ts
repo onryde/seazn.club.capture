@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { cricketMatchOf, cricketRefusalOf } from '@/domain/scoring/cricketEngine';
 import { foldCricket } from '@/domain/scoring/cricketFold';
 import { cricketMoreItems } from '@/domain/scoring/cricketMore';
-import { cricketBreakCard, cricketPad } from '@/domain/scoring/cricketPad';
+import { cricketBoard, cricketBreakCard, cricketPad } from '@/domain/scoring/cricketPad';
 import { orderMoved, setupStep, setupView } from '@/domain/scoring/cricketSetup';
 import { NO_PICKS, type PendingPicks } from '@/domain/scoring/pendingPicks';
 import { envelopeOf } from '@/domain/scoring/setBasedEngine';
@@ -21,6 +21,7 @@ import {
   TIED_KO,
   TWO,
   TWO_INNINGS,
+  TWO_SUPER_OVERS_TIED,
   inningsOf,
   ledgerOf,
   player,
@@ -174,9 +175,10 @@ describe('the super over (spec §4.6)', () => {
   it('a knockout tie goes to the super over with the side batting second first', () => {
     const display = displayOf(TIED_KO);
     expect(display.stage).toBe('superOverSetup');
+    // T19 D12: a tie card says both sides' scores, the tied pair.
     expect(cardOf(TIED_KO)).toStrictEqual({
       title: 'Tied — super over',
-      line: 'Away CC 8/0 (2 ov)',
+      line: 'Home CC 8/0 (2 ov) · Away CC 8/0 (2 ov)',
     });
     const view = setupView(display);
     expect([view.batting?.label, view.fielding?.label]).toEqual(['Away CC', 'Home CC']);
@@ -208,7 +210,10 @@ describe('the super over (spec §4.6)', () => {
       's3',
       'first',
     ]);
-    expect(cricketBreakCard(repeat)?.title).toEqual({ key: 'scoring.cricket.break.tied' });
+    expect(cricketBreakCard(repeat)?.title).toEqual({
+      key: 'scoring.cricket.break.tiedAgain',
+      vars: { number: 2 },
+    });
     // A batter a super over dismissed bats in no later one: H-p2 is not offered.
     const view = setupView(repeat);
     expect(view.order.map((one) => one.id)).toEqual(HOME_ELEVEN.filter((id) => id !== H(2)));
@@ -275,5 +280,69 @@ describe('the fixtures', () => {
     const all = ledgerOf(specs).map((event) => envelopeOf(MATCH.fixtureId, event));
     const refused = all.filter((_, i) => cricketRefusalOf(match, all.slice(0, i + 1)) !== null);
     expect(refused).toStrictEqual([]);
+  });
+});
+
+// T19 device run D12 (the owner: "I played superover, and made it draw then it restarting the superover again"): every
+// super-over boundary showed the same "Tied — super over" card with one innings' score, and Match details numbered each
+// super-over innings as a super over of its own (1 to 5). A super over is two innings (`soBattingSideAt`'s pairs).
+describe('repeated super overs (T19 D12)', () => {
+  /** The third super over's first half: the away side, H-p7 bowling, six singles. */
+  const THIRD_FIRST_HALF = [...TWO_SUPER_OVERS_TIED, ...superOverOf('A', H(7), times(6, ONE))];
+
+  it('a tie of a super over names the one that comes next, and both sides’ scores', () => {
+    const display = displayOf(TWO_SUPER_OVERS_TIED);
+    expect([display.stage, display.innings?.ordinal, display.innings?.batting]).toEqual([
+      'superOverSetup',
+      's5',
+      'second',
+    ]);
+    expect(cardOf(TWO_SUPER_OVERS_TIED)).toStrictEqual({
+      title: 'Tied again — super over 3',
+      line: 'Home CC 2/0 (1 ov) · Away CC 2/0 (1 ov)',
+    });
+    // The second super over's twelve balls off: the first tied, the second due.
+    const once = TWO_SUPER_OVERS_TIED.slice(0, -12);
+    expect(cardOf(once)).toStrictEqual({
+      title: 'Tied again — super over 2',
+      line: 'Away CC 2/0 (1 ov) · Home CC 2/0 (1 ov)',
+    });
+  });
+
+  it('half-way through a super over the card is the chase, with its target', () => {
+    expect(cardOf(THIRD_FIRST_HALF)).toStrictEqual({
+      title: 'Super over',
+      line: 'Away CC 6/0 (1 ov) · Home CC need 7 off 6 balls',
+    });
+  });
+
+  it('the board and History number the super over, not its innings: 1, 1, 2, 2, 3', () => {
+    const display = displayOf(THIRD_FIRST_HALF, {
+      'openers.s6': [H(1), H(2)],
+      'bowler.s6.0': [A(7)],
+      'begin.s6': ['first'],
+    });
+    const board = cricketBoard(display);
+    expect(board.score === null ? null : translatePad(en, board.score.innings)).toBe(
+      'Super over 3 · Home CC',
+    );
+    const folded = foldCricket({
+      bootstrap: MATCH,
+      ledger: ledgerOf(THIRD_FIRST_HALF),
+      queued: [],
+      ownEventIds: [],
+      toss: null,
+      picks: NO_PICKS,
+    });
+    if (folded.kind !== 'folded') throw new Error('did not fold');
+    expect(folded.history.map((group) => translatePad(en, group.heading))).toEqual([
+      'Super over 3 · Away CC',
+      'Super over 2 · Away CC',
+      'Super over 2 · Home CC',
+      'Super over 1 · Home CC',
+      'Super over 1 · Away CC',
+      'Innings 2 · Away CC',
+      'Innings 1 · Home CC',
+    ]);
   });
 });

@@ -60,6 +60,18 @@ function dueSide(state: CricketState, superOver: boolean, count: number): Engine
 export const ordinalOf = (turn: CricketTurn): CricketOrdinal =>
   turn.superOver ? `s${turn.index + 1}` : `i${turn.index + 1}`;
 
+/**
+ * The super over an innings of the super-over list belongs to, counted from 1: two innings a super over, as the engine
+ * pairs them (`soBattingSideAt`). A repeat after a tie is the next pair (T19 device run D12).
+ */
+export const superOverNumber = (index: number): number => Math.floor(index / 2) + 1;
+
+/** The number the words give an innings by its ordinal: a main innings' own (`i2`: 2), else its super over's (`s4`: 2). */
+export function numberOfOrdinal(ordinal: CricketOrdinal): number {
+  const place = Number(ordinal.slice(1));
+  return ordinal.startsWith('s') ? superOverNumber(place - 1) : place;
+}
+
 /** Above any main innings' rank (there are four at most). */
 const SUPER_OVER_RANK = 100;
 

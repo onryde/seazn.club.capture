@@ -9,7 +9,7 @@ import {
 } from '@/domain/scoring/cricketHistory';
 import { cricketResultWords } from '@/domain/scoring/cricketResult';
 import { cricketRuleRows } from '@/domain/scoring/cricketRules';
-import { padSideOf, turnOf, type CricketTurn } from '@/domain/scoring/cricketTurn';
+import { padSideOf, superOverNumber, turnOf, type CricketTurn } from '@/domain/scoring/cricketTurn';
 import type {
   BatterLine,
   CricketBowler,
@@ -236,8 +236,9 @@ const BREAK_STAGES: ReadonlySet<CricketStage> = new Set(['break', 'superOverSetu
 /**
  * The innings break (S2-4 spec §4.5, §4.6), while the next innings waits on its openers, its bowler or Start innings: the
  * innings just closed ("Home CC 8/0 (2 ov)"), then what the next needs, its target and balls shown before its first ball
- * (the web shows them only after it), or, two innings a side, the lead. A tie's super over is "Tied — super over", the
- * super over's second innings "Super over". Null when no break stands.
+ * (the web shows them only after it), or, two innings a side, the lead. A tie's super over is "Tied — super over", a tied
+ * super over's next "Tied again — super over 2", each with the tied pair's scores (T19 D12); the super over's second
+ * innings "Super over", with its chase. Null when no break stands.
  */
 export function cricketBreakCard(display: CricketDisplay): CricketBreakCard | null {
   const turn = turnOf(display.state);
@@ -246,20 +247,41 @@ export function cricketBreakCard(display: CricketDisplay): CricketBreakCard | nu
   const closed = closedBefore(display.state, turn);
   if (closed === undefined) return null;
   const said = closedSaid(display, closed);
+  const tied = tiedWith(display.state, turn);
+  if (tied !== undefined) {
+    const first = closedSaid(display, tied);
+    return { title: breakTitle(turn), line: joined(first, said) };
+  }
   const next = nextSaid(display, innings);
-  return {
-    title: breakTitle(turn),
-    line:
-      next === null ? said : { key: 'scoring.cricket.break.line', vars: { closed: said, next } },
-  };
+  return { title: breakTitle(turn), line: next === null ? said : joined(said, next) };
 }
 
-/** A main innings' break, a tie's super over (the first of a pair), or the super over's second innings. */
+const joined = (
+  closed: PadText<CricketPadKey>,
+  next: PadText<CricketPadKey>,
+): PadText<CricketPadKey> => ({ key: 'scoring.cricket.break.line', vars: { closed, next } });
+
+/**
+ * At a tie's card (a super over's first innings due), the innings the last one tied with: the main innings' first (the
+ * engine takes a super over only in a match of one innings a side), else the tied super over's first. None at any other
+ * break.
+ */
+function tiedWith(state: CricketState, turn: CricketTurn): InningsState | undefined {
+  if (!turn.superOver || turn.index % 2 !== 0) return undefined;
+  return turn.index > 0
+    ? activeInnings(state).list[turn.index - 2]
+    : state.innings[state.innings.length - 2];
+}
+
+/**
+ * A main innings' break, a tie's super over (the first of a pair; after a tied super over, "Tied again" with the next's
+ * number), or the super over's second innings.
+ */
 function breakTitle(turn: CricketTurn): PadText<CricketPadKey> {
   if (!turn.superOver) return { key: 'scoring.cricket.break.title' };
-  return {
-    key: turn.index % 2 === 0 ? 'scoring.cricket.break.tied' : 'scoring.cricket.break.superOver',
-  };
+  if (turn.index % 2 !== 0) return { key: 'scoring.cricket.break.superOver' };
+  if (turn.index === 0) return { key: 'scoring.cricket.break.tied' };
+  return { key: 'scoring.cricket.break.tiedAgain', vars: { number: superOverNumber(turn.index) } };
 }
 
 /** The innings before the one due: the last of its list, or the match's last main innings before a first super over. */

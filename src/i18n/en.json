@@ -702,6 +702,7 @@
   "scoring.cricket.board.onStrike": "On strike",
   "scoring.cricket.break.title": "Innings break",
   "scoring.cricket.break.tied": "Tied — super over",
+  "scoring.cricket.break.tiedAgain": "Tied again — super over {number}",
   "scoring.cricket.break.superOver": "Super over",
   "scoring.cricket.break.closed": "{team} {score} ({overs} ov)",
   "scoring.cricket.break.line": "{closed} · {next}",

@@ -385,7 +385,7 @@ export type CricketBoardKey =
  * innings), the innings just closed, then the chase or, two innings a side, the lead.
  */
 export type CricketBreakKey =
-  | `scoring.cricket.break.${'title' | 'tied' | 'superOver' | 'closed' | 'line' | 'need' | 'level'}`
+  | `scoring.cricket.break.${'title' | 'tied' | 'tiedAgain' | 'superOver' | 'closed' | 'line' | 'need' | 'level'}`
   | Counted<`scoring.cricket.break.${'chase' | 'lead'}`>;
 
 /**

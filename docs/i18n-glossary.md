@@ -680,6 +680,11 @@ as the rest of the cricket words.
 | Scores level                           | Empate a carreras                            | Égalité de courses                            | Gelijke stand                                  | `break.level`.                                                                                 |
 | Start innings                          | Empezar entrada                              | Débuter la manche                             | Innings starten                                | `setup.startInnings`: records nothing; the picks ride the first ball.                          |
 
+T19 device run D12 (2026-11-09): a tied super over's card names the one that comes next, `break.tiedAgain` "Tied again —
+super over {number}" (es _Empate de nuevo — super over {number}_, fr _Encore égalité — super over {number}_, nl _Weer
+gelijk — super over {number}_), and every tie's card line gives both sides' scores (`break.line` joining two
+`break.closed`). History, the board and Match details number the super over, not its innings: 1, 1, 2, 2, 3.
+
 ### Cricket over totals (S2-4 Task 17, 2026-11-09)
 
 The entry for a side whose players are not entered (`scoring.cricket.totals.*`; spec §4.10, rulings 66 and 74). _Over_ is

@@ -702,6 +702,7 @@
   "scoring.cricket.board.onStrike": "Aan slag",
   "scoring.cricket.break.title": "Inningspauze",
   "scoring.cricket.break.tied": "Gelijk — super over",
+  "scoring.cricket.break.tiedAgain": "Weer gelijk — super over {number}",
   "scoring.cricket.break.superOver": "Super over",
   "scoring.cricket.break.closed": "{team} {score} ({overs} ov)",
   "scoring.cricket.break.line": "{closed} · {next}",

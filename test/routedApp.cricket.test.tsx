@@ -12,6 +12,7 @@ import {
   OUT,
   TIED_KO,
   TWO_INNINGS,
+  TWO_SUPER_OVERS_TIED,
   summary,
   superOverOf,
   type Spec,
@@ -358,10 +359,46 @@ describe('the innings break, from the last ball to Start innings', () => {
     expect(screen.getByTestId('board-crease').textContent).toContain('Away Player 3');
   });
 
+  // T19 device run D12: every super-over boundary showed the same "Tied — super over" card, so a repeat read as a
+  // restart, and Match details numbered each super-over innings as a super over (1 to 5). On the real engine: two tied
+  // super overs, then the third's first half scored here, from its setup.
+  it('repeated super overs: the tie names the next, half-way is the chase, Match details number 1, 1, 2, 2, 3', async () => {
+    const seed = seedOf(TWO_SUPER_OVERS_TIED);
+    const app = await scanned(seed);
+    expect(screen.getByRole('heading', { name: 'Tied again — super over 3' })).toBeTruthy();
+    expect(screen.getByTestId('break-line').textContent).toBe(
+      'Home CC 2/0 (1 ov) · Away CC 2/0 (1 ov)',
+    );
+    expect(orderHeading('Away CC')).toBeTruthy();
+    await tap(app, en['scoring.cricket.setup.next']);
+    await tap(app, 'Home Player 7');
+    await tap(app, en['scoring.cricket.setup.startInnings']);
+    expect(screen.getByTestId('last-tap-sentence').textContent).toBe('Super over 3 started');
+    for (let ball = 0; ball < 6; ball += 1) await tap(app, '1 run');
+    expect((await ledger(app, seed)).at(-1)?.type).toBe('cricket.superover.ball');
+    expect(screen.getByRole('heading', { name: 'Super over' })).toBeTruthy();
+    expect(screen.getByTestId('break-line').textContent).toBe(
+      'Away CC 6/0 (1 ov) · Home CC need 7 off 6 balls',
+    );
+    act(() => fireEvent.click(screen.getByRole('button', { name: en['scoring.details.title'] })));
+    await flush(400);
+    const titles = screen.getAllByTestId('card-title').map((one) => one.textContent);
+    expect(titles.filter((title) => title?.startsWith('Super over'))).toEqual([
+      'Super over 1 · Away CC',
+      'Super over 1 · Home CC',
+      'Super over 2 · Home CC',
+      'Super over 2 · Away CC',
+      'Super over 3 · Away CC',
+    ]);
+  });
+
   it('a knockout tie: the super over’s setup, the side batting second first, and no More', async () => {
     const app = await scanned(seedOf(TIED_KO));
     expect(screen.getByRole('heading', { name: 'Tied — super over' })).toBeTruthy();
-    expect(screen.getByTestId('break-line').textContent).toBe('Away CC 8/0 (2 ov)');
+    // T19 D12: a tie card says both sides' scores.
+    expect(screen.getByTestId('break-line').textContent).toBe(
+      'Home CC 8/0 (2 ov) · Away CC 8/0 (2 ov)',
+    );
     expect(orderHeading('Away CC')).toBeTruthy();
     expect(screen.queryByRole('button', { name: en['scoring.cricket.key.more'] })).toBeNull();
   });

@@ -753,6 +753,10 @@ describe.each(WIDTHS)('the innings break and the result at %i dp', (width) => {
       const title = said(dictionary, key);
       expect(linesOf(title, column(width), capsWidth('panelTitle')), title).toBe(1);
     }
+    // T19 D12: a repeated super over's tie names the next, at two digits.
+    const again = fill(said(dictionary, 'scoring.cricket.break.tiedAgain'), { number: 12 });
+    expect(wordsFit(again, column(width), capsWidth('panelTitle')), again).toBe(true);
+    expect(linesOf(again, column(width), capsWidth('panelTitle')), again).toBeLessThanOrEqual(2);
   });
 
   it.each(LANGUAGES)('%s: Start innings is one line in its button', (_, dictionary) => {

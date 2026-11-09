@@ -1,7 +1,7 @@
 import type { EventEnvelope } from '@seazn/engine/core';
 import { CricketRevise } from '@seazn/engine/sports/cricket';
 import { doneOf } from '@/domain/scoring/cricketDone';
-import { rankOfOrdinal } from '@/domain/scoring/cricketTurn';
+import { numberOfOrdinal, rankOfOrdinal } from '@/domain/scoring/cricketTurn';
 import type {
   CricketBallSeen,
   CricketEventKey,
@@ -174,7 +174,7 @@ export function pickedSaid(picked: CricketPicked, words: CricketWords): Text {
         key: picked.ordinal.startsWith('s')
           ? 'scoring.cricket.last.begin.superOver'
           : 'scoring.cricket.last.begin.innings',
-        vars: { number: Number(picked.ordinal.slice(1)) },
+        vars: { number: numberOfOrdinal(picked.ordinal) },
       };
     case 'swap':
       return swapSaid(picked.striker, words);
@@ -322,10 +322,13 @@ const groupKey = (group: CricketGroup): string => group?.ordinal ?? BEFORE;
 
 const rankOf = (key: string): number => rankOfOrdinal(key) ?? 0;
 
-/** An innings by its place and the side batting ("Innings 1 · Home CC", "Super over 1 · Away CC"), or before play. */
+/**
+ * An innings by its place and the side batting ("Innings 1 · Home CC", "Super over 1 · Away CC"), or before play. A super
+ * over's two innings share its number (T19 D12).
+ */
 export function headingOf(group: CricketGroup, words: CricketWords): Text {
   if (group === null) return { key: 'scoring.cricket.history.before' };
-  const number = Number(group.ordinal.slice(1));
+  const number = numberOfOrdinal(group.ordinal);
   const side = words.sides[group.batting].name;
   const superOver = group.ordinal.startsWith('s');
   return {
