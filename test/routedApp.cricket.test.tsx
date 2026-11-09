@@ -302,6 +302,8 @@ describe('the innings break, from the last ball to Start innings', () => {
     await tap(app, en['scoring.cricket.confirm.followOn.do']);
     expect((await ledger(app, seed)).at(-1)?.type).toBe('cricket.followon');
     expect(orderHeading('Away CC')).toBeTruthy();
+    // T19 D13 round 2: the follow-on is a tap made at the break, so the line confirms it (it is not an innings' end).
+    expect(screen.getByTestId('last-tap-sentence').textContent).toBe('Follow-on enforced');
   });
 
   // The controller's ruling (follow-on): Undo of the enforced follow-on after Start innings drops the stale Start innings;

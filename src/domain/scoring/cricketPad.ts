@@ -7,7 +7,7 @@ import {
   undoneSaid,
   type CricketWords,
 } from '@/domain/scoring/cricketHistory';
-import { closesInnings } from '@/domain/scoring/cricketPicks';
+import { endsInnings } from '@/domain/scoring/cricketPicks';
 import { cricketResultWords } from '@/domain/scoring/cricketResult';
 import { cricketRuleRows } from '@/domain/scoring/cricketRules';
 import { padSideOf, superOverNumber, turnOf, type CricketTurn } from '@/domain/scoring/cricketTurn';
@@ -149,17 +149,17 @@ function tallyOf(display: CricketDisplay): PadTally<CricketPadKey> {
  * phone's balls stands under it, so a second Undo takes that one back (T19 D8: every sport's pad chains; each tap takes
  * back the current last ball, never an older one). An Undo's line is never covered by a pick.
  *
- * At an innings break, a tie or a super over's setup, the tap that closed the innings says nothing true now, so the line
- * has no words until the next action (T19 D13); its Undo stays, since it takes that tap back. A tap made at the break
- * (a stoppage, a revision) and an Undo's line speak as ever, and so does Start innings (`picked`), which is the live
- * stage's.
+ * At an innings break, a tie or a super over's setup, a tap that ended the innings (`endsInnings`: a ball, over totals, a
+ * retirement, a declaration, More's close) has no words until the next action, the break's card being the news (T19 D13);
+ * its Undo stays, since it takes that tap back. An Undo's line, a tap made at the break (a stoppage, a revision, the
+ * follow-on) and Start innings (`picked`, which is the live stage's) speak as ever.
  */
 function lastTapOf(display: CricketDisplay): PadLastTap<CricketPadKey> | null {
   const did = display.lastTap;
   if (did === null) return null;
   const words = wordsOf(display);
   if (did.kind === 'undone') return { text: undoneSaid(did.tap, words), undo: display.undoable };
-  if (BREAK_STAGES.has(display.stage) && closesInnings(did)) {
+  if (BREAK_STAGES.has(display.stage) && endsInnings(did)) {
     return { text: null, undo: display.undoable };
   }
   const text = display.picked === null ? doneSaid(did, words) : pickedSaid(display.picked, words);
@@ -278,7 +278,11 @@ export type CricketBreakCard = {
   readonly line: PadText<CricketPadKey> | null;
 };
 
-const BREAK_STAGES: ReadonlySet<CricketStage> = new Set(['break', 'superOverSetup']);
+/** The breaks: a later innings (or a super over's) is due and waits on its setup, which stands under the break's card. */
+export const BREAK_STAGES: ReadonlySet<CricketStage> = new Set<CricketStage>([
+  'break',
+  'superOverSetup',
+]);
 
 /**
  * The innings break (S2-4 spec §4.5, §4.6), while the next innings waits on its openers, its bowler or Start innings: the

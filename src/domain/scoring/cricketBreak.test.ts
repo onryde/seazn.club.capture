@@ -26,10 +26,12 @@ import {
   TWO_INNINGS,
   TWO_SUPER_OVERS_TIED,
   ball,
+  declare,
   eventId,
   inningsOf,
   ledgerOf,
   player,
+  retire,
   start,
   summary,
   superOverOf,
@@ -395,7 +397,7 @@ describe('the status line at a break (T19 D13)', () => {
     expect(lineOf(ENDS_ON_ONE, [LAST])).toStrictEqual({ stage: 'break', text: null, undo: true });
   });
 
-  it('the same ball is spoken while its innings is not over, and again once the innings is closed by it and a pick is made', () => {
+  it('the ball before the last is spoken while its innings is open, and the closing ball stays silent through the openers and the bowler', () => {
     expect(lineOf(ENDS_ON_ONE.slice(0, -1), [LAST - 1])).toStrictEqual({
       stage: 'live',
       text: 'Dot ball',
@@ -475,6 +477,77 @@ describe('the status line at a break (T19 D13)', () => {
       text: 'Interruption recorded',
       undo: true,
     });
+  });
+
+  // The controller's ruling (round 2, I2): every tap that ENDS an innings is silent on the break card that follows, the
+  // card being the news. One case per kind, so none can drop out of the guard unseen.
+  describe('every tap that ends an innings is silent at the break that follows', () => {
+    const oneRun = ball({
+      over: 0,
+      ballInOver: 1,
+      striker: H(1),
+      nonStriker: H(2),
+      bowler: A(11),
+      bat: 1,
+    });
+
+    it('over totals that close it, both sides’ players entered', () => {
+      const totals = [...OPENING, summary(8, 0, 12)];
+      expect(lineOf(totals, [3])).toStrictEqual({ stage: 'break', text: null, undo: true });
+    });
+
+    it('a retirement that ends it: nine down, the tenth retires out', () => {
+      const nine = [...OPENING, ...inningsOf('H', AWAY_BOWLERS, [ONE, ...times(9, OUT)])];
+      const retired = [...nine, retire(H(7), 'out')];
+      expect(lineOf(retired, [retired.length])).toStrictEqual({
+        stage: 'break',
+        text: null,
+        undo: true,
+      });
+    });
+
+    it('a declaration, two innings a side', () => {
+      const declared = [...OPENING, oneRun, declare()];
+      const two = withCfg(MATCH, TWO_INNINGS);
+      expect(lineOf(declared, [4], NO_PICKS, two)).toStrictEqual({
+        stage: 'break',
+        text: null,
+        undo: true,
+      });
+    });
+
+    it('More’s close', () => {
+      const close: Spec = { type: 'cricket.innings.close', payload: { reason: 'weather' } };
+      expect(lineOf([...OPENING, oneRun, close], [4])).toStrictEqual({
+        stage: 'break',
+        text: null,
+        undo: true,
+      });
+    });
+
+    it('each of them with the next innings’ openers and bowler picked: still silent', () => {
+      const picked = { 'openers.i2': [A(1), A(2)], 'bowler.i2.0': [H(11)] };
+      expect(lineOf([...OPENING, summary(8, 0, 12)], [3], picked).text).toBeNull();
+    });
+  });
+
+  // Not an end of an innings: the follow-on is a fresh tap made AT the break (the second innings is already closed), so it
+  // says itself, as before.
+  it('a follow-on enforced at the break speaks: “Follow-on enforced”, Undo lit', () => {
+    const two = withCfg(MATCH, TWO_INNINGS);
+    const followed = [
+      ...OPENING,
+      summary(300, 10, 300),
+      summary(50, 10, 120),
+      { type: 'cricket.followon', payload: {} },
+    ];
+    expect(lineOf(followed, [5], NO_PICKS, two)).toStrictEqual({
+      stage: 'break',
+      text: 'Follow-on enforced',
+      undo: true,
+    });
+    // The second innings' over totals before it ended it: silent, the follow-on's question is on the card.
+    expect(lineOf(followed.slice(0, -1), [4], NO_PICKS, two).text).toBeNull();
   });
 
   it('over totals keep their line: a side with no players is in totals, not at a break', () => {

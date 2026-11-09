@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { cricketBreakCard, type CricketBreakCard } from '@/domain/scoring/cricketPad';
+import { BREAK_STAGES, cricketBreakCard, type CricketBreakCard } from '@/domain/scoring/cricketPad';
 import { withPick, type CreasePair, type CricketPick } from '@/domain/scoring/cricketPicks';
 import {
   orderMoved,
@@ -78,9 +78,6 @@ const SETUP_STAGES: ReadonlySet<CricketStage> = new Set<CricketStage>([
   'break',
   'superOverSetup',
 ]);
-
-/** The breaks: the setup of an innings after one, which a double tap's second touch may land on as it appears. */
-const BREAK_STAGES: ReadonlySet<CricketStage> = new Set<CricketStage>(['break', 'superOverSetup']);
 
 type Held = { readonly winner: PadSide | null; readonly back: boolean };
 const NOTHING_HELD: Held = { winner: null, back: false };
