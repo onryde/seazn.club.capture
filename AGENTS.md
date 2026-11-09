@@ -202,6 +202,12 @@ contracts/         # the web's capture contracts, vendored and pinned
   `SafeAreaProvider`). None of them can be faked through `Ports`.
 - **No barrel files.** `index.ts` re-exports launder paths past the boundary
   rule and cause circular imports.
+- **Files stay under ~1500 lines.** A file past that is split by concern into
+  sibling files (a test file mirrors the split: `sync.queue.test.ts`, …), never
+  into a folder with an `index.ts`: importers point at the new file, so the
+  boundary rule still sees the real path. A split is a verbatim move — no
+  renames, no logic edits — with the same tests by name before and after
+  (owner, 2026-11-09: "keep the ban" and "and split").
 - No `types/` folder — types live with the behaviour they describe.
 - No `store/` — see §2. Session state is native-owned. What the app keeps
   itself (saved codes, the active mode, the language pick and, while
