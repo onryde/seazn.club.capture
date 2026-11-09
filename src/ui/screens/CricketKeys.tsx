@@ -8,7 +8,7 @@ import {
   View,
   type ViewStyle,
 } from 'react-native';
-import type { SheetExtra } from '@/domain/scoring/cricketExtras';
+import { isBoundary, type SheetExtra } from '@/domain/scoring/cricketExtras';
 import type { CricketPadActions } from '@/hooks/useCricketMatch';
 import { useT } from '@/hooks/useLanguage';
 import type { MessageKey } from '@/i18n/messages';
@@ -124,7 +124,7 @@ const RunKey = memo(function RunKey({
 }) {
   const { t, tp } = useT();
   const press = useCallback(() => onRun(runs), [onRun, runs]);
-  const boundary = runs === 4 || runs === 6;
+  const boundary = isBoundary(runs);
   return (
     <Pressable
       accessibilityRole="button"

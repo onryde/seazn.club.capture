@@ -9,8 +9,9 @@ import {
   playerOf,
 } from '@/services/fakeCricketPad';
 import type { FakeMatchSeed } from '@/services/fakeScoringPort';
-import { layout } from '@/ui/theme/tokens';
+import { colour, layout } from '@/ui/theme/tokens';
 import { FAKE_SCORING_SECRET } from '../../../test/fakeScoringLinkPort';
+import { edgeOf } from '../../../test/pressState';
 import { TEST_NOW } from '../../../test/fakePorts';
 import { flush, launchApp, type LaunchedApp } from '../../../test/routedApp';
 import { RAW } from '../../../test/scoringHomeFixtures';
@@ -91,6 +92,24 @@ describe('the run keys', () => {
     expect((await count(app)) - before).toBe(1);
     expect(screen.getByTestId('last-tap-note').textContent).toBe(en['scoring.pad.countedOnce']);
     expect(runs()).toBe('6/0');
+  });
+
+  // The 4 and the 6 are the engine's boundaries (`cricketPadRules.boundaryValues`), lime-edged; jsdom reads the edge, how it
+  // looks on the phone is the device check's.
+  it('the 4 and the 6 keys are edged in lime, and 0 to 3 are not', async () => {
+    await scanned();
+    const names = [
+      en['scoring.cricket.ball.dot'],
+      '1 run',
+      '2 runs',
+      '3 runs',
+      en['scoring.cricket.ball.four'],
+      en['scoring.cricket.ball.six'],
+    ];
+    const edges = names.map((name) => getComputedStyle(key(name)).borderTopColor);
+    const plain = edgeOf(colour.ink3);
+    const lime = edgeOf(colour.lime);
+    expect(edges).toEqual([plain, plain, plain, plain, lime, lime]);
   });
 
   it('each key row’s height is its token before and after a ball', async () => {

@@ -42,9 +42,15 @@ const OFFERED: Readonly<
   legbye: { bat: [], ran: [1, 2, 3, 4] },
 };
 
-/** The bat keys a boundary is: the 4 and the 6 (ruling 73). */
-function boundaryOf(bat: number): 4 | 6 | null {
-  return bat === 4 || bat === 6 ? bat : null;
+/** The engine's boundaries, read and never copied (`cricketPadRules.boundaryValues`: the 4 and the 6, ruling 73). */
+const BOUNDARIES: readonly number[] = cricketPadRules.boundaryValues;
+
+/** Whether `bat` runs off the bat are a boundary. */
+export const isBoundary = (bat: number): boolean => BOUNDARIES.includes(bat);
+
+/** The boundary a ball of `bat` runs off the bat carries: the 4 and the 6 keys, none for any other count. */
+export function boundaryOf(bat: number): 4 | 6 | null {
+  return BOUNDARIES.find((value): value is 4 | 6 => value === bat) ?? null;
 }
 
 /** A run key's ball: `runs` off the bat, a boundary for the 4 and the 6. */

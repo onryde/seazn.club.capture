@@ -1,6 +1,13 @@
+import { cricketPadRules } from '@seazn/engine/pad';
 import { describe, expect, it } from 'vitest';
 import { cricketEventFor } from '@/domain/scoring/cricketEvents';
-import { extrasChoice, extrasSheet, runBall } from '@/domain/scoring/cricketExtras';
+import {
+  boundaryOf,
+  extrasChoice,
+  extrasSheet,
+  isBoundary,
+  runBall,
+} from '@/domain/scoring/cricketExtras';
 import { foldCricket } from '@/domain/scoring/cricketFold';
 import type { CricketBallTap } from '@/domain/scoring/cricketTypes';
 import { NO_PICKS } from '@/domain/scoring/pendingPicks';
@@ -59,6 +66,15 @@ describe('the run keys', () => {
       [6, 6],
     ]);
     expect(runBall(4)).toEqual({ bat: 4, extra: null, boundary: 4, wicket: null });
+  });
+
+  // Batch 4 review M2: the set is the engine's, not a copy. The tap's `boundary` type is 4 | 6, so a third value in the
+  // engine's set would need the type widened: this goes red first.
+  it('the boundaries are the engine’s 4 and 6, and any other runs are none', () => {
+    expect(cricketPadRules.boundaryValues).toEqual([4, 6]);
+    expect([4, 6].map(isBoundary)).toEqual([true, true]);
+    expect([0, 1, 2, 3, 5, 7].map(isBoundary)).toEqual(Array.from({ length: 6 }, () => false));
+    expect([5, 7].map((runs) => boundaryOf(runs))).toEqual([null, null]);
   });
 });
 

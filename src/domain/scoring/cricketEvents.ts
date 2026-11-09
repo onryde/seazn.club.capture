@@ -1,5 +1,6 @@
 import { cricketPadRules } from '@seazn/engine/pad';
 import { BALL, SUPER_OVER_BALL } from '@/domain/scoring/cricketDone';
+import { boundaryOf } from '@/domain/scoring/cricketExtras';
 import type {
   CricketBallTap,
   CricketDisplay,
@@ -59,7 +60,7 @@ export function ballEventOf(ball: CricketBallTap, display: CricketDisplay): Spor
   const { ballsPerOver } = display.cfg;
   const extras = ball.extra === null ? {} : { extras: ball.extra };
   const wicket = ball.wicket === null ? {} : { wicket: wicketOf(ball.wicket, innings.superOver) };
-  const boundary = boundaryOf(ball);
+  const boundary = boundaryOfBall(ball);
   return {
     type: innings.superOver ? SUPER_OVER_BALL : BALL,
     payload: {
@@ -79,10 +80,9 @@ export function ballEventOf(ball: CricketBallTap, display: CricketDisplay): Spor
  * The boundary: the 4 and 6 keys (ruling 73), and a no-ball's 4 or 6 off the bat, which the no-ball sheet offers only as
  * boundaries (preflight F13; the web sends the same). An all-run 4 or 6 is More's and carries none.
  */
-function boundaryOf(ball: CricketBallTap): 4 | 6 | null {
+function boundaryOfBall(ball: CricketBallTap): 4 | 6 | null {
   if (ball.boundary !== null) return ball.boundary;
-  const offTheBat = ball.extra?.kind === 'noball' && (ball.bat === 4 || ball.bat === 6);
-  return offTheBat ? ball.bat : null;
+  return ball.extra?.kind === 'noball' ? boundaryOf(ball.bat) : null;
 }
 
 /**
