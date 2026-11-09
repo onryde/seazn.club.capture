@@ -332,6 +332,27 @@ describe('Undo and the status line', () => {
     expect(undo().getAttribute('aria-disabled')).toBe('true');
   });
 
+  // T19 P2: Undo no longer dims behind a take-back (D8), so a double tap rests on the bounce window alone: the second touch
+  // of the same Undo is counted once, voids nothing, and a later Undo still takes the next ball.
+  it('a double tap on Undo with two own balls voids one ball; the next Undo, a second on, takes the other', async () => {
+    const app = await scanned();
+    await press(app, '2 runs');
+    await press(app, '1 run');
+    const [first, second] = (await ledger(app)).slice(-2);
+    const before = await count(app);
+    aSecondOn(app);
+    act(() => fireEvent.click(key(en['scoring.pad.undo'])));
+    act(() => fireEvent.click(key(en['scoring.pad.undo'])));
+    await flush(400);
+    const voided = (await ledger(app)).slice(before).map((event) => [event.type, event.payload]);
+    expect(voided).toEqual([['core.void', { event_id: second?.id }]]);
+    expect([runs(), screen.getByTestId('board-overs').textContent]).toEqual(['7/0', '(0.4 ov)']);
+    expect(screen.getByTestId('last-tap-sentence').textContent).toBe('Undone — 1 run');
+    await press(app, en['scoring.pad.undo']);
+    expect((await ledger(app)).at(-1)?.payload).toEqual({ event_id: first?.id });
+    expect(runs()).toBe('5/0');
+  });
+
   it('a no-ball says Free hit on the board’s over strip, and the next fair ball takes it away', async () => {
     const app = await scanned();
     expect(screen.queryByTestId('board-status')).toBeNull();

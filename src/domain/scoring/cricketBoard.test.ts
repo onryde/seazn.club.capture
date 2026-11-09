@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { cricketBoard } from '@/domain/scoring/cricketPad';
 import { NO_PICKS } from '@/domain/scoring/pendingPicks';
 import { foldCricket } from '@/domain/scoring/cricketFold';
+import { playersView } from '@/domain/scoring/cricketPlayers';
 import { translatePad } from '@/i18n/padText';
 import { createTranslator } from '@/i18n/translate';
 import {
@@ -260,6 +261,30 @@ describe('cricketBoard at a result (T19 D6)', () => {
       9, 0,
     ]);
     expect(board.crease).toBeNull();
+  });
+
+  // T19 P3: an abandon before the first ball decides the match with no innings at all; the board has nothing to show and
+  // the not-out read must not throw on the empty card list (`notOutAtResult`'s guards).
+  it('a match abandoned before a ball is decided with no innings: no score, crease or bowler, and no throw', () => {
+    const abandoned: Spec = { type: 'core.abandon', payload: { reason: 'rain' } };
+    const folded = foldCricket({
+      bootstrap: MATCH,
+      ledger: ledgerOf([...OPENING, abandoned]),
+      queued: [],
+      ownEventIds: [],
+      toss: null,
+      picks: NO_PICKS,
+    });
+    if (folded.kind !== 'folded') throw new Error(`did not fold: ${folded.reason}`);
+    const { display } = folded;
+    expect([display.stage, display.innings, display.scorecard.innings]).toStrictEqual([
+      'decided',
+      null,
+      [],
+    ]);
+    const board = cricketBoard(display);
+    expect([board.score, board.crease, board.bowler]).toStrictEqual([null, null, null]);
+    expect(playersView(display).batting).toStrictEqual([]);
   });
 
   it('a match still being played keeps the striker first and marked', () => {
