@@ -215,9 +215,12 @@ describe('the innings break, from the last ball to Start innings', () => {
     expect(screen.getByTestId('cricket-board')).toBeTruthy();
     expect(screen.queryByTestId('cricket-setup')).toBeNull();
     expect(screen.getByTestId('board-innings').textContent).toBe('Innings 2 · Away CC');
+    // T19 device run D3: the line says the innings begun, not innings 1's last ball; the first ball then says itself.
+    expect(screen.getByTestId('last-tap-sentence').textContent).toBe('Innings 2 started');
     await tap(app, '1 run');
     const ball = (await ledger(app, seed)).at(-1);
     expect(ball?.payload).toMatchObject({ striker: 'A-p1', nonStriker: 'A-p2', bowler: 'H-p11' });
+    expect(screen.getByTestId('last-tap-sentence').textContent).toBe('1 run');
   });
 
   // The controller's ruling on Task 16's concern 1: Undo of the innings' last ball after Start innings drops the stale
@@ -233,6 +236,7 @@ describe('the innings break, from the last ball to Start innings', () => {
     await tap(app, en['scoring.pad.undo']);
     expect(screen.getByTestId('board-innings').textContent).toBe('Innings 1 · Home CC');
     expect((await ledger(app, seed)).at(-1)?.type).toBe('core.void');
+    expect(screen.getByTestId('last-tap-sentence').textContent).toBe('Undone — Dot ball');
     await tap(app, en['scoring.cricket.ball.dot']);
     expect(screen.getByTestId('break-line').textContent).toBe(
       'Home CC 8/0 (2 ov) · Away CC need 9 off 12 balls',

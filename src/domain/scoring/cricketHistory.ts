@@ -8,6 +8,7 @@ import type {
   CricketMoreType,
   CricketOrdinal,
   CricketPadKey,
+  CricketPicked,
   CricketSide,
   CricketSeenTap,
   CricketWicketSeen,
@@ -161,6 +162,38 @@ function moreWords(type: CricketMoreType, payload: unknown): CricketEventKey {
   const oversAlone = revise?.success === true && revise.data.target === undefined;
   return oversAlone ? 'scoring.cricket.event.reviseOvers' : EVENT_WORDS[type];
 }
+
+/**
+ * A pick made since the last tap (`CricketPicked`): "Innings 2 started", "Super over 1 started" (History's numbers);
+ * "New bowler: …", "Strike swapped: … on strike", or both joined, the bowler first.
+ */
+export function pickedSaid(picked: CricketPicked, words: CricketWords): Text {
+  switch (picked.kind) {
+    case 'begin':
+      return {
+        key: picked.ordinal.startsWith('s')
+          ? 'scoring.cricket.last.begin.superOver'
+          : 'scoring.cricket.last.begin.innings',
+        vars: { number: Number(picked.ordinal.slice(1)) },
+      };
+    case 'swap':
+      return swapSaid(picked.striker, words);
+    case 'bowler': {
+      const first: Text = {
+        key: 'scoring.cricket.last.bowlerChange',
+        vars: { name: nameOf(words, picked.bowler) },
+      };
+      if (picked.striker === null) return first;
+      const second = swapSaid(picked.striker, words);
+      return { key: 'scoring.cricket.ball.and', vars: { first, second } };
+    }
+  }
+}
+
+const swapSaid = (striker: string, words: CricketWords): Text => ({
+  key: 'scoring.cricket.last.swap',
+  vars: { name: nameOf(words, striker) },
+});
 
 /** The line after an Undo took a tap back: "Undone — " and the tap in its own words. */
 export const undoneSaid = (tap: CricketSeenTap, words: CricketWords): Text => ({

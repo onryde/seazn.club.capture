@@ -1297,6 +1297,40 @@ describe('the last-tap line and History sentences', () => {
         }
   });
 
+  // T19 device run D2/D3: a pick's line (the last-tap line only; a pick is never a History row), measured as the ball
+  // sentences are: three lines at most with the usual names, every word whole with the longest. The longest is the next
+  // bowler and a hand swap together.
+  const picksSaid = (dictionary: Dictionary, name: string): readonly string[] => {
+    const at = (key: string, vars: Readonly<Record<string, string | number>>) =>
+      fill(said(dictionary, key), vars);
+    const bowler = at('scoring.cricket.last.bowlerChange', { name });
+    const swap = at('scoring.cricket.last.swap', { name });
+    return [
+      swap,
+      at('scoring.cricket.ball.and', { first: bowler, second: swap }),
+      at('scoring.cricket.last.begin.innings', { number: 4 }),
+      at('scoring.cricket.last.begin.superOver', { number: 12 }),
+    ];
+  };
+
+  it.each(LANGUAGES)(
+    '%s: a pick’s line holds its three lines, every word whole',
+    (lang, dictionary) => {
+      for (const width of WIDTHS) {
+        const room = lineRoom(width, dictionary);
+        for (const text of picksSaid(dictionary, USUAL.person))
+          expect(linesOf(text, room, controlWidth), `${lang} ${width} ${text}`).toBeLessThanOrEqual(
+            layout.padLineLines,
+          );
+        for (const text of picksSaid(dictionary, PERSON))
+          expect(wordsFit(text, room, controlWidth), `${lang} ${width} ${text}`).toBe(true);
+      }
+      // Anti-vacuity: the joined line wraps at 320, so the cap is measured.
+      const joined = picksSaid(dictionary, USUAL.person)[1] ?? '';
+      expect(linesOf(joined, lineRoom(320, dictionary), controlWidth)).toBeGreaterThan(1);
+    },
+  );
+
   // Anti-vacuity: the whole ball is long enough to take more than one line at 320, so the limits above are measured.
   it('the whole ball takes more than one line at 320', () => {
     const [, ball] = sentences(en, USUAL).find(([name]) => name === 'a whole ball') ?? ['', ''];

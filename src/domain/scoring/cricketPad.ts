@@ -3,6 +3,7 @@ import {
   doneSaid,
   headingOf,
   oversText,
+  pickedSaid,
   undoneSaid,
   type CricketWords,
 } from '@/domain/scoring/cricketHistory';
@@ -141,13 +142,17 @@ function tallyOf(display: CricketDisplay): PadTally<CricketPadKey> {
   };
 }
 
-/** What the last tap did, and the one Undo while this phone has a standing tap of its own. */
+/**
+ * What the last tap did, or a pick made since it (`CricketPicked`), and the one Undo while this phone has a standing tap
+ * of its own. An Undo's line is never covered by a pick.
+ */
 function lastTapOf(display: CricketDisplay): PadLastTap<CricketPadKey> | null {
   const did = display.lastTap;
   if (did === null) return null;
   const words = wordsOf(display);
   if (did.kind === 'undone') return { text: undoneSaid(did.tap, words), undo: false };
-  return { text: doneSaid(did, words), undo: display.undoable };
+  const text = display.picked === null ? doneSaid(did, words) : pickedSaid(display.picked, words);
+  return { text, undo: display.undoable };
 }
 
 // ---------------------------------------------------------------------------------------------------------------

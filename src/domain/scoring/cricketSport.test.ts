@@ -2,39 +2,54 @@ import { describe, expect, it } from 'vitest';
 import { cricketPad } from '@/domain/scoring/cricketPad';
 import { cricketSport } from '@/domain/scoring/cricketSport';
 import type { CricketTap } from '@/domain/scoring/cricketTypes';
-import { NO_PICKS } from '@/domain/scoring/pendingPicks';
+import { NO_PICKS, type PendingPicks } from '@/domain/scoring/pendingPicks';
 import { sportFor } from '@/domain/scoring/sports';
 import { translatePad } from '@/i18n/padText';
+import type { Bootstrap } from '@/domain/scoring/wire';
 import { createTranslator } from '@/i18n/translate';
 import {
   ALL_OUT_FIRST,
+  AWAY_BOWLERS,
   FIRST_INNINGS_8,
   HOME_BOWLERS,
   MATCH,
   ONE,
   OPENING,
+  OUT,
   OVER_ONE_DONE,
   TIED_KO,
+  TWO_INNINGS,
   ball,
+  declare,
   eventId,
   inningsOf,
   ledgerOf,
   player,
+  retire,
+  summary,
+  times,
   toss,
+  voiding,
+  withCfg,
   type Spec,
 } from '../../../test/cricketLedger';
 
 // Cricket as the match runtime scores it (S2-4 plan Task 7): the sport's table row, its stages as the runtime asks them,
 // Home's result line and the pad's halves. Every expected value is written out from the spec, never read from the fold.
 
-function displayOf(specs: readonly Spec[], own: readonly number[] = []) {
+function displayOf(
+  specs: readonly Spec[],
+  own: readonly number[] = [],
+  picks: PendingPicks = NO_PICKS,
+  bootstrap: Bootstrap = MATCH,
+) {
   const folded = cricketSport.fold({
-    bootstrap: MATCH,
+    bootstrap,
     ledger: ledgerOf(specs),
     queued: [],
     ownEventIds: own.map(eventId),
     toss: null,
-    picks: NO_PICKS,
+    picks,
   });
   if (folded.kind !== 'folded') throw new Error(`did not fold: ${folded.reason}`);
   return folded.display;
@@ -170,5 +185,173 @@ describe('cricketPad', () => {
       'Up to 1 over',
       'On',
     ]);
+  });
+});
+
+// T19 device run D2/D3: a pick records nothing until the next ball carries it, so the line said the tap before it (the
+// leg-bye after a hand swap, "Dot ball" after the next over's bowler, innings 1's last wicket once innings 2 had begun).
+// The line now says the pick. Expected words are the dictionary's English, written out.
+describe('the last-tap line says a pick made since the last tap', () => {
+  const lineOf = (display: ReturnType<typeof displayOf>) => {
+    const line = cricketPad(display).lastTap;
+    return line === null ? null : [translatePad(en, line.text), line.undo];
+  };
+  /** Innings 2's openers and first bowler (the home side bowls): what Start innings waits on. */
+  const SECOND_SET = {
+    'openers.i2': [player('A', 1), player('A', 2)],
+    'bowler.i2.0': [player('H', 11)],
+  };
+  const rain: Spec = { type: 'cricket.interruption', payload: { kind: 'rain' } };
+
+  it('the next over’s bowler, picked after the over’s last ball', () => {
+    const picks = { 'bowler.i1.1': [player('A', 10)] };
+    expect(lineOf(displayOf(OVER_ONE_DONE, [8], picks))).toStrictEqual([
+      'New bowler: Away Player 10',
+      true,
+    ]);
+    // Not picked yet: the ball's own words.
+    expect(lineOf(displayOf(OVER_ONE_DONE, [8]))).toStrictEqual(['1 run', true]);
+  });
+
+  it('a hand swap after a ball names who is on strike; a second swap names the other', () => {
+    // After the single the batters crossed: Home Player 2 faces, so the swap puts Home Player 1 on strike.
+    const once = { 'swap.i1.1': [player('H', 1), player('H', 2)] };
+    expect(lineOf(displayOf([...OPENING, single(1)], [], once))).toStrictEqual([
+      'Strike swapped: Home Player 1 on strike',
+      false,
+    ]);
+    const twice = { 'swap.i1.1': [player('H', 2), player('H', 1)] };
+    expect(lineOf(displayOf([...OPENING, single(1)], [], twice))).toStrictEqual([
+      'Strike swapped: Home Player 2 on strike',
+      false,
+    ]);
+  });
+
+  it('at an over’s end with both picked, the line says both: the bowler, then who is on strike', () => {
+    // The over's sixth single and the change of ends leave Home Player 2 on strike; the swap puts Home Player 1 there.
+    const picks = {
+      'bowler.i1.1': [player('A', 10)],
+      'swap.i1.6': [player('H', 1), player('H', 2)],
+    };
+    expect(lineOf(displayOf(OVER_ONE_DONE, [], picks))).toStrictEqual([
+      'New bowler: Away Player 10, Strike swapped: Home Player 1 on strike',
+      false,
+    ]);
+  });
+
+  it('the over’s bowler, once the over is under way, is the ball’s, not a pick: the ball’s words', () => {
+    const second = ball({
+      over: 1,
+      ballInOver: 1,
+      striker: player('H', 2),
+      nonStriker: player('H', 1),
+      bowler: player('A', 10),
+    });
+    const picks = { 'bowler.i1.1': [player('A', 10)] };
+    expect(lineOf(displayOf([...OVER_ONE_DONE, second], [], picks))).toStrictEqual([
+      'Dot ball',
+      false,
+    ]);
+  });
+
+  it('Start innings after the innings before closed: "Innings 2 started"; before it, the last ball', () => {
+    const begun = { ...SECOND_SET, 'begin.i2': ['second'] };
+    expect(lineOf(displayOf(FIRST_INNINGS_8, [], begun))).toStrictEqual([
+      'Innings 2 started',
+      false,
+    ]);
+    expect(lineOf(displayOf(FIRST_INNINGS_8, [], SECOND_SET))).toStrictEqual(['Dot ball', false]);
+  });
+
+  // Every tap that closes an innings, or sets the next (the follow-on), is older than a Start innings standing after it.
+  it('Start innings after over totals, a retirement that ends the innings, a close or a declaration', () => {
+    const begun = { ...SECOND_SET, 'begin.i2': ['second'] };
+    const totals = displayOf([...OPENING, summary(8, 0, 12)], [], begun);
+    expect(lineOf(totals)).toStrictEqual(['Innings 2 started', false]);
+    // Nine bowled off balls 2 to 10 leave Home Player 11 and Home Player 7 in; Home Player 7 retiring out is the tenth.
+    const nine = [...OPENING, ...inningsOf('H', AWAY_BOWLERS, [ONE, ...times(9, OUT)])];
+    const retired = displayOf([...nine, retire(player('H', 7), 'out')], [], begun);
+    expect(lineOf(retired)).toStrictEqual(['Innings 2 started', false]);
+    const close: Spec = { type: 'cricket.innings.close', payload: { reason: 'weather' } };
+    const closed = displayOf([...OPENING, single(1), close], [], begun);
+    expect(lineOf(closed)).toStrictEqual(['Innings 2 started', false]);
+    const twoInnings = withCfg(MATCH, TWO_INNINGS);
+    const declared = displayOf([...OPENING, single(1), declare()], [], begun, twoInnings);
+    expect(lineOf(declared)).toStrictEqual(['Innings 2 started', false]);
+  });
+
+  it('Start innings after the follow-on enforced: "Innings 3 started"', () => {
+    const followed: Spec[] = [
+      ...OPENING,
+      summary(300, 10, 300),
+      summary(50, 10, 120),
+      { type: 'cricket.followon', payload: {} },
+    ];
+    const picks = {
+      'openers.i3': [player('A', 1), player('A', 2)],
+      'bowler.i3.0': [player('H', 11)],
+      'begin.i3': ['second'],
+    };
+    const display = displayOf(followed, [], picks, withCfg(MATCH, TWO_INNINGS));
+    expect(lineOf(display)).toStrictEqual(['Innings 3 started', false]);
+  });
+
+  it('a More tap after a ball says itself over a swap that stands', () => {
+    const picks = { 'swap.i1.1': [player('H', 1), player('H', 2)] };
+    expect(lineOf(displayOf([...OPENING, single(1), rain], [], picks))).toStrictEqual([
+      'Interruption recorded',
+      false,
+    ]);
+  });
+
+  it('in another language: the swap, the bowler and the start in Dutch', () => {
+    const nl = createTranslator('nl');
+    const said = (display: ReturnType<typeof displayOf>) => {
+      const line = cricketPad(display).lastTap;
+      return line === null ? null : translatePad(nl, line.text);
+    };
+    const swap = { 'swap.i1.1': [player('H', 1), player('H', 2)] };
+    expect(said(displayOf([...OPENING, single(1)], [], swap))).toBe('Nu aan slag: Home Player 1');
+    const bowler = { 'bowler.i1.1': [player('A', 10)] };
+    expect(said(displayOf(OVER_ONE_DONE, [], bowler))).toBe('Nieuwe bowler: Away Player 10');
+    const begun = { ...SECOND_SET, 'begin.i2': ['second'] };
+    expect(said(displayOf(FIRST_INNINGS_8, [], begun))).toBe('Innings 2 gestart');
+  });
+
+  it('Start innings of a super over: "Super over 1 started"', () => {
+    const begun = {
+      'openers.s1': [player('A', 1), player('A', 2)],
+      'bowler.s1.0': [player('H', 11)],
+      'begin.s1': ['second'],
+    };
+    expect(lineOf(displayOf(TIED_KO, [], begun))).toStrictEqual(['Super over 1 started', false]);
+  });
+
+  it('a tap after Start innings says itself: Rain recorded before the first ball', () => {
+    const begun = { ...SECOND_SET, 'begin.i2': ['second'] };
+    expect(lineOf(displayOf([...FIRST_INNINGS_8, rain], [], begun))).toStrictEqual([
+      'Interruption recorded',
+      false,
+    ]);
+  });
+
+  it('the first innings has no Start innings line: the match’s start stays', () => {
+    const picks = {
+      'openers.i1': [player('H', 1), player('H', 2)],
+      'bowler.i1.0': [player('A', 11)],
+    };
+    expect(lineOf(displayOf(OPENING, [], picks))).toStrictEqual(['Match started', false]);
+  });
+
+  it('an Undo’s line stays over a pick that stands again: a swap made before the ball Undo took back', () => {
+    // Ball 2 (ev-4) is voided by ev-5: the swap picked before it stands for the next ball again, but the Undo is newer.
+    const picks = { 'swap.i1.1': [player('H', 1), player('H', 2)] };
+    const voided = displayOf([...OPENING, single(1), single(2), voiding(4)], [4, 5], picks);
+    expect(lineOf(voided)).toStrictEqual(['Undone — 1 run', false]);
+    const shown = cricketSport.showUndone(displayOf([...OPENING, single(1)], [3], picks), {
+      kind: 'ball',
+      ball: ONE_RUN,
+    });
+    expect(lineOf(shown)).toStrictEqual(['Undone — 1 run', false]);
   });
 });

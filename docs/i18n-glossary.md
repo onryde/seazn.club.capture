@@ -531,6 +531,14 @@ all four. A counted word (`.one` / `.other`) is picked by the language's plural 
 | On strike                            | Al bate                                     | Face au lanceur                      | Aan slag                                | `board.onStrike`: the striker's dot, as a screen reader names it.                                 |
 | Free hit / Over {number}             | Free hit / Over {number}                    | Free hit / Over {number}             | Free hit / Over {number}                | `board.freeHit`, `board.over`: the game's own words in all four.                                  |
 
+T19 device run D2/D3 (2026-11-09): the last-tap line says a pick made since the last tap, which no event records until
+the next ball carries it. `last.swap` "Strike swapped: {name} on strike" (es _Bateadores cambiados: {name} al bate_, fr
+_Batteurs échangés : {name} face au lanceur_ with a no-break space, nl _Nu aan slag: {name}_; es and nl are the shorter
+words that keep the line with a new bowler joined to it in three lines at 320). `last.begin.innings` "Innings {number}
+started" (_Entrada {number} iniciada_, _Manche {number} lancée_, _Innings {number} gestart_) and `last.begin.superOver`
+"Super over {number} started" (_Super over {number} iniciado_, _lancé_, _gestart_), with History's numbers. The next
+over's bowler says `last.bowlerChange`; with a hand swap too, the two join with `ball.and`.
+
 ### Cricket setup words (S2-4 Task 10, 2026-11-08)
 
 The toss on the whole screen (owner ruling 83) and the setup before the first ball (`scoring.cricket.toss.*`,

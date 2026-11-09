@@ -723,4 +723,30 @@ describe('the next bowler, a mid-over change, a strike swap (plan Task 13)', () 
       nonStriker: idOf('B. Okafor'),
     });
   });
+
+  // T19 device run D2/D3: a pick records nothing, so the line kept the ball before it. Now it says the pick.
+  const line = () => screen.getByTestId('last-tap-sentence').textContent;
+  const swapped = (name: string) => en['scoring.cricket.last.swap'].replace('{name}', name);
+
+  it('Swap strike says who is on strike; a second swap names the other; the next ball says itself', async () => {
+    const app = await scanned();
+    await press(app, en['scoring.cricket.key.more']);
+    await press(app, en['scoring.cricket.more.swap']);
+    expect(line()).toBe(swapped('A. Sharma'));
+    await press(app, en['scoring.cricket.key.more']);
+    await press(app, en['scoring.cricket.more.swap']);
+    expect(line()).toBe(swapped('B. Okafor'));
+    await press(app, en['scoring.cricket.ball.dot']);
+    expect(line()).toBe(en['scoring.cricket.ball.dot']);
+  });
+
+  it('the next bowler picked says the new bowler, and the over’s first ball says itself', async () => {
+    const app = await scanned();
+    await overOut(app);
+    expect(line()).toBe(en['scoring.cricket.ball.dot']);
+    await press(app, /V\. Kaur/);
+    expect(line()).toBe(en['scoring.cricket.last.bowlerChange'].replace('{name}', 'V. Kaur'));
+    await press(app, '1 run');
+    expect(line()).toBe('1 run');
+  });
 });

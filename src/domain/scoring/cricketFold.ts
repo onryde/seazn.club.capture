@@ -29,7 +29,12 @@ import {
   playersEntered,
   type CricketEngineMatch,
 } from '@/domain/scoring/cricketEngine';
-import { picksAt, type CreasePair, type CricketPicksNow } from '@/domain/scoring/cricketPicks';
+import {
+  pickedOf,
+  picksAt,
+  type CreasePair,
+  type CricketPicksNow,
+} from '@/domain/scoring/cricketPicks';
 import {
   engineSideOf,
   isDecided,
@@ -262,10 +267,15 @@ function displayOf(
   const entered = playersEntered(match.engine.lineups);
   const at = creaseAndBowler(match, folded, turn, picks);
   const needs = needsOf(turn, picks, at.bowlerId, entered.first && entered.second);
+  const stage = stageOf(state, turn, entered.first && entered.second, {
+    needs,
+    begun: picks.begun,
+  });
+  const lastTap = lastTapOf(stream.envelopes, recordedOf(match.seats, stream.envelopes), undoneTap);
   return {
     sides: sidesOf(match.seats),
     context: match.context,
-    stage: stageOf(state, turn, entered.first && entered.second, { needs, begun: picks.begun }),
+    stage,
     toss: tossOf(scorecard, match.seats),
     innings: turn === null ? null : inningsOf(state, turn),
     crease: at.crease,
@@ -281,7 +291,8 @@ function displayOf(
     result: resultOf(state, match.seats),
     scorecard,
     cfg: match.engine.cfg,
-    lastTap: lastTapOf(stream.envelopes, recordedOf(match.seats, stream.envelopes), undoneTap),
+    lastTap,
+    picked: pickedOf(turn, stage, picks, lastTap),
     undoable: undoableOf(input, stream),
   };
 }

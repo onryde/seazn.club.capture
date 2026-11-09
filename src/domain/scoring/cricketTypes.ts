@@ -135,6 +135,16 @@ export type CricketUndoneTap = Exclude<CricketSeenTap, { readonly kind: 'toss' |
 export type CricketLastTap =
   CricketSeenTap | { readonly kind: 'undone'; readonly tap: CricketUndoneTap };
 
+/**
+ * A pick made since the last tap, which no event records until the next ball carries it, so the last-tap line says it
+ * (T19 device run D2, D3): Start innings of a later innings or a super over's, after the tap that closed the one before;
+ * or, after a ball, the next over's bowler (with a hand swap's striker when one stands too), or a hand swap alone.
+ */
+export type CricketPicked =
+  | { readonly kind: 'begin'; readonly ordinal: CricketOrdinal }
+  | { readonly kind: 'bowler'; readonly bowler: string; readonly striker: string | null }
+  | { readonly kind: 'swap'; readonly striker: string };
+
 // ---------------------------------------------------------------------------------------------------------------
 // The display
 // ---------------------------------------------------------------------------------------------------------------
@@ -252,6 +262,8 @@ export type CricketDisplay = {
   readonly scorecard: CricketScorecard;
   readonly cfg: CricketCfg;
   readonly lastTap: CricketLastTap | null;
+  /** A pick made since the last tap, which the last-tap line says over it (`CricketPicked`). */
+  readonly picked: CricketPicked | null;
   /** This phone's Undo has a standing tap of its own to take back. */
   readonly undoable: boolean;
 };
@@ -423,7 +435,8 @@ export type CricketPadKey =
   | CricketBallKey
   | CricketEventKey
   | CricketResultKey
-  | `scoring.cricket.last.${'start' | 'summary' | 'bowlerChange' | 'undone'}`
+  | `scoring.cricket.last.${'start' | 'summary' | 'bowlerChange' | 'undone' | 'swap'}`
+  | `scoring.cricket.last.begin.${'innings' | 'superOver'}`
   | `scoring.cricket.last.toss.${'bat' | 'bowl'}`
   | `scoring.cricket.last.retire.${'hurt' | 'out' | 'plain'}`
   | `scoring.cricket.history.${'innings' | 'superOver' | 'before'}`

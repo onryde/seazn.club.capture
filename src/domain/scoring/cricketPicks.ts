@@ -12,7 +12,13 @@ import {
   turnOf,
   type CricketTurn,
 } from '@/domain/scoring/cricketTurn';
-import type { CricketDisplay, CricketOrdinal } from '@/domain/scoring/cricketTypes';
+import type {
+  CricketDisplay,
+  CricketLastTap,
+  CricketOrdinal,
+  CricketPicked,
+  CricketStage,
+} from '@/domain/scoring/cricketTypes';
 import type { PadSide } from '@/domain/scoring/padView';
 import type { PendingPicks } from '@/domain/scoring/pendingPicks';
 
@@ -161,6 +167,48 @@ function swapOf(ids: readonly string[] | undefined, turn: CricketTurn): CreasePa
   if (striker === null || nonStriker === null) return null;
   return pairIn(ids, [striker, nonStriker]);
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// What the line says of a pick (T19 device run D2, D3)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** More's taps that close an innings or set the next one: a Start innings standing after one of them came after it. */
+const CLOSING_MORE: ReadonlySet<string> = new Set([
+  'cricket.innings.declare',
+  'cricket.innings.close',
+  'cricket.followon',
+]);
+
+/**
+ * The pick the last-tap line says (`CricketPicked`), while live. A pick is newer than the tap before it only where the
+ * tap could not have followed it: Start innings once the last tap closed the innings before (a ball, over totals, a
+ * retirement or More's close); the next over's bowler and a hand swap, keyed to the next ball, once the last tap is a
+ * ball. Never over an Undo's line: a pick made before the tap Undo took back stands again, and the Undo is newer.
+ */
+export function pickedOf(
+  turn: CricketTurn | null,
+  stage: CricketStage,
+  picks: CricketPicksNow,
+  lastTap: CricketLastTap | null,
+): CricketPicked | null {
+  if (turn === null || stage !== 'live' || lastTap === null) return null;
+  // An innings not yet opened after a closing tap is a later one: the first opens on the match's start, which no tap closes.
+  if (turn.innings === null) {
+    return closes(lastTap) ? { kind: 'begin', ordinal: ordinalOf(turn) } : null;
+  }
+  if (lastTap.kind !== 'ball') return null;
+  // The over's bowler is a pick only before its first ball; after it, the fold's.
+  const bowler = turn.innings.fine?.currentBowler === null ? picks.bowler : null;
+  const striker = picks.swap?.striker ?? null;
+  if (bowler !== null) return { kind: 'bowler', bowler, striker };
+  return striker === null ? null : { kind: 'swap', striker };
+}
+
+const closes = (tap: CricketLastTap): boolean =>
+  tap.kind === 'ball' ||
+  tap.kind === 'summary' ||
+  tap.kind === 'retire' ||
+  (tap.kind === 'more' && CLOSING_MORE.has(tap.type));
 
 // ---------------------------------------------------------------------------------------------------------------
 // Writing a pick
