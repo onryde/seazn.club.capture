@@ -93,10 +93,10 @@ describe('extrasSheet', () => {
       ['bat.3', '3', 'scoring.cricket.extras.bat'],
       ['bat.4', '4', 'scoring.cricket.extras.bat'],
       ['bat.6', '6', 'scoring.cricket.extras.bat'],
-      ['ran.1', '1', 'scoring.cricket.extras.ran'],
-      ['ran.2', '2', 'scoring.cricket.extras.ran'],
-      ['ran.3', '3', 'scoring.cricket.extras.ran'],
-      ['ran.4', '4', 'scoring.cricket.extras.ran'],
+      ['ran.1', '1', 'scoring.cricket.extras.byesRun'],
+      ['ran.2', '2', 'scoring.cricket.extras.byesRun'],
+      ['ran.3', '3', 'scoring.cricket.extras.byesRun'],
+      ['ran.4', '4', 'scoring.cricket.extras.byesRun'],
     ]);
     expect(runs).toHaveLength(10);
     expect(options.at(-1)).toMatchObject({
@@ -104,6 +104,18 @@ describe('extrasSheet', () => {
       label: { key: 'scoring.cricket.extras.out' },
       tone: 'standard',
     });
+  });
+
+  // Owner, 2026-11-10: the no-ball's run keys are byes; the wide's keep "Runs run", a bye's and a leg-bye's "Runs".
+  it('names each sheet’s run group: no-ball byes run, wide runs run, bye and leg-bye runs', () => {
+    const group = (kind: 'wide' | 'noball' | 'bye' | 'legbye') =>
+      extrasSheet(kind).options.find((option) => option.id === 'ran.1')?.group;
+    expect([group('noball'), group('wide'), group('bye'), group('legbye')]).toEqual([
+      'scoring.cricket.extras.byesRun',
+      'scoring.cricket.extras.ran',
+      'scoring.cricket.extras.runs',
+      'scoring.cricket.extras.runs',
+    ]);
   });
 
   it('a bye and a leg-bye ask 1 to 4, then + Out', () => {

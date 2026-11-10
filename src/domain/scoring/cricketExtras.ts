@@ -72,16 +72,22 @@ function ownRun(kind: SheetExtra): number {
 /** The sheet an extra's key opens. */
 export function extrasSheet(kind: SheetExtra): CricketStep {
   const { bat, ran } = OFFERED[kind];
-  const group: CricketPadKey =
-    kind === 'bye' || kind === 'legbye'
-      ? 'scoring.cricket.extras.runs'
-      : 'scoring.cricket.extras.ran';
+  const group = ranGroup(kind);
   const options: CricketStepOption[] = [
     ...bat.map((runs) => key(`bat.${runs}`, runs, 'scoring.cricket.extras.bat')),
     ...ran.map((runs) => key(`ran.${runs}`, runs, group)),
     { id: OUT_CHOICE, label: { key: 'scoring.cricket.extras.out' }, tone: 'standard' },
   ];
   return { name: `extras.${kind}`, title: { key: TITLE[kind] }, body: null, options };
+}
+
+/**
+ * The name of the sheet's runs-run group. A no-ball's has two groups (off the bat, then run), and the run ones are byes
+ * (owner, 2026-11-10: "in noball, off the bat and runs mean?"), so it says so; a wide's keep "Runs run" and a bye's "Runs".
+ */
+function ranGroup(kind: SheetExtra): CricketPadKey {
+  if (kind === 'noball') return 'scoring.cricket.extras.byesRun';
+  return kind === 'wide' ? 'scoring.cricket.extras.ran' : 'scoring.cricket.extras.runs';
 }
 
 function key(id: string, runs: number, group: CricketPadKey): CricketStepOption {

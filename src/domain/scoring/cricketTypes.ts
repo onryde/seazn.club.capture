@@ -410,7 +410,7 @@ export type CricketCardKey =
 /** The pad's keys and its sheets' words (Tasks 11 to 15). */
 export type CricketSheetKey =
   | `scoring.cricket.key.${'wide' | 'noBall' | 'bye' | 'legBye' | 'out' | 'more'}`
-  | `scoring.cricket.extras.${'ran' | 'bat' | 'runs' | 'out'}`
+  | `scoring.cricket.extras.${'ran' | 'byesRun' | 'bat' | 'runs' | 'out'}`
   | `scoring.cricket.wicket.${'how' | 'who' | 'fielder' | 'assist' | 'completed' | 'incoming'}`
   | `scoring.cricket.wicket.${'noFielder' | 'noAssist' | 'isFielder' | 'retired' | 'nonStriker' | 'nextInOrder'}`
   | `scoring.cricket.wicket.kind.${CricketBallWicketKind}`
