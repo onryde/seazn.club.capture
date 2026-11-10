@@ -34,6 +34,8 @@ import { colour, space } from '@/ui/theme/tokens';
 export function CricketPadScreen({ model }: { readonly model: CricketPadModel }) {
   const { view, sheet, setup } = model;
   const keys = setup === null && model.display.stage === 'live';
+  // A decided board has no keys under it and is not given way, so it scrolls with its card when taller than the room.
+  const scrolls = setup === null && model.totals === null && !keys && model.board.result !== null;
   return (
     <View style={styles.screen}>
       {holdsScreen(view.card) ? <KeepScreenOn /> : null}
@@ -42,6 +44,7 @@ export function CricketPadScreen({ model }: { readonly model: CricketPadModel })
         covered={sheet !== null}
         body={<CricketBody model={model} keys={keys} />}
         lineUndo={!keys}
+        scrolls={scrolls}
       />
       <PadSheet
         sheet={sheet}

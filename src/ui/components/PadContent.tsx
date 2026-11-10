@@ -64,6 +64,12 @@ type PadContentProps = {
    * Out, Undo, More row, ruling 79) says no, so the pad has one Undo, never two.
    */
   readonly lineUndo?: boolean;
+  /**
+   * Whether the card and the body scroll together when taller than the room (default no: the body is the flex region the
+   * sport's keys leave). A sport says yes only for a body with no keys under it and no flex height of its own (cricket's
+   * decided board), so nothing scrolls under a key and the header and the last-tap line stay fixed.
+   */
+  readonly scrolls?: boolean;
 };
 
 /**
@@ -85,6 +91,7 @@ export const PadContent = memo(function PadContent({
   covered,
   body,
   lineUndo = true,
+  scrolls = false,
 }: PadContentProps) {
   const { view, line, cardNote, flash, toss, actions } = model;
   const known = matchKnown(view.card);
@@ -98,7 +105,7 @@ export const PadContent = memo(function PadContent({
       <PadHeader sync={view.sync} tally={view.tally} known={known} actions={actions} />
       <PadStrip items={view.strip} />
       {view.start === null ? (
-        <PadBody view={view} flash={flash} onTap={actions.tapHalf} body={body} />
+        <PadBody view={view} flash={flash} onTap={actions.tapHalf} body={body} scrolls={scrolls} />
       ) : (
         <StartPanel
           start={view.start}
@@ -204,19 +211,31 @@ type PadBodyProps = {
   readonly flash: HalfFlash;
   readonly onTap: (side: PadSide) => void;
   readonly body: ReactNode | undefined;
+  readonly scrolls: boolean;
 };
 
-const PadBody = memo(function PadBody({ view, flash, onTap, body }: PadBodyProps) {
+const PadBody = memo(function PadBody({ view, flash, onTap, body, scrolls }: PadBodyProps) {
   const card = view.card?.kind === 'updateNeeded' ? null : view.card;
   if (card !== null && cardPlacement(card) === 'instead') {
     return <CardInstead card={card} details={view.details} />;
   }
-  return (
-    <View style={styles.body}>
+  const content = (
+    <>
       {card === null ? null : <PadStateCard card={card} />}
       {body === undefined ? <Halves view={view} flash={flash} onTap={onTap} /> : body}
-    </View>
+    </>
   );
+  if (scrolls)
+    return (
+      <ScrollView
+        testID="pad-body-scroll"
+        style={styles.body}
+        contentContainerStyle={styles.scrolled}
+      >
+        {content}
+      </ScrollView>
+    );
+  return <View style={styles.body}>{content}</View>;
 });
 
 /** The two halves, the first side's on top: a tap on one gives that side the rally, and a tap that counted flashes it. */
@@ -389,4 +408,5 @@ const styles = StyleSheet.create({
   sync: { width: layout.padSyncBox, alignItems: 'flex-end' },
   body: { flex: 1, gap: space.sm },
   start: { gap: space.md, paddingBottom: space.md },
+  scrolled: { gap: space.sm, paddingBottom: space.md },
 });
