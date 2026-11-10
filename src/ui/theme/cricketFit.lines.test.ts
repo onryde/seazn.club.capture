@@ -37,7 +37,7 @@ import {
   unitWidth,
   unmeasured,
   wordsFit,
-} from './cricketFitKit';
+} from './cricketFit.testkit';
 
 // S2-4 fit tests, the lines (plan Task 18): the setup steps, Match details, the last-tap line, History sentences, the result and
 // break lines, the scorecard and the result board.

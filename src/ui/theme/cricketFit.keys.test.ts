@@ -27,7 +27,7 @@ import {
   reader,
   unitWidth,
   unmeasured,
-} from './cricketFitKit';
+} from './cricketFit.testkit';
 
 // S2-4 fit tests, the keys: the keys under the board, the extras and wicket sheets, the bowling step, Players, More, the innings
 // break and the result. Rooms are written out from the components' styles, never read from them.

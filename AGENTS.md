@@ -217,7 +217,7 @@ contracts/         # the web's capture contracts, vendored and pinned
   test files are still past it (`BadmintonPadScreen.test.tsx`, `padFit.test.ts`,
   `tapQueueStore.test.ts`, `HomeScreen.test.tsx`), split once the branches
   touching them merge. Cricket's fit tests are split this way:
-  `cricketFit.{board,keys,totals,lines}.test.ts` over `cricketFitKit.ts`, each
+  `cricketFit.{board,keys,totals,lines}.test.ts` over `cricketFit.testkit.ts`, each
   sweeping the keys it owns, with `cricketFit.sweep.test.ts` proving every
   `scoring.cricket.*` key is owned once (the one non-verbatim part of the move).
 - No `types/` folder — types live with the behaviour they describe.

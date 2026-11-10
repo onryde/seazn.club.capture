@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cricketKeys, FIT_FILES, LANGUAGES, ownsKey, unmeasured } from './cricketFitKit';
+import { cricketKeys, FIT_FILES, LANGUAGES, ownsKey, unmeasured } from './cricketFit.testkit';
 
 // The partition under the cricket fit files' sweeps (plan Task 18, split by concern): each file sweeps the keys it owns,
 // so this one proves the owners are right, from the dictionary and not from the files' own lists: every

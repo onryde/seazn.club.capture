@@ -15,7 +15,7 @@ import {
   ownsKey,
   reader,
   unmeasured,
-} from './cricketFitKit';
+} from './cricketFit.testkit';
 
 // S2-4 fit tests, over totals (plan Task 17), the entry in the keys' place.
 

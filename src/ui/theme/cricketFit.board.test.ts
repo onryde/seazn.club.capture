@@ -38,7 +38,7 @@ import {
   scoreWidth,
   unitWidth,
   unmeasured,
-} from './cricketFitKit';
+} from './cricketFit.testkit';
 
 // S2-4 fit tests, the board: what the cricket board draws fits at 320 and 360 dp in four languages (the pattern of padFit.test.ts,
 // rooms copied from the token and type declarations and the board's styles, never read from the components), the toss and
