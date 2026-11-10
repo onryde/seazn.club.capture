@@ -10,7 +10,6 @@ import {
   Dictionary,
   LANGUAGES,
   OVERS,
-  RESULT_KEYS,
   SCORE,
   SPELL,
   THIRTY,
