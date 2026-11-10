@@ -438,10 +438,18 @@ const base = {
   boardOvers: 72,
   /** A crease row (a batter, or the bowler): one line of `label` (22) with 2 dp above and below (30 before the team line). */
   creaseRow: 26,
-  /** This over: its label in `metricUnit` (16), `space.xs`, then the row of chips, each `overStrip` less those two tall. */
-  overStrip: 48,
-  /** A delivery's chip on the over strip: one width for every chip ("·", "4", "7nb", "11p"), so the strip never shifts. */
-  overChip: 32,
+  /**
+   * This over: its label in `metricUnit` (16), `space.xs`, then the chips, each `overChip` square: 60 with one row of them.
+   * An over that overflows the board's width wraps to a second row, `space.xs` under the first, so the strip is 104 tall
+   * with two (`cricketBoardFit.ts`).
+   */
+  overStrip: 60,
+  /**
+   * A delivery's chip on the over strip (T19 fix 5, Part 5; owner, 2026-11-10: "increase the box and font size"): a square
+   * this many dp a side, at least this wide for a longer word ("5wd", "11p"), its text in `metricValue` (Geist Mono 16,
+   * tabular). Six fit one row at 320 (260 of 288) and an over with extras wraps (`cricketFit.test.ts`).
+   */
+  overChip: 40,
   /**
    * The cricket pad's keys (S2-4 spec §5 rows 5 to 7; plan Task 11, preflight D1), `space.sm` apart, each row a fixed
    * height so a ball never moves a key under the thumb: the runs (two rows of three, the number in `tally`, 46), the

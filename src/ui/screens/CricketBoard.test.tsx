@@ -146,9 +146,12 @@ describe('CricketBoard', () => {
     expect(heightOf('board-batter-first')).toBe(`${layout.creaseRow}px`);
     expect(heightOf('board-batter-second')).toBe(`${layout.creaseRow}px`);
     expect(heightOf('board-bowler')).toBe(`${layout.creaseRow}px`);
-    expect(heightOf('board-over')).toBe(`${layout.overStrip}px`);
+    expect(getComputedStyle(screen.getByTestId('board-over')).minHeight).toBe(
+      `${layout.overStrip}px`,
+    );
     for (const one of screen.queryAllByTestId('over-chip')) {
-      expect(getComputedStyle(one).width).toBe(`${layout.overChip}px`);
+      expect(getComputedStyle(one).minWidth).toBe(`${layout.overChip}px`);
+      expect(getComputedStyle(one).height).toBe(`${layout.overChip}px`);
     }
   });
 

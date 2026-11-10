@@ -124,3 +124,23 @@ describe('a result’s two rows', () => {
     expect(screen.getAllByTestId('board-result-figures')[0]!.textContent).toBe('320/9 & 150/4');
   });
 });
+
+describe('the over’s chips (T19 fix 5, Part 5)', () => {
+  const chips = ['1', '·', '5wd', 'W'].map((text) => ({ text, tone: 'run' as const }));
+
+  it('are 40 dp boxes with their word in the numeric type one step up, in the order played', () => {
+    renderWithPorts(<CricketBoard view={{ ...BOARD, over: { number: 1, chips } }} />);
+    expect(layout.overChip).toBe(40);
+    const words = screen.getAllByTestId('over-chip-text');
+    expect(words.map((one) => one.textContent)).toEqual(['1', '·', '5wd', 'W']);
+    for (const one of words) expect(one.dataset.variant).toBe('metricValue');
+    const box = getComputedStyle(screen.getAllByTestId('over-chip')[0]!);
+    expect([box.minWidth, box.height]).toEqual(['40px', '40px']);
+  });
+
+  it('wrap to a second row when they do not fit, rather than scroll', () => {
+    renderWithPorts(<CricketBoard view={{ ...BOARD, over: { number: 1, chips } }} />);
+    const row = getComputedStyle(screen.getByTestId('board-chips'));
+    expect([row.flexWrap, row.flexDirection]).toEqual(['wrap', 'row']);
+  });
+});

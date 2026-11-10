@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import type {
   BoardResult,
   BoardScore,
@@ -11,7 +11,6 @@ import { useT } from '@/hooks/useLanguage';
 import { usePadText } from '@/hooks/usePadText';
 import { Text } from '@/ui/components/Text';
 import { colour, layout, space } from '@/ui/theme/tokens';
-import { typeScale } from '@/ui/theme/type';
 
 /**
  * The cricket board (S2-4 spec §5 rows 2 to 4; plan Task 8), drawn in the pad's halves' place (`PadContent`'s `body`): the
@@ -254,11 +253,11 @@ const OverStrip = memo(function OverStrip({
           </Text>
         )}
       </View>
-      <ScrollView horizontal testID="board-chips" contentContainerStyle={styles.chips}>
+      <View testID="board-chips" style={styles.chips}>
         {over.chips.map((chip, index) => (
           <Chip key={index} chip={chip} />
         ))}
-      </ScrollView>
+      </View>
     </View>
   );
 });
@@ -267,15 +266,12 @@ const Chip = memo(function Chip({ chip }: { readonly chip: OverChip }) {
   const wicket = chip.tone === 'wicket';
   return (
     <View testID="over-chip" style={wicket ? styles.chipWicket : styles.chip}>
-      <Text variant="controlSmall" style={TONE[chip.tone]}>
+      <Text variant="metricValue" testID="over-chip-text" style={TONE[chip.tone]}>
         {chip.text}
       </Text>
     </View>
   );
 });
-
-/** A chip's height: the strip less its label line and the gap under it. */
-const CHIP_HEIGHT = layout.overStrip - typeScale.metricUnit.lineHeight - space.xs;
 
 const styles = StyleSheet.create({
   board: { flex: 1, gap: space.sm },
@@ -309,22 +305,25 @@ const styles = StyleSheet.create({
   name: { flex: 1, color: colour.ink },
   bowler: { flex: 1, color: colour.ink2 },
   figures: { color: colour.ink },
-  over: { height: layout.overStrip, gap: space.xs },
+  // At least one row of chips tall; an over that wraps makes it taller, and the strip is the board's last region.
+  over: { minHeight: layout.overStrip, gap: space.xs },
   overHead: { flexDirection: 'row', justifyContent: 'space-between' },
   overLabel: { color: colour.ink3 },
   status: { color: colour.caution },
-  chips: { flexDirection: 'row', gap: space.xs },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs },
   chip: {
-    width: layout.overChip,
-    height: CHIP_HEIGHT,
+    minWidth: layout.overChip,
+    height: layout.overChip,
+    paddingHorizontal: space.xs,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: space.xs,
     backgroundColor: colour.surface2,
   },
   chipWicket: {
-    width: layout.overChip,
-    height: CHIP_HEIGHT,
+    minWidth: layout.overChip,
+    height: layout.overChip,
+    paddingHorizontal: space.xs,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: space.xs,

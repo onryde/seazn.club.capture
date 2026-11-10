@@ -6,6 +6,7 @@ import nl from '@/i18n/nl.json';
 import { layout, space } from '@/ui/theme/tokens';
 import { isOneWord } from '@/ui/components/nameFit';
 import { typeScale } from '@/ui/theme/type';
+import { chipRows, chipsPerRow, stripHeight } from '@/ui/screens/cricketBoardFit';
 import { loadFont } from '../../../test/fontMetrics';
 import { linesIn, linesOf } from '../../../test/textFit';
 
@@ -63,8 +64,6 @@ const controlWidth = (text: string) => geist500.width(text, typeScale.control.fo
 const figuresWidth = (text: string) => mono.width(text, typeScale.metricValue.fontSize);
 /** `metricUnit`: Geist 500 at 12. The over's label and a free hit beside it. */
 const unitWidth = (text: string) => geist500.width(text, typeScale.metricUnit.fontSize);
-/** `controlSmall`: Geist 500 at 12. A chip's word. */
-const chipWidth = (text: string) => geist500.width(text, typeScale.controlSmall.fontSize);
 
 /** The pad's column: the screen less its padding (space.md a side). */
 const column = (width: number) => width - 2 * space.md;
@@ -136,8 +135,10 @@ describe.each(WIDTHS)('the cricket board at %i dp', (width) => {
     expect(nameRoom(width, SPELL)).toBeGreaterThanOrEqual(labelWidth('W. Fitzgerald'));
   });
 
-  it('eight chips (six balls and two extras) fit the column on one row', () => {
-    expect(8 * layout.overChip + 7 * space.xs).toBeLessThanOrEqual(column(width));
+  it('a six-ball over fits the column on one row, and an over of ten deliveries takes two', () => {
+    expect(chipRows(6, column(width))).toBe(1);
+    expect(chipRows(10, column(width))).toBe(2);
+    expect(6 * layout.overChip + 5 * space.xs).toBeLessThanOrEqual(column(width));
   });
 
   it.each(LANGUAGES)(
@@ -167,12 +168,22 @@ describe('the overs’ box', () => {
 });
 
 describe('a chip', () => {
-  // At `control`'s 14, "5wd" was 29.1 dp: the chip's word is `controlSmall`'s 12 (24.9, 3.5 dp a side in 32). Eight chips
-  // must still fit 320's column, so the chip cannot grow (above).
+  // T19 fix 5, Part 5: a 40 dp box, its word in `metricValue` (Geist Mono 16). Every delivery's word fits with the padding a
+  // side; the strip is the label, a gap and one row of boxes.
   it('holds the widest delivery a chip can say, with room each side', () => {
     for (const text of ['7nb', '11p', '5wd', '4lb', 'W', '·']) {
-      expect(chipWidth(text), text).toBeLessThanOrEqual(layout.overChip - space.xs);
+      expect(figuresWidth(text), text).toBeLessThanOrEqual(layout.overChip - 2 * space.xs);
     }
+  });
+
+  it('is 40 dp and a row of them wraps at the board’s width: 6 a row at 320, 7 at 360', () => {
+    expect(layout.overChip).toBe(40);
+    expect(chipsPerRow(column(320))).toBe(6);
+    expect(chipsPerRow(column(360))).toBe(7);
+    // The seventh delivery of an over (a wide, then the sixth ball) wraps at 320 and not at 360.
+    expect([chipRows(7, column(320)), chipRows(7, column(360))]).toEqual([2, 1]);
+    // Two rows is as many as an over can take: six legal balls with extras are never more than twelve.
+    expect(chipRows(12, column(320))).toBe(2);
   });
 });
 
@@ -195,9 +206,10 @@ describe('the board’s regions', () => {
     expect(typeScale.metricValue.lineHeight).toBeLessThanOrEqual(layout.creaseRow);
   });
 
-  it('the over strip holds its label and a chip of usable height', () => {
-    const chip = layout.overStrip - typeScale.metricUnit.lineHeight - space.xs;
-    expect(chip).toBeGreaterThanOrEqual(typeScale.controlSmall.lineHeight + 2 * space.xs);
+  it('the over strip is its label, a gap and one row of chips; a wrapped over adds a row and its gap', () => {
+    expect(typeScale.metricUnit.lineHeight + space.xs + layout.overChip).toBe(layout.overStrip);
+    expect(layout.overChip).toBeGreaterThanOrEqual(typeScale.metricValue.lineHeight);
+    expect(stripHeight(2)).toBe(layout.overStrip + layout.overChip + space.xs);
   });
 });
 
@@ -342,10 +354,10 @@ describe('the keys’ rooms', () => {
 
   /**
    * The pad's height, portrait: the screen's padding (2 × 16), the header (48), the strip (16), the board (the score
-   * panel with the team line, three crease rows and the over strip, `space.sm` apart: 276), the keys (two run rows, the extras, the actions,
+   * panel with the team line, three crease rows and the over strip, `space.sm` apart: 288), the keys (two run rows, the extras, the actions,
    * `space.sm` apart: 256), the last-tap line (3 lines of 18: 54), the tool row (none: 0), and the pad's five gaps (8).
    */
-  it('the board, the keys and the line fit the owner’s phone, about 360 × 724, with 2 dp to spare', () => {
+  it('the board, the keys and the line fit the owner’s phone, about 360 × 724, are short by 10 dp: Part 3’s rungs take it', () => {
     const board = layout.scorePanel + 3 * layout.creaseRow + layout.overStrip + 2 * space.sm;
     const keys =
       2 * layout.cricketRunKey + layout.cricketExtraKey + layout.cricketActionKey + 3 * space.sm;
@@ -359,8 +371,8 @@ describe('the keys’ rooms', () => {
       keys +
       line +
       4 * space.sm;
-    expect([board, keys, line]).toEqual([276, 256, 54]);
-    expect(724 - pad).toBe(2);
+    expect([board, keys, line]).toEqual([288, 256, 54]);
+    expect(724 - pad).toBe(-10);
   });
 });
 
@@ -924,7 +936,7 @@ describe.each(WIDTHS)('over totals at %i dp', (width) => {
 describe('over totals on the pad', () => {
   /**
    * The totals body is the score panel, the note (three lines at most), the heading, three rows of a touch and Record over
-   * (a plate of 56), `space.sm` apart. The keys' body is the board and the keys: 276 and 256. It fits wherever those fit.
+   * (a plate of 56), `space.sm` apart. The keys' body is the board and the keys: 288 and 256. It fits wherever those fit.
    */
   it('the score, the note, the entry and Record over are shorter than the board and the keys', () => {
     const rows = 3 * layout.touch + 2 * space.sm;
@@ -938,7 +950,7 @@ describe('over totals on the pad', () => {
       rows +
       space.sm +
       56;
-    const keysBody = 276 + space.sm + 256;
+    const keysBody = 288 + space.sm + 256;
     expect(totals).toBe(134 + 8 + 66 + 8 + 24 + 8 + 160 + 8 + 56);
     expect(totals).toBeLessThan(keysBody);
   });
@@ -1598,7 +1610,7 @@ describe.each(WIDTHS)('the result board at %i dp', (width) => {
 
   it('two score rows and the not-out pair stand in the board’s height under the card, and the card’s lines', () => {
     const rows = layout.resultPanel + 3 * layout.creaseRow + layout.overStrip + 2 * space.sm;
-    expect(rows).toBeLessThan(276 + space.sm + 256);
+    expect(rows).toBeLessThan(288 + space.sm + 256);
   });
 });
 
