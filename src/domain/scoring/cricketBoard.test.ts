@@ -20,6 +20,9 @@ import {
   OUT,
   DOT,
   TWO_INNINGS,
+  TIED_KO,
+  TWO,
+  superOverOf,
   ball,
   inningsOf,
   ledgerOf,
@@ -299,5 +302,52 @@ describe('cricketBoard at a result (T19 D6)', () => {
       { id: A(2), name: 'Away Player 2', runs: 0, balls: 0, striker: true },
       { id: A(1), name: 'Away Player 1', runs: 5, balls: 2, striker: false },
     ]);
+  });
+});
+
+// T19 fix 9 (device, build 985): a 2-over match decided at its last ball showed "Over 3" and no chips. A decided match's
+// strip is the over that ended it; an innings break has no over yet, so no strip. Chips are written out by hand.
+describe('cricketBoard strip at a result and at a break (T19 fix 9)', () => {
+  const chased = (script: Parameters<typeof inningsOf>[2]) => [
+    ...FIRST_INNINGS_8,
+    ...inningsOf('A', HOME_BOWLERS, script),
+  ];
+  const dot = { text: '·', tone: 'dot' } as const;
+  const run = (n: number) => ({ text: String(n), tone: 'run' }) as const;
+
+  it('decided on the last ball of over 2: Over 2 with its six deliveries in order, never Over 3', () => {
+    // Away: six dots, then 1, dot, 2, dot, dot, dot = 3 of 9 needed; home wins by 5 on the 12th ball.
+    const board = boardOf(chased([...times(6, DOT), ONE, DOT, TWO, DOT, DOT, DOT]));
+    expect(board.result).not.toBeNull();
+    expect(board.over).toStrictEqual({
+      number: 2,
+      chips: [run(1), dot, run(2), dot, dot, dot],
+    });
+  });
+
+  it('decided mid-over by a chase won with balls to spare: that over and the chips so far', () => {
+    const board = boardOf(chased([FOUR, ONE, FOUR]));
+    expect(board.over).toStrictEqual({
+      number: 1,
+      chips: [{ text: '4', tone: 'boundary' }, run(1), { text: '4', tone: 'boundary' }],
+    });
+  });
+
+  it('a super-over result shows the super over’s deliveries', () => {
+    const board = boardOf([
+      ...TIED_KO,
+      ...superOverOf('A', player('H', 9), [ONE, ONE, ...times(4, DOT)]),
+      ...superOverOf('H', player('A', 9), times(6, DOT)),
+    ]);
+    expect(board.result).not.toBeNull();
+    expect(board.over).toStrictEqual({ number: 1, chips: times(6, DOT).map(() => dot) });
+  });
+
+  it('an innings break shows no over: the next innings has none yet', () => {
+    expect(boardOf(FIRST_INNINGS_8).over).toBeNull();
+  });
+
+  it('play still shows the over under way: an over just ended reads the next, empty', () => {
+    expect(boardOf(OVER_ONE_DONE).over).toStrictEqual({ number: 2, chips: [] });
   });
 });

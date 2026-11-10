@@ -211,7 +211,8 @@ export type CricketBoardView = {
   readonly result: BoardResult | null;
   readonly crease: readonly [CreaseLine, CreaseLine | null] | null;
   readonly bowler: CricketBowler | null;
-  readonly over: { readonly number: number; readonly chips: readonly OverChip[] };
+  /** Null when there is no over to show: a decided match with no delivery, an innings break (T19 fix 9). */
+  readonly over: { readonly number: number; readonly chips: readonly OverChip[] } | null;
   readonly status: PadText<CricketPadKey> | null;
 };
 
@@ -232,9 +233,19 @@ export function cricketBoard(display: CricketDisplay): CricketBoardView {
     result,
     crease: creaseShown(display),
     bowler: display.bowler,
-    over: display.over,
+    over: overShown(display),
     status: display.freeHit ? { key: 'scoring.cricket.board.freeHit' } : null,
   };
+}
+
+/**
+ * The over the strip shows. A decided match shows the over that ended it (the next one will never be bowled); an innings
+ * break or a super over due shows none, rather than an empty next over (T19 fix 9). Otherwise the over under way.
+ */
+function overShown(display: CricketDisplay): CricketBoardView['over'] {
+  if (display.stage === 'decided') return display.lastOver;
+  if (display.stage === 'break' || display.stage === 'superOverSetup') return null;
+  return display.over;
 }
 
 /**

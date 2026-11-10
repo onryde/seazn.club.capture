@@ -299,6 +299,7 @@ function displayOf(
     bowler: at.bowler,
     state,
     over: overNow(folded, turn),
+    lastOver: lastOverOf(folded, turn),
     deliveries,
     freeHit: turn?.innings?.fine?.freeHitPending === true,
     needs,
@@ -537,6 +538,24 @@ function overNow(folded: CricketFolded, turn: CricketTurn | null): CricketDispla
     .filter((one) => one.ball.over === over)
     .map((one) => chipOf(one.ball));
   return { number: over + 1, chips };
+}
+
+/**
+ * The over of the latest delivery bowled in the innings now, counted from 1, with all of that over's deliveries (T19 fix
+ * 9): what a decided match's board shows, since the next over, which `overNow` names, is one that will never be bowled.
+ * Null when the innings has no delivery yet (an innings due, a break).
+ */
+function lastOverOf(folded: CricketFolded, turn: CricketTurn | null): CricketDisplay['lastOver'] {
+  if (turn === null) return null;
+  const here = folded.balls.filter(
+    (one) => one.superOver === turn.superOver && one.index === turn.index,
+  );
+  const last = here[here.length - 1];
+  if (last === undefined) return null;
+  const chips = here
+    .filter((one) => one.ball.over === last.ball.over)
+    .map((one) => chipOf(one.ball));
+  return { number: last.ball.over + 1, chips };
 }
 
 /** The scorebook's short forms of the extras: a wide, a no-ball, a bye, a leg-bye, a penalty. */

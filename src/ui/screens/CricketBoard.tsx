@@ -42,7 +42,7 @@ export const CricketBoard = memo(function CricketBoard({
   // Spare height goes in two spacers, a little above the score and the rest under the strip (T19 fix 8); none spare, the top
   // stays and the bottom clips.
   const spacers = spareSpacers(boardSpare(room, fit, done, freeHit), fit.gap);
-  const shown = chipsShown(view.over.chips.length, width, done);
+  const shown = chipsShown(view.over?.chips.length ?? 0, width, done);
   const tight = fit.gap === layout.boardGapTight;
   return (
     <View
@@ -63,7 +63,7 @@ export const CricketBoard = memo(function CricketBoard({
       )}
       <Crease crease={view.crease} bowler={view.bowler} onOpenPlayers={onOpenPlayers} />
       <FreeHit status={view.status} />
-      {fit.strip ? <OverStrip over={view.over} shown={shown} /> : null}
+      {fit.strip && view.over !== null ? <OverStrip over={view.over} shown={shown} /> : null}
       {spacers.bottom ? <View testID="board-spare-end" style={styles.spareEnd} /> : null}
     </View>
   );
@@ -309,7 +309,7 @@ const OverStrip = memo(function OverStrip({
   over,
   shown,
 }: {
-  readonly over: CricketBoardView['over'];
+  readonly over: NonNullable<CricketBoardView['over']>;
   readonly shown: number;
 }) {
   const { t } = useT();

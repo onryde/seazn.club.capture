@@ -106,7 +106,7 @@ describe('useCricketMatch', () => {
       ['A. Sharma', 1, 1, false],
     ]);
     expect(board.bowler?.name).toBe('W. Murphy');
-    expect(board.over.chips.map((chip) => chip.text)).toEqual(['1', '4', '·']);
+    expect(board.over?.chips.map((chip) => chip.text)).toEqual(['1', '4', '·']);
     // The board stands in the halves' place: nothing on the pad takes a tap of a half.
     expect(pad(view).view.halves.map((half) => half.tappable)).toEqual([false, false]);
   });
@@ -305,7 +305,7 @@ describe('the reconnect question (owner ruling 43)', () => {
     expect(pad(view).sheet).toBeNull();
     expect((await typesOf(fakes)).length).toBe(6);
     expect(pad(view).board.score?.runs).toBe(7);
-    expect(pad(view).board.over.chips.map((chip) => chip.text)).toEqual(['1', '4', '·', '2']);
+    expect(pad(view).board.over?.chips.map((chip) => chip.text)).toEqual(['1', '4', '·', '2']);
     expect(pad(view).line).toEqual({ kind: 'refusal', key: 'scoring.refusal.notCounted' });
   });
 

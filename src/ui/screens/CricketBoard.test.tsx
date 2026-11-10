@@ -217,3 +217,37 @@ describe('CricketBoard', () => {
     expect(screen.getByTestId('board-score').getAttribute('role')).toBeNull();
   });
 });
+
+// T19 fix 9: the strip of a result is the over that ended the match, and a board with no over draws no strip.
+describe('the over strip at a result and at a break (T19 fix 9)', () => {
+  const RESULT: CricketBoardView = {
+    ...BOARD,
+    score: null,
+    result: [
+      { team: 'South XI', figures: '61/1', overs: '2' },
+      { team: 'North XI', figures: '56/0', overs: '2' },
+    ],
+    over: { number: 2, chips: [chip('1', 'run'), chip('·', 'dot'), chip('W', 'wicket')] },
+  };
+
+  it('a result shows Over 2 and its chips, and no Over 3', () => {
+    renderWithPorts(<CricketBoard view={RESULT} />);
+    expect(screen.getByText(fill('scoring.cricket.board.over', { number: 2 }))).toBeTruthy();
+    expect(screen.queryByText(fill('scoring.cricket.board.over', { number: 3 }))).toBeNull();
+    const chips = within(screen.getByTestId('board-chips'));
+    expect(['1', '·', 'W'].map((text) => chips.getAllByText(text).length)).toEqual([1, 1, 1]);
+  });
+
+  it('a board with no over draws no strip', () => {
+    renderWithPorts(<CricketBoard view={{ ...RESULT, over: null }} />);
+    expect(screen.queryByTestId('board-over')).toBeNull();
+    expect(screen.queryByTestId('board-chips')).toBeNull();
+  });
+});
+
+function fill(key: keyof typeof en, vars: Record<string, string | number>): string {
+  return Object.entries(vars).reduce(
+    (out, [name, value]) => out.replace(`{${name}}`, String(value)),
+    en[key],
+  );
+}

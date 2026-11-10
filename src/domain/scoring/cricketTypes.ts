@@ -244,6 +244,8 @@ export type CricketDisplay = {
   readonly state: CricketState;
   /** The over under way (counted from 1) and its deliveries. */
   readonly over: { readonly number: number; readonly chips: readonly OverChip[] };
+  /** The over of the latest delivery of the innings now, with its deliveries; null before one is bowled (T19 fix 9). */
+  readonly lastOver: { readonly number: number; readonly chips: readonly OverChip[] } | null;
   /**
    * The deliveries bowled in the innings now, legal and illegal (0 before it opens). A hand swap is keyed to the next of
    * them, so any delivery, a wide or a no-ball included, uses it up (the controller's ruling, Batch 2 fix round 1).
