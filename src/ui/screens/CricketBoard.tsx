@@ -60,7 +60,8 @@ export const CricketBoard = memo(function CricketBoard({
         <ResultPanel result={view.result} />
       )}
       <Crease crease={view.crease} bowler={view.bowler} onOpenPlayers={onOpenPlayers} />
-      {fit.strip ? <OverStrip over={view.over} status={view.status} /> : null}
+      <FreeHit status={view.status} />
+      {fit.strip ? <OverStrip over={view.over} /> : null}
     </View>
   );
 });
@@ -128,7 +129,10 @@ function ScoreLines({
         >
           {score.chase === null
             ? words(score.innings)
-            : `${words(score.innings)} · ${words(score.chase)}`}
+            : t('scoring.cricket.board.joined', {
+                innings: words(score.innings),
+                chase: words(score.chase),
+              })}
         </Text>
       ) : (
         <>
@@ -286,26 +290,14 @@ const BowlerRow = memo(function BowlerRow({ bowler }: { readonly bowler: Cricket
 });
 
 /** "Over 3", a free hit when one is due, and the over's deliveries in order, each chip one width. */
-const OverStrip = memo(function OverStrip({
-  over,
-  status,
-}: {
-  readonly over: CricketBoardView['over'];
-  readonly status: CricketBoardView['status'];
-}) {
+const OverStrip = memo(function OverStrip({ over }: { readonly over: CricketBoardView['over'] }) {
   const { t } = useT();
-  const words = usePadText();
   return (
     <View testID="board-over" style={styles.over}>
       <View style={styles.overHead}>
         <Text variant="metricUnit" style={styles.overLabel}>
           {t('scoring.cricket.board.over', { number: over.number })}
         </Text>
-        {status === null ? null : (
-          <Text variant="metricUnit" testID="board-status" style={styles.status}>
-            {words(status)}
-          </Text>
-        )}
       </View>
       <View testID="board-chips" style={styles.chips}>
         {over.chips.map((chip, index) => (
@@ -313,6 +305,21 @@ const OverStrip = memo(function OverStrip({
         ))}
       </View>
     </View>
+  );
+});
+
+/**
+ * A free hit due: the rule cue the scorer needs for the next ball, so it is the board's own line and is never dropped when
+ * the board gives way (T19 fix 5, round 1; the chip strip above it may hide). Nothing is drawn, and no height is asked,
+ * when none is due.
+ */
+const FreeHit = memo(function FreeHit({ status }: { readonly status: CricketBoardView['status'] }) {
+  const words = usePadText();
+  if (status === null) return null;
+  return (
+    <Text variant="metricUnit" testID="board-status" style={styles.status}>
+      {words(status)}
+    </Text>
   );
 });
 

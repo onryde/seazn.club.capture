@@ -701,6 +701,7 @@
   "scoring.cricket.board.need": "Faltan {runs}",
   "scoring.cricket.board.innings": "Entrada {number}",
   "scoring.cricket.board.superOver": "Super over {number}",
+  "scoring.cricket.board.joined": "{innings} · {chase}",
   "scoring.cricket.board.freeHit": "Free hit",
   "scoring.cricket.board.over": "Over {number}",
   "scoring.cricket.board.onStrike": "Al bate",

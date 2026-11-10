@@ -1,4 +1,5 @@
 import { layout, space } from '@/ui/theme/tokens';
+import { typeScale } from '@/ui/theme/type';
 
 /**
  * The over strip's chips in rows (T19 fix 5, Part 5): each chip is `layout.overChip` wide and `space.xs` from the next, and
@@ -51,26 +52,30 @@ export function boardNeeds(
   fit: BoardFit,
   rows: number,
   panel: number = panelHeight(fit.chaseJoined),
+  freeHit = false,
 ): number {
-  const regions = panel + 3 * layout.creaseRow + (fit.strip ? stripHeight(rows) : 0);
-  return regions + (fit.strip ? 2 : 1) * fit.gap;
+  const caption = freeHit ? typeScale.metricUnit.lineHeight : 0;
+  const regions = panel + 3 * layout.creaseRow + caption + (fit.strip ? stripHeight(rows) : 0);
+  const count = 1 + (freeHit ? 1 : 0) + (fit.strip ? 1 : 0);
+  return regions + count * fit.gap;
 }
 
 /**
  * The first rung that fits `room` dp, else the last (the board is then clipped at its bottom by its own edge, never drawn
- * over the keys). An unmeasured board is drawn as designed. A result's board has its own panel and gives way no further
- * than the gaps and the strip.
+ * over the keys). An unmeasured board is drawn as designed, and so is a result's (no keys stand under it). A free hit due is a
+ * line of the board's own (`FreeHit`), counted here and never dropped.
  */
 export function fitBoard(
   room: number | null,
   chips: number,
   width: number | null,
   result = false,
+  freeHit = false,
 ): BoardFit {
   const first = BOARD_RUNGS[0] as BoardFit;
-  if (room === null) return first;
+  // A result has no keys under it, so its board has room and is not given way (the strip stays).
+  if (room === null || result) return first;
   const rows = chipRows(chips, width);
-  const panel = result ? layout.resultPanel : undefined;
-  const fits = (fit: BoardFit) => boardNeeds(fit, rows, panel) <= room;
+  const fits = (fit: BoardFit) => boardNeeds(fit, rows, undefined, freeHit) <= room;
   return BOARD_RUNGS.find(fits) ?? (BOARD_RUNGS[BOARD_RUNGS.length - 1] as BoardFit);
 }

@@ -380,6 +380,7 @@ export type CricketBoardKey =
   | 'scoring.cricket.board.need'
   | 'scoring.cricket.board.innings'
   | 'scoring.cricket.board.superOver'
+  | 'scoring.cricket.board.joined'
   | 'scoring.cricket.board.freeHit'
   | 'scoring.cricket.board.onStrike';
 

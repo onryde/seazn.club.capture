@@ -97,4 +97,38 @@ describe('the board gives way to the room the keys leave', () => {
       getComputedStyle(screen.getByTestId('cricket-board')).getPropertyValue('overflow-x'),
     ).toBe('hidden');
   });
+
+  // Round 1 of the review: the Free hit cue is not the strip's. At 640 dp the strip is gone (194 left for the board), and
+  // the caption still shows.
+  it('a free hit still shows when the strip hides, at 320 × 640 and 360 × 640', () => {
+    for (const width of [288, 328]) {
+      const { unmount } = renderWithPorts(
+        <CricketBoard view={{ ...BOARD, status: { key: 'scoring.cricket.board.freeHit' } }} />,
+      );
+      layOut(screen.getByTestId('cricket-board'), { width, height: 640 - 446 });
+      expect(stripShown()).toBe(false);
+      expect(screen.getByTestId('board-status').textContent).toBe('Free hit');
+      unmount();
+    }
+  });
+
+  it('the caption costs height only while a free hit is due: 277 dp keeps the strip without one, not with', () => {
+    measured(BOARD, { width: 288, height: 277 });
+    expect(stripShown()).toBe(true);
+    expect(screen.queryByTestId('board-status')).toBeNull();
+  });
+
+  it('a result’s board keeps its strip however short the measured room', () => {
+    measured(
+      {
+        ...BOARD,
+        result: [
+          { team: 'A', figures: '1/0', overs: '1' },
+          { team: 'B', figures: '2/0', overs: '1' },
+        ],
+      },
+      { width: 288, height: 60 },
+    );
+    expect(stripShown()).toBe(true);
+  });
 });

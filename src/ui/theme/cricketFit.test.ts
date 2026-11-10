@@ -365,7 +365,7 @@ describe('the keys’ rooms', () => {
    * panel with the team line, three crease rows and the over strip, `space.sm` apart: 285), the keys (two run rows, the extras, the actions,
    * `space.sm` apart: 256), the last-tap line (3 lines of 18: 54), the tool row (none: 0), and the pad's five gaps (8).
    */
-  it('the board, the keys and the line fit the owner’s phone, about 360 × 724, are 7 dp short with the board as designed: it gives way (Part 3)', () => {
+  it('the board, the keys and the line fit the owner’s phone, about 360 × 724, are 7 dp short with the board as designed (the rung it takes is pinned below)', () => {
     const board = layout.scorePanel + 3 * layout.creaseRow + layout.overStrip + 2 * space.sm;
     const keys =
       2 * layout.cricketRunKey + layout.cricketExtraKey + layout.cricketActionKey + 3 * space.sm;
@@ -1629,6 +1629,11 @@ describe.each(WIDTHS)('the result board at %i dp', (width) => {
 // above, 446 dp); when the board's lines need more they give way in the ruling's order and only as far as they must:
 // the gaps tighten, the chip strip hides, the chase joins the innings line. Never the score, the team line or the crease.
 // ---------------------------------------------------------------------------------------------------------------
+/**
+ * The pad's own height round the board (arithmetic from the tokens: that it is the real layout's is the device check's;
+ * heights do not vary with the language, the last-tap line being fixed at `padLineLines`, so the table has no language
+ * column, and the break card stands in the board's place, so it has no row):
+ */
 /** The pad's own height round the board: padding, header, strip, a gap, the keys, the last-tap line and four gaps. */
 const AROUND_THE_BOARD =
   2 * space.md +
@@ -1681,6 +1686,16 @@ describe('the board’s height budget', () => {
     expect(BOARD_RUNGS.indexOf(fitBoard(null, 12, null))).toBe(0);
   });
 
+  it('a free hit due is counted (a line of 16 and a gap) and never dropped: it can take the strip at 360 × 724', () => {
+    const room = 724 - AROUND_THE_BOARD;
+    expect(BOARD_RUNGS.indexOf(fitBoard(room, 6, column(360), false, true))).toBe(2);
+    expect(boardNeeds(BOARD_RUNGS[3] as BoardFit, 1, undefined, true)).toBe(191 + 16 + 4);
+  });
+
+  it('a result’s board is not given way: no keys stand under it', () => {
+    expect(BOARD_RUNGS.indexOf(fitBoard(50, 6, column(320), true))).toBe(0);
+  });
+
   it('the rungs only ever ask for less, so the first that fits is the one that gives way least', () => {
     const asks = BOARD_RUNGS.map((fit) => boardNeeds(fit, 1));
     expect(asks).toEqual([285, 277, 213, 191]);
@@ -1690,9 +1705,10 @@ describe('the board’s height budget', () => {
     it.each(WIDTHS)('the joined innings and chase line holds at the floor at %i dp', (width) => {
       const innings = fill(said(dictionary, 'scoring.cricket.board.superOver'), { number: 12 });
       const chase = fill(said(dictionary, 'scoring.cricket.board.chase.other'), CHASE);
-      expect(controlWidth(`${innings} · ${chase}`) * layout.boardTeamMinScale).toBeLessThanOrEqual(
-        column(width),
-      );
+      expect(
+        controlWidth(fill(said(dictionary, 'scoring.cricket.board.joined'), { innings, chase })) *
+          layout.boardTeamMinScale,
+      ).toBeLessThanOrEqual(column(width));
     });
 
     it.each(WIDTHS)('the team line and a bowler’s first word fit at %i dp', (width) => {
