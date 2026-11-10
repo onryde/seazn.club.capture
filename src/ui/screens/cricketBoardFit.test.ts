@@ -38,7 +38,7 @@ describe('the board gives way in the order of T19 fix 6', () => {
     expect(fitBoard(285, 2, 328)).toBe(BOARD_RUNGS[0]);
   });
 
-  it('180 dp (320 wide, density 540) takes the compact rung, which asks no more than 180', () => {
+  it('180 dp (320 wide, density 540) takes the compact rung, which asks 171, no more than 180', () => {
     const fit = fitBoard(180, 2, 288);
     expect(fit).toBe(BOARD_RUNGS[4]);
     expect(boardNeeds(fit, 1)).toBeLessThanOrEqual(180);

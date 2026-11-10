@@ -83,7 +83,7 @@ describe('the board gives way to the room the keys leave', () => {
     expect(screen.getByTestId('board-bowler')).toBeTruthy();
   });
 
-  it('180 dp (320 wide): the score is drawn compact, in the smaller face, and the crease stays', () => {
+  it('180 dp (320 wide): the compact rung (171 dp) draws the score in the smaller face, and the crease stays', () => {
     measured(BOARD, { width: 288, height: 180 });
     expect([stripShown(), joined()]).toEqual([false, true]);
     expect(screen.getByTestId('board-runs').textContent).toBe('8/0');
@@ -178,6 +178,14 @@ describe('the board gives way to the room the keys leave', () => {
       expect(spacer()).toBe(true);
       layOut(screen.getByTestId('cricket-board'), { width: 288, height: 275 });
       expect(spacer()).toBe(false);
+    });
+
+    // The strip-less joined rung needs 191 with a gap of 4: the spacer comes with a spare of 4, not 3.
+    it('a spare under the board’s gap draws no spacer (194 dp: 3), the gap itself does (195 dp: 4)', () => {
+      measured(BOARD, { width: 288, height: 194 });
+      expect(spacer()).toBe(false);
+      layOut(screen.getByTestId('cricket-board'), { width: 288, height: 195 });
+      expect(spacer()).toBe(true);
     });
 
     it('unmeasured, and a result’s board, keep their top alignment', () => {

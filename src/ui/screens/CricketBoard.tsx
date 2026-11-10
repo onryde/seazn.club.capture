@@ -44,7 +44,8 @@ export const CricketBoard = memo(function CricketBoard({
     [room, chips, width, done, freeHit],
   );
   // Spare height sits above the score, against the keys; none spare, the top stays and the bottom clips.
-  const spare = boardSpare(room, fit, chips, width, done, freeHit) > 0;
+  // Only when the spare covers the board's gap (the gap sits between the spacer and the panel even at no height).
+  const spare = boardSpare(room, fit, chips, width, done, freeHit) >= fit.gap;
   const tight = fit.gap === layout.boardGapTight;
   return (
     <View
