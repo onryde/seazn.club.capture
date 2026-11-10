@@ -1,5 +1,5 @@
-import { memo } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { memo, useCallback, useMemo, useState } from 'react';
+import { Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import type {
   BoardResult,
   BoardScore,
@@ -10,6 +10,7 @@ import type { CricketBowler, OverChip } from '@/domain/scoring/cricketTypes';
 import { useT } from '@/hooks/useLanguage';
 import { usePadText } from '@/hooks/usePadText';
 import { Text } from '@/ui/components/Text';
+import { fitBoard } from '@/ui/screens/cricketBoardFit';
 import { colour, layout, space } from '@/ui/theme/tokens';
 
 /**
@@ -26,15 +27,40 @@ export const CricketBoard = memo(function CricketBoard({
   readonly view: CricketBoardView;
   readonly onOpenPlayers?: () => void;
 }) {
+  const [box, setBox] = useState<{ readonly width: number; readonly height: number } | null>(null);
+  const measured = useCallback((event: LayoutChangeEvent) => {
+    const { width, height } = event.nativeEvent.layout;
+    setBox((was) => (was?.width === width && was.height === height ? was : { width, height }));
+  }, []);
+  // The room is what the keys leave: the board is the flex region above them, so its own height is measured, never the
+  // screen's class (T19 fix 5, Part 3). Less than it needs, it gives way rung by rung (`fitBoard`).
+  const fit = useMemo(
+    () =>
+      fitBoard(
+        box?.height ?? null,
+        view.over.chips.length,
+        box?.width ?? null,
+        view.result !== null,
+      ),
+    [box, view.over.chips.length, view.result],
+  );
   return (
-    <View testID="cricket-board" style={styles.board}>
+    <View
+      testID="cricket-board"
+      onLayout={measured}
+      style={fit.gap === layout.boardGapTight ? styles.boardTight : styles.board}
+    >
       {view.result === null ? (
-        <ScorePanel score={view.score} onOpenPlayers={onOpenPlayers} />
+        <ScorePanel
+          score={view.score}
+          onOpenPlayers={onOpenPlayers}
+          chaseJoined={fit.chaseJoined}
+        />
       ) : (
         <ResultPanel result={view.result} />
       )}
       <Crease crease={view.crease} bowler={view.bowler} onOpenPlayers={onOpenPlayers} />
-      <OverStrip over={view.over} status={view.status} />
+      {fit.strip ? <OverStrip over={view.over} status={view.status} /> : null}
     </View>
   );
 });
@@ -48,25 +74,35 @@ export const CricketBoard = memo(function CricketBoard({
 export const ScorePanel = memo(function ScorePanel({
   score,
   onOpenPlayers,
+  chaseJoined = false,
 }: {
   readonly score: BoardScore | null;
   readonly onOpenPlayers?: () => void;
+  /** The last rung of giving way (`fitBoard`): the chase shares the innings line, and the panel is a line shorter. */
+  readonly chaseJoined?: boolean;
 }) {
-  if (score === null) return <View testID="board-score" style={styles.score} />;
+  const panel = chaseJoined ? styles.scoreJoined : styles.score;
+  if (score === null) return <View testID="board-score" style={panel} />;
   if (onOpenPlayers === undefined)
     return (
-      <View testID="board-score" style={styles.score}>
-        <ScoreLines score={score} />
+      <View testID="board-score" style={panel}>
+        <ScoreLines score={score} chaseJoined={chaseJoined} />
       </View>
     );
   return (
-    <Pressable testID="board-score" accessible={false} onPress={onOpenPlayers} style={styles.score}>
-      <ScoreLines score={score} />
+    <Pressable testID="board-score" accessible={false} onPress={onOpenPlayers} style={panel}>
+      <ScoreLines score={score} chaseJoined={chaseJoined} />
     </Pressable>
   );
 });
 
-function ScoreLines({ score }: { readonly score: BoardScore }) {
+function ScoreLines({
+  score,
+  chaseJoined,
+}: {
+  readonly score: BoardScore;
+  readonly chaseJoined: boolean;
+}) {
   const words = usePadText();
   const { t } = useT();
   return (
@@ -80,12 +116,30 @@ function ScoreLines({ score }: { readonly score: BoardScore }) {
           </Text>
         </View>
       </View>
-      <Text variant="control" testID="board-innings" numberOfLines={1} style={styles.innings}>
-        {words(score.innings)}
-      </Text>
-      <Text variant="control" testID="board-chase" numberOfLines={1} style={styles.chase}>
-        {score.chase === null ? '' : words(score.chase)}
-      </Text>
+      {chaseJoined ? (
+        <Text
+          variant="control"
+          testID="board-innings"
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={layout.boardTeamMinScale}
+          ellipsizeMode="tail"
+          style={styles.chase}
+        >
+          {score.chase === null
+            ? words(score.innings)
+            : `${words(score.innings)} · ${words(score.chase)}`}
+        </Text>
+      ) : (
+        <>
+          <Text variant="control" testID="board-innings" numberOfLines={1} style={styles.innings}>
+            {words(score.innings)}
+          </Text>
+          <Text variant="control" testID="board-chase" numberOfLines={1} style={styles.chase}>
+            {score.chase === null ? '' : words(score.chase)}
+          </Text>
+        </>
+      )}
     </>
   );
 }
@@ -274,8 +328,15 @@ const Chip = memo(function Chip({ chip }: { readonly chip: OverChip }) {
 });
 
 const styles = StyleSheet.create({
-  board: { flex: 1, gap: space.sm },
+  // The board is the room the keys leave: clipped at its own bottom, so what cannot fit is cut and never drawn over them.
+  board: { flex: 1, gap: space.sm, overflow: 'hidden' },
+  boardTight: { flex: 1, gap: layout.boardGapTight, overflow: 'hidden' },
   score: { height: layout.scorePanel, gap: space.xs, overflow: 'hidden' },
+  scoreJoined: {
+    height: layout.scorePanelJoined,
+    gap: space.xs,
+    overflow: 'hidden',
+  },
   head: { gap: 0 },
   team: { color: colour.ink },
   teamBeside: { flex: 1, color: colour.ink },

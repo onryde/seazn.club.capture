@@ -6,7 +6,15 @@ import nl from '@/i18n/nl.json';
 import { layout, space } from '@/ui/theme/tokens';
 import { isOneWord } from '@/ui/components/nameFit';
 import { typeScale } from '@/ui/theme/type';
-import { chipRows, chipsPerRow, stripHeight } from '@/ui/screens/cricketBoardFit';
+import {
+  BOARD_RUNGS,
+  boardNeeds,
+  chipRows,
+  chipsPerRow,
+  fitBoard,
+  stripHeight,
+  type BoardFit,
+} from '@/ui/screens/cricketBoardFit';
 import { loadFont } from '../../../test/fontMetrics';
 import { linesIn, linesOf } from '../../../test/textFit';
 
@@ -354,10 +362,10 @@ describe('the keys’ rooms', () => {
 
   /**
    * The pad's height, portrait: the screen's padding (2 × 16), the header (48), the strip (16), the board (the score
-   * panel with the team line, three crease rows and the over strip, `space.sm` apart: 288), the keys (two run rows, the extras, the actions,
+   * panel with the team line, three crease rows and the over strip, `space.sm` apart: 285), the keys (two run rows, the extras, the actions,
    * `space.sm` apart: 256), the last-tap line (3 lines of 18: 54), the tool row (none: 0), and the pad's five gaps (8).
    */
-  it('the board, the keys and the line fit the owner’s phone, about 360 × 724, are short by 10 dp: Part 3’s rungs take it', () => {
+  it('the board, the keys and the line fit the owner’s phone, about 360 × 724, are 7 dp short with the board as designed: it gives way (Part 3)', () => {
     const board = layout.scorePanel + 3 * layout.creaseRow + layout.overStrip + 2 * space.sm;
     const keys =
       2 * layout.cricketRunKey + layout.cricketExtraKey + layout.cricketActionKey + 3 * space.sm;
@@ -371,8 +379,8 @@ describe('the keys’ rooms', () => {
       keys +
       line +
       4 * space.sm;
-    expect([board, keys, line]).toEqual([288, 256, 54]);
-    expect(724 - pad).toBe(-10);
+    expect([board, keys, line]).toEqual([285, 256, 54]);
+    expect(724 - pad).toBe(-7);
   });
 });
 
@@ -936,7 +944,7 @@ describe.each(WIDTHS)('over totals at %i dp', (width) => {
 describe('over totals on the pad', () => {
   /**
    * The totals body is the score panel, the note (three lines at most), the heading, three rows of a touch and Record over
-   * (a plate of 56), `space.sm` apart. The keys' body is the board and the keys: 288 and 256. It fits wherever those fit.
+   * (a plate of 56), `space.sm` apart. The keys' body is the board and the keys: 285 and 256. It fits wherever those fit.
    */
   it('the score, the note, the entry and Record over are shorter than the board and the keys', () => {
     const rows = 3 * layout.touch + 2 * space.sm;
@@ -950,7 +958,7 @@ describe('over totals on the pad', () => {
       rows +
       space.sm +
       56;
-    const keysBody = 288 + space.sm + 256;
+    const keysBody = 285 + space.sm + 256;
     expect(totals).toBe(134 + 8 + 66 + 8 + 24 + 8 + 160 + 8 + 56);
     expect(totals).toBeLessThan(keysBody);
   });
@@ -1610,7 +1618,90 @@ describe.each(WIDTHS)('the result board at %i dp', (width) => {
 
   it('two score rows and the not-out pair stand in the board’s height under the card, and the card’s lines', () => {
     const rows = layout.resultPanel + 3 * layout.creaseRow + layout.overStrip + 2 * space.sm;
-    expect(rows).toBeLessThan(288 + space.sm + 256);
+    expect(rows).toBeLessThan(285 + space.sm + 256);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// T19 fix 5, Part 3: the board's height budget. The keys' block is fixed at the bottom and the board above it never
+// overlaps it (device run 11: at 320 dp the bowler row and the chips were drawn over the 0/1/2 keys). What is left for the
+// board is the screen's height less the frame, the keys and the last-tap line (the arithmetic of the owner's-phone test
+// above, 446 dp); when the board's lines need more they give way in the ruling's order and only as far as they must:
+// the gaps tighten, the chip strip hides, the chase joins the innings line. Never the score, the team line or the crease.
+// ---------------------------------------------------------------------------------------------------------------
+/** The pad's own height round the board: padding, header, strip, a gap, the keys, the last-tap line and four gaps. */
+const AROUND_THE_BOARD =
+  2 * space.md +
+  layout.touch +
+  typeScale.metricUnit.lineHeight +
+  space.sm +
+  (2 * layout.cricketRunKey + layout.cricketExtraKey + layout.cricketActionKey + 3 * space.sm) +
+  layout.padLineLines * typeScale.control.lineHeight +
+  4 * space.sm;
+
+/** The rung a size takes, from the ruling's order: 0 the board as designed, 1 gaps tight, 2 no strip, 3 chase joined. */
+const RUNG_AT: readonly (readonly [number, number, number])[] = [
+  [320, 568, 3],
+  [320, 640, 3],
+  [360, 640, 3],
+  [360, 724, 1],
+];
+
+describe('the board’s height budget', () => {
+  it('the frame, the keys and the last-tap line take 446 dp round the board', () => {
+    expect(AROUND_THE_BOARD).toBe(446);
+  });
+
+  it.each(RUNG_AT)(
+    '%i × %i dp takes rung %i of the ruling’s order with a six-ball over',
+    (width, height, rung) => {
+      const fit = fitBoard(height - AROUND_THE_BOARD, 6, column(width));
+      expect(BOARD_RUNGS.indexOf(fit)).toBe(rung);
+    },
+  );
+
+  it('where a rung fits, the board and everything round it is within the height', () => {
+    for (const [width, height, rung] of RUNG_AT) {
+      const needs = boardNeeds(BOARD_RUNGS[rung] as BoardFit, chipRows(6, column(width)));
+      const room = height - AROUND_THE_BOARD;
+      // 320 × 568 and the short 640s: even the last rung is wider than the room at 568 (it is clipped, never over the keys).
+      if (height === 568) expect(needs - room).toBe(69);
+      else expect(needs).toBeLessThanOrEqual(room);
+    }
+  });
+
+  it('an over of ten deliveries (two rows of chips) hides the strip at 360 × 724, where six keep it', () => {
+    const room = 724 - AROUND_THE_BOARD;
+    expect(BOARD_RUNGS.indexOf(fitBoard(room, 6, column(360)))).toBe(1);
+    expect(BOARD_RUNGS.indexOf(fitBoard(room, 10, column(360)))).toBe(2);
+  });
+
+  it('a roomy phone keeps the board as designed, and an unmeasured board is drawn as designed', () => {
+    expect(BOARD_RUNGS.indexOf(fitBoard(800 - AROUND_THE_BOARD, 6, column(360)))).toBe(0);
+    expect(BOARD_RUNGS.indexOf(fitBoard(null, 12, null))).toBe(0);
+  });
+
+  it('the rungs only ever ask for less, so the first that fits is the one that gives way least', () => {
+    const asks = BOARD_RUNGS.map((fit) => boardNeeds(fit, 1));
+    expect(asks).toEqual([285, 277, 213, 191]);
+  });
+
+  describe.each(LANGUAGES)('%s, with the long names', (_, dictionary) => {
+    it.each(WIDTHS)('the joined innings and chase line holds at the floor at %i dp', (width) => {
+      const innings = fill(said(dictionary, 'scoring.cricket.board.superOver'), { number: 12 });
+      const chase = fill(said(dictionary, 'scoring.cricket.board.chase.other'), CHASE);
+      expect(controlWidth(`${innings} · ${chase}`) * layout.boardTeamMinScale).toBeLessThanOrEqual(
+        column(width),
+      );
+    });
+
+    it.each(WIDTHS)('the team line and a bowler’s first word fit at %i dp', (width) => {
+      expect(labelWidth(TEAM_LONGEST) * layout.boardTeamMinScale).toBeLessThanOrEqual(
+        column(width),
+      );
+      expect(nameRoom(width, SPELL)).toBeGreaterThanOrEqual(labelWidth('Christopher'));
+      expect(said(dictionary, 'scoring.cricket.board.over')).not.toBe('');
+    });
   });
 });
 

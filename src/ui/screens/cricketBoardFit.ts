@@ -19,3 +19,58 @@ export function chipRows(count: number, width: number | null): number {
 export function stripHeight(rows: number): number {
   return layout.overStrip + (rows - 1) * (layout.overChip + space.xs);
 }
+
+/**
+ * What the board draws, by the room it has (T19 fix 5, Part 3; the controller's ruling, device run 11). The keys' block is
+ * fixed at the bottom and the board above it never overlaps it, so when the board's lines do not fit the height left they
+ * give way in this order, and only so far as they must: (1) the gaps between the regions tighten to `space.xs`; (2) the
+ * over's chip strip hides; (3) the chase line joins the innings line, on one line that shrinks to fit. Never the score,
+ * the team line or the crease: the scorer needs those for every ball.
+ */
+export type BoardFit = {
+  readonly gap: number;
+  readonly strip: boolean;
+  readonly chaseJoined: boolean;
+};
+
+/** The rungs in order, the first being the board as designed. */
+export const BOARD_RUNGS: readonly BoardFit[] = [
+  { gap: space.sm, strip: true, chaseJoined: false },
+  { gap: layout.boardGapTight, strip: true, chaseJoined: false },
+  { gap: layout.boardGapTight, strip: false, chaseJoined: false },
+  { gap: layout.boardGapTight, strip: false, chaseJoined: true },
+];
+
+/** The score panel's height: its token, less the chase line and its gap once the chase has joined the innings line. */
+export function panelHeight(chaseJoined: boolean): number {
+  return chaseJoined ? layout.scorePanelJoined : layout.scorePanel;
+}
+
+/** What a rung asks of the board's height: the panel, the crease, the strip when it shows, and the gaps between them. */
+export function boardNeeds(
+  fit: BoardFit,
+  rows: number,
+  panel: number = panelHeight(fit.chaseJoined),
+): number {
+  const regions = panel + 3 * layout.creaseRow + (fit.strip ? stripHeight(rows) : 0);
+  return regions + (fit.strip ? 2 : 1) * fit.gap;
+}
+
+/**
+ * The first rung that fits `room` dp, else the last (the board is then clipped at its bottom by its own edge, never drawn
+ * over the keys). An unmeasured board is drawn as designed. A result's board has its own panel and gives way no further
+ * than the gaps and the strip.
+ */
+export function fitBoard(
+  room: number | null,
+  chips: number,
+  width: number | null,
+  result = false,
+): BoardFit {
+  const first = BOARD_RUNGS[0] as BoardFit;
+  if (room === null) return first;
+  const rows = chipRows(chips, width);
+  const panel = result ? layout.resultPanel : undefined;
+  const fits = (fit: BoardFit) => boardNeeds(fit, rows, panel) <= room;
+  return BOARD_RUNGS.find(fits) ?? (BOARD_RUNGS[BOARD_RUNGS.length - 1] as BoardFit);
+}

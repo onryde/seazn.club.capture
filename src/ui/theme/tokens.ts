@@ -427,8 +427,14 @@ const base = {
    * floor is 4 dp (`rn-text-fit`), so on Android a long name shrinks further.
    */
   boardTeamMinScale: 0.7,
+  /**
+   * What the board gives way to when the keys leave it too little height (T19 fix 5, Part 3): its gaps tighten to this,
+   * and the chase joins the innings line, a line (18) and its gap (4) shorter (`cricketBoardFit.ts`).
+   */
+  boardGapTight: 4,
+  scorePanelJoined: 112,
   /** A result's two rows (T19 fix 5, Part 2): a crease row each, `space.xs` between them. */
-  resultPanel: 56,
+  resultPanel: 54,
   /**
    * The overs beside the score, a fixed box at least this wide (T19 device run D1): on the phone a whole over's shorter
    * text ("(1 ov)") was cut to "(1" in a box measured to its own width. The widest overs the board shows, three digits
@@ -436,8 +442,8 @@ const base = {
    * (`cricketFit.test.ts`).
    */
   boardOvers: 72,
-  /** A crease row (a batter, or the bowler): one line of `label` (22) with 2 dp above and below (30 before the team line). */
-  creaseRow: 26,
+  /** A crease row (a batter, or the bowler): one line of `label` (22) with 1.5 dp above and below (30 before the team line, 26 before the chips grew). */
+  creaseRow: 25,
   /**
    * This over: its label in `metricUnit` (16), `space.xs`, then the chips, each `overChip` square: 60 with one row of them.
    * An over that overflows the board's width wraps to a second row, `space.xs` under the first, so the strip is 104 tall
