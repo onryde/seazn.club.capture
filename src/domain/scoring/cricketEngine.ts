@@ -1,4 +1,4 @@
-import type { EventEnvelope, LineupPair } from '@seazn/engine/core';
+import { EngineError, type EventEnvelope, type LineupPair } from '@seazn/engine/core';
 import {
   cricket,
   orderFromLineup,
@@ -67,8 +67,10 @@ export function cricketTrial(state: CricketState, event: SportEvent): CricketSta
   } satisfies EventEnvelope as Parameters<typeof cricket.apply>[1];
   try {
     return cricket.apply(state, envelope, { strict: true });
-  } catch {
-    return null;
+  } catch (error) {
+    // Only the engine's own refusal is a no; a bug in `apply` or in the payload built here must not read as one.
+    if (EngineError.is(error)) return null;
+    throw error;
   }
 }
 

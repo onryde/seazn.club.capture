@@ -214,7 +214,12 @@ contracts/         # the web's capture contracts, vendored and pinned
   the new file, so the boundary rule still sees the real path. A split is a
   verbatim move — no renames, no logic edits — with the same tests by name
   before and after (owner, 2026-11-09: "keep the ban" and "and split"). Four
-  test files are still past it, split once the branches touching them merge.
+  test files are still past it (`BadmintonPadScreen.test.tsx`, `padFit.test.ts`,
+  `tapQueueStore.test.ts`, `HomeScreen.test.tsx`), split once the branches
+  touching them merge. Cricket's fit tests are split this way:
+  `cricketFit.{board,keys,totals,lines}.test.ts` over `cricketFitKit.ts`, each
+  sweeping the keys it owns, with `cricketFit.sweep.test.ts` proving every
+  `scoring.cricket.*` key is owned once (the one non-verbatim part of the move).
 - No `types/` folder — types live with the behaviour they describe.
 - No `store/` — see §2. Session state is native-owned. What the app keeps
   itself (saved codes, the active mode, the language pick and, while

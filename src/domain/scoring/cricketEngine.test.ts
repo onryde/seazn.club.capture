@@ -1,10 +1,11 @@
 import { foldMatch, type EventEnvelope } from '@seazn/engine/core';
 import { cricket, orderFromLineup } from '@seazn/engine/sports/cricket';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   cricketCfg,
   cricketMatchOf,
   cricketRefusalOf,
+  cricketTrial,
   playersEntered,
   type CricketEngineMatch,
 } from '@/domain/scoring/cricketEngine';
@@ -348,5 +349,37 @@ describe('the test ledger', () => {
     const tied = foldOf(TIED_KO);
     expect(tied.innings.map((innings) => innings.runs)).toStrictEqual([8, 8]);
     expect(tied.phase).toBe('super_over');
+  });
+});
+
+describe('cricketTrial', () => {
+  const opened = [...OPENING, firstOver(1)];
+  const stateAfter = (specs: readonly Spec[]) => foldOf(specs);
+  const eventOf = (spec: Spec) => {
+    const event = ledgerOf([spec])[0];
+    if (event === undefined) throw new Error('one event');
+    return event;
+  };
+
+  it('a ball the engine takes gives the state after it', () => {
+    const after = cricketTrial(stateAfter(opened), eventOf(firstOver(2)));
+    expect(after).not.toBeNull();
+  });
+
+  it('a ball the engine refuses is null', () => {
+    expect(cricketTrial(stateAfter(opened), eventOf(firstOver(2, { striker: H(12) })))).toBeNull();
+  });
+
+  it('a throw that is not the engine’s own propagates, and is not read as a refusal', () => {
+    const state = stateAfter(opened);
+    const event = eventOf(firstOver(2));
+    const spy = vi.spyOn(cricket, 'apply').mockImplementation(() => {
+      throw new TypeError('a bug, not a refusal');
+    });
+    try {
+      expect(() => cricketTrial(state, event)).toThrow(TypeError);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

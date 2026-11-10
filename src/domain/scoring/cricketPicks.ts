@@ -287,7 +287,6 @@ function swapEntry(
   return { key: swapKey(ordinal, display.deliveries), ids };
 }
 
-/** An innings's place in the match's order: the main innings, then the super over's. */
 /** The picks without those of an innings before the turn's, or of an over or a delivery already bowled in it. */
 function withoutPast(
   picks: PendingPicks,
