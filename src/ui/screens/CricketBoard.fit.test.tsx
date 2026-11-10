@@ -7,8 +7,8 @@ import { layOut } from '../../../test/layOut';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
 // The board gives way above the keys (T19 fix 5, Part 3): the room is measured (onLayout), never the screen's class. The
-// heights below are the rungs' own needs from the ruling's order: 285 as designed, 277 with the gaps tight, 213 without
-// the chip strip, 191 with the chase joined to the innings line. jsdom lays nothing out, so the pixels, and that no row
+// heights below are the rungs' own needs from the order of T19 fix 6: 285 as designed, 277 with the gaps tight, 255 with
+// the chase joined to the innings line, 191 without the chip strip, 171 with the score compact. jsdom lays nothing out, so the pixels, and that no row
 // is drawn over the keys on the phone, are the device check's.
 
 const chip = (text: string): OverChip => ({ text, tone: 'run' });
@@ -58,12 +58,21 @@ describe('the board gives way to the room the keys leave', () => {
     expect([stripShown(), joined(), gap()]).toEqual([true, false, '4px']);
   });
 
-  it('276 to 213 dp: the chip strip hides next, the chase line still its own', () => {
+  it('276 to 255 dp: the chase joins the innings line next, and the over’s chips stay', () => {
     measured(BOARD, { width: 288, height: 276 });
-    expect([stripShown(), joined(), gap()]).toEqual([false, false, '4px']);
+    expect([stripShown(), joined(), gap()]).toEqual([true, true, '4px']);
   });
 
-  it('below 213 dp: the chase joins the innings line, and the score, team and crease stay', () => {
+  // The owner's phone (NE2211, 360 × 804, uiautomator): the board had 269 dp and drew no chips.
+  it('269 dp at 328 wide: the owner’s phone shows its chips, with the chase joined', () => {
+    measured(BOARD, { width: 328, height: 269 });
+    expect([stripShown(), joined()]).toEqual([true, true]);
+    expect(screen.getAllByTestId('over-chip')).toHaveLength(6);
+    expect(screen.getByTestId('board-innings').textContent).toBe('Innings 2 · Need 1 off 11 balls');
+    expect(screen.getByTestId('board-runs').textContent).toBe('8/0');
+  });
+
+  it('below 255 dp: the chip strip hides, the chase still joined, and the score, team and crease stay', () => {
     measured(BOARD, { width: 288, height: 212 });
     expect([stripShown(), joined()]).toEqual([false, true]);
     expect(screen.getByTestId('board-innings').textContent).toBe('Innings 2 · Need 1 off 11 balls');
@@ -74,13 +83,27 @@ describe('the board gives way to the room the keys leave', () => {
     expect(screen.getByTestId('board-bowler')).toBeTruthy();
   });
 
+  it('180 dp (320 wide): the score is drawn compact, in the smaller face, and the crease stays', () => {
+    measured(BOARD, { width: 288, height: 180 });
+    expect([stripShown(), joined()]).toEqual([false, true]);
+    expect(screen.getByTestId('board-runs').textContent).toBe('8/0');
+    // The role's size is the proof the smaller face is drawn: tally's 46 against scoreCompact's 64.
+    expect(getComputedStyle(screen.getByTestId('board-runs')).fontSize).toBe('46px');
+    expect(screen.getByTestId('board-bowler')).toBeTruthy();
+  });
+
+  it('191 dp keeps the full-size score; the compact rung is for 190 and below', () => {
+    measured(BOARD, { width: 288, height: 191 });
+    expect(getComputedStyle(screen.getByTestId('board-runs')).fontSize).toBe('64px');
+  });
+
   it('with no chase the joined line is the innings alone', () => {
     measured({ ...BOARD, score: { ...BOARD.score!, chase: null } }, { width: 288, height: 100 });
     expect(screen.getByTestId('board-innings').textContent).toBe('Innings 2');
   });
 
-  it('an over of ten deliveries needs two rows: at 300 dp the strip is the first thing to go', () => {
-    measured({ ...BOARD, over: { number: 1, chips: TEN } }, { width: 288, height: 300 });
+  it('an over of ten deliveries needs two rows: at 290 dp (299 are needed) the strip goes', () => {
+    measured({ ...BOARD, over: { number: 1, chips: TEN } }, { width: 288, height: 290 });
     expect(stripShown()).toBe(false);
   });
 
@@ -130,5 +153,42 @@ describe('the board gives way to the room the keys leave', () => {
       { width: 288, height: 60 },
     );
     expect(stripShown()).toBe(true);
+  });
+
+  // Owner, 2026-11-10: "may be use some space between undone message, just keep the scoring number little bit below?"
+  describe('spare height goes above the score', () => {
+    const justify = () =>
+      getComputedStyle(screen.getByTestId('cricket-board')).getPropertyValue('justify-content');
+
+    it('300 dp (285 needed): the content sits against the keys', () => {
+      measured(BOARD, { width: 288, height: 300 });
+      expect(justify()).toBe('flex-end');
+    });
+
+    it('exactly what it needs, or less: the score stays at the top and the bottom clips', () => {
+      measured(BOARD, { width: 288, height: 285 });
+      expect(justify()).not.toBe('flex-end');
+      layOut(screen.getByTestId('cricket-board'), { width: 288, height: 100 });
+      expect(justify()).not.toBe('flex-end');
+    });
+
+    it('unmeasured, and a result’s board, keep their top alignment', () => {
+      measured(BOARD, null);
+      expect(justify()).not.toBe('flex-end');
+    });
+
+    it('a result’s board keeps its top alignment however tall the room', () => {
+      measured(
+        {
+          ...BOARD,
+          result: [
+            { team: 'A', figures: '1/0', overs: '1' },
+            { team: 'B', figures: '2/0', overs: '1' },
+          ],
+        },
+        { width: 288, height: 400 },
+      );
+      expect(justify()).not.toBe('flex-end');
+    });
   });
 });

@@ -433,6 +433,13 @@ const base = {
    */
   boardGapTight: 4,
   scorePanelJoined: 112,
+  /**
+   * The last rung's score panel (T19 fix 6): the team name in `label` (22), the score in `tally` (48, in place of
+   * `scoreCompact`'s 68), the joined line in `control` (18), `space.xs` between the last two and none after the name:
+   * 22 + 48 + 4 + 18 = 92. With the crease (75) and a tight gap (4) the board asks 171, inside the 180 dp the 320 dp phone
+   * leaves (device, 2026-11-10).
+   */
+  scorePanelCompact: 92,
   /** A result's two rows (T19 fix 5, Part 2): a crease row each, `space.xs` between them. */
   resultPanel: 54,
   /**

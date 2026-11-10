@@ -1644,9 +1644,10 @@ const AROUND_THE_BOARD =
   layout.padLineLines * typeScale.control.lineHeight +
   4 * space.sm;
 
-/** The rung a size takes, from the ruling's order: 0 the board as designed, 1 gaps tight, 2 no strip, 3 chase joined. */
+/** The rung a size takes (T19 fix 6 order): 0 as designed, 1 gaps tight, 2 chase joined, 3 no strip, 4 compact score. */
 const RUNG_AT: readonly (readonly [number, number, number])[] = [
-  [320, 568, 3],
+  [320, 568, 4],
+  [320, 626, 4],
   [320, 640, 3],
   [360, 640, 3],
   [360, 724, 1],
@@ -1669,8 +1670,8 @@ describe('the board’s height budget', () => {
     for (const [width, height, rung] of RUNG_AT) {
       const needs = boardNeeds(BOARD_RUNGS[rung] as BoardFit, chipRows(6, column(width)));
       const room = height - AROUND_THE_BOARD;
-      // 320 × 568 and the short 640s: even the last rung is wider than the room at 568 (it is clipped, never over the keys).
-      if (height === 568) expect(needs - room).toBe(69);
+      // 320 × 568: even the last rung asks 49 more than the room (it is clipped, never over the keys).
+      if (height === 568) expect(needs - room).toBe(49);
       else expect(needs).toBeLessThanOrEqual(room);
     }
   });
@@ -1678,7 +1679,7 @@ describe('the board’s height budget', () => {
   it('an over of ten deliveries (two rows of chips) hides the strip at 360 × 724, where six keep it', () => {
     const room = 724 - AROUND_THE_BOARD;
     expect(BOARD_RUNGS.indexOf(fitBoard(room, 6, column(360)))).toBe(1);
-    expect(BOARD_RUNGS.indexOf(fitBoard(room, 10, column(360)))).toBe(2);
+    expect(BOARD_RUNGS.indexOf(fitBoard(room, 10, column(360)))).toBe(3);
   });
 
   it('a roomy phone keeps the board as designed, and an unmeasured board is drawn as designed', () => {
@@ -1688,8 +1689,11 @@ describe('the board’s height budget', () => {
 
   it('a free hit due is counted (a line of 16 and a gap) and never dropped: it can take the strip at 360 × 724', () => {
     const room = 724 - AROUND_THE_BOARD;
+    // 255 + 16 + 4 = 275 for the joined rung with its strip: 278 keeps the strip, 274 loses it.
     expect(BOARD_RUNGS.indexOf(fitBoard(room, 6, column(360), false, true))).toBe(2);
+    expect(BOARD_RUNGS.indexOf(fitBoard(274, 6, column(360), false, true))).toBe(3);
     expect(boardNeeds(BOARD_RUNGS[3] as BoardFit, 1, undefined, true)).toBe(191 + 16 + 4);
+    expect(boardNeeds(BOARD_RUNGS[4] as BoardFit, 1, undefined, true)).toBe(171 + 16 + 4);
   });
 
   it('a result’s board is not given way: no keys stand under it', () => {
@@ -1698,7 +1702,7 @@ describe('the board’s height budget', () => {
 
   it('the rungs only ever ask for less, so the first that fits is the one that gives way least', () => {
     const asks = BOARD_RUNGS.map((fit) => boardNeeds(fit, 1));
-    expect(asks).toEqual([285, 277, 213, 191]);
+    expect(asks).toEqual([285, 277, 255, 191, 171]);
   });
 
   describe.each(LANGUAGES)('%s, with the long names', (_, dictionary) => {

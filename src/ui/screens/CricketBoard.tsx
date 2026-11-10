@@ -10,7 +10,7 @@ import type { CricketBowler, OverChip } from '@/domain/scoring/cricketTypes';
 import { useT } from '@/hooks/useLanguage';
 import { usePadText } from '@/hooks/usePadText';
 import { Text } from '@/ui/components/Text';
-import { fitBoard } from '@/ui/screens/cricketBoardFit';
+import { boardSpare, fitBoard } from '@/ui/screens/cricketBoardFit';
 import { colour, layout, space } from '@/ui/theme/tokens';
 
 /**
@@ -34,27 +34,28 @@ export const CricketBoard = memo(function CricketBoard({
   }, []);
   // The room is what the keys leave: the board is the flex region above them, so its own height is measured, never the
   // screen's class (T19 fix 5, Part 3). Less than it needs, it gives way rung by rung (`fitBoard`).
+  const room = box?.height ?? null;
+  const width = box?.width ?? null;
+  const chips = view.over.chips.length;
+  const done = view.result !== null;
+  const freeHit = view.status !== null;
   const fit = useMemo(
-    () =>
-      fitBoard(
-        box?.height ?? null,
-        view.over.chips.length,
-        box?.width ?? null,
-        view.result !== null,
-      ),
-    [box, view.over.chips.length, view.result],
+    () => fitBoard(room, chips, width, done, freeHit),
+    [room, chips, width, done, freeHit],
   );
+  // Spare height sits above the score, against the keys; none spare, the top stays and the bottom clips.
+  const spare = boardSpare(room, fit, chips, width, done, freeHit) > 0;
+  const tight = fit.gap === layout.boardGapTight;
+  let style = tight ? styles.boardTight : styles.board;
+  if (spare) style = tight ? styles.boardTightEnd : styles.boardEnd;
   return (
-    <View
-      testID="cricket-board"
-      onLayout={measured}
-      style={fit.gap === layout.boardGapTight ? styles.boardTight : styles.board}
-    >
+    <View testID="cricket-board" onLayout={measured} style={style}>
       {view.result === null ? (
         <ScorePanel
           score={view.score}
           onOpenPlayers={onOpenPlayers}
           chaseJoined={fit.chaseJoined}
+          compact={fit.compact}
         />
       ) : (
         <ResultPanel result={view.result} />
@@ -76,23 +77,27 @@ export const ScorePanel = memo(function ScorePanel({
   score,
   onOpenPlayers,
   chaseJoined = false,
+  compact = false,
 }: {
   readonly score: BoardScore | null;
   readonly onOpenPlayers?: () => void;
   /** The last rung of giving way (`fitBoard`): the chase shares the innings line, and the panel is a line shorter. */
   readonly chaseJoined?: boolean;
+  /** The last rung: the score in a smaller face, the panel shorter still. */
+  readonly compact?: boolean;
 }) {
-  const panel = chaseJoined ? styles.scoreJoined : styles.score;
+  let panel: PanelStyle = chaseJoined ? styles.scoreJoined : styles.score;
+  if (compact) panel = styles.scoreCompact;
   if (score === null) return <View testID="board-score" style={panel} />;
   if (onOpenPlayers === undefined)
     return (
       <View testID="board-score" style={panel}>
-        <ScoreLines score={score} chaseJoined={chaseJoined} />
+        <ScoreLines score={score} chaseJoined={chaseJoined} compact={compact} />
       </View>
     );
   return (
     <Pressable testID="board-score" accessible={false} onPress={onOpenPlayers} style={panel}>
-      <ScoreLines score={score} chaseJoined={chaseJoined} />
+      <ScoreLines score={score} chaseJoined={chaseJoined} compact={compact} />
     </Pressable>
   );
 });
@@ -100,9 +105,11 @@ export const ScorePanel = memo(function ScorePanel({
 function ScoreLines({
   score,
   chaseJoined,
+  compact,
 }: {
   readonly score: BoardScore;
   readonly chaseJoined: boolean;
+  readonly compact: boolean;
 }) {
   const words = usePadText();
   const { t } = useT();
@@ -111,7 +118,10 @@ function ScoreLines({
       <View style={styles.head}>
         <TeamName team={score.team} testID="board-team" />
         <View style={styles.scoreLine}>
-          <Text variant="scoreCompact" testID="board-runs">{`${score.runs}/${score.wickets}`}</Text>
+          <Text
+            variant={compact ? 'tally' : 'scoreCompact'}
+            testID="board-runs"
+          >{`${score.runs}/${score.wickets}`}</Text>
           <Text variant="label" testID="board-overs" style={styles.overs}>
             {t('scoring.cricket.board.overs', { overs: score.overs })}
           </Text>
@@ -334,26 +344,45 @@ const Chip = memo(function Chip({ chip }: { readonly chip: OverChip }) {
   );
 });
 
+type PanelStyle = (typeof styles)['score' | 'scoreJoined' | 'scoreCompact'];
+
 const styles = StyleSheet.create({
   // The board is the room the keys leave: clipped at its own bottom, so what cannot fit is cut and never drawn over them.
   board: { flex: 1, gap: space.sm, overflow: 'hidden' },
+  boardEnd: { flex: 1, gap: space.sm, overflow: 'hidden', justifyContent: 'flex-end' },
+  boardTightEnd: {
+    flex: 1,
+    gap: layout.boardGapTight,
+    overflow: 'hidden',
+    justifyContent: 'flex-end',
+  },
   boardTight: { flex: 1, gap: layout.boardGapTight, overflow: 'hidden' },
-  score: { height: layout.scorePanel, gap: space.xs, overflow: 'hidden' },
+  // Every region keeps its height (`flexShrink: 0`): a board too short clips at its own bottom and never squeezes a row
+  // (T19 fix 6, device: the crease rows measured 16 dp, not 25, and the bowler line was cut mid-glyph).
+  score: { height: layout.scorePanel, gap: space.xs, overflow: 'hidden', flexShrink: 0 },
   scoreJoined: {
     height: layout.scorePanelJoined,
     gap: space.xs,
     overflow: 'hidden',
+    flexShrink: 0,
+  },
+  scoreCompact: {
+    height: layout.scorePanelCompact,
+    gap: space.xs,
+    overflow: 'hidden',
+    flexShrink: 0,
   },
   head: { gap: 0 },
   team: { color: colour.ink },
   teamBeside: { flex: 1, color: colour.ink },
   resultFigures: { color: colour.ink, flexShrink: 0 },
-  result: { height: layout.resultPanel, gap: space.xs, overflow: 'hidden' },
+  result: { height: layout.resultPanel, gap: space.xs, overflow: 'hidden', flexShrink: 0 },
   resultRow: {
     height: layout.creaseRow,
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.sm,
+    flexShrink: 0,
   },
   scoreLine: { flexDirection: 'row', alignItems: 'baseline', gap: space.sm },
   // A fixed box that never shrinks (T19 D1): the whole over's shorter text was cut on the phone in a box of its own
@@ -361,12 +390,13 @@ const styles = StyleSheet.create({
   overs: { minWidth: layout.boardOvers, flexShrink: 0, color: colour.ink2 },
   innings: { color: colour.ink2 },
   chase: { color: colour.ink },
-  crease: { gap: 0 },
+  crease: { gap: 0, flexShrink: 0 },
   row: {
     height: layout.creaseRow,
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.xs,
+    flexShrink: 0,
   },
   mark: { width: space.md, alignItems: 'center' },
   dot: { color: colour.lime },
@@ -374,10 +404,10 @@ const styles = StyleSheet.create({
   bowler: { flex: 1, color: colour.ink2 },
   figures: { color: colour.ink },
   // At least one row of chips tall; an over that wraps makes it taller, and the strip is the board's last region.
-  over: { minHeight: layout.overStrip, gap: space.xs },
+  over: { minHeight: layout.overStrip, gap: space.xs, flexShrink: 0 },
   overHead: { flexDirection: 'row', justifyContent: 'space-between' },
   overLabel: { color: colour.ink3 },
-  status: { color: colour.caution },
+  status: { color: colour.caution, flexShrink: 0 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs },
   chip: {
     minWidth: layout.overChip,
