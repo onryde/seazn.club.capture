@@ -81,26 +81,19 @@ describe('the keys’ rooms', () => {
   });
 
   /**
-   * The pad's height, portrait: the screen's padding (2 × 16), the header (48), the strip (16), the board (the score
+   * The pad's height, portrait: the screen's padding (2 × 16), the header (48), no strip (T20 fix 12: it was 16 and a gap of 8), the board (the score
    * panel with the team line, three crease rows and the over strip, `space.sm` apart: 285), the keys (two run rows, the extras, the actions,
-   * `space.sm` apart: 256), the last-tap line (3 lines of 18: 54), the tool row (none: 0), and the pad's five gaps (8).
+   * `space.sm` apart: 256), the last-tap line (3 lines of 18: 54), the tool row (none: 0), and the pad's four gaps (8).
+   * By hand: 32 + 48 + 285 + 8 + 256 + 54 + 24 = 707, so 724 leaves 17 (it was 731 and 7 short with the strip).
    */
-  it('the board, the keys and the line fit the owner’s phone, about 360 × 724, are 7 dp short with the board as designed (the rung it takes is pinned below)', () => {
+  it('the board, the keys and the line fit the owner’s phone, about 360 × 724, have 17 dp to spare with the board as designed (the rung it takes is pinned below)', () => {
     const board = layout.scorePanel + 3 * layout.creaseRow + layout.overStrip + 2 * space.sm;
     const keys =
       2 * layout.cricketRunKey + layout.cricketExtraKey + layout.cricketActionKey + 3 * space.sm;
     const line = layout.padLineLines * typeScale.control.lineHeight;
-    const pad =
-      2 * space.md +
-      layout.touch +
-      typeScale.metricUnit.lineHeight +
-      board +
-      space.sm +
-      keys +
-      line +
-      4 * space.sm;
+    const pad = 2 * space.md + layout.touch + board + space.sm + keys + line + 3 * space.sm;
     expect([board, keys, line]).toEqual([285, 256, 54]);
-    expect(724 - pad).toBe(-7);
+    expect(724 - pad).toBe(17);
   });
 });
 
@@ -493,8 +486,8 @@ it('More’s widest step title is within a tenth of the sheet at 320 (anti-vacui
 /**
  * S2-4 plan Task 16: the innings break's card, its Start innings and the result's words. The card stands at the top of
  * the setup's scroll, so its line may wrap (no line limit): what can fail is a word wider than the column, or a title
- * that takes a second line. Start innings is a `Button` (`action` caps, `space.xl` a side). The result is the strip's one
- * slot, the whole column, one line for a fixture's names (`layout.padStripLines`, `metricUnit`); two lines since Task 18.
+ * that takes a second line. Start innings is a `Button` (`action` caps, `space.xl` a side). (The result's words moved to the recorded card's title
+ * and cricket has no strip, T20 fix 12, so the old one-line-in-the-strip result test is gone.)
  */
 const BREAK_TITLES = ['title', 'tied', 'superOver'].map((key) => `scoring.cricket.break.${key}`);
 
@@ -549,16 +542,6 @@ describe.each(WIDTHS)('the innings break and the result at %i dp', (width) => {
       expect(linesOf(breakLine(dictionary, TWELVE), column(width), bodyWidth)).toBeLessThanOrEqual(
         2,
       );
-    },
-  );
-
-  it.each(LANGUAGES)(
-    '%s: every result is one line in the strip with the fixtures’ names',
-    (_, dictionary) => {
-      for (const key of RESULT_KEYS) {
-        const words = fill(said(dictionary, key), { name: TWELVE, count: CHASE.runs });
-        expect(linesOf(words, column(width), unitWidth), words).toBe(layout.padStripLines);
-      }
     },
   );
 });

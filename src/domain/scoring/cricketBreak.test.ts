@@ -268,7 +268,7 @@ describe('the result (spec §4.7)', () => {
     ]);
     const view = cricketPad(display);
     // The result heads the recorded card now (T19 fix 5); the strip is left empty.
-    expect(view.strip[0]?.text).toBeNull();
+    expect(view.strip).toStrictEqual([]);
     const words = view.card?.kind === 'resultRecorded' ? (view.card.title ?? null) : null;
     const said = (lang: 'en' | 'es' | 'fr' | 'nl') =>
       words === null ? null : translatePad(createTranslator(lang), words);
@@ -615,7 +615,7 @@ describe('the board names the team, and a result names the winner (T19 fix 5)', 
     ]);
     const title = view.card?.kind === 'resultRecorded' ? view.card.title : undefined;
     expect(translatePad(createTranslator('en'), title!)).toBe('Home CC won on the super over');
-    expect(view.strip[0]?.text).toBeNull();
+    expect(view.strip).toStrictEqual([]);
   });
 
   it('decided in its innings: the two innings, the first side on top; not a result before then', () => {

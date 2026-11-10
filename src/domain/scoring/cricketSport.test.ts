@@ -213,13 +213,13 @@ describe('cricketPad', () => {
 
   it('a decided match: the result in words is the recorded card’s title, and the strip says nothing of it', () => {
     const view = cricketPad(displayOf(DECIDED));
-    expect(view.strip).toStrictEqual([{ slot: 'note', text: null }]);
+    expect(view.strip).toStrictEqual([]);
     expect(view.card).toStrictEqual({
       kind: 'resultRecorded',
       undoLeft: null,
       title: { key: 'scoring.cricket.result.wickets.other', count: 10, vars: { name: 'Away CC' } },
     });
-    expect(cricketPad(displayOf(TIED_KO)).strip).toStrictEqual([{ slot: 'note', text: null }]);
+    expect(cricketPad(displayOf(TIED_KO)).strip).toStrictEqual([]);
   });
 
   it('Match details carry the rules of the format', () => {

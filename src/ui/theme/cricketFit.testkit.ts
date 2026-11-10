@@ -129,7 +129,7 @@ export const THIRTY = 'Bishops Stortford Cricket Club';
  * Which fit file owns which `scoring.cricket.` keys: a prefix is `scoring.cricket.` + the entry, matched as the whole key
  * or its dotted ancestor (`=` first: the whole key only). Each file's sweep asks that its own fit cases read every key it owns; `cricketFit.sweep.test.ts`
  * asks that every key in the dictionary is owned by exactly one file, so a new key with no owner, or two, is a red test.
- * (Another file may read a key it does not own: a result word is measured in the keys' file and again in the lines'.)
+ * (Another file may read a key it does not own: a result word is measured as the recorded card's title and the lines' own; the strip test in the keys' file went with cricket's strip, T20 fix 12.)
  */
 export const CRICKET_PREFIX = 'scoring.cricket.';
 export type FitFile = 'board' | 'keys' | 'totals' | 'lines';
@@ -169,17 +169,7 @@ export const OWNED: Readonly<Record<FitFile, readonly string[]>> = {
     'out.kind',
     'players',
     'powerplay',
-    'result.award',
-    'result.boundary_count',
-    'result.double_walkover',
-    'result.draw',
     'result.innings_and_runs.other',
-    'result.no_result',
-    'result.runs.other',
-    'result.super_over',
-    'result.tie',
-    'result.wickets.other',
-    'result.win',
     'retire',
     'review',
     'revise',
@@ -202,7 +192,17 @@ export const OWNED: Readonly<Record<FitFile, readonly string[]>> = {
     '=out',
     'out.fielder',
     'out.fielders',
+    'result.award',
+    'result.boundary_count',
+    'result.double_walkover',
+    'result.draw',
     'result.innings_and_runs.one',
+    'result.no_result',
+    'result.runs.other',
+    'result.super_over',
+    'result.tie',
+    'result.wickets.other',
+    'result.win',
     'result.runs.one',
     'result.wickets.one',
     'rules',

@@ -1048,7 +1048,7 @@ describe('the innings break and the result (Task 16)', () => {
     expect(said(card?.kind === 'resultRecorded' ? card.title : undefined)).toBe(
       'Away CC won by 4 wickets',
     );
-    expect(pad(view).view.strip[0]?.text).toBeNull();
+    expect(pad(view).view.strip).toStrictEqual([]);
     expect(pad(view).view.card).toMatchObject({
       kind: 'resultRecorded',
       undoLeft: expect.any(Number),

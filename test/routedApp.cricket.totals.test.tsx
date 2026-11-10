@@ -261,11 +261,7 @@ describe('a tie in over totals', () => {
     expect(
       within(screen.getByTestId('pad-card')).getByText(en['scoring.cricket.result.tie']),
     ).toBeTruthy();
-    expect(
-      screen.queryByText(en['scoring.cricket.result.tie'], {
-        selector: '[data-testid="pad-strip"] *',
-      }),
-    ).toBeNull();
+    expect(screen.queryByTestId('pad-strip')).toBeNull();
     expect(screen.queryByTestId('cricket-totals')).toBeNull();
   });
 });
