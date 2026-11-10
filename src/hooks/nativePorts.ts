@@ -19,6 +19,7 @@ import { createModeStore } from '@/services/modeStore';
 import { createProbeFlight } from '@/services/probeFlight';
 import { createScanFlight } from '@/services/scanFlight';
 import { createServerClock } from '@/services/serverClock';
+import { createSteadyClock, monotonicOf } from '@/services/steadyClock';
 import { createExpoRouterNavigation } from '@/services/native/expoRouterNavigation';
 import { createNativeBack } from '@/services/native/nativeBack';
 import { createNativeForeground } from '@/services/native/nativeForeground';
@@ -97,6 +98,15 @@ export function createNativePorts(
   });
   // S2-5 design §7.2: built before the scoring port, which feeds it every answer's `Date` header.
   const serverClock = createServerClock({ logger });
+  // Ruling 137: the clock the scoring port samples against and the football clock reads; a return to the foreground
+  // catches up the time the CPU slept.
+  const foreground = createNativeForeground();
+  const steadyClock = createSteadyClock({
+    wall: Date.now,
+    mono: monotonicOf(globalThis),
+    logger,
+    foreground,
+  });
   return {
     engine: wired.engine,
     devEngine: wired.devEngine,
@@ -113,7 +123,7 @@ export function createNativePorts(
     motion: createNativeMotion(),
     orientationLock: createNativeOrientationLock(),
     back: createNativeBack(),
-    foreground: createNativeForeground(),
+    foreground,
     screen: createNativeScreen({ logger, os: Platform.OS }),
     navigation: createExpoRouterNavigation(router),
     splash: createNativeSplash(),
@@ -129,8 +139,15 @@ export function createNativePorts(
     scoringLink: scoringLinkPortFor(native, { logger, hosts }),
     // S2: plain fetch (AGENTS §8), to the build's host only. The match runner (`scoringRunner.ts`) calls it, and the live
     // owner (`scoringLive.ts`) asks it for the Realtime token.
-    scoring: scoringPortFor({ fetch: (url, init) => fetch(url, init), logger, hosts, serverClock }),
+    scoring: scoringPortFor({
+      fetch: (url, init) => fetch(url, init),
+      logger,
+      hosts,
+      serverClock,
+      steadyClock,
+    }),
     serverClock,
+    steadyClock,
     // S2: one JSON file per match in the document directory. The runner, the hub and Home's cards read and write it.
     tapQueue: createTapQueueStore({ files: createExpoQueueFiles(), logger }),
     // S2: the real `@supabase/realtime-js` over the runtime's WebSocket. The focused match's live owner (`scoringLive.ts`) subscribes.

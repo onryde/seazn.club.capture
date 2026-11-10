@@ -14,15 +14,16 @@ export type FootballClockRead = {
 
 /**
  * The football clock, read at the moment it is asked (S2-5 plan P Task 11): the anchor the fold found, run on to the
- * phone's clock moved to the server's by the offset the server clock estimates (`ports.serverClock`). It holds no ticking
+ * phone's steady clock (`ports.steadyClock`, ruling 137: a wall clock moved mid-match moves nothing) moved to the
+ * server's by the offset the server clock estimates (`ports.serverClock`). It holds no ticking
  * state: a press reads it when it is pressed, and the screen's clock leaf reads it on its own one-second tick (AGENTS §8).
  */
 export function useFootballClock(display: FootballDisplay | null): FootballClockRead {
-  const { clock, serverClock } = usePorts();
+  const { steadyClock, serverClock } = usePorts();
   const anchor = display?.clock.anchor ?? null;
   const readingNow = useCallback(
-    () => reading(anchor, { deviceMs: clock().getTime(), offsetMs: serverClock.offsetMs() }),
-    [anchor, clock, serverClock],
+    () => reading(anchor, { deviceMs: steadyClock.nowMs(), offsetMs: serverClock.offsetMs() }),
+    [anchor, steadyClock, serverClock],
   );
   const stampNow = useCallback(
     (): GameTime | null =>

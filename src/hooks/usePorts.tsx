@@ -31,6 +31,7 @@ import type { ScanFlight } from '@/services/scanFlight';
 import type { ScoringLinkPort } from '@/services/scoringLinkPort';
 import type { ScoringPort } from '@/services/scoringPort';
 import type { ServerClock } from '@/services/serverClock';
+import type { SteadyClock } from '@/services/steadyClock';
 import type { SessionRecord } from '@/services/sessionRecord';
 import type { StreamSettingsStore } from '@/services/streamSettingsStore';
 import type { TapQueueStore } from '@/services/tapQueueStore';
@@ -93,6 +94,12 @@ export type Ports = {
    * `offsetMs()` when it is read (`useFootballClock`), and nothing subscribes to it today (AGENTS §8).
    */
   readonly serverClock: ServerClock;
+  /**
+   * Ruling 137 (device finding F5): Remote Scoring's "device now", the wall clock read at launch run on by a monotonic
+   * source, so a wall clock moved mid-match moves no football clock, Correct, tap stamp, resync or offset sample.
+   * Built once in the ports; `clock` stays the wall clock for everything else.
+   */
+  readonly steadyClock: SteadyClock;
   /** S2: the taps a phone has made and the server has not yet accepted, one file per match; no secret in it. */
   readonly tapQueue: TapQueueStore;
   /** S2: the "something changed" ping from the server, a private Realtime channel; down means poll (plan Task 8). */

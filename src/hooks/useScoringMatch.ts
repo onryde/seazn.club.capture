@@ -150,14 +150,20 @@ export type MatchSender<S extends SportTypes> = {
   readonly setPicks: (picks: PendingPicks) => void;
 };
 
-/** Hands events to the runner: what each tap came to, at once, or "not now" while there is no runner. */
+/**
+ * Hands events to the runner: what each tap came to, at once, or "not now" while there is no runner. Each is stamped by
+ * the steady clock (ruling 137), every sport's: football's clock reads a queued tap's time on it, so both must be one
+ * clock; for the others the stamp is the reconnect question's and the line's, where it is as right as the wall clock.
+ */
 export function useSender<S extends SportTypes>(
   ports: Ports,
   runner: ScoringRunner | null,
 ): MatchSender<S> {
   const send = useCallback(
     (event: (key: string, at: string) => MatchEvent): PadOutcome =>
-      runner?.dispatch(event(newTapKey(ports.logger), ports.clock().toISOString())) ?? NOT_NOW,
+      runner?.dispatch(
+        event(newTapKey(ports.logger), new Date(ports.steadyClock.nowMs()).toISOString()),
+      ) ?? NOT_NOW,
     [runner, ports],
   );
   const tap = useCallback(

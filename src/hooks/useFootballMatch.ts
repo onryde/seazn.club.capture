@@ -180,18 +180,19 @@ function useResync(
     runner?.snapshot ?? loading,
   );
   const memory = useRef(NO_RESYNC);
-  const { clock, logger } = ports;
+  const { steadyClock, logger } = ports;
   const { tap } = sender;
   useEffect(() => {
     if (snapshot.kind !== 'ready') return;
-    const stepped = resyncStep(memory.current, snapshot.state, clock().getTime());
+    // The steady clock (ruling 137): the clock the Start's own tap was stamped by (`useSender`).
+    const stepped = resyncStep(memory.current, snapshot.state, steadyClock.nowMs());
     memory.current = stepped.memory;
     for (const made of stepped.taps) {
       const action = tap(made).ok ? 'resync' : 'resyncRefused';
       logger.info(CLOCK_EVENT, { action, phase });
     }
     // A new phase runs the watch again over the same state: each Start is decided once, so it asks for nothing again.
-  }, [snapshot, clock, logger, tap, phase]);
+  }, [snapshot, steadyClock, logger, tap, phase]);
 }
 
 /** The sheets over the pad, closed at once when the link dies, since the bad-link card then shows. */

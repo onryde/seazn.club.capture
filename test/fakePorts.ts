@@ -166,6 +166,9 @@ export function createFakePorts(overrides: FakePortsOverrides = {}): FakePorts {
       stamp: () => (portOverrides.clock ?? (() => now))().getTime(),
     }),
     serverClock: createFakeServerClock(),
+    // Ruling 137: the steady clock reads the `clock` port (the override when a test gives one), so a test that moves the
+    // wall clock alone builds the real one (`createSteadyClock`) and passes it as `steadyClock`.
+    steadyClock: { nowMs: () => (portOverrides.clock ?? (() => now))().getTime() },
     tapQueue: createTapQueueStore({ files: queueFiles, logger }),
     queueFiles,
     realtime: createFakeRealtimePort(),

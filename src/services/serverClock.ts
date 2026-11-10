@@ -6,7 +6,8 @@ export const OFFSET_LOG_STEP_MS = 2000;
 
 /**
  * The phone's one estimate of the server's clock (S2-5 design §7.2): fed by every scoring answer's sample
- * (`offsetSampleOf`, through the scoring port's `serverTime`), read by the football clock as `Date.now() + offsetMs()`.
+ * (`offsetSampleOf`, through the scoring port's `serverTime`), read by the football clock as `steadyClock.nowMs() +
+ * offsetMs()`: each sample is measured against the steady clock too (ruling 137), so the two are one clock.
  * Built once in the ports, before the scoring port it is handed to. It never ticks by itself: it changes only when an
  * answer arrives. Nothing subscribes to it today: the football clock (`useFootballClock`) reads `offsetMs()` when it is
  * read, on its clock leaf's one-second tick and when a button is pressed, so a new sample shows at the next tick.

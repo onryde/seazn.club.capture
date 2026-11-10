@@ -7,12 +7,17 @@ import type { ScoringFetch } from '@/services/fetchScoringPort';
 import { createLogger } from '@/services/logger';
 import { createServerClock } from '@/services/serverClock';
 import { createRingRecord } from '@/services/sessionRecord';
+import type { SteadyClock } from '@/services/steadyClock';
 import { FAKE_SCORING_SECRET } from '../../test/fakeScoringLinkPort';
 
 const FIXTURE = '6f0c5a52-3d1e-4a0b-8f55-0c2f6d7b9e10';
 
 /** A server that is never reached, so what the port asked is all a test sees. */
-function wiring(hosts: readonly string[], headers: Readonly<Record<string, string>> = {}) {
+function wiring(
+  hosts: readonly string[],
+  headers: Readonly<Record<string, string>> = {},
+  steadyClock: SteadyClock = { nowMs: () => Date.now() },
+) {
   const asked: string[] = [];
   const fetch: ScoringFetch = async (url) => {
     asked.push(url);
@@ -20,7 +25,11 @@ function wiring(hosts: readonly string[], headers: Readonly<Record<string, strin
   };
   const logger = createLogger({ record: createRingRecord(), now: () => 0 });
   const serverClock = createServerClock({ logger });
-  return { port: scoringPortFor({ fetch, logger, hosts, serverClock }), asked, serverClock };
+  return {
+    port: scoringPortFor({ fetch, logger, hosts, serverClock, steadyClock }),
+    asked,
+    serverClock,
+  };
 }
 
 afterEach(() => vi.useRealTimers());
@@ -70,6 +79,21 @@ describe('which clock the composition root’s scoring port feeds', () => {
     expect(serverClock.offsetMs()).toBe(0);
     await port.rules({ origin: 'https://stg.seazn.club', token: FAKE_SCORING_SECRET }, FIXTURE);
     expect(serverClock.offsetMs()).toBe(60_500);
+  });
+
+  // Ruling 137 (F5): the sample is the server less the steady clock, not the wall clock. The wall reads 12:00:00 here,
+  // but it was set 5 minutes forward after launch, so the steady clock reads 11:55:00.
+  it('measures each sample against the steady clock it is given, never the wall clock', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.UTC(2026, 10, 7, 12, 0, 0));
+    const steady = { nowMs: () => Date.UTC(2026, 10, 7, 11, 55, 0) };
+    const { port, serverClock } = wiring(
+      ['stg.seazn.club'],
+      { Date: 'Sat, 07 Nov 2026 12:01:00 GMT' },
+      steady,
+    );
+    await port.rules({ origin: 'https://stg.seazn.club', token: FAKE_SCORING_SECRET }, FIXTURE);
+    expect(serverClock.offsetMs()).toBe(360_500);
   });
 });
 
@@ -179,5 +203,102 @@ describe('createNativePorts feeds the clock it hands the app (Batch A review, M1
       scoringClock: 'serverClock',
       clocks: 1,
     });
+  });
+});
+
+/**
+ * Ruling 137's inert seam: the steady clock the football clock reads (`Ports.steadyClock`) must be the one the scoring
+ * port samples against, and the one the app's foreground port wakes, or the offset measures one clock and the reading
+ * adds it to another. `createNativePorts` runs in no test, so its source is read.
+ */
+type SteadyWiring = {
+  readonly built: number;
+  readonly binding: string | null;
+  readonly property: string | null;
+  readonly scoringSteady: string | null;
+  readonly foregroundArg: string | null;
+  readonly foregroundProperty: string | null;
+};
+
+function steadyWiringOf(source: string): SteadyWiring {
+  const file = ts.createSourceFile('nativePorts.ts', source, ts.ScriptTarget.Latest, true);
+  const found = {
+    built: 0,
+    binding: null,
+    property: null,
+    scoringSteady: null,
+    foregroundArg: null,
+    foregroundProperty: null,
+  } as { -readonly [K in keyof SteadyWiring]: SteadyWiring[K] };
+  const textOf = (property: ts.ObjectLiteralElementLike | undefined): string | null => {
+    if (property === undefined) return null;
+    if (ts.isShorthandPropertyAssignment(property)) return property.name.text;
+    return ts.isPropertyAssignment(property) ? property.initializer.getText(file) : null;
+  };
+  const named = (literal: ts.ObjectLiteralExpression, name: string) =>
+    literal.properties.find((one) => one.name?.getText(file) === name);
+  const visit = (node: ts.Node) => {
+    if (ts.isCallExpression(node) && node.expression.getText(file) === 'createSteadyClock') {
+      found.built += 1;
+      const [deps] = node.arguments;
+      if (deps !== undefined && ts.isObjectLiteralExpression(deps))
+        found.foregroundArg = textOf(named(deps, 'foreground'));
+    }
+    if (ts.isVariableDeclaration(node) && node.name.getText(file) === 'steadyClock')
+      found.binding = node.initializer?.getText(file).split('(')[0] ?? null;
+    if (
+      ts.isReturnStatement(node) &&
+      node.expression &&
+      ts.isObjectLiteralExpression(node.expression)
+    ) {
+      found.property = textOf(named(node.expression, 'steadyClock'));
+      found.foregroundProperty = textOf(named(node.expression, 'foreground'));
+      const scoring = named(node.expression, 'scoring');
+      const call =
+        scoring !== undefined && ts.isPropertyAssignment(scoring) ? scoring.initializer : null;
+      const [deps] = call !== null && ts.isCallExpression(call) ? call.arguments : [];
+      if (deps !== undefined && ts.isObjectLiteralExpression(deps))
+        found.scoringSteady = textOf(named(deps, 'steadyClock'));
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return found;
+}
+
+describe('createNativePorts samples against the steady clock it hands the app (ruling 137)', () => {
+  const WIRED: SteadyWiring = {
+    built: 1,
+    binding: 'createSteadyClock',
+    property: 'steadyClock',
+    scoringSteady: 'steadyClock',
+    foregroundArg: 'foreground',
+    foregroundProperty: 'foreground',
+  };
+
+  it('reads the wiring, and tells a second steady clock or a second foreground apart', () => {
+    const skeleton = (scoringSteady: string, foreground = 'foreground') => `
+      export function createNativePorts() {
+        const foreground = createNativeForeground();
+        const steadyClock = createSteadyClock({ wall: Date.now, mono, logger, foreground });
+        return {
+          foreground: ${foreground},
+          scoring: scoringPortFor({ fetch, steadyClock: ${scoringSteady} }),
+          steadyClock,
+        };
+      }`;
+    expect(steadyWiringOf(skeleton('steadyClock'))).toEqual(WIRED);
+    expect(steadyWiringOf(skeleton('createSteadyClock({})'))).toMatchObject({
+      built: 2,
+      scoringSteady: 'createSteadyClock({})',
+    });
+    expect(steadyWiringOf(skeleton('steadyClock', 'createNativeForeground()'))).toMatchObject({
+      foregroundProperty: 'createNativeForeground()',
+    });
+  });
+
+  it('the real createNativePorts: one steady clock, the scoring port’s, woken by the app’s foreground port', () => {
+    const source = readFileSync(join(__dirname, 'nativePorts.ts'), 'utf8');
+    expect(steadyWiringOf(source)).toEqual(WIRED);
   });
 });
