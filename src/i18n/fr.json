@@ -701,7 +701,7 @@
   "scoring.cricket.board.need": "Besoin de {runs}",
   "scoring.cricket.board.innings": "Manche {number}",
   "scoring.cricket.board.superOver": "Super over {number}",
-  "scoring.cricket.board.joined": "{innings} · {chase}",
+  "scoring.cricket.board.joined": "{innings} ({chase})",
   "scoring.cricket.board.freeHit": "Free hit",
   "scoring.cricket.board.over": "Over {number}",
   "scoring.cricket.board.onStrike": "Face au lanceur",

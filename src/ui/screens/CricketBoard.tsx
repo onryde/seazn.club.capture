@@ -46,10 +46,13 @@ export const CricketBoard = memo(function CricketBoard({
   // Spare height sits above the score, against the keys; none spare, the top stays and the bottom clips.
   const spare = boardSpare(room, fit, chips, width, done, freeHit) > 0;
   const tight = fit.gap === layout.boardGapTight;
-  let style = tight ? styles.boardTight : styles.board;
-  if (spare) style = tight ? styles.boardTightEnd : styles.boardEnd;
   return (
-    <View testID="cricket-board" onLayout={measured} style={style}>
+    <View
+      testID="cricket-board"
+      onLayout={measured}
+      style={tight ? styles.boardTight : styles.board}
+    >
+      {spare ? <View testID="board-spare" style={styles.spare} /> : null}
       {view.result === null ? (
         <ScorePanel
           score={view.score}
@@ -327,7 +330,15 @@ const FreeHit = memo(function FreeHit({ status }: { readonly status: CricketBoar
   const words = usePadText();
   if (status === null) return null;
   return (
-    <Text variant="metricUnit" testID="board-status" style={styles.status}>
+    <Text
+      variant="metricUnit"
+      testID="board-status"
+      numberOfLines={1}
+      adjustsFontSizeToFit
+      minimumFontScale={layout.boardTeamMinScale}
+      ellipsizeMode="tail"
+      style={styles.status}
+    >
       {words(status)}
     </Text>
   );
@@ -349,13 +360,9 @@ type PanelStyle = (typeof styles)['score' | 'scoreJoined' | 'scoreCompact'];
 const styles = StyleSheet.create({
   // The board is the room the keys leave: clipped at its own bottom, so what cannot fit is cut and never drawn over them.
   board: { flex: 1, gap: space.sm, overflow: 'hidden' },
-  boardEnd: { flex: 1, gap: space.sm, overflow: 'hidden', justifyContent: 'flex-end' },
-  boardTightEnd: {
-    flex: 1,
-    gap: layout.boardGapTight,
-    overflow: 'hidden',
-    justifyContent: 'flex-end',
-  },
+  // Spare height above the score (owner, 2026-11-10): grows into what is left, shrinks to nothing when the board is taller
+  // than the model thought, so any overflow clips the bottom and the top is never cut.
+  spare: { flexGrow: 1, flexShrink: 1 },
   boardTight: { flex: 1, gap: layout.boardGapTight, overflow: 'hidden' },
   // Every region keeps its height (`flexShrink: 0`): a board too short clips at its own bottom and never squeezes a row
   // (T19 fix 6, device: the crease rows measured 16 dp, not 25, and the bowler line was cut mid-glyph).

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   BOARD_RUNGS,
+  boardSpare,
   boardNeeds,
   chipRows,
   chipsPerRow,
@@ -43,9 +44,34 @@ describe('the board gives way in the order of T19 fix 6', () => {
     expect(boardNeeds(fit, 1)).toBeLessThanOrEqual(180);
   });
 
-  it('with a free hit due the last rung still counts the caption, and is not given up for it', () => {
+  it('with a free hit due the last rung still counts the caption (the board is then 11 dp short and clips at its bottom)', () => {
     const fit = fitBoard(180, 2, 288, false, true);
     expect(fit).toBe(BOARD_RUNGS[4]);
     expect(boardNeeds(fit, 1, undefined, true)).toBe(191);
+  });
+});
+
+// The spare height above the score: room less what the chosen rung needs (191 at the strip-less joined rung, 275 with a free
+// hit at the joined rung with its strip), never negative.
+describe('the spare height', () => {
+  const spare = (room: number | null, chips = 2, result = false, freeHit = false) => {
+    const rung = fitBoard(room, chips, 288, result, freeHit);
+    return boardSpare(room, rung, chips, 288, result, freeHit);
+  };
+
+  it('200 dp at the strip-less rung has 9 spare, 191 none', () => {
+    expect([spare(200), spare(191)]).toEqual([9, 0]);
+  });
+
+  it('the owner’s phone, 269 dp, has 14 spare over rung 2’s 255', () => {
+    expect(spare(269)).toBe(14);
+  });
+
+  it('a free hit due takes 20 of it: 295 dp has 20 spare, 275 none', () => {
+    expect([spare(295, 2, false, true), spare(275, 2, false, true)]).toEqual([20, 0]);
+  });
+
+  it('none when unmeasured, for a result, or when the board is too short', () => {
+    expect([spare(null), spare(400, 2, true), spare(100)]).toEqual([0, 0, 0]);
   });
 });

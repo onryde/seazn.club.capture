@@ -68,14 +68,14 @@ describe('the board gives way to the room the keys leave', () => {
     measured(BOARD, { width: 328, height: 269 });
     expect([stripShown(), joined()]).toEqual([true, true]);
     expect(screen.getAllByTestId('over-chip')).toHaveLength(6);
-    expect(screen.getByTestId('board-innings').textContent).toBe('Innings 2 · Need 1 off 11 balls');
+    expect(screen.getByTestId('board-innings').textContent).toBe('Innings 2 (Need 1 off 11 balls)');
     expect(screen.getByTestId('board-runs').textContent).toBe('8/0');
   });
 
   it('below 255 dp: the chip strip hides, the chase still joined, and the score, team and crease stay', () => {
     measured(BOARD, { width: 288, height: 212 });
     expect([stripShown(), joined()]).toEqual([false, true]);
-    expect(screen.getByTestId('board-innings').textContent).toBe('Innings 2 · Need 1 off 11 balls');
+    expect(screen.getByTestId('board-innings').textContent).toBe('Innings 2 (Need 1 off 11 balls)');
     expect(screen.getByTestId('board-team').textContent).toBe('Away CC');
     expect(screen.getByTestId('board-runs').textContent).toBe('8/0');
     expect(screen.getByTestId('board-batter-first')).toBeTruthy();
@@ -157,24 +157,32 @@ describe('the board gives way to the room the keys leave', () => {
 
   // Owner, 2026-11-10: "may be use some space between undone message, just keep the scoring number little bit below?"
   describe('spare height goes above the score', () => {
-    const justify = () =>
-      getComputedStyle(screen.getByTestId('cricket-board')).getPropertyValue('justify-content');
+    const spacer = () => screen.queryByTestId('board-spare') !== null;
 
     it('300 dp (285 needed): the content sits against the keys', () => {
       measured(BOARD, { width: 288, height: 300 });
-      expect(justify()).toBe('flex-end');
+      expect(spacer()).toBe(true);
     });
 
     it('exactly what it needs, or less: the score stays at the top and the bottom clips', () => {
       measured(BOARD, { width: 288, height: 285 });
-      expect(justify()).not.toBe('flex-end');
+      expect(spacer()).toBe(false);
       layOut(screen.getByTestId('cricket-board'), { width: 288, height: 100 });
-      expect(justify()).not.toBe('flex-end');
+      expect(spacer()).toBe(false);
+    });
+
+    // A free hit due adds 16 and a gap: rung 2 asks 255 + 20 = 275.
+    it('a free hit due is counted in the spare: 295 dp has 20 over, 275 none', () => {
+      const view = { ...BOARD, status: { key: 'scoring.cricket.board.freeHit' } } as const;
+      measured(view, { width: 288, height: 295 });
+      expect(spacer()).toBe(true);
+      layOut(screen.getByTestId('cricket-board'), { width: 288, height: 275 });
+      expect(spacer()).toBe(false);
     });
 
     it('unmeasured, and a result’s board, keep their top alignment', () => {
       measured(BOARD, null);
-      expect(justify()).not.toBe('flex-end');
+      expect(spacer()).toBe(false);
     });
 
     it('a result’s board keeps its top alignment however tall the room', () => {
@@ -188,7 +196,7 @@ describe('the board gives way to the room the keys leave', () => {
         },
         { width: 288, height: 400 },
       );
-      expect(justify()).not.toBe('flex-end');
+      expect(spacer()).toBe(false);
     });
   });
 });
