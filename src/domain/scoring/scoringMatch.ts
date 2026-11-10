@@ -1,3 +1,4 @@
+import { NO_PICKS } from '@/domain/scoring/pendingPicks';
 import { type SyncState, openSync } from '@/domain/scoring/sync';
 import type { Bootstrap } from '@/domain/scoring/wire';
 import type { SportTypes } from '@/domain/scoring/scoringSport';
@@ -14,6 +15,8 @@ import {
 import {
   landedSave,
   namedQueue,
+  onBootSaveFailed,
+  onBootSaved,
   onSaveFailed,
   saveOf,
   savedOf,
@@ -33,7 +36,13 @@ import {
 } from '@/domain/scoring/scoringMatchState';
 import { onAnswerAsk, releaseMoot } from '@/domain/scoring/scoringMatchAsk';
 import { decidedAtAfter } from '@/domain/scoring/scoringMatchWindow';
-import { onPick, onTap, onUndo, withoutOrphanVoids } from '@/domain/scoring/scoringMatchTaps';
+import {
+  onPick,
+  onSetPicks,
+  onTap,
+  onUndo,
+  withoutOrphanVoids,
+} from '@/domain/scoring/scoringMatchTaps';
 
 /**
  * One scoring match on the phone, as ONE pure reducer (plan S2-1 Task 9): every change to what the phone holds (a tap, an
@@ -70,6 +79,7 @@ export function openMatch<S extends SportTypes>(held: MatchHeld<S>, now: number)
     sync,
     bootstrap: held.bootstrap,
     toss: held.toss,
+    picks: held.picks ?? NO_PICKS,
     judge: held.judge,
     foreground: held.foreground,
     closed: null,
@@ -78,6 +88,8 @@ export function openMatch<S extends SportTypes>(held: MatchHeld<S>, now: number)
     undone: null,
     line: null,
     saveOwed: null,
+    bootOwed: null,
+    bootLanded: null,
     saving: 0,
     saveSeq: 0,
     bootstrapAskedAt: null,
@@ -126,8 +138,10 @@ export function step<S extends SportTypes>(
   const planned = [...(save === null ? [] : [save]), ...result.effects, ...settled.effects];
   const { effects, last } = numbered(planned, final.saveSeq, final.bootstrap);
   const owed = effects.filter((effect) => effect.kind === 'save' && effect.queue !== null).length;
+  // A boot cache saved anew (the bootstrap, the pick or the picks moved) carries what a failed one did not.
+  const bootOwed = save !== null && save.boot !== null ? null : final.bootOwed;
   return {
-    state: { ...final, saving: final.saving + owed, saveSeq: last },
+    state: { ...final, saving: final.saving + owed, saveSeq: last, bootOwed },
     effects,
     outcome: result.outcome,
   };
@@ -172,6 +186,8 @@ function handle<S extends SportTypes>(
       return onUndo(state, event, now);
     case 'pickServer':
       return onPick(state, event.side);
+    case 'setPicks':
+      return onSetPicks(state, event.picks);
     case 'answered':
       return onAnswered(state, event.sent, event.answer, now);
     case 'abandoned':
@@ -199,6 +215,10 @@ function handle<S extends SportTypes>(
       return handled(part(savedOf(landedSave(state), event.n)));
     case 'saveFailed':
       return handled(onSaveFailed(landedSave(state), event.key, now));
+    case 'bootSaveFailed':
+      return handled(onBootSaveFailed(state));
+    case 'bootSaved':
+      return handled(onBootSaved(state, event.boot));
     case 'say':
       return handled(part({ ...state, line: event.words }));
     case 'answerAsk':

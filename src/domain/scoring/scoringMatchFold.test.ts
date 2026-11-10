@@ -32,6 +32,7 @@ describe('foldMemo', () => {
     ['the queue', { queued: [queuedOf('k1', rally('H'))] }],
     ['the own ids', { ownEventIds: ['ev-1'] }],
     ['the pick', { toss: 'first' as const }],
+    ['the pending picks', { picks: { 'order.first': ['p-sharma'] } }],
   ])('folds again when %s has moved', (_name, change) => {
     const before = foldMemo(INPUT);
     expect(foldMemo({ ...INPUT, ...change })).not.toBe(before);

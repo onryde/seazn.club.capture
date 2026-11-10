@@ -5,6 +5,7 @@ import {
   refusing,
 } from '@/domain/scoring/padLine';
 import type { PadSide } from '@/domain/scoring/padView';
+import type { PendingPicks } from '@/domain/scoring/pendingPicks';
 import {
   resultStands,
   type BootCache,
@@ -78,6 +79,11 @@ export type MatchState<S extends SportTypes = SportTypes> = {
   readonly bootstrap: Bootstrap | null;
   /** The side picked to serve first (the Start screen), kept while the match's first rally may still carry it. */
   readonly toss: PadSide | null;
+  /**
+   * The scorer's pending picks (S2-4 plan Task 3), kept with the boot cache and handed to every fold. Only `setPicks`
+   * changes them, never a tap or Undo; a map equal to the one held is the same object, so nothing folds again.
+   */
+  readonly picks: PendingPicks;
   /** `fold`: the pad folds the match. `trust`: the background sender sends its queue and lets the server judge each tap. */
   readonly judge: 'fold' | 'trust';
   readonly foreground: boolean;
@@ -89,6 +95,18 @@ export type MatchState<S extends SportTypes = SportTypes> = {
   readonly undone: UndoneLine<S> | null;
   readonly line: PadLineWords;
   readonly saveOwed: SaveOwed | null;
+  /**
+   * The boot cache (the bootstrap, the pick and the pending picks) could not be written (S2-4 Batch 2 fix round 1):
+   * `retry`, it was saved again once; `said`, that save failed too, and the line says so when it held a choice of the
+   * scorer's. A boot save a later step makes anew clears it.
+   */
+  readonly bootOwed: 'retry' | 'said' | null;
+  /**
+   * The boot cache the last boot save that landed carried, or null before one has (S2-4 Batch 3 fix round 1, M4). The
+   * saver is serial, so it is what the disk holds: while it is the one the state holds, the scorer's choice is saved,
+   * whatever an older save's failure says.
+   */
+  readonly bootLanded: BootCache | null;
   /** Queue saves asked for and not yet answered by `saved` or `saveFailed`: while any is out, nothing new is sent. */
   readonly saving: number;
   /** The number of the last save asked for (`MatchEffect` `save`): each is numbered, one after another from 1. */
@@ -154,6 +172,8 @@ export type MatchEvent<S extends SportTypes = SportTypes> =
       readonly only?: 'ending';
     }
   | { readonly kind: 'pickServer'; readonly side: PadSide }
+  /** The scorer's pending picks, the whole map (S2-4 plan Task 3): taken whenever the match folds. */
+  | { readonly kind: 'setPicks'; readonly picks: PendingPicks }
   | { readonly kind: 'answered'; readonly sent: QueuedEvent; readonly answer: AppendAnswer }
   /** A send that never went (its save failed, or the app left): fed back as an answer of `offline`, so `sending` never sticks. */
   | { readonly kind: 'abandoned'; readonly key: string }
@@ -172,6 +192,10 @@ export type MatchEvent<S extends SportTypes = SportTypes> =
   | { readonly kind: 'saved'; readonly n: number }
   /** A save failed: `key` is the tap it was to make durable, if any. */
   | { readonly kind: 'saveFailed'; readonly key: string | null }
+  /** A save's boot cache could not be written (the queue's own outcome is `saved` or `saveFailed`). */
+  | { readonly kind: 'bootSaveFailed' }
+  /** A save's boot cache was written: the scorer's pick and pending picks as that save held them (`boot`) are on disk. */
+  | { readonly kind: 'bootSaved'; readonly boot: BootCache }
   | { readonly kind: 'say'; readonly words: PadLineWords }
   /** The scorer's answer to the reconnect question (`scoringMatchAsk.ts`): send the queued taps, or discard them. */
   | { readonly kind: 'answerAsk'; readonly answer: 'send' | 'discard' };
@@ -184,6 +208,8 @@ export type MatchHeld<S extends SportTypes = SportTypes> = {
   readonly ledger: readonly LedgerEvent[];
   readonly bootstrap: Bootstrap | null;
   readonly toss: PadSide | null;
+  /** The pending picks the boot cache kept; absent is none. */
+  readonly picks?: PendingPicks;
   readonly judge: 'fold' | 'trust';
   readonly foreground: boolean;
   /** The rules version to send under when no bootstrap is held: the newest a queued tap was made under. */
@@ -317,6 +343,7 @@ export function foldOfState<S extends SportTypes>(
     queued,
     ownEventIds: ownIds(state),
     toss: state.toss,
+    picks: state.picks,
   });
 }
 

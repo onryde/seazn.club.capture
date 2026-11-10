@@ -1,6 +1,6 @@
 import { matchLabelOf } from '@/domain/scoring/matchLabel';
 import { refusalLine } from '@/domain/scoring/padLine';
-import type { MatchQueue } from '@/domain/scoring/queue';
+import type { BootCache, MatchQueue } from '@/domain/scoring/queue';
 import type { Bootstrap } from '@/domain/scoring/wire';
 import type { SportTypes } from '@/domain/scoring/scoringSport';
 import {
@@ -19,17 +19,16 @@ import {
  */
 
 /**
- * The save this step owes: the queue if it moved (or a failed save leaves it owed), the boot cache if the bootstrap or
- * the pick did, the ledger if it grew. The key of a tap this step added is named: if the save fails it never happened.
+ * The save this step owes: the queue if it moved (or a failed save leaves it owed), the boot cache if the bootstrap, the
+ * pick or the pending picks did, the ledger if it grew. The key of a tap this step added is named: if the save fails it
+ * never happened.
  */
 export function saveOf(prev: MatchState, next: MatchState): Omit<SaveEffect, 'n'> | null {
   const queueMoved = prev.sync.queue !== next.sync.queue;
-  const bootMoved = prev.bootstrap !== next.bootstrap || prev.toss !== next.toss;
+  const bootMoved =
+    prev.bootstrap !== next.bootstrap || prev.toss !== next.toss || prev.picks !== next.picks;
   const ledgerMoved = prev.sync.ledger !== next.sync.ledger;
-  const boot =
-    bootMoved && next.bootstrap !== null && next.judge === 'fold'
-      ? { bootstrap: next.bootstrap, toss: next.toss }
-      : null;
+  const boot = bootMoved ? bootOf(next) : null;
   if (!queueMoved && boot === null && !ledgerMoved) return null;
   const added = next.sync.queue.pending.find(
     (tap) => !prev.sync.queue.pending.some((before) => before.key === tap.key),
@@ -41,6 +40,60 @@ export function saveOf(prev: MatchState, next: MatchState): Omit<SaveEffect, 'n'
     ledger: ledgerMoved ? next.sync.ledger : null,
     tap: added?.key ?? null,
   };
+}
+
+/** The boot cache the state holds, while the pad folds the match: the bootstrap, the pick and the pending picks. */
+function bootOf(state: MatchState): BootCache | null {
+  return state.bootstrap !== null && state.judge === 'fold'
+    ? { bootstrap: state.bootstrap, toss: state.toss, picks: state.picks }
+    : null;
+}
+
+/** The line a boot cache refused twice says, when it held a choice of the scorer's. */
+const CHOICE_NOT_SAVED = 'scoring.refusal.choiceNotSaved';
+
+/**
+ * A save's boot cache did not land (S2-4 Batch 2 fix round 1; plan Review Focus 3): the scorer's pick and pending picks
+ * would not outlive the app. It is saved again once, as the state holds it now. If that fails too, the line says so when
+ * it held a choice of the scorer's; a cache of the bootstrap alone costs a reopen a network read, never a choice.
+ */
+export function onBootSaveFailed<S extends SportTypes>(state: MatchState<S>): Part<S> {
+  const boot = bootOf(state);
+  // The latest save wins (M4): a newer save that carried the choice held has landed, so this older one's failure is moot.
+  if (onDisk(state)) return part({ ...state, bootOwed: null });
+  if (state.bootOwed === null && boot !== null) {
+    const again: Planned = { kind: 'save', queue: null, boot, ledger: null, tap: null };
+    return part({ ...state, bootOwed: 'retry' }, [again]);
+  }
+  const chose = state.toss !== null || Object.keys(state.picks).length > 0;
+  const line = chose ? refusalLine(CHOICE_NOT_SAVED) : state.line;
+  return part({ ...state, bootOwed: 'said', line });
+}
+
+/**
+ * A save's boot cache was written (S2-4 Batch 2 re-review N2; Batch 3 fix round 1, M4): it is what the disk holds now.
+ * When it carried the choice the state holds, that choice is saved: the line always says something true (AGENTS §6), so a
+ * "Couldn't save your choice" said before it goes, and nothing is owed. A save that carried an older choice proves
+ * nothing about the one held, whose own save decides. Any other line is left as it is.
+ */
+export function onBootSaved<S extends SportTypes>(state: MatchState<S>, boot: BootCache): Part<S> {
+  const landed = { ...state, bootLanded: boot };
+  if (!onDisk(landed)) return part(landed);
+  const said = state.line?.kind === 'refusal' && state.line.key === CHOICE_NOT_SAVED;
+  return part({ ...landed, bootOwed: null, line: said ? null : state.line });
+}
+
+/** Whether the boot cache the state holds is the one the last landed save carried: the same bootstrap, pick and picks. */
+function onDisk(state: MatchState): boolean {
+  const held = bootOf(state);
+  const landed = state.bootLanded;
+  return (
+    held !== null &&
+    landed !== null &&
+    held.bootstrap === landed.bootstrap &&
+    held.toss === landed.toss &&
+    held.picks === landed.picks
+  );
 }
 
 /**

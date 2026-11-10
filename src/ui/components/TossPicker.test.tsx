@@ -1,28 +1,33 @@
 import { act, fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import type { PadSide, PadStartSide } from '@/domain/scoring/padView';
+import type { PadSide } from '@/domain/scoring/padView';
 import en from '@/i18n/en.json';
-import { TossPicker } from '@/ui/components/TossPicker';
+import { TossPicker, type TossOption } from '@/ui/components/TossPicker';
 import { colour, layout, plateInk, space } from '@/ui/theme/tokens';
+import { typeScale } from '@/ui/theme/type';
 import { edgeOf, fillOf } from '../../../test/pressState';
 import { linesAllowed } from '../../../test/linesAllowed';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
 // Owner, 2026-11-01, option A: "Who serves first?" with the two sides as two big buttons, the names as typed, one
 // choice; the picked one drawn as selected (lime, AGENTS §5). A radio group to a screen reader.
-const SIDES: readonly [PadStartSide, PadStartSide] = [
-  { side: 'first', label: 'A. Sharma / R. Iyer' },
-  { side: 'second', label: 'L. Chen / M. Wong' },
+const SIDES: readonly [TossOption<PadSide>, TossOption<PadSide>] = [
+  { id: 'first', label: 'A. Sharma / R. Iyer' },
+  { id: 'second', label: 'L. Chen / M. Wong' },
 ];
 
-function renderToss(picked: PadSide | null) {
+function renderToss(
+  picked: PadSide | null,
+  more: { fill?: boolean; disabled?: boolean; big?: boolean } = {},
+) {
   const onPick = vi.fn();
   renderWithPorts(
     <TossPicker
       ask={en['scoring.badminton.start.ask']}
-      sides={SIDES}
+      options={SIDES}
       picked={picked}
       onPick={onPick}
+      {...more}
     />,
   );
   return { onPick };
@@ -53,7 +58,9 @@ describe('TossPicker', () => {
     expect(onPick.mock.calls).toEqual([['second'], ['first']]);
   });
 
-  it('draws the picked side as the lime plate with night ink, and the other as the board', () => {
+  // Batch 3 fix round 1, the controller's ruling on I1 (rulings 83, 85): a button that takes a tap has the lime border,
+  // in every sport, at the width every look shares, so a pick or the pair enabled moves no name.
+  it('draws the picked side as the lime plate with night ink, and the other as the board with the lime border', () => {
     renderToss('second');
     const picked = radio('L. Chen / M. Wong');
     const other = radio('A. Sharma / R. Iyer');
@@ -64,7 +71,11 @@ describe('TossPicker', () => {
     expect(getComputedStyle(picked).backgroundColor).toBe(fillOf(colour.lime));
     expect(getComputedStyle(picked).borderTopColor).toBe(edgeOf(colour.lime));
     expect(getComputedStyle(other).backgroundColor).toBe(fillOf(colour.surface));
-    expect(getComputedStyle(other).borderTopColor).toBe(edgeOf(colour.ink3));
+    expect(getComputedStyle(other).borderTopColor).toBe(edgeOf(colour.lime));
+    expect([picked, other].map((side) => getComputedStyle(side).borderTopWidth)).toEqual([
+      `${layout.iconBorder}px`,
+      `${layout.iconBorder}px`,
+    ]);
     const name = (side: HTMLElement) => side.firstElementChild as HTMLElement;
     expect(getComputedStyle(name(picked)).color).toBe(edgeOf(plateInk));
     expect(getComputedStyle(name(other)).color).toBe(edgeOf(colour.ink));
@@ -98,16 +109,21 @@ describe('TossPicker', () => {
 // "ok"). A name with no space is one line the phone shrinks to fit (NameText); a doubles name still wraps at its gaps.
 describe('TossPicker, a name that is one long word', () => {
   const WORD = 'TEest002ashokashTEest002';
-  const LONG_SIDES: readonly [PadStartSide, PadStartSide] = [
-    { side: 'first', label: WORD },
-    { side: 'second', label: 'L. Chen / M. Wong' },
+  const LONG_SIDES: readonly [TossOption<PadSide>, TossOption<PadSide>] = [
+    { id: 'first', label: WORD },
+    { id: 'second', label: 'L. Chen / M. Wong' },
   ];
 
   it.each([null, 'first' as const])(
     'is one line, never wrapped inside its word, picked %s',
     (picked) => {
       renderWithPorts(
-        <TossPicker ask="Who serves first?" sides={LONG_SIDES} picked={picked} onPick={vi.fn()} />,
+        <TossPicker
+          ask="Who serves first?"
+          options={LONG_SIDES}
+          picked={picked}
+          onPick={vi.fn()}
+        />,
       );
       expect(linesAllowed(screen.getByText(WORD))).toBe(1);
     },
@@ -115,8 +131,96 @@ describe('TossPicker, a name that is one long word', () => {
 
   it('leaves the doubles name beside it wrapping at its gaps, with no cap', () => {
     renderWithPorts(
-      <TossPicker ask="Who serves first?" sides={LONG_SIDES} picked={null} onPick={vi.fn()} />,
+      <TossPicker ask="Who serves first?" options={LONG_SIDES} picked={null} onPick={vi.fn()} />,
     );
     expect(linesAllowed(screen.getByText('L. Chen / M. Wong'))).toBe(Infinity);
+  });
+});
+
+// Owner ruling 83 (2026-11-07): cricket's toss uses the whole screen, in two halves, the second greyed until the first is
+// answered, so nothing moves. The picker is generic (spec §6's kit): `fill` grows the pair to its parent's height and
+// keeps the question's lines, `disabled` greys it at the same size and takes no press. Without either it is as above.
+describe('TossPicker, filling and disabled (ruling 83)', () => {
+  const group = () => screen.getByRole('radiogroup');
+  const block = () => group().parentElement as HTMLElement;
+  const ask = () => screen.getByRole('heading');
+
+  // Batch 3 fix round 1, M7: the whole-screen toss asks in `title`, the size of the preview the owner tested (ruling 83).
+  it('fill grows the pair, its buttons never below their token, and asks in title, kept to two lines', () => {
+    renderToss(null, { fill: true });
+    expect([getComputedStyle(block()).flexGrow, getComputedStyle(group()).flexGrow]).toEqual([
+      '1',
+      '1',
+    ]);
+    expect(getComputedStyle(group()).alignContent).toBe('stretch');
+    for (const side of screen.getAllByRole('radio')) {
+      expect(getComputedStyle(side).minHeight).toBe(`${layout.padTossHeight}px`);
+    }
+    expect([getComputedStyle(ask()).fontSize, getComputedStyle(ask()).minHeight]).toEqual([
+      `${typeScale.title.fontSize}px`,
+      `${layout.padTossAskLines * typeScale.title.lineHeight}px`,
+    ]);
+    expect(getComputedStyle(ask()).webkitLineClamp).toBe(String(layout.padTossAskLines));
+  });
+
+  it('without fill the pair takes only its own height, and the question is the state line, not held to lines', () => {
+    renderToss(null);
+    expect(getComputedStyle(block()).flexGrow).toBe('0');
+    expect(getComputedStyle(group()).flexGrow).toBe('0');
+    expect([getComputedStyle(ask()).fontSize, getComputedStyle(ask()).minHeight]).toEqual([
+      `${typeScale.state.fontSize}px`,
+      'auto',
+    ]);
+  });
+
+  // M7: short words (Bat and Bowl) are drawn at `tally`, the preview's; a name never is (cricketFit.test.ts).
+  it('big draws the choices at tally, in ink on the board and night ink on the plate; without it at label', () => {
+    renderToss('second', { big: true });
+    const words = screen.getAllByRole('radio').map((side) => side.firstElementChild as HTMLElement);
+    expect(words.map((word) => getComputedStyle(word).fontSize)).toEqual([
+      `${typeScale.tally.fontSize}px`,
+      `${typeScale.tally.fontSize}px`,
+    ]);
+    expect(words.map((word) => getComputedStyle(word).color)).toEqual([
+      edgeOf(colour.ink),
+      edgeOf(plateInk),
+    ]);
+  });
+
+  it('without big the choices are at label', () => {
+    renderToss(null);
+    for (const side of screen.getAllByRole('radio')) {
+      expect(getComputedStyle(side.firstElementChild as HTMLElement).fontSize).toBe(
+        `${typeScale.label.fontSize}px`,
+      );
+    }
+  });
+
+  it('disabled ignores a press and says so, greyed at the same size', () => {
+    const { onPick } = renderToss(null, { disabled: true });
+    act(() => fireEvent.click(radio('L. Chen / M. Wong')));
+    expect(onPick).not.toHaveBeenCalled();
+    for (const side of screen.getAllByRole('radio')) {
+      const style = getComputedStyle(side);
+      expect(side.getAttribute('aria-disabled')).toBe('true');
+      expect([style.borderTopColor, style.flexBasis, style.minHeight]).toEqual([
+        edgeOf(colour.ink3),
+        `${layout.padTossMin}px`,
+        `${layout.padTossHeight}px`,
+      ]);
+      expect(getComputedStyle(side.firstElementChild as HTMLElement).color).toBe(
+        edgeOf(colour.ink3),
+      );
+    }
+    expect(getComputedStyle(ask()).color).toBe(edgeOf(colour.ink3));
+  });
+
+  it('enabled, a side is not said disabled, has the lime border, and its name is in ink', () => {
+    renderToss(null, { disabled: false });
+    for (const side of screen.getAllByRole('radio')) {
+      expect(side.getAttribute('aria-disabled')).not.toBe('true');
+      expect(getComputedStyle(side).borderTopColor).toBe(edgeOf(colour.lime));
+    }
+    expect(getComputedStyle(ask()).color).toBe(edgeOf(colour.ink2));
   });
 });

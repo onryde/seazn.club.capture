@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { sportFor } from '@/domain/scoring/sports';
 import { BadmintonMatchScreen } from '@/ui/screens/BadmintonMatchScreen';
 import { ChessMatchScreen } from '@/ui/screens/ChessMatchScreen';
+import { CricketMatchScreen } from '@/ui/screens/CricketMatchScreen';
 import { screenFor } from '@/ui/screens/scoringScreens';
 import { TableTennisMatchScreen } from '@/ui/screens/TableTennisMatchScreen';
 
@@ -24,8 +25,15 @@ describe('the sports screens table', () => {
     expect(screenFor('boardgame')).not.toBe(screenFor('tabletennis'));
   });
 
+  it('a cricket link opens on the cricket screen, nobody else’s (S2-4 plan Task 8)', () => {
+    expect(screenFor('cricket')).toBe(CricketMatchScreen);
+    for (const other of ['badminton', 'tabletennis', 'boardgame']) {
+      expect(screenFor('cricket')).not.toBe(screenFor(other));
+    }
+  });
+
   it('every sport the runtime scores has a screen: the table cannot fall behind the sports', () => {
-    for (const key of ['badminton', 'tabletennis', 'boardgame']) {
+    for (const key of ['badminton', 'tabletennis', 'boardgame', 'cricket']) {
       expect(sportFor(key), key).not.toBeNull();
       expect(screenFor(key), key).not.toBeNull();
     }

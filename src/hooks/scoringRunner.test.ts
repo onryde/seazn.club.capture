@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BadmintonTap } from '@/domain/scoring/badmintonPad';
-import type { MatchEvent } from '@/domain/scoring/scoringMatchState';
+import { badmintonSport } from '@/domain/scoring/badmintonSport';
+import { foldOfState, type MatchEvent } from '@/domain/scoring/scoringMatchState';
 import { createScoringRunner, type RunnerMode, type ScoringRunner } from '@/hooks/scoringRunner';
 import { SINGLES_SEED } from '@/services/fakeScoringPort';
 import { saveScoringLink } from '@/services/scoringLinkStore';
@@ -811,6 +812,81 @@ describe('caches', () => {
     const boot = await fakes.tapQueue.loadBoot(FIXTURE);
     expect(boot?.toss).toBe('second');
     expect(boot?.bootstrap.sportKey).toBe('badminton');
+  });
+
+  // Review Focus 3 (S2-4 plan Task 3): the picks a scorer made are read back from the boot cache by the next runner.
+  it('a reopened match folds with the picks it was killed with', async () => {
+    const fakes = newFakes();
+    const picks = { 'order.first': ['p-sharma'], 'bowler.i1.1': ['p-chen'] };
+    const { runner } = await rig(fakes);
+    runner.dispatch({ kind: 'setPicks', picks });
+    await runner.stop();
+    const reopened = createScoringRunner(fakes.ports, { fixtureId: FIXTURE, mode: 'focused' });
+    await reopened.start();
+    await flush();
+    const snapshot = reopened.snapshot();
+    if (snapshot.kind !== 'ready') throw new Error('the reopened match is ready');
+    expect(snapshot.state.picks).toStrictEqual(picks);
+    const fold = vi.spyOn(badmintonSport, 'fold');
+    foldOfState(snapshot.state);
+    expect(fold).toHaveBeenCalledWith(expect.objectContaining({ picks }));
+  });
+});
+
+// S2-4 Batch 2 fix round 1 (review M1): the pending picks live in the boot cache, so a refused write of it is saved
+// again once, and said on the line when that is refused too; picks kept in memory alone would not outlive the app.
+describe('a refused write of the pending picks', () => {
+  const PICKS = { 'order.first': ['p-sharma'], 'bowler.i1.1': ['p-chen'] };
+  const lineOf = (runner: ScoringRunner) => {
+    const snapshot = runner.snapshot();
+    return snapshot.kind === 'ready' ? snapshot.state.line : 'not ready';
+  };
+
+  it('refused once, is saved again and lands: the picks are on disk and the line says nothing', async () => {
+    const fakes = newFakes();
+    const { runner } = await rig(fakes);
+    const saveBoot = vi
+      .spyOn(fakes.tapQueue, 'saveBoot')
+      .mockRejectedValueOnce(new Error('the disk refused'));
+    runner.dispatch({ kind: 'setPicks', picks: PICKS });
+    await flush();
+    expect(saveBoot).toHaveBeenCalledTimes(2);
+    expect((await fakes.tapQueue.loadBoot(FIXTURE))?.picks).toStrictEqual(PICKS);
+    expect(lineOf(runner)).toBeNull();
+  });
+
+  it('refused twice, is not tried a third time and the line says the choice was not saved', async () => {
+    const fakes = newFakes();
+    const { runner } = await rig(fakes);
+    const saveBoot = vi
+      .spyOn(fakes.tapQueue, 'saveBoot')
+      .mockRejectedValueOnce(new Error('the disk refused'))
+      .mockRejectedValueOnce(new Error('the disk refused'));
+    runner.dispatch({ kind: 'setPicks', picks: PICKS });
+    await flush();
+    expect(saveBoot).toHaveBeenCalledTimes(2);
+    expect((await fakes.tapQueue.loadBoot(FIXTURE))?.picks).not.toStrictEqual(PICKS);
+    expect(lineOf(runner)).toEqual({ kind: 'refusal', key: 'scoring.refusal.choiceNotSaved' });
+  });
+
+  // Batch 2 re-review N2: the line always says something true (AGENTS §6). Once the disk takes a later boot save, the
+  // choice is saved and "Couldn't save your choice" goes.
+  it('said, a later boot save that lands clears the line, the picks on disk', async () => {
+    const fakes = newFakes();
+    const { runner } = await rig(fakes);
+    const saveBoot = vi
+      .spyOn(fakes.tapQueue, 'saveBoot')
+      .mockRejectedValueOnce(new Error('the disk refused'))
+      .mockRejectedValueOnce(new Error('the disk refused'));
+    runner.dispatch({ kind: 'setPicks', picks: PICKS });
+    await flush();
+    expect(lineOf(runner)).toEqual({ kind: 'refusal', key: 'scoring.refusal.choiceNotSaved' });
+    const LATER = { ...PICKS, 'order.second': ['p-chen'] };
+    runner.dispatch({ kind: 'setPicks', picks: LATER });
+    await flush();
+    expect(saveBoot).toHaveBeenCalledTimes(3);
+    expect((await fakes.tapQueue.loadBoot(FIXTURE))?.picks).toStrictEqual(LATER);
+    expect(lineOf(runner)).toBeNull();
   });
 });
 

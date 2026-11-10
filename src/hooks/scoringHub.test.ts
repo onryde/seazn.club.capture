@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BadmintonTap } from '@/domain/scoring/badmintonPad';
+import { NO_PICKS } from '@/domain/scoring/pendingPicks';
 import type { MatchQueue } from '@/domain/scoring/queue';
 import { scoringHubOf, type FocusHandle } from '@/hooks/scoringHub';
 import { createScoringRunner } from '@/hooks/scoringRunner';
@@ -48,7 +49,11 @@ async function queued(fakes: FakePorts, id: string, over: Partial<MatchQueue> = 
 async function cached(fakes: FakePorts): Promise<void> {
   const read = await fakes.scoring.bootstrap(LINK);
   if (read.kind !== 'ok') throw new Error('the fake serves the match');
-  await fakes.tapQueue.saveBoot(FIXTURE, { bootstrap: read.bootstrap, toss: null });
+  await fakes.tapQueue.saveBoot(FIXTURE, {
+    bootstrap: read.bootstrap,
+    toss: null,
+    picks: NO_PICKS,
+  });
   await fakes.tapQueue.saveLedger(FIXTURE, ledgerOf([start()]));
 }
 

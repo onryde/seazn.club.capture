@@ -165,13 +165,19 @@ export function createScoringRunner(ports: RunnerPorts, options: Options): Scori
 
   // --- what the reducer asks for -----------------------------------------------------------------------------------
 
-  /** A queue save is done: the reducer is told; a save of the caches alone only lets the screen show what it holds. */
-  const landed = (effect: SaveEffect, ok: boolean): void => {
+  /**
+   * A queue save is done: the reducer is told; a save of the caches alone only lets the screen show what it holds. A boot
+   * cache is told too, written or not: it holds the scorer's pick and pending picks (S2-4 Batch 2 fix round 1), and a
+   * written one takes back a line that said they were not saved (re-review N2).
+   */
+  const landed = (effect: SaveEffect, ok: boolean, bootOk: boolean): void => {
     if (effect.queue !== null) {
       dispatch(ok ? { kind: 'saved', n: effect.n } : { kind: 'saveFailed', key: effect.tap });
     } else if (saver.unsettled() === 0 && state !== null && !stopped) {
       publish({ kind: 'ready', state });
     }
+    if (effect.boot === null) return;
+    dispatch(bootOk ? { kind: 'bootSaved', boot: effect.boot } : { kind: 'bootSaveFailed' });
   };
   const saver = createSaver({ ports, fixtureId, landed });
   const reads = createReads({
@@ -405,6 +411,7 @@ function heldOf(
     ledger: loaded.ledger,
     bootstrap: loaded.boot?.bootstrap ?? null,
     toss: loaded.boot?.toss ?? null,
+    picks: loaded.boot?.picks,
     judge: mode === 'focused' ? 'fold' : 'trust',
     foreground,
     rulesVersion: loaded.boot?.bootstrap.rulesVersion ?? rulesVersion,

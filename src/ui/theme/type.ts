@@ -259,7 +259,8 @@ export const typeScale = {
    * The games tally in the pad's header (owner, 2026-11-01: "0:0 with lime light in place of preview"; larger, owner,
    * 2026-11-02, into the room the badge gave back): the score's face, lime and tabular, at 46 on the header's own 48 dp
    * line, so "1:0" (58.5 dp) stands whole in the 72 dp the row leaves it at 320 and the header stays one 48 dp row
-   * (padFit.test.ts: the row's height, not its room, is what stops it growing).
+   * (padFit.test.ts: the row's height, not its room, is what stops it growing). Also the cricket board's score on its last
+   * rung (T19 fix 6, `scorePanelCompact`), where `scoreCompact`'s 68 dp line does not fit.
    */
   tally: {
     fontFamily: font.displayBold,

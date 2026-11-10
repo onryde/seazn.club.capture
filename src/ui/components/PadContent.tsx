@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useMemo, type ReactNode } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import {
   cardPlacement,
@@ -7,6 +7,7 @@ import {
   type PadMatchDetails,
   type PadSide,
   type PadStart,
+  type PadStartSide,
   type PadSync,
   type PadTally,
   type PadView,
@@ -22,12 +23,13 @@ import { IconButton } from '@/ui/components/IconButton';
 import { LastTapLine } from '@/ui/components/LastTapLine';
 import { PadStateCard } from '@/ui/components/PadStateCard';
 import { PadStrip } from '@/ui/components/PadStrip';
+import { RefusalBanner } from '@/ui/components/RefusalBanner';
 import { ScoreHalf } from '@/ui/components/ScoreHalf';
 import { StartSides } from '@/ui/components/StartSides';
 import { SyncBadge } from '@/ui/components/SyncBadge';
 import { Text } from '@/ui/components/Text';
 import { ToolRow } from '@/ui/components/ToolRow';
-import { TossPicker } from '@/ui/components/TossPicker';
+import { TossPicker, type TossOption } from '@/ui/components/TossPicker';
 import { UpdateBanner } from '@/ui/components/UpdateBanner';
 import { layout, space } from '@/ui/theme/tokens';
 
@@ -60,16 +62,27 @@ export type PadContentModel = {
  * Undo, and the tools. A card that replaces the score stands where the halves were; one that goes with it (a recorded
  * result, view only) stands above them; the update banner stands where the last-tap line and the tools were
  * (`cardPlacement`). Until the match starts, the Start screen stands where the halves are, with no last-tap line and no
- * tools (owner, 2026-11-01, option A). `covered` hides the pad from a screen reader while a sheet shows. Lifted from
+ * tools (owner, 2026-11-01, option A). `covered` hides the pad from a screen reader while a sheet shows. A sport that
+ * draws its own board (cricket; football's the same interface) hands it in as `body`: drawn in the halves' place, under a
+ * card that goes with the score, and never over a card that stands instead of it or over the Start screen. Lifted from
  * badminton's screen for table tennis's (plan S2-2 Task 8, design §6); the screen of each sport keeps its own frame (what
  * holds the screen on) and its own sheets.
  */
 export const PadContent = memo(function PadContent({
   model,
   covered,
+  body,
+  lineUndo = true,
 }: {
   readonly model: PadContentModel;
   readonly covered: boolean;
+  /** What stands in the halves' place, for a sport with a board of its own; the halves without it. */
+  readonly body?: ReactNode;
+  /**
+   * Whether the last-tap line carries the pad's Undo (default yes). A sport whose body has its own Undo key (cricket's
+   * Out, Undo, More row, ruling 79) says no, so the pad has one Undo, never two.
+   */
+  readonly lineUndo?: boolean;
 }) {
   const { view, line, cardNote, flash, toss, actions } = model;
   const known = matchKnown(view.card);
@@ -83,11 +96,23 @@ export const PadContent = memo(function PadContent({
       <PadHeader sync={view.sync} tally={view.tally} known={known} actions={actions} />
       <PadStrip items={view.strip} />
       {view.start === null ? (
-        <PadBody view={view} flash={flash} onTap={actions.tapHalf} />
+        <PadBody view={view} flash={flash} onTap={actions.tapHalf} body={body} />
       ) : (
-        <StartPanel start={view.start} details={view.details} toss={toss} actions={actions} />
+        <StartPanel
+          start={view.start}
+          details={view.details}
+          toss={toss}
+          line={line}
+          actions={actions}
+        />
       )}
-      <PadControls view={view} line={line} cardNote={cardNote} actions={actions} />
+      <PadControls
+        view={view}
+        line={line}
+        cardNote={cardNote}
+        actions={actions}
+        lineUndo={lineUndo}
+      />
     </View>
   );
 });
@@ -176,10 +201,12 @@ const PadBody = memo(function PadBody({
   view,
   flash,
   onTap,
+  body,
 }: {
   readonly view: PadView<MessageKey>;
   readonly flash: HalfFlash;
   readonly onTap: (side: PadSide) => void;
+  readonly body: ReactNode;
 }) {
   const card = view.card?.kind === 'updateNeeded' ? null : view.card;
   if (card !== null && cardPlacement(card) === 'instead') {
@@ -194,39 +221,61 @@ const PadBody = memo(function PadBody({
   return (
     <View style={styles.body}>
       {card === null ? null : <PadStateCard card={card} />}
-      <ScoreHalf half={view.halves[0]} flash={flashCue(flash, 'first')} onTap={onTap} />
-      <ScoreHalf half={view.halves[1]} flash={flashCue(flash, 'second')} onTap={onTap} />
+      {body === undefined ? <Halves view={view} flash={flash} onTap={onTap} /> : body}
     </View>
   );
 });
+
+/** The two halves, the first side's on top: a tap on one gives that side the rally, and a tap that counted flashes it. */
+function Halves({
+  view,
+  flash,
+  onTap,
+}: {
+  readonly view: PadView<MessageKey>;
+  readonly flash: HalfFlash;
+  readonly onTap: (side: PadSide) => void;
+}) {
+  return (
+    <>
+      <ScoreHalf half={view.halves[0]} flash={flashCue(flash, 'first')} onTap={onTap} />
+      <ScoreHalf half={view.halves[1]} flash={flashCue(flash, 'second')} onTap={onTap} />
+    </>
+  );
+}
 
 /**
  * The Start screen (owner, 2026-11-01, option A), in the halves' place until the match starts: the match card, who
  * serves first, then Start match, a tap and no hold (it is not destructive: Undo takes it back). It scrolls when it is
  * taller than the room. Start match is disabled, and says so, until a side is picked; a sport with no serve to pick
  * (`needsToss` false) has no question and no picker, and Start match is ready (plan S2-3 Task 2). Such a sport whose sides
- * carry plates shows the names with their plates as read-only rows (`StartSides`).
+ * carry plates shows the names with their plates as read-only rows (`StartSides`). A refusal on the pad's line (the
+ * serve pick the disk refused twice: S2-4 Batch 2 re-review N1) is said under Start match, since the pad's own line is
+ * not drawn before the start; a note is not news there.
  */
 const StartPanel = memo(function StartPanel({
   start,
   details,
   toss,
+  line,
   actions,
 }: {
   readonly start: PadStart<MessageKey>;
   readonly details: PadMatchDetails<MessageKey>;
   readonly toss: PadSide | null;
+  readonly line: PadLineWords;
   readonly actions: PadContentActions;
 }) {
   const { t } = useT();
   const words = usePadText();
+  const options = useMemo(() => tossOptionsOf(start.sides), [start.sides]);
   return (
     <ScrollView testID="start-screen" style={styles.body} contentContainerStyle={styles.start}>
       <DetailsCard details={details} />
       {start.needsToss ? (
         <TossPicker
           ask={words(start.ask)}
-          sides={start.sides}
+          options={options}
           picked={toss}
           onPick={actions.pickServer}
         />
@@ -238,9 +287,21 @@ const StartPanel = memo(function StartPanel({
         onPress={actions.start}
         disabled={start.needsToss && toss === null}
       />
+      {line?.kind === 'refusal' ? <RefusalBanner text={t(line.key)} /> : null}
     </ScrollView>
   );
 });
+
+/** The Start screen's sides as the picker's choices: each side's seat is its id, its name as typed. */
+function tossOptionsOf(
+  sides: readonly [PadStartSide, PadStartSide],
+): readonly [TossOption<PadSide>, TossOption<PadSide>] {
+  const [top, bottom] = sides;
+  return [
+    { id: top.side, label: top.label },
+    { id: bottom.side, label: bottom.label },
+  ];
+}
 
 /**
  * Under the halves: the last-tap line and the tools, or, when an update is needed, the banner in their place
@@ -251,11 +312,13 @@ const PadControls = memo(function PadControls({
   line,
   cardNote,
   actions,
+  lineUndo,
 }: {
   readonly view: PadView<MessageKey>;
   readonly line: PadLineWords;
   readonly cardNote: MessageKey | null;
   readonly actions: PadContentActions;
+  readonly lineUndo: boolean;
 }) {
   const { t } = useT();
   const { card } = view;
@@ -272,7 +335,7 @@ const PadControls = memo(function PadControls({
   if (view.start !== null) return null;
   return (
     <>
-      <PadLine view={view} line={line} onUndo={actions.undo} />
+      <PadLine view={view} line={line} undo={lineUndo} onUndo={actions.undo} />
       <ToolRow tools={view.tools} onTool={actions.tool} />
     </>
   );
@@ -285,10 +348,12 @@ const PadControls = memo(function PadControls({
 const PadLine = memo(function PadLine({
   view,
   line,
+  undo,
   onUndo,
 }: {
   readonly view: PadView<MessageKey>;
   readonly line: PadLineWords;
+  readonly undo: boolean;
   readonly onUndo: () => void;
 }) {
   const { t } = useT();
@@ -298,7 +363,7 @@ const PadLine = memo(function PadLine({
       lastTap={view.lastTap}
       refusal={line?.kind === 'refusal' ? words : null}
       note={line?.kind === 'note' ? words : null}
-      undoCell={hasUndoCell(view.card)}
+      undoCell={undo && hasUndoCell(view.card)}
       onUndo={onUndo}
     />
   );

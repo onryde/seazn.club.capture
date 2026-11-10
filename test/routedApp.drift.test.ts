@@ -59,9 +59,12 @@ const SCREEN_IMPORT = /import\s*\{([^}]*)\}\s*from\s*['"]@\/ui\/screens\/([A-Za-
 function screensImported(source: string): Map<string, string> {
   const named = new Map<string, string>();
   for (const match of source.matchAll(SCREEN_IMPORT)) {
+    const screen = `src/ui/screens/${match[2]}`;
+    // A plain `.ts` beside the screens (fit math) has no component to check: it is not a screen, so not followed.
+    if (!existsSync(join(root, `${screen}.tsx`)) && existsSync(join(root, `${screen}.ts`)))
+      continue;
     for (const name of (match[1] ?? '').split(',')) {
-      if (name.trim() !== '')
-        named.set(name.trim().replace(/^type\s+/, ''), `src/ui/screens/${match[2]}.tsx`);
+      if (name.trim() !== '') named.set(name.trim().replace(/^type\s+/, ''), `${screen}.tsx`);
     }
   }
   return named;
@@ -298,6 +301,26 @@ describe('every path the navigation moves to has its route file, and each Settin
       'src/ui/screens/ChessPadScreen.tsx',
       // The tie-break sheet's steps (S2-3b): a sport's screen file that is no pad, so it must not mount KeepScreenOn.
       'src/ui/screens/ChessTiebreakView.tsx',
+      'src/ui/screens/CricketMatchScreen.tsx',
+      'src/ui/screens/CricketPadScreen.tsx',
+      // The board in the pad's halves' place (S2-4 Task 8): a sport's screen file that is no pad, as the tie-break view.
+      'src/ui/screens/CricketBoard.tsx',
+      // The keys under the board (S2-4 Task 11): no pad either.
+      'src/ui/screens/CricketKeys.tsx',
+      // More's typed numbers (S2-4 Task 15): a sheet, no pad.
+      'src/ui/screens/CricketEntrySheet.tsx',
+      // Players, from a tap on the board (S2-4 Task 14), with the setup's ▲▼ (its order list): no pads either.
+      'src/ui/screens/CricketPlayersSheet.tsx',
+      'src/ui/screens/CricketOrderList.tsx',
+      // The scorecard under Match details (S2-4 Task 18): no pad either.
+      'src/ui/screens/CricketScorecard.tsx',
+      // The setup in the board's place before the first ball (S2-4 Task 10), and its toss: no pads either.
+      'src/ui/screens/CricketSetup.tsx',
+      'src/ui/screens/CricketToss.tsx',
+      // The sheets' steps over the pad (S2-4 Task 11): no pad.
+      'src/ui/screens/CricketSheets.tsx',
+      // Over totals, in the keys' place and in a sheet (S2-4 Task 17): no pad.
+      'src/ui/screens/CricketTotals.tsx',
     ]);
   });
 

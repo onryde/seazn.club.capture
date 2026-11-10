@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { NO_PICKS } from '@/domain/scoring/pendingPicks';
 import type { BootCache, MatchQueue, QueuedEvent } from '@/domain/scoring/queue';
-import type { LedgerEvent } from '@/domain/scoring/wire';
+import { bootstrapToWire, type LedgerEvent } from '@/domain/scoring/wire';
 import { createLogger } from '@/services/logger';
 import { createRingRecord, parseRecordLine } from '@/services/sessionRecord';
 import { createTapQueueStore, queueSaveProblemOf, type QueueEntry } from '@/services/tapQueueStore';
@@ -1090,6 +1091,7 @@ describe('the bootstrap cache beside the queue (plan S2-1 Task 9)', () => {
   const cacheOf = (fixtureId: string, toss: BootCache['toss'] = 'second'): BootCache => ({
     bootstrap: { ...SINGLES, fixtureId },
     toss,
+    picks: NO_PICKS,
   });
   const CACHE = cacheOf(FIXTURE);
   const bootUnreadable = (entries: () => ReturnType<typeof parseRecordLine>[]) =>
@@ -1099,13 +1101,61 @@ describe('the bootstrap cache beside the queue (plan S2-1 Task 9)', () => {
     const { store } = storeOver();
     await store.saveBoot(FIXTURE, CACHE);
     expect(await store.loadBoot(FIXTURE)).toEqual(CACHE);
-    const doubles = { bootstrap: { ...DOUBLES, fixtureId: OTHER }, toss: null };
+    const doubles = { bootstrap: { ...DOUBLES, fixtureId: OTHER }, toss: null, picks: NO_PICKS };
     await store.saveBoot(OTHER, doubles);
     expect(await store.loadBoot(OTHER)).toEqual(doubles);
   });
 
   it('is null for a match with none, the empty input', async () => {
     expect(await storeOver().store.loadBoot(FIXTURE)).toBeNull();
+  });
+
+  // Pending picks (S2-4 plan Task 3, Review Focus 3): a kill between an over's end and its first ball keeps the next
+  // bowler, the batting order and the openers.
+  it('picks round-trip the boot file', async () => {
+    const { store } = storeOver();
+    const picked: BootCache = {
+      ...CACHE,
+      picks: { 'order.first': ['p-3', 'p-1', 'p-2'], 'bowler.i1.2': ['p-9'] },
+    };
+    await store.saveBoot(FIXTURE, picked);
+    expect(await store.loadBoot(FIXTURE)).toStrictEqual(picked);
+  });
+
+  // A boot file written before picks existed has no `picks` key, and the file's version is unchanged.
+  it('a boot file without picks reads as none', async () => {
+    const files = createMemoryQueueFiles();
+    const { store, entries } = storeOver(files);
+    files.files.set(
+      bootOf(FIXTURE),
+      wired({ toss: 'second', bootstrap: bootstrapToWire(CACHE.bootstrap) }),
+    );
+    expect(await store.loadBoot(FIXTURE)).toStrictEqual({
+      bootstrap: CACHE.bootstrap,
+      toss: 'second',
+      picks: {},
+    });
+    expect(bootUnreadable(entries)).toHaveLength(0);
+  });
+
+  it('a garbled picks key makes the boot file unreadable', async () => {
+    const files = createMemoryQueueFiles();
+    const { store, entries } = storeOver(files);
+    const content = wired({
+      bootstrap: bootstrapToWire(CACHE.bootstrap),
+      picks: { '1x': ['p-1'] },
+    });
+    files.files.set(bootOf(FIXTURE), content);
+    expect(await store.loadBoot(FIXTURE)).toBeNull();
+    expect(bootUnreadable(entries)).toHaveLength(1);
+    expect(files.files.get(bootOf(FIXTURE))).toBe(content);
+  });
+
+  it('refuses to write picks it could not read back: nothing is written', async () => {
+    const files = createMemoryQueueFiles();
+    const { store } = storeOver(files);
+    await expect(store.saveBoot(FIXTURE, { ...CACHE, picks: { '1x': ['p-1'] } })).rejects.toThrow();
+    expect(files.files.size).toBe(0);
   });
 
   it('is a file of its own: no queue in the list, the queue and the ledger untouched', async () => {
@@ -1163,7 +1213,7 @@ describe('the bootstrap cache beside the queue (plan S2-1 Task 9)', () => {
   it('refuses to write a bootstrap that names the link’s secret anywhere: nothing is written', async () => {
     const files = createMemoryQueueFiles();
     const { store } = storeOver(files);
-    const leaking = { bootstrap: { ...CACHE.bootstrap, cfg: { note: TOKEN } }, toss: null };
+    const leaking = { ...CACHE, bootstrap: { ...CACHE.bootstrap, cfg: { note: TOKEN } } };
     await expect(store.saveBoot(FIXTURE, leaking)).rejects.toThrow();
     expect(files.written.join('')).not.toContain(TOKEN);
     expect(files.files.size).toBe(0);
@@ -1218,7 +1268,11 @@ describe('leaving a match keeps this phone’s own tap ids for a day (owner ruli
   async function played(store: ReturnType<typeof storeOver>['store'], fixtureId = FIXTURE) {
     await store.save(queue({ fixtureId, pending: [], ownEventIds: ['ev-1', 'ev-2'] }));
     await store.saveLedger(fixtureId, LEDGER);
-    await store.saveBoot(fixtureId, { bootstrap: { ...SINGLES, fixtureId }, toss: null });
+    await store.saveBoot(fixtureId, {
+      bootstrap: { ...SINGLES, fixtureId },
+      toss: null,
+      picks: NO_PICKS,
+    });
   }
   const placed = (over: Record<string, unknown>) =>
     text({ v: 1, fixtureId: FIXTURE, ownEventIds: ['ev-1'], leftAt: LEFT, ...over });

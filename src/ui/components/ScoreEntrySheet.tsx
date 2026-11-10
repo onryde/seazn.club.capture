@@ -73,7 +73,8 @@ function within(text: string, bound: number): boolean {
   return number !== null && number <= bound;
 }
 
-const PointsField = memo(function PointsField({
+/** A labelled whole-number field (the number pad, `digits` at most): cricket's typed numbers use it too (S2-4 Task 15). */
+export const PointsField = memo(function PointsField({
   label,
   value,
   digits,

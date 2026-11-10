@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { NO_PICKS } from '@/domain/scoring/pendingPicks';
 import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
 import fr from '@/i18n/fr.json';
@@ -560,6 +561,7 @@ describe('a table tennis match on Home', () => {
     await fakes.tapQueue.saveBoot(FAKE_MATCH, {
       bootstrap: { ...TABLE_TENNIS_SINGLES, fixtureId: FAKE_MATCH },
       toss: null,
+      picks: NO_PICKS,
     });
   }
 

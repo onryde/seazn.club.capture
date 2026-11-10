@@ -22,7 +22,7 @@ export type Recording = (tap: string, make: () => PadOutcome) => boolean;
 export type AskFacts = {
   /** The reconnect question (owner ruling 43), while it stands: the real match's; the preview has none. */
   readonly ask?: PadAsk | null;
-  readonly card: PadStateCard | null;
+  readonly card: PadStateCard<string> | null;
 };
 
 /**

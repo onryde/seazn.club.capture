@@ -1,4 +1,5 @@
 import { encodeSavedCode } from '@/domain/mode/savedCode';
+import { NO_PICKS } from '@/domain/scoring/pendingPicks';
 import type { MatchQueue, QueueDead } from '@/domain/scoring/queue';
 import { STORE_KEYS } from '@/services/modeStore';
 import type { ScoringLink } from '@/services/scoringPort';
@@ -68,6 +69,7 @@ export async function leaveHistory(
   await fakes.tapQueue.saveBoot(fixtureId, {
     bootstrap: { ...SINGLES, fixtureId, status: over.status ?? 'in_play', ...viewOnly },
     toss: null,
+    picks: NO_PICKS,
   });
 }
 

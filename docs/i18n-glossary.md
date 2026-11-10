@@ -501,6 +501,252 @@ its rung. es, fr and nl start from the web's own words (`matchCentre.result.sett
 | ------- | ---------- | ------------------ | ---------- | -------------------------------------------------------------------------------------------------------------- |
 | by lot  | por sorteo | par tirage au sort | na loting  | `tiebreak.rung.lots`: the second half of "{name} advances · {how}" after a lot; never a rung the sheet offers. |
 
+### Cricket words (S2-4 Task 7, 2026-11-08)
+
+The words for the cricket pad's Match details, its last-tap line, History and the result (`scoring.cricket.*`). The terms
+are the web's own (`apps/web/src/dictionaries`): its cricket vocabulary, its console ribbon words for each event type, and
+the match centre's result sentences (`matchCentre.result.*`), with the winner as the side's name. Committed without a `_review` marker, as the rest of S2's copy on this branch; the owner wants no native-speaker review of es, fr and nl (2026-11-10, "No need"). Dismissal kinds (_bowled, caught, LBW, run out, stumped_…) stay in English in every language, as the web's
+scorecards write them; _over_, _wicket_, _wide_, _no-ball_, _bye_, _leg-bye_ and _super over_ are the game's own words in
+all four. A counted word (`.one` / `.other`) is picked by the language's plural rule.
+
+| English                              | Español                                     | Français                             | Nederlands                              | Notes                                                                                             |
+| ------------------------------------ | ------------------------------------------- | ------------------------------------ | --------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| run / runs                           | carrera / carreras                          | course / courses                     | run / runs                              | `ball.runs`, and every count of runs.                                                             |
+| innings                              | entrada                                     | manche                               | innings                                 | `rules.*.value` ("{overs} an innings"); the web's es and fr. History's heading keeps the number.  |
+| bowler                               | lanzador                                    | lanceur                              | bowler                                  | `rules.bowler.label`, `last.bowlerChange`.                                                        |
+| toss                                 | sorteo                                      | tirage au sort                       | toss                                    | `last.toss.bat` / `.bowl`: "{name} won the toss and chose to bat"; bat / bowl as the web's verbs. |
+| Dot ball                             | Bola sin carrera                            | Balle sans course                    | Bal zonder run                          | `ball.dot`: a ball with nothing scored.                                                           |
+| {batter} out · {how}                 | {batter} eliminado · {how}                  | {batter} éliminé · {how}             | {batter} uit · {how}                    | `out`; `{how}` is the kind, with its fielder in brackets ("caught (Away Player 5)").              |
+| Over recorded · {runs}/{wickets}     | Over registrado · {runs}/{wickets}          | Over enregistré · {runs}/{wickets}   | Over vastgelegd · {runs}/{wickets}      | `last.summary`: over totals for a side with no players (ruling 66), with the overs bowled.        |
+| Undone — {what}                      | Deshecho: {what}                            | Annulé : {what}                      | Ongedaan gemaakt: {what}                | `last.undone`. fr has a no-break space before the colon.                                          |
+| Innings {number} · {side}            | Entrada {number} · {side}                   | Manche {number} · {side}             | Innings {number} · {side}               | `history.innings`; `history.superOver` the same; `history.before` "Before play".                  |
+| {name} won by {count} runs           | {name} ganó por {count} carreras            | {name} a gagné par {count} courses   | {name} won met {count} runs             | `result.runs`; `.wickets` and `.innings_and_runs` the same, as the match centre.                  |
+| {name} won on the super over         | {name} ganó en el super over                | {name} a gagné au super over         | {name} won de super over                | `result.super_over`; `.boundary_count` "won on boundary count".                                   |
+| Match tied / Match drawn / No result | Empate / Partido inconcluso / Sin resultado | Égalité / Match nul / Aucun résultat | Gelijkspel / Onbeslist / Geen resultaat | `result.tie` / `.draw` / `.no_result`: no winner named.                                           |
+| Unlimited                            | Sin límite                                  | Illimité                             | Onbeperkt                               | `rules.overs.unlimited`: a format with no overs limit (two innings a side).                       |
+| Team sheet changed                   | Alineación cambiada                         | Composition modifiée                 | Opstelling gewijzigd                    | `event.lineup`: every `core.lineup.*` event's row.                                                |
+| Need {runs} off {count} balls        | Faltan {runs} en {count} bolas              | Besoin de {runs} en {count} balles   | Nog {runs} nodig uit {count} ballen     | `board.chase` (counted); `board.need` "Need {runs}" with no ball limit.                           |
+| On strike                            | Al bate                                     | Face au lanceur                      | Aan slag                                | `board.onStrike`: the striker's dot, as a screen reader names it.                                 |
+| Free hit / Over {number}             | Free hit / Over {number}                    | Free hit / Over {number}             | Free hit / Over {number}                | `board.freeHit`, `board.over`: the game's own words in all four.                                  |
+
+T19 device run D2/D3 (2026-11-09): the last-tap line says a pick made since the last tap, which no event records until
+the next ball carries it. `last.swap` "Strike swapped: {name} on strike" (es _Bateadores cambiados: {name} al bate_, fr
+_Batteurs échangés : {name} face au lanceur_ with a no-break space, nl _Nu aan slag: {name}_; es and nl are the shorter
+words that keep the line with a new bowler joined to it in three lines at 320). `last.begin.innings` "Innings {number}
+started" (_Entrada {number} iniciada_, _Manche {number} lancée_, _Innings {number} gestart_) and `last.begin.superOver`
+"Super over {number} started" (_Super over {number} iniciado_, _lancé_, _gestart_), with History's numbers. The next
+over's bowler says `last.bowlerChange`; with a hand swap too, the two join with `ball.and`.
+
+### Cricket setup words (S2-4 Task 10, 2026-11-08)
+
+The toss on the whole screen (owner ruling 83) and the setup before the first ball (`scoring.cricket.toss.*`,
+`scoring.cricket.setup.*`). The toss's question is the web's (`apps/web/src/dictionaries`, "Who won the toss?"); Bat and
+Bowl are the web's verbs ("Bat or bowl?": batear / lanzar, frapper / lancer, batten / bowlen), capitalised as buttons;
+Move up and Move down are the web's list words, as its "Move up: {item}". No native-speaker review of es, fr and nl is wanted (the owner, 2026-11-10: "No need").
+
+| English                        | Español                           | Français                          | Nederlands                     | Notes                                                                      |
+| ------------------------------ | --------------------------------- | --------------------------------- | ------------------------------ | -------------------------------------------------------------------------- |
+| Who won the toss?              | ¿Quién ganó el sorteo?            | Qui a gagné le tirage au sort ?   | Wie heeft de toss gewonnen?    | `toss.ask`: the web's words. fr has a no-break space before `?`.           |
+| {team} chose to…               | {team} eligió…                    | {team} a choisi de…               | {team} koos voor…              | `toss.chose`, over Bat and Bowl; "Team" (`toss.team`) until one is picked. |
+| Bat / Bowl                     | Batear / Lanzar                   | Frapper / Lancer                  | Batten / Bowlen                | `toss.bat`, `toss.bowl`: the web's verbs.                                  |
+| {team} batting order           | Orden de bateo de {team}          | Ordre de frappe de {team}         | Slagvolgorde van {team}        | `setup.order`; `setup.orderHint` says the first two open.                  |
+| Opener / Openers: {striker}, … | Abridor / Abridores: {striker}, … | Ouvreur / Ouvreurs : {striker}, … | Opener / Openers: {striker}, … | `setup.opener` (the plate), `setup.openers`.                               |
+| Move up: {name} / Move down    | Subir: {name} / Bajar             | Monter : {name} / Descendre       | Omhoog: {name} / Omlaag        | `setup.up`, `setup.down`: what a screen reader says for ▲ and ▼.           |
+| {team}: first bowler           | {team}: primer lanzador           | {team} : premier lanceur          | {team}: eerste bowler          | `setup.bowler`.                                                            |
+| Next / Back                    | Siguiente / Atrás                 | Suivant / Retour                  | Volgende / Terug               | `setup.next`, `setup.back`.                                                |
+
+### Cricket keys and extras (S2-4 Task 11, 2026-11-08)
+
+The pad's keys under the board and the extras sheets (`scoring.cricket.key.*`, `scoring.cricket.extras.*`,
+`scoring.cricket.wicket.how`). _Wide_, _No-ball_, _Bye_ and _Leg-bye_ are the game's own words in all four, as the
+History words. _Out_ follows the "{batter} out" row above; _More_ is table tennis's tool word; a run key says its number,
+and a screen reader the ball's words (`ball.dot`, `ball.runs`, `ball.four`, `ball.six`). No native-speaker review of es, fr and nl is wanted (the owner, 2026-11-10: "No need").
+
+| English     | Español              | Français          | Nederlands   | Notes                                                                       |
+| ----------- | -------------------- | ----------------- | ------------ | --------------------------------------------------------------------------- |
+| Out         | Eliminado            | Éliminé           | Uit          | `key.out`: the key that opens the wicket steps; `extras.out` is "+ Out".    |
+| More        | Más                  | Plus              | Meer         | `key.more`.                                                                 |
+| Runs run    | Carreras corridas    | Courses courues   | Gelopen runs | `extras.ran`: the group of runs the batters ran on a wide or a no-ball.     |
+| Off the bat | Con el bate          | Avec la batte     | Van het bat  | `extras.bat`: the no-ball's runs off the bat; `extras.runs` "Runs" a bye's. |
+| How out?    | ¿Cómo fue eliminado? | Éliminé comment ? | Hoe uit?     | `wicket.how`: the wicket's first step. fr has a no-break space before `?`.  |
+
+T19 fix 8 (2026-11-10), es, fr and nl: `extras.byesRun` (the no-ball sheet's run keys only) is
+_Byes run (not hit)_ / _Byes corridos (sin golpear)_ / _Byes courus (sans toucher)_ / _Byes gelopen (niet geraakt)_;
+`board.overLast` (the over strip when only the last balls show) is _Over 1 · last 6 of 10_ / _últimas 6 de 10_ / _6 dernières sur 10_ /
+_laatste 6 van 10_.
+
+### Cricket wicket steps (S2-4 Task 12, 2026-11-08)
+
+The wicket steps' titles, rows and notes (`scoring.cricket.wicket.*`). The kinds of dismissal
+(`scoring.cricket.wicket.kind.*`: _Bowled_, _Caught_, _LBW_, _Run out_, _Stumped_, _Hit wicket_, _Obstructing the
+field_, _Hit the ball twice_) are translated in es, fr and nl (fix 5, 2026-11-10: they had read in English; _Derribado_ /
+_Quilles renversées_, _Cogido_ / _Attrapé_, _Gestumpt_ …, as in the dictionaries), except _LBW_, the universal abbreviation,
+and nl _Run out_; they are capitalised for a row. The lower-case `out.kind.*` stay English for the History sentence. The striker's note is the board's _On strike_
+(`board.onStrike`). No native-speaker review of es, fr and nl is wanted (the owner, 2026-11-10: "No need").
+
+| English             | Español                   | Français                | Nederlands               | Notes                                                                           |
+| ------------------- | ------------------------- | ----------------------- | ------------------------ | ------------------------------------------------------------------------------- |
+| Who's out?          | ¿Quién está eliminado?    | Qui est éliminé ?       | Wie is uit?              | `wicket.who`: run out and obstructing only. fr has a no-break space before `?`. |
+| Fielder             | Jugador de campo          | Joueur de champ         | Veldspeler               | `wicket.fielder`: the step's title; a stumping offers the keeper.               |
+| Second fielder      | Segundo jugador           | Second joueur           | Tweede veldspeler        | `wicket.assist`: a run out's `fielderAssist`.                                   |
+| Runs completed      | Carreras completadas      | Courses complétées      | Voltooide runs           | `wicket.completed`: 0 to 3, in a row of keys under _Runs run_.                  |
+| Next batter         | Siguiente bateador        | Batteur suivant         | Volgende batter          | `wicket.incoming`.                                                              |
+| No fielder          | Sin jugador de campo      | Aucun joueur de champ   | Geen veldspeler          | `wicket.noFielder`: obstructing names none.                                     |
+| No second fielder   | Sin segundo jugador       | Pas de second joueur    | Geen tweede veldspeler   | `wicket.noAssist`.                                                              |
+| Already the fielder | Ya es el jugador de campo | Déjà le joueur de champ | Is al de veldspeler      | `wicket.isFielder`: why the fielder is greyed as the second.                    |
+| Retired not out     | Retirado, no eliminado    | Retiré, non éliminé     | Teruggetrokken, niet uit | `wicket.retired`: a retired batter who may resume.                              |
+| Non-striker         | Al otro extremo           | À l'autre bout          | Aan de overkant          | `wicket.nonStriker`.                                                            |
+| Next in order       | Siguiente en el orden     | Suivant dans l'ordre    | Volgende in de volgorde  | `wicket.nextInOrder`: the suggested batter (ruling 82).                         |
+
+### Cricket's next bowler, the change and More (S2-4 Task 13, 2026-11-08)
+
+The over-end sheet (`scoring.cricket.bowling.*`), More's mid-over change (`scoring.cricket.change.*`) and More's rows
+(`scoring.cricket.more.*`; More's title is the key's own word, `key.more`). _Over_ is the game's word in all four, as on
+the board. No native-speaker review of es, fr and nl is wanted (the owner, 2026-11-10: "No need").
+
+| English                                       | Español                                                | Français                                                     | Nederlands                                              | Notes                                                                                                                                          |
+| --------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------ | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Over {number} — next bowler                   | Over {number}: lanzador                                | Over {number} : lanceur                                      | Over {number}: bowler                                   | `bowling.title`: the over-end sheet. es, fr and nl drop "next" to keep "Over 50" on one line at 320 dp. fr: a no-break space before the colon. |
+| {team} bowling · figures O-M-R-W              | {team} lanza · cifras O-M-R-W                          | {team} au lancer · chiffres O-M-R-W                          | {team} bowlt · cijfers O-M-R-W                          | `bowling.body`: the fielding side, and how the figures read.                                                                                   |
+| Bowled the last over                          | Lanzó el último over                                   | A lancé le dernier over                                      | Bowlde de vorige over                                   | `bowling.lastOver`: a greyed bowler's reason (either bowler of a split over too).                                                              |
+| Out of overs ({max})                          | Sin overs ({max})                                      | Plus d'overs ({max})                                         | Geen overs meer ({max})                                 | `bowling.outOfOvers`: the other reason, with the format's quota.                                                                               |
+| Nobody can bowl this over. Ask the organiser. | Nadie puede lanzar este over. Pregunta al organizador. | Personne ne peut lancer cet over. Demandez à l'organisateur. | Niemand mag deze over bowlen. Vraag het de organisator. | `bowling.none`: nobody may bowl the over (a short side under a quota).                                                                         |
+| Who finishes the over?                        | ¿Quién termina el over?                                | Qui termine l'over ?                                         | Wie maakt de over af?                                   | `change.title`: More's mid-over change, its first step. fr: a no-break space before `?`.                                                       |
+| Why the change?                               | ¿Por qué el cambio?                                    | Pourquoi ce changement ?                                     | Waarom de wissel?                                       | `change.why`: its second step. fr: a no-break space before `?`.                                                                                |
+| Injured or ill                                | Lesionado o enfermo                                    | Blessé ou malade                                             | Geblesseerd of ziek                                     | `incapacitated` in the engine's words.                                                                                                         |
+| Suspended                                     | Suspendido                                             | Suspendu                                                     | Geschorst                                               |                                                                                                                                                |
+| Other                                         | Otro                                                   | Autre                                                        | Anders                                                  |                                                                                                                                                |
+| Change bowler (injury)                        | Cambiar lanzador (lesión)                              | Changer de lanceur (blessure)                                | Bowler wisselen (blessure)                              | `more.change`: ruling 84's words.                                                                                                              |
+| Swap strike                                   | Intercambiar bateadores                                | Échanger les batteurs                                        | Slag wisselen                                           | `more.swap`: the crease reversed for the next ball.                                                                                            |
+
+### Cricket's Players sheet (S2-4 Task 14, 2026-11-08)
+
+The sheet from a tap on the board (`scoring.cricket.players.*`; rulings 77 and 78). Its ▲▼ say the setup's words
+(`setup.up`, `setup.down`); Close is `panel.close`. No native-speaker review of es, fr and nl is wanted (the owner, 2026-11-10: "No need").
+
+| English                            | Español                                   | Français                               | Nederlands                                  | Notes                                                                                              |
+| ---------------------------------- | ----------------------------------------- | -------------------------------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Players                            | Jugadores                                 | Joueurs                                | Spelers                                     | `players.title`: the sheet from a tap on the board.                                                |
+| Batting                            | Bateo                                     | Frappe                                 | Batten                                      | `players.batting`: a tab.                                                                          |
+| Bowling                            | Lanzamiento                               | Lancer                                 | Bowlen                                      | `players.bowling`: a tab.                                                                          |
+| Not out · {runs} ({balls})         | No eliminado · {runs} ({balls})           | Non éliminé · {runs} ({balls})         | Niet uit · {runs} ({balls})                 | `players.in`: a batter at the crease.                                                              |
+| Out, {how} · {runs} ({balls})      | Eliminado, {how} · {runs} ({balls})       | Éliminé, {how} · {runs} ({balls})      | Uit, {how} · {runs} ({balls})               | `players.out`: `{how}` is `out.kind.*`, the engine's word, English in all four. Two lines at most. |
+| Out · {runs} ({balls})             | Eliminado · {runs} ({balls})              | Éliminé · {runs} ({balls})             | Uit · {runs} ({balls})                      | `players.outPlain`: a dismissal the scorecard does not name.                                       |
+| Retired not out · {runs} ({balls}) | Retirado, no eliminado · {runs} ({balls}) | Retiré, non éliminé · {runs} ({balls}) | Teruggetrokken, niet uit · {runs} ({balls}) | `players.retired`: as `wicket.retired`.                                                            |
+| Yet to bat                         | Por batear                                | En attente                             | Moet nog batten                             | `players.yet`: fr "waiting", short enough beside ▲▼ at 320 dp.                                     |
+| {figures} · {why}                  | {figures} · {why}                         | {figures} · {why}                      | {figures} · {why}                           | `players.cannot`: O-M-R-W, then `bowling.lastOver` or `bowling.outOfOvers`.                        |
+| {figures} · {count} over(s) left   | {figures} · le queda(n) {count} over(s)   | {figures} · {count} over(s) restant(s) | {figures} · nog {count} over(s)             | `players.figures.one` / `.other`: O-M-R-W and the overs left of the quota.                         |
+
+### Cricket's More (S2-4 Task 15, 2026-11-08)
+
+More's rows beyond Task 13's (`scoring.cricket.more.*`) and their steps (`other.*`, `retire.*`, `review.*`, `confirm.*`,
+`closing.*`, `powerplay.*`, `interruption.*`, `revise.*`, `entry.*`). Titles are one line at 320 dp in all four, so
+several are shorter than their row (es and fr `other.title`, nl `review.by`). _Powerplay_, _follow-on_, _over_ and
+_review_ (nl) are the game's own words. fr has a no-break space before `?`. No native-speaker review of es, fr and nl is wanted (the owner, 2026-11-10: "No need").
+
+| English                 | Español                       | Français                    | Nederlands                 | Notes                                                                                                                    |
+| ----------------------- | ----------------------------- | --------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Other runs and penalty  | Otras carreras y penalización | Autres courses et pénalité  | Andere runs en straf       | `more.otherRuns`: More's first row (ruling 79); `other.title` its step, shorter in es and fr to keep one line at 320 dp. |
+| {runs} all run          | {runs} corridas               | {runs} courues              | {runs} gelopen             | `other.ran`: 4 or 6 run, no boundary.                                                                                    |
+| +{runs} penalty runs    | +{runs} de penalización       | +{runs} courses de pénalité | +{runs} strafruns          | `other.penalty`: the row and the step's title (Law 41.2.1's five); then `extras.bat` 0-6.                                |
+| Retire a batter         | Retirar a un bateador         | Retirer un batteur          | Batter terugtrekken        | `more.retire`; `retire.who`, `retire.why`, then `wicket.incoming`.                                                       |
+| Retired hurt            | Retirado lesionado            | Retiré blessé               | Geblesseerd teruggetrokken | `retire.reason.*`: hurt, out (a wicket, Law 25.4.3), other.                                                              |
+| Review                  | Revisión                      | Révision                    | Review                     | `more.review`; `review.by` (a side), `review.kind`, `review.outcome`.                                                    |
+| Struck down             | Rechazada                     | Rejetée                     | Afgewezen                  | `review.outcome.*`: upheld, struck down (a review lost), umpire's call.                                                  |
+| No reviews left         | Sin revisiones                | Plus de révisions           | Geen reviews meer          | `review.noneLeft`: why a player review is greyed (`cfg.reviews`).                                                        |
+| Nobody left to walk in  | No queda nadie por entrar     | Plus personne pour entrer   | Geen batter meer over      | `retire.nobody`: why retired hurt or other is greyed: nobody can replace the batter, so the engine refuses.              |
+| Start a powerplay       | Iniciar un powerplay          | Lancer un powerplay         | Powerplay starten          | `more.powerplay` / `more.powerplayEnd`; `powerplay.kind.*` as the Players tabs.                                          |
+| Rain or bad light       | Lluvia o mala luz             | Pluie ou mauvaise lumière   | Regen of slecht licht      | `more.interruption`; `interruption.title` asks the kind, then `interruption.lost`, typed.                                |
+| Revised overs or target | Overs u objetivo revisados    | Overs ou objectif révisés   | Herziene overs of doel     | `more.revise`; `revise.overs`, `revise.target`, typed, never computed.                                                   |
+| Close the innings       | Cerrar la entrada             | Clore la manche             | Innings sluiten            | `more.close`; `closing.title` asks time, weather or other.                                                               |
+| Close as a draw?        | ¿Partido inconcluso?          | Clore le match nul ?        | Onbeslist sluiten?         | `confirm.*.title` / `.do`: Declare, New ball, Follow-on and the draw ask once.                                           |
+| Record                  | Registrar                     | Enregistrer                 | Vastleggen                 | `entry.record`: the typed numbers' button.                                                                               |
+
+### Cricket's innings break and Start innings (S2-4 Task 16, 2026-11-09)
+
+The break's card over the next innings' setup (`scoring.cricket.break.*`) and its last button (`setup.startInnings`).
+_Super over_ is the game's word in all four, as in History; _innings_ is the History word (entrada, manche, innings).
+Start innings is one line in its button at 320 dp, so fr is _Débuter la manche_ (_Commencer la manche_ takes two). The
+card's line joins the innings closed and what the next one needs (`break.line`, "{closed} · {next}"; `break.closed`
+"{team} {score} ({overs} ov)" is the same in all four). No native-speaker review of es, fr and nl is wanted (the owner, 2026-11-10: "No need").
+
+| English                                | Español                                      | Français                                      | Nederlands                                     | Notes                                                                                          |
+| -------------------------------------- | -------------------------------------------- | --------------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Innings break                          | Descanso entre entradas                      | Pause entre les manches                       | Inningspauze                                   | `break.title`: the card over a later innings' setup.                                           |
+| Tied — super over                      | Empate — super over                          | Égalité — super over                          | Gelijk — super over                            | `break.tied`: a tie's super over; `break.superOver` "Super over" its second innings.           |
+| {team} need {target} off {count} balls | A {team} le faltan {target} en {count} bolas | {team} a besoin de {target} en {count} balles | {team} heeft {target} nodig uit {count} ballen | `break.chase` (counted); `break.need` with no ball limit. Shown before the chase's first ball. |
+| {team} lead by {count} runs            | {team} lidera por {count} carreras           | {team} mène de {count} courses                | {team} staat {count} runs voor                 | `break.lead` (counted): two innings a side, the main innings' runs.                            |
+| Scores level                           | Empate a carreras                            | Égalité de courses                            | Gelijke stand                                  | `break.level`.                                                                                 |
+| Start innings                          | Empezar entrada                              | Débuter la manche                             | Innings starten                                | `setup.startInnings`: records nothing; the picks ride the first ball.                          |
+
+T19 device run D12 (2026-11-09): a tied super over's card names the one that comes next, `break.tiedAgain` "Tied again —
+super over {number}" (es _Nuevo empate — super over {number}_, fr _Encore égalité · super over {number}_, nl _Weer gelijk — super over
+{number}_), and every tie's card line gives both sides' scores (`break.line` joining two `break.closed`). History, the
+board and Match details number the super over, not its innings: 1, 1, 2, 2, 3. T19 M1: a break title is one line at 320
+dp (288 dp column) at one digit and at 12, so es is _Nuevo empate_ (277.3 dp at 12; _Empate de nuevo_ took 303.9) and fr
+keeps _Encore égalité_ but with a middle dot for the dash (281.9 dp at 12; with the dash it takes 290.0, and _Nouvelle
+égalité_ 310.9). _Encore égaux — super over_ (275.3 dp) is the alternative that keeps the dash; not taken.
+
+### Cricket over totals (S2-4 Task 17, 2026-11-09)
+
+The entry for a side whose players are not entered (`scoring.cricket.totals.*`; spec §4.10, rulings 66 and 74). _Over_ is
+the game's word in all four, as in History and the board. The note above the entry is the spec's wording; the organiser
+decides a tied super over (_el organizador_, _l'organisateur_, _de organisator_ as in the toss words). A stepper's spoken
+label counts ("1 more"): numerals, never the gendered _una_ / _un_, and fr keeps the no-break space before the colon.
+No native-speaker review of es, fr and nl is wanted (the owner, 2026-11-10: "No need").
+
+| English                                     | Español                                            | Français                                       | Nederlands                                         | Notes                                                                           |
+| ------------------------------------------- | -------------------------------------------------- | ---------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Players not entered — ask the organiser     | Jugadores sin introducir — pregunta al organizador | Joueurs non saisis — demandez à l'organisateur | Spelers niet ingevoerd — vraag het de organisator  | `totals.noPlayers`: the note over the entry while a side has no players.        |
+| This innings stays in over totals           | Esta entrada sigue en totales por over             | Cette manche reste en totaux par over          | Deze innings blijft in overtotalen                 | `totals.stays`: players entered mid-innings; the ball pad returns next innings. |
+| Tied — the organiser decides the super over | Empate — el organizador decide el super over       | Égalité — l'organisateur décide du super over  | Gelijk — de organisator beslist over de super over | `totals.tied`: a tie with a super over in the rules and nobody to bat it.       |
+| Over {number} totals                        | Totales del over {number}                          | Totaux de l'over {number}                      | Totalen van over {number}                          | `totals.title`: the entry's heading, and the sheet's title.                     |
+| Runs / Wickets / Balls                      | Carreras / Wickets / Bolas                         | Courses / Wickets / Balles                     | Runs / Wickets / Ballen                            | `totals.runs`, `.wickets`, `.balls`: the three fields (legal balls).            |
+| {field}: 1 fewer / {field}: 1 more          | {field}: 1 menos / {field}: 1 más                  | {field} : 1 de moins / {field} : 1 de plus     | {field}: 1 minder / {field}: 1 meer                | `totals.less`, `.more`: a stepper's spoken label, never drawn.                  |
+| Record over                                 | Registrar over                                     | Enregistrer l'over                             | Over vastleggen                                    | `totals.record`: the plate; sends the innings' running totals.                  |
+
+### Cricket's scorecard and the shortened toss (S2-4 Task 18, 2026-11-09)
+
+The scorecard under Match details (`scoring.cricket.card.*`; spec §4.9). Its section names are Players' tabs
+(`players.batting`, `players.bowling`); its innings titles are History's (`history.innings`, `history.superOver`); a
+dismissal's kind is `out.kind.*`, which stays English in all four, as in the web's scorecards. The extras' letters (_w_,
+_nb_, _b_, _lb_, _pen_) and _ov_ are the scorebook's own in all four, and so is the _b_ before the bowler. _Declared_ and
+the did-not-bat line follow the score-sheet convention in each language. Task 18 also shortened the toss sentence in fr
+and nl (`last.toss.bat` / `.bowl`: fr "{name} gagne le tirage : frappe", nl "{name} won de toss: batten"), because a
+thirty-character club's name took three lines in a History row and four in the last-tap line at 320 dp
+(`cricketFit.test.ts`); en and es are unchanged and still run to a third line in a History row at 320, which wraps
+there rather than cutting it: cricket's History rows have no line cap (the controller's ruling, 2026-11-09, the same
+task's fix round). No native-speaker review of es, fr and nl is wanted (the owner, 2026-11-10: "No need").
+
+| English                                | Español                                 | Français                              | Nederlands                                 | Notes                                                                                                        |
+| -------------------------------------- | --------------------------------------- | ------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| {runs}/{wickets} · {overs} ov          | {runs}/{wickets} · {overs} ov           | {runs}/{wickets} · {overs} ov         | {runs}/{wickets} · {overs} ov              | `card.total`: an innings' total under its title.                                                             |
+| {runs}/{wickets} declared · {overs} ov | {runs}/{wickets} declarado · {overs} ov | {runs}/{wickets} déclaré · {overs} ov | {runs}/{wickets} gedeclareerd · {overs} ov | `card.declared`: an innings the batting side declared.                                                       |
+| {runs} ({balls})                       | {runs} ({balls})                        | {runs} ({balls})                      | {runs} ({balls})                           | `card.score`: a batter's runs and the balls faced.                                                           |
+| not out / out                          | no eliminado / eliminado                | non éliminé / éliminé                 | niet uit / uit                             | `card.notOut`, `card.out` (a dismissal the ledger gives no kind for).                                        |
+| {how} · b {bowler}                     | {how} · b {bowler}                      | {how} · b {bowler}                    | {how} · b {bowler}                         | `card.bowledBy`: the kind and fielders, then the bowler credited.                                            |
+| Did not bat: {names}                   | No batearon: {names}                    | N'ont pas frappé : {names}            | Niet gebat: {names}                        | `card.didNotBat`: the starters yet to bat when the innings closed; fr has a no-break space before the colon. |
+| Extras {total} (w, nb, b, lb)          | Extras {total} (w, nb, b, lb)           | Extras {total} (w, nb, b, lb)         | Extra's {total} (w, nb, b, lb)             | `card.extras`; `card.extrasPen` adds ", pen {penalties}" when a penalty was awarded.                         |
+| {wicket}-{runs} ({batter}, {over} ov)  | {wicket}-{runs} ({batter}, {over} ov)   | {wicket}-{runs} ({batter}, {over} ov) | {wicket}-{runs} ({batter}, {over} ov)      | `card.fall`: one wicket; they join with ", " in one line.                                                    |
+| Fall of wickets                        | Caída de wickets                        | Chute des wickets                     | Gevallen wickets                           | `card.fallTitle`: the section's heading.                                                                     |
+
+### Cricket's board, tie cards and result summary (S2-4 T19 fixes, 2026-11-09 to 2026-11-10)
+
+Words added after the device runs (`scoring.cricket.board.*`, `break.tied*`, `extras.byesRun`). _Over_, _Free hit_ and
+_Super over_ are the game's own words in all four. A dismissal kind in the summary is `out.kind.*`. No native-speaker review
+of es, fr and nl is wanted (the owner, 2026-11-10: "No need").
+
+| English                                              | Español                                                  | Français                                                    | Nederlands                                              | Notes                                                                                                                                           |
+| ---------------------------------------------------- | -------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Innings {number} / Super over {number}               | Entrada {number} / Super over {number}                   | Manche {number} / Super over {number}                       | Innings {number} / Super over {number}                  | `board.innings`, `board.superOver`: the board's line for the innings in play; a super over is numbered 1, 1, 2, 2 (D12).                        |
+| {innings} ({chase})                                  | {innings} ({chase})                                      | {innings} ({chase})                                         | {innings} ({chase})                                     | `board.joined`: the chase joins the innings line when height is short (fix 6), "Super over 2 (Need 6 off 4 balls)".                             |
+| Over {number} · last {shown} of {total}              | Over {number} · últimas {shown} de {total}               | Over {number} · {shown} dernières sur {total}               | Over {number} · laatste {shown} van {total}             | `board.overLast`: the over strip when an over of more than six deliveries shows only the last six (fix 8). Widest is fr.                        |
+| Byes run (not hit)                                   | Byes corridos (sin golpear)                              | Byes courus (sans toucher)                                  | Byes gelopen (niet geraakt)                             | `extras.byesRun`: the no-ball sheet's run keys only; the ball missed the bat, the batters ran.                                                  |
+| Top bat                                              | Mejor bateador                                           | Meilleur batteur                                            | Beste slagman                                           | `board.summary.top`: the result summary's highest scorer in the innings (fix 10).                                                               |
+| Best bowl                                            | Lanzador                                                 | Lanceur                                                     | Bowler                                                  | `board.summary.best`: the best bowling figures. es, fr and nl drop "best" to fit 320 dp (fix 11); the row is the figures themselves.            |
+| Extras {total}                                       | Extras {total}                                           | Extras {total}                                              | Extra's {total}                                         | `board.summary.extrasNone`: an innings with no extras reads "Extras 0" (fix 11); `card.extras` adds the letters when there were some.           |
+| Tied — super over / Tied again — super over {number} | Empate — super over / Nuevo empate — super over {number} | Égalité — super over / Encore égalité · super over {number} | Gelijk — super over / Weer gelijk — super over {number} | `break.tied`, `break.tiedAgain`: the tie card names which super over comes next (D12). fr uses a middle dot for the second dash, to fit 320 dp. |
+
 ## App settings (2026-11-02)
 
 The app's own Settings, from the gear in Home's top-right corner (owner, 2026-11-02: "we should have common setting in a top

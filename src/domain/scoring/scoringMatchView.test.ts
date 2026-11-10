@@ -523,13 +523,13 @@ describe('the last-tap line', () => {
       { kind: 'tap', tap: { kind: 'rally', side: 'second' }, key: 'k2', at: AT },
       NOW,
     ).state;
-    expect(padOf(moved).view.lastTap?.text.key).toBe('scoring.badminton.last.rally');
+    expect(padOf(moved).view.lastTap?.text?.key).toBe('scoring.badminton.last.rally');
     const grown = step(
       undone,
       { kind: 'fetched', events: ledgerOf([start(), rally('A')]).slice(1) },
       NOW,
     ).state;
-    expect(padOf(grown).view.lastTap?.text.key).not.toBe('scoring.badminton.undone.rally');
+    expect(padOf(grown).view.lastTap?.text?.key).not.toBe('scoring.badminton.undone.rally');
   });
 });
 
@@ -538,6 +538,16 @@ describe('the Start screen’s pick', () => {
     const before = ready({ toss: 'second' }, []);
     expect(padOf(before).toss).toBe('second');
     expect(padOf(ready({ toss: 'second' })).toss).toBeNull();
+  });
+});
+
+// A sport's pad hook writes a pick over the picks held (S2-4 plan Task 3): the pad hands them to it as they stand.
+describe('the pending picks', () => {
+  it('are the pad’s, as the match holds them, started or not', () => {
+    const picks = { 'order.first': ['p-sharma'] };
+    expect(padOf(ready({ picks }, [])).picks).toBe(picks);
+    expect(padOf(ready({ picks })).picks).toBe(picks);
+    expect(padOf(ready()).picks).toStrictEqual({});
   });
 });
 

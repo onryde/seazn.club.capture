@@ -2,8 +2,9 @@ import type { SportFoldInput } from '@/domain/scoring/scoringSport';
 
 /**
  * A sport's fold, remembered (plan S2-1 Task 9: "the fold is memoized"). A tap, the display, Undo and the history all
- * fold the same ledger, queue and pick: one fold answers them while none of the five has moved, however many callers
- * ask. One entry, by what the fold reads: the lists by their members, the rest by identity.
+ * fold the same ledger, queue, pick and pending picks: one fold answers them while none of the six has moved, however
+ * many callers ask. One entry, by what the fold reads: the lists by their members, the rest by identity (an equal set
+ * of pending picks is the same object: the reducer keeps it, `onSetPicks`).
  *
  * A sport wraps its own fold with it (`badmintonSport.fold`), so the entry is that sport's, typed by it. Pure but for
  * the entry it keeps: a fold is a function of its input, so a hit is the answer a fresh fold would give.
@@ -26,6 +27,7 @@ const sameList = <T>(a: readonly T[], b: readonly T[]): boolean =>
 const sameInput = (a: SportFoldInput, b: SportFoldInput): boolean =>
   a.bootstrap === b.bootstrap &&
   a.toss === b.toss &&
+  a.picks === b.picks &&
   sameList(a.ledger, b.ledger) &&
   sameList(a.queued, b.queued) &&
   sameList(a.ownEventIds, b.ownEventIds);

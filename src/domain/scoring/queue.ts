@@ -1,4 +1,5 @@
 import type { PadSide } from '@/domain/scoring/padView';
+import type { PendingPicks } from '@/domain/scoring/pendingPicks';
 import type { Bootstrap } from '@/domain/scoring/wire';
 
 /**
@@ -127,11 +128,13 @@ export function keptStillMine(leftAt: number, now: number): boolean {
 
 /**
  * What a reopened match needs before the network answers (plan S2-1 Task 9): the bootstrap last read, with the rules
- * the phone has adopted since (`cfg` and `rulesVersion` are the current ones), and the side the scorer picked to
- * serve first, which the match's first rally carries until a rally stands. No secret: the link's token is the secure
- * store's.
+ * the phone has adopted since (`cfg` and `rulesVersion` are the current ones), the side the scorer picked to
+ * serve first, which the match's first rally carries until a rally stands, and the scorer's pending picks (S2-4 plan
+ * Task 3: cricket's batting order, openers and next bowler), kept until a tap carries them. No secret: the link's token
+ * is the secure store's.
  */
 export type BootCache = {
   readonly bootstrap: Bootstrap;
   readonly toss: PadSide | null;
+  readonly picks: PendingPicks;
 };

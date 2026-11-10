@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import { StrictMode, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PadStateCard, PadView } from '@/domain/scoring/padView';
+import { NO_PICKS } from '@/domain/scoring/pendingPicks';
 import { PortsProvider, type Ports } from '@/hooks/usePorts';
 import { useUndoWindow } from '@/hooks/useUndoWindow';
 import type { MatchPad } from '@/domain/scoring/scoringMatchView';
@@ -66,6 +67,7 @@ function padWith(card: PadStateCard | null, lastTap: PadView<'k.x'>['lastTap'] =
     history: [],
     line: null,
     toss: null,
+    picks: NO_PICKS,
     ask: null,
     decidedAt: null,
   };

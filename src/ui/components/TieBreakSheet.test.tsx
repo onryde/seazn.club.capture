@@ -2,12 +2,14 @@ import { act, fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import en from '@/i18n/en.json';
 import { TieBreakSheet } from '@/ui/components/TieBreakSheet';
+import { colour, layout } from '@/ui/theme/tokens';
+import { edgeOf } from '../../../test/pressState';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
 // The sheet of the tie-break steps (S2-3b Task 2): a title, a line of what the step means (the player who advances, the
 // lots hint), the choices as rows that move on or as chips of which one is picked, and Cancel; Record only where the caller
-// gives it a label. It sends nothing itself. The lime fill of a picked chip, the wrap at 320 dp and how the sheet sits over
-// the pad are the device check's.
+// gives it a label. It sends nothing itself. How a picked chip's heavier lime border reads, the wrap at 320 dp and how the
+// sheet sits over the pad are the device check's.
 
 const ROWS = [
   { id: 'rapid', label: 'Rapid' },
@@ -118,5 +120,24 @@ describe('TieBreakSheet, always', () => {
     render();
     expect(screen.getByTestId('tiebreak-sheet').getAttribute('aria-modal')).toBe('true');
     expect(screen.getByTestId('tiebreak-dim').getAttribute('aria-hidden')).toBe('true');
+  });
+});
+
+// Owner rulings 82 and 85 (2026-11-07): the tie-break's rows are the step sheet's (`StepRow`), so they take its lime
+// border; its chips are How's. jsdom reads the tokens; how they read on a phone is the device check's (plan Task 19).
+describe('TieBreakSheet rows (rulings 82, 85)', () => {
+  it('a tie-break row has the lime border', () => {
+    render();
+    const row = getComputedStyle(screen.getByRole('button', { name: 'Blitz' }));
+    expect([row.borderTopColor, row.borderTopWidth]).toEqual([
+      edgeOf(colour.lime),
+      `${layout.iconBorder}px`,
+    ]);
+  });
+
+  it('a tie-break chip has the lime border', () => {
+    render({ layout: 'chips', options: [{ id: 'none', label: 'No score' }] });
+    const chip = getComputedStyle(screen.getByRole('radio', { name: 'No score' }));
+    expect(chip.borderTopColor).toBe(edgeOf(colour.lime));
   });
 });

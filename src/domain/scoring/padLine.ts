@@ -26,6 +26,7 @@ export type PadLineKey =
   | 'scoring.refusal.notCounted'
   | 'scoring.refusal.notSaved'
   | 'scoring.refusal.savePending'
+  | 'scoring.refusal.choiceNotSaved'
   | 'scoring.pad.countedOnce'
   | 'scoring.pad.otherScorerSince'
   | 'scoring.pad.undoWaiting';

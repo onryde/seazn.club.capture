@@ -41,11 +41,17 @@ export const START_TAP = 'start';
 
 /** A tap the pad counted: which, when, and whether its control left the screen with it (`opening`). */
 type Counted = { readonly tap: string; readonly at: number; readonly opens: boolean };
-type Once = (tap: string, make: () => PadOutcome, opens?: boolean) => boolean;
+type Once = (tap: string, make: () => PadOutcome, opens?: boolean, quiet?: boolean) => boolean;
 /** A tap whose control leaves the screen with it, through the bounce memory (`useTaps`): whether it counted. */
 export type Opening = (tap: string, make: () => PadOutcome) => boolean;
 /** The window of such a tap and nothing else (`useTaps`' `arm`): no tap is made and the line is left as it was. */
 export type Arm = (tap: string) => void;
+/**
+ * A choice the phone keeps (a pending pick: the batting order's ▲▼, the next bowler), through the bounce memory
+ * (`useTaps`' `choose`): once for a repeat inside the window, as a point, but a choice kept leaves the line as it was.
+ * It is no news, and a failure standing there ("Couldn't save your choice") stays until a save lands (AGENTS §6).
+ */
+export type Choose = (tap: string, make: () => PadOutcome) => void;
 
 /**
  * A tap on a half and Undo: each counts once for a repeat within the bounce window (`bounce.ts`) of its own last
@@ -75,6 +81,7 @@ export function useTaps(
   );
   const undo = useCallback(() => void once('undo', () => pad.undo()), [once, pad]);
   const opening = useCallback<Opening>((tap, make) => once(tap, make, true), [once]);
+  const choose = useCallback<Choose>((tap, make) => void once(tap, make, false, true), [once]);
   const arm = useCallback<Arm>(
     (tap) => {
       last.current = { tap, at: clock().getTime(), opens: true };
@@ -88,14 +95,15 @@ export function useTaps(
     return true;
   }, [clock, say]);
   return useMemo(
-    () => ({ tapHalf, point, undo, opening, arm, secondTouch }),
-    [tapHalf, point, undo, opening, arm, secondTouch],
+    () => ({ tapHalf, point, undo, opening, arm, secondTouch, choose }),
+    [tapHalf, point, undo, opening, arm, secondTouch, choose],
   );
 }
 
 /**
  * Counts a tap once (`useTaps`): a repeat within the window of the last tap counted, or any tap within the window of
- * an opening one, is not made, and the line says "Counted once". A refused tap arms nothing.
+ * an opening one, is not made, and the line says "Counted once". A refused tap arms nothing. A `quiet` one (`choose`)
+ * that counts leaves the line as it was.
  */
 function useOnce(
   last: RefObject<Counted | null>,
@@ -104,7 +112,7 @@ function useOnce(
 ): Once {
   const { clock } = usePorts();
   return useCallback(
-    (tap, make, opens = false) => {
+    (tap, make, opens = false, quiet = false) => {
       const at = clock().getTime();
       const prior = last.current;
       const repeat = prior !== null && (prior.tap === tap || prior.opens);
@@ -113,7 +121,8 @@ function useOnce(
         return false;
       }
       const outcome = make();
-      settle(outcome);
+      // A quiet choice that was kept says nothing: the line keeps what it said.
+      if (!quiet || !outcome.ok) settle(outcome);
       if (outcome.ok) last.current = { tap, at, opens };
       return outcome.ok;
     },

@@ -1,12 +1,15 @@
-import { act, fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import en from '@/i18n/en.json';
 import { HowSheet } from '@/ui/components/HowSheet';
+import { colour, layout, plateInk, pressedOpacity } from '@/ui/theme/tokens';
+import { pressIn, pressOut } from '../../../test/press';
+import { edgeOf, fillOf, paintOf } from '../../../test/pressState';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
 // The sheet that asks How a game ended (plan S2-3 Task 3): a title, the methods as one choice among them or none, Record
-// and Cancel. It sends nothing itself; the caller holds the pick. The lime fill of the picked chip, the wrap of the chips
-// at 320 dp and how the sheet sits over the pad are the device check's.
+// and Cancel. It sends nothing itself; the caller holds the pick. How the picked chip's lime plate reads, the wrap
+// of the chips at 320 dp and how the sheet sits over the pad are the device check's.
 
 const OPTIONS = [
   { id: 'checkmate', label: 'Checkmate' },
@@ -95,5 +98,52 @@ describe('HowSheet', () => {
     render({ options: [] });
     expect(screen.queryAllByRole('radio')).toEqual([]);
     expect(screen.getAllByRole('button')).toHaveLength(2);
+  });
+});
+
+// Owner rulings 82 and 85 (2026-11-07): How's methods are rows that take a tap, as every sport's sheets have them: a lime
+// border (the shared row style, `sheetRow.ts`). A tap only picks one and Record sends, so the picked one is the lime
+// plate with night ink and the heavier border (T19 D11, the controller's ruling). jsdom reads the tokens; how they read
+// on a phone is the device check's.
+describe('HowSheet rows (rulings 82, 85; T19 D11)', () => {
+  it('a How row has the lime border, and the picked one the lime plate with night ink', () => {
+    render({ picked: 'resign' });
+    const plain = getComputedStyle(screen.getByRole('radio', { name: 'Time' }));
+    expect([plain.borderTopColor, plain.borderTopWidth]).toEqual([
+      edgeOf(colour.lime),
+      `${layout.iconBorder}px`,
+    ]);
+    const chip = screen.getByRole('radio', { name: 'Resignation' });
+    const picked = getComputedStyle(chip);
+    expect([
+      picked.borderTopColor,
+      picked.borderTopWidth,
+      picked.backgroundColor,
+      getComputedStyle(within(chip).getByText('Resignation')).color,
+    ]).toEqual([
+      edgeOf(colour.lime),
+      `${layout.iconBorderOn}px`,
+      fillOf(colour.lime),
+      edgeOf(plateInk),
+    ]);
+    expect(
+      getComputedStyle(within(screen.getByRole('radio', { name: 'Time' })).getByText('Time')).color,
+    ).toBe(edgeOf(colour.ink));
+  });
+
+  // T19 M2: the shared row's press. A held picked chip dims its plate (the press fill would put night ink on a dark
+  // fill); a held plain chip takes the press fill. The look on a phone, outdoors, is the device check's.
+  it('a held picked chip dims its lime plate; a held plain chip takes the press fill', () => {
+    render({ picked: 'resign' });
+    const chip = () => screen.getByRole('radio', { name: 'Resignation' });
+    const resting = paintOf(chip());
+    pressIn(chip());
+    expect(paintOf(chip())).toEqual({ ...resting, opacity: String(pressedOpacity.plate) });
+    expect(resting.fill).toBe(fillOf(colour.lime));
+    pressOut(chip());
+    const plain = () => screen.getByRole('radio', { name: 'Time' });
+    pressIn(plain());
+    expect(paintOf(plain()).fill).toBe(fillOf(colour.pressFill));
+    pressOut(plain());
   });
 });

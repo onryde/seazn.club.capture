@@ -12,7 +12,30 @@ import type { MatchContext } from '@/domain/scoring/matchContext';
 export type BootstrapScreen = 'viewOnly' | 'divisionNotStarted' | 'waiting' | 'confirm' | 'pad';
 
 export type BootstrapMember = { readonly personId: string; readonly fullName: string };
-export type BootstrapSlot = { readonly personId: string; readonly pairOrder: number | null };
+
+/** Where a team-sheet row sits: on the pitch from the start, or on the bench (the web's `lineups.slot`). */
+export type SlotKind = 'starting' | 'bench';
+/** Who a team-sheet row is (the web's `lineups.role`, V357: `check (role in ('player', 'coach', 'staff'))`). */
+export type SlotRole = 'player' | 'coach' | 'staff';
+
+/**
+ * One lineup row. `pairOrder` is every sport's; the rest is the team sheet (S2-5 design §10), each field a key only when
+ * the wire has a value for it, as the web's own loader leaves a field out unless it adds information: an older web
+ * sends none of them, and a set-based sport reads none.
+ */
+export type BootstrapSlot = {
+  readonly personId: string;
+  readonly pairOrder: number | null;
+  readonly slot?: SlotKind;
+  readonly positionKey?: string;
+  /** Whole, from 1. */
+  readonly orderNo?: number;
+  readonly role?: SlotRole;
+  /** Never empty, and no entry is empty. */
+  readonly roles?: readonly string[];
+  /** The shirt number: whole, from 0. */
+  readonly squadNumber?: number;
+};
 
 export type BootstrapSide = {
   readonly entrantId: string;
@@ -154,6 +177,9 @@ const SCREENS: ReadonlyMap<string, BootstrapScreen> = new Map([
 
 const LINK_DEAD_CODES: readonly LinkDeadCode[] = ['LINK_INVALID', 'LINK_REVOKED', 'LINK_EXPIRED'];
 
+const SLOT_KINDS: readonly SlotKind[] = ['starting', 'bench'];
+const SLOT_ROLES: readonly SlotRole[] = ['player', 'coach', 'staff'];
+
 // ---------------------------------------------------------------------------------------------------------------
 // Readers: each answers the value or `undefined`, so a parser says "garbled" with one comparison.
 // ---------------------------------------------------------------------------------------------------------------
@@ -173,6 +199,19 @@ const textOrNull = (value: unknown): string | null | undefined => {
   if (typeof value !== 'string') return undefined;
   return value === '' ? null : value;
 };
+
+/** One of `words`, or `undefined`: never a word of Object's own. */
+const wordOf = <W extends string>(words: readonly W[], value: unknown): W | undefined =>
+  words.find((word) => word === value);
+
+/**
+ * A field the web may leave out: absent or null is null (no key), anything else is `read`'s answer, so a value of the
+ * wrong shape is garbled (`undefined`).
+ */
+const optional = <T>(
+  value: unknown,
+  read: (value: unknown) => T | undefined,
+): T | null | undefined => (value === null || value === undefined ? null : read(value));
 
 /** Every item read, or `undefined` when the value is no list or one item is garbled. */
 function listOf<T>(value: unknown, read: (item: unknown) => T | undefined): T[] | undefined {
@@ -209,7 +248,43 @@ function readSlot(raw: unknown): BootstrapSlot | undefined {
   if (!isRecord(raw)) return undefined;
   const personId = text(raw.person_id);
   const order = raw.pair_order === null ? null : whole(raw.pair_order, 0);
-  return personId === undefined || order === undefined ? undefined : { personId, pairOrder: order };
+  const sheet = readSheet(raw);
+  if (personId === undefined || order === undefined || sheet === undefined) return undefined;
+  return { personId, pairOrder: order, ...sheet };
+}
+
+type Sheet = Omit<BootstrapSlot, 'personId' | 'pairOrder'>;
+
+/** A row's team sheet, as the web's bootstrap names it (`DeviceLinkBootstrapLineupRow`): only the fields with a value. */
+function readSheet(raw: Record<string, unknown>): Sheet | undefined {
+  const slot = optional(raw.slot, (value) => wordOf(SLOT_KINDS, value));
+  const positionKey = textOrNull(raw.position_key);
+  const orderNo = optional(raw.order_no, (value) => whole(value, 1));
+  const role = optional(raw.role, (value) => wordOf(SLOT_ROLES, value));
+  const roles = readRoles(raw.roles);
+  const squadNumber = optional(raw.squad_number, (value) => whole(value, 0));
+  if (slot === undefined || positionKey === undefined || orderNo === undefined) return undefined;
+  if (role === undefined || roles === undefined || squadNumber === undefined) return undefined;
+  return {
+    ...(slot === null ? {} : { slot }),
+    ...(positionKey === null ? {} : { positionKey }),
+    ...(orderNo === null ? {} : { orderNo }),
+    ...(role === null ? {} : { role }),
+    ...(roles === null ? {} : { roles }),
+    ...(squadNumber === null ? {} : { squadNumber }),
+  };
+}
+
+/**
+ * A row's roles (captain, goalkeeper, …). The web's schema takes an empty entry and the engine's `LineupSlot` refuses
+ * one, so an entry that is empty or no string is dropped rather than the match refused (the controller's ruling X-3);
+ * none left is no key. A value that is no list is garbled.
+ */
+function readRoles(value: unknown): readonly string[] | null | undefined {
+  if (value === null || value === undefined) return null;
+  if (!Array.isArray(value)) return undefined;
+  const roles = value.filter((role): role is string => typeof role === 'string' && role !== '');
+  return roles.length === 0 ? null : roles;
 }
 
 function readSide(raw: unknown): BootstrapSide | undefined {
@@ -340,7 +415,21 @@ function seatToWire(seat: BootstrapSide | null): unknown {
     name: seat.name,
     kind: seat.kind,
     members: seat.members.map((m) => ({ person_id: m.personId, full_name: m.fullName })),
-    lineup: seat.lineup.map((slot) => ({ person_id: slot.personId, pair_order: slot.pairOrder })),
+    lineup: seat.lineup.map(slotToWire),
+  };
+}
+
+/** Every field the web's row has, a field with no value as the web leaves it: null, and an empty list for the roles. */
+function slotToWire(slot: BootstrapSlot): unknown {
+  return {
+    person_id: slot.personId,
+    pair_order: slot.pairOrder,
+    slot: slot.slot ?? null,
+    position_key: slot.positionKey ?? null,
+    order_no: slot.orderNo ?? null,
+    role: slot.role ?? null,
+    roles: slot.roles ?? [],
+    squad_number: slot.squadNumber ?? null,
   };
 }
 

@@ -1,11 +1,14 @@
 import { memo, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
-import type { PadStateCard as PadCard } from '@/domain/scoring/padView';
+import type { PadStateCard as StateCard } from '@/domain/scoring/padView';
 import { useT } from '@/hooks/useLanguage';
+import { usePadText } from '@/hooks/usePadText';
 import type { MessageKey } from '@/i18n/messages';
 import { EdgeCard, type Edge } from '@/ui/components/EdgeCard';
 import { Text } from '@/ui/components/Text';
 import { space } from '@/ui/theme/tokens';
+
+type PadCard = StateCard<MessageKey>;
 
 /** The cards with a title. An app too old to score is the update banner (`UpdateBanner.tsx`), in the controls' place. */
 export type TitledCard = Exclude<PadCard, { readonly kind: 'updateNeeded' }>;
@@ -62,15 +65,20 @@ export const PadStateCard = memo(function PadStateCard({
  */
 const RecordedResult = memo(function RecordedResult({ card }: { readonly card: ResultCard }) {
   const { t } = useT();
-  const { undoLeft } = card;
+  const words = usePadText();
+  const { undoLeft, title } = card;
+  const stem = title === undefined ? 'bodyOpen' : 'namedBodyOpen';
+  const closed = title === undefined ? 'bodyClosed' : 'namedBodyClosed';
   const sentence =
     undoLeft === null
-      ? 'scoring.card.resultRecorded.bodyClosed'
-      : 'scoring.card.resultRecorded.bodyOpen';
+      ? (`scoring.card.resultRecorded.${closed}` as const)
+      : (`scoring.card.resultRecorded.${stem}` as const);
   return (
     <EdgeCard testID="pad-card" edge="lime" live="none">
       <View testID="pad-card-said" accessibilityLiveRegion="polite" style={styles.said}>
-        <Text variant="panelTitle">{t('scoring.card.resultRecorded.title')}</Text>
+        <Text variant="panelTitle">
+          {title === undefined ? t('scoring.card.resultRecorded.title') : words(title)}
+        </Text>
         <Text variant="body">{t(sentence)}</Text>
       </View>
       {undoLeft === null ? null : (

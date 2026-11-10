@@ -396,6 +396,12 @@ const base = {
   /** A side's button on the Start screen: a big target, half again the touch height and more. */
   padTossHeight: 64,
   /**
+   * A toss that fills its half of the screen (owner ruling 83, cricket's two-half toss): its question keeps this many
+   * lines of `state` whatever it says, so "Team chose to…" becoming a long team's name never moves the buttons under it.
+   * A name longer still gives way to an ellipsis (cricketFit.test.ts: 30-character names fit at 320 in four languages).
+   */
+  padTossAskLines: 2,
+  /**
    * Match details' rules table (owner, 2026-11-01, option A): the label column is as wide as the widest label in the
    * operator's language, and at most this. Spanish's widest (_Cambio de lado_, 108) keeps one line; French's and
    * Dutch's (_Changement de côté_, _Van kant wisselen_) wrap to two, so each value keeps 124 dp at 320 (padFit.test.ts).
@@ -408,6 +414,64 @@ const base = {
    * where it has 94 dp a line (padFit.test.ts).
    */
   padMatchPlateMax: 112,
+  /**
+   * The cricket board's regions (S2-4 spec §5 rows 2 to 4; plan Task 8, preflight D1), `space.sm` apart: each a fixed
+   * height, so nothing moves as an over fills, a wicket falls or a chase starts. The score panel is the score in
+   * `scoreCompact` (68) under the batting team's name in `label` (22, no gap between them: the name heads the score),
+   * then the innings line and the chase line in `control` (18 each), `space.xs` between them (T19 fix 5, owner 2026-11-10).
+   */
+  scorePanel: 134,
+  /**
+   * The batting team's name over the score shrinks to fit its line down to this fraction of its size, then ends in an
+   * ellipsis (owner, 2026-11-10; the controller's floor: legible at arm's length, §5). iOS honours it; Android's own
+   * floor is 4 dp (`rn-text-fit`), so on Android a long name shrinks further.
+   */
+  boardTeamMinScale: 0.7,
+  /**
+   * What the board gives way to when the keys leave it too little height (T19 fix 5, Part 3): its gaps tighten to this,
+   * and the chase joins the innings line, a line (18) and its gap (4) shorter (`cricketBoardFit.ts`).
+   */
+  boardGapTight: 4,
+  scorePanelJoined: 112,
+  /**
+   * The last rung's score panel (T19 fix 6): the team name in `label` (22), the score in `tally` (48, in place of
+   * `scoreCompact`'s 68), the joined line in `control` (18), `space.xs` between the last two and none after the name:
+   * 22 + 48 + 4 + 18 = 92. With the crease (75) and a tight gap (4) the board asks 171, inside the 180 dp the 320 dp phone
+   * leaves (device, 2026-11-10).
+   */
+  scorePanelCompact: 92,
+  /** A result's two rows (T19 fix 5, Part 2): a crease row each, `space.xs` between them. */
+  resultPanel: 54,
+  /**
+   * The overs beside the score, a fixed box at least this wide (T19 device run D1): on the phone a whole over's shorter
+   * text ("(1 ov)") was cut to "(1" in a box measured to its own width. The widest overs the board shows, three digits
+   * at Barlow's widest ("(888.8 ov)", 71.0 in `label`), with the score's widest it fits 320's column
+   * (`cricketFit.test.ts`).
+   */
+  boardOvers: 72,
+  /** A crease row (a batter, or the bowler): one line of `label` (22) with 1.5 dp above and below (30 before the team line, 26 before the chips grew). */
+  creaseRow: 25,
+  /**
+   * This over: its label in `metricUnit` (16), `space.xs`, then the chips, each `overChip` square: 60 with one row of them.
+   * An over that overflows the board's width wraps to a second row, `space.xs` under the first, so the strip is 104 tall
+   * with two (`cricketBoardFit.ts`).
+   */
+  overStrip: 60,
+  /**
+   * A delivery's chip on the over strip (T19 fix 5, Part 5; owner, 2026-11-10: "increase the box and font size"): a square
+   * this many dp a side, at least this wide for a longer word ("5wd", "11p"), its text in `metricValue` (Geist Mono 16,
+   * tabular). Six fit one row at 320 (260 of 288) and an over with extras wraps (`cricketFit.test.ts`).
+   */
+  overChip: 40,
+  /**
+   * The cricket pad's keys (S2-4 spec §5 rows 5 to 7; plan Task 11, preflight D1), `space.sm` apart, each row a fixed
+   * height so a ball never moves a key under the thumb: the runs (two rows of three, the number in `tally`, 46), the
+   * extras (one line of `actionSecondary` in a touch-high cell), and Out, Undo, More. With the board, the last-tap line
+   * and the frame they fit the owner's phone, about 360 × 724 (the pad's height in `cricketFit.test.ts`).
+   */
+  cricketRunKey: 64,
+  cricketExtraKey: 48,
+  cricketActionKey: 56,
 } as const;
 
 /** The cells the controls half's width is made of (`base` holds the shipped ones). */

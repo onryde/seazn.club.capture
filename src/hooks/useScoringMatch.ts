@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { TAKEN, refusing, type PadLineWords, type PadOutcome } from '@/domain/scoring/padLine';
+import type { PendingPicks } from '@/domain/scoring/pendingPicks';
 import type { MatchEvent } from '@/domain/scoring/scoringMatchState';
 import { viewAs, type MatchPad, type MatchView } from '@/domain/scoring/scoringMatchView';
 import type { ScoringSport, SportTypes } from '@/domain/scoring/scoringSport';
@@ -145,6 +146,8 @@ export type MatchSender<S extends SportTypes> = {
   readonly say: (words: PadLineWords) => void;
   /** The scorer's answer to the reconnect question (owner ruling 43): send the queued taps, or discard them. */
   readonly answer: (answer: 'send' | 'discard') => PadOutcome;
+  /** The scorer's pending picks, the whole map (S2-4 plan Task 3): kept on the phone until a tap carries them. */
+  readonly setPicks: (picks: PendingPicks) => void;
 };
 
 /** Hands events to the runner: what each tap came to, at once, or "not now" while there is no runner. */
@@ -178,7 +181,11 @@ export function useSender<S extends SportTypes>(
     },
     [runner],
   );
-  return useMemo(() => ({ tap, undo, say, answer }), [tap, undo, say, answer]);
+  const setPicks = useCallback(
+    (picks: PendingPicks) => void runner?.dispatch({ kind: 'setPicks', picks }),
+    [runner],
+  );
+  return useMemo(() => ({ tap, undo, say, answer, setPicks }), [tap, undo, say, answer, setPicks]);
 }
 
 /** The banner's buttons, through the link port. A page that would not open says so on the banner; the URL never does. */

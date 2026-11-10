@@ -6,13 +6,16 @@ import {
   type LineupPair,
 } from '@seazn/engine/core';
 import { boardgame } from '@seazn/engine/sports/boardgame';
+import { cricket } from '@seazn/engine/sports/cricket';
 import { badminton, tabletennis } from '@seazn/engine/sports/setbased';
 import { badmintonCfg, refusalOf } from '@/domain/scoring/badmintonEngine';
 import type { BadmintonTap } from '@/domain/scoring/badmintonPad';
 import { chessCfg, chessRefusalOf } from '@/domain/scoring/chessEngine';
+import { cricketRefusalOf, type CricketEngineMatch } from '@/domain/scoring/cricketEngine';
 import type { PadSide } from '@/domain/scoring/padView';
 import { envelopeOf, lineupOf } from '@/domain/scoring/setBasedEngine';
 import { tableTennisCfg, tableTennisRefusalOf } from '@/domain/scoring/tableTennisEngine';
+import { teamSheetOf } from '@/domain/scoring/teamSheet';
 import {
   voidTargetOf,
   type AppendAnswer,
@@ -31,7 +34,7 @@ import type { ScoringPort } from '@/services/scoringPort';
  * A FAKE scoring server for a laptop (AGENTS §10: build the fake first): the five calls of `ScoringPort`, answered as
  * the web answers them for one match, folded with the REAL engine, so a tap the engine refuses is refused here with
  * the engine's own word. The match is badminton unless the seed names another sport (`FakeMatchSeed.sport`; table tennis's
- * seeds are `fakeTableTennisPad`'s, chess's `fakeChessPad`'s). It judges an append as the web does, with the engine and nothing
+ * seeds are `fakeTableTennisPad`'s, chess's `fakeChessPad`'s, cricket's `fakeCricketPad`'s). It judges an append as the web does, with the engine and nothing
  * else: never the phone's own checks (`legalQueued`), or it would refuse what staging accepts. It keeps the server's order of questions (design §6.3, §7.3): the network, the
  * link, the fixture, a replayed key (answered from the ledger, even after the seq or the epoch has moved), the engine
  * epoch (the key is not consumed), the rules version (before the seq), the seq, and last the engine's fold.
@@ -40,8 +43,8 @@ import type { ScoringPort } from '@/services/scoringPort';
  */
 export type FakeSeedEvent = { readonly type: string; readonly payload: unknown };
 
-/** The sports the fake can serve: the set-based ones the phone scores, and chess (the engine's `boardgame`). */
-export type FakeSportKey = 'badminton' | 'tabletennis' | 'boardgame';
+/** The sports the fake can serve: the set-based ones the phone scores, chess (the engine's `boardgame`) and cricket. */
+export type FakeSportKey = 'badminton' | 'tabletennis' | 'boardgame' | 'cricket';
 
 /** What the fake hands a sport's judge: the match's id, its config as the sport's schema read it and its two lineups. */
 type FakeEngineMatch = {
@@ -51,20 +54,50 @@ type FakeEngineMatch = {
 };
 
 /**
- * What the fake needs of a sport: its engine module, its config and the engine's word on one new event. The members are
- * methods, not function-valued properties, on purpose: a method's parameters are compared both ways, so a sport whose
- * judge takes its own config type (`SetBasedCfg`, `BoardgameCfg`) is also a `FakeSport`.
+ * What the fake needs of a sport: its engine module, its config, the engine's word on one new event, and the two lineups
+ * the engine folds with, built from the seed's sides as the sport builds them on the phone (the set-based sports and chess
+ * with `lineupOf`, cricket from its team sheets). The members are methods, not function-valued properties, on purpose: a
+ * method's parameters are compared both ways, so a sport whose judge takes its own config type (`SetBasedCfg`,
+ * `BoardgameCfg`, `CricketCfg`) is also a `FakeSport`.
  */
 type FakeSport = {
   readonly module: FoldableModule<unknown, unknown>;
   cfg(raw: unknown): unknown;
   refusalOf(match: FakeEngineMatch, events: readonly EventEnvelope[]): string | null;
+  lineupsOf(sides: FakeMatchSeed['sides']): LineupPair;
 };
 
+/** Every row starting: the lineups of the set-based sports and of chess (`lineupOf`). */
+const startingLineups = (sides: FakeMatchSeed['sides']): LineupPair => ({
+  home: lineupOf(sides.home),
+  away: lineupOf(sides.away),
+});
+
 const SPORTS: Readonly<Record<FakeSportKey, FakeSport>> = {
-  badminton: { module: badminton, cfg: badmintonCfg, refusalOf },
-  tabletennis: { module: tabletennis, cfg: tableTennisCfg, refusalOf: tableTennisRefusalOf },
-  boardgame: { module: boardgame, cfg: chessCfg, refusalOf: chessRefusalOf },
+  badminton: { module: badminton, cfg: badmintonCfg, refusalOf, lineupsOf: startingLineups },
+  tabletennis: {
+    module: tabletennis,
+    cfg: tableTennisCfg,
+    refusalOf: tableTennisRefusalOf,
+    lineupsOf: startingLineups,
+  },
+  boardgame: {
+    module: boardgame,
+    cfg: chessCfg,
+    refusalOf: chessRefusalOf,
+    lineupsOf: startingLineups,
+  },
+  cricket: {
+    module: cricket,
+    // A seed's config is the fake's own: one the schema refuses is a bad seed, and throws.
+    cfg: (raw) => cricket.configSchema.parse(raw),
+    // The web answers a refusal with its code; the reason the engine names is the console's, not the answer's.
+    refusalOf: (match: CricketEngineMatch, events) => cricketRefusalOf(match, events)?.code ?? null,
+    lineupsOf: (sides) => ({
+      home: teamSheetOf(sides.home).lineup,
+      away: teamSheetOf(sides.away).lineup,
+    }),
+  },
 };
 
 export type FakeMatchSeed = {
@@ -179,7 +212,7 @@ export function createFakeScoringPort(
     seed,
     sportKey,
     sport,
-    lineups: { home: lineupOf(seed.sides.home), away: lineupOf(seed.sides.away) },
+    lineups: sport.lineupsOf(seed.sides),
     ledger: [],
     keys: new Map(),
     rawCfg: seed.cfg,

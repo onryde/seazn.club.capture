@@ -1,5 +1,6 @@
 import { type PadRefusal, TAKEN, refusing } from '@/domain/scoring/padLine';
 import type { PadSide } from '@/domain/scoring/padView';
+import { samePicks, type PendingPicks } from '@/domain/scoring/pendingPicks';
 import type { QueuedEvent } from '@/domain/scoring/queue';
 import type { SportFold, SportTypes } from '@/domain/scoring/scoringSport';
 import { undoRunOut } from '@/domain/scoring/scoringMatchWindow';
@@ -81,6 +82,22 @@ export function onPick<S extends SportTypes>(state: MatchState<S>, side: PadSide
     return handled(part(state));
   }
   return handled(part({ ...state, toss: side }));
+}
+
+/**
+ * The scorer's pending picks, the whole map (S2-4 plan Task 3), taken whenever the match folds: there is nothing to
+ * pick from before. A map equal to the one held is nothing, so the state, the fold's input and the boot cache stay as
+ * they were (`samePicks` here; `saveOf` compares the map by identity).
+ */
+export function onSetPicks<S extends SportTypes>(
+  state: MatchState<S>,
+  picks: PendingPicks,
+): Handled<S> {
+  const fold = foldOfState(state);
+  if (fold === null || fold.kind !== 'folded' || samePicks(state.picks, picks)) {
+    return handled(part(state));
+  }
+  return handled(part({ ...state, picks }));
 }
 
 /** The tap Undo takes back may be the match's start: the Start screen then asks again, and the old pick goes. */
