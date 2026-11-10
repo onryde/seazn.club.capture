@@ -1738,6 +1738,33 @@ describe('the board’s height budget', () => {
   });
 });
 
+// T19 fixes 10 and 11: a result's summary rows. A row is the tag (metricUnit, never shrinks), the name (label, one line) and
+// the figures (metricValue), `space.xs` apart in the column; the room the name keeps must still hold a first word, and the
+// extras line is one line of metricUnit. Measured at the worst figures a result shows.
+describe.each(WIDTHS)('the result summary at %i dp', (width) => {
+  const TOP = '199 (120)';
+  const BEST = '10-120 (35.4)';
+  const room = (tag: string, figures: string) =>
+    column(width) - unitWidth(tag) - 2 * space.xs - figuresWidth(figures);
+
+  it.each(LANGUAGES)('the top bat row keeps room for a name: %s', (_, dictionary) => {
+    const tag = said(dictionary, 'scoring.cricket.board.summary.top');
+    expect(room(tag, TOP), tag).toBeGreaterThanOrEqual(labelWidth('Christopher'));
+  });
+
+  it.each(LANGUAGES)('the best bowl row keeps room for a name: %s', (_, dictionary) => {
+    const tag = said(dictionary, 'scoring.cricket.board.summary.best');
+    expect(room(tag, BEST), tag).toBeGreaterThanOrEqual(labelWidth('Christopher'));
+  });
+
+  it.each(LANGUAGES)('all-zero extras are one line: %s', (_, dictionary) => {
+    const line = fill(said(dictionary, 'scoring.cricket.board.summary.extrasNone'), {
+      total: 0,
+    });
+    expect(unitWidth(line), line).toBeLessThanOrEqual(column(width));
+  });
+});
+
 // The sweep (plan Task 18): every `scoring.cricket.` key in the dictionary has been read by a fit case above (`said` is the
 // one reader, and the fit tests take a key's text only through it). A key added to the dictionaries without a fit case is
 // a red test, listed by name. It runs last and relies on the file's order, so a run filtered by name (`-t`) fails it: run

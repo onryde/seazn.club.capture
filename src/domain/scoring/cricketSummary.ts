@@ -31,11 +31,18 @@ function topOf(card: CricketInningsCard, nameOf: (id: string) => string): TopBat
   return top === undefined ? null : { name: nameOf(top.person), runs: top.runs, balls: top.balls };
 }
 
-/** The bowler with most wickets who bowled a ball: then fewer runs, then fewer balls, then the card's order. */
+/**
+ * The best bowler of those who bowled a ball. Most wickets; when the best took some, then fewer runs, then fewer balls;
+ * when nobody took a wicket, the lower economy (runs a legal ball, compared by cross-multiplying), then the more balls
+ * bowled; either way then the card's order (T19 fix 11).
+ */
 function bestOf(card: CricketInningsCard, nameOf: (id: string) => string): BestBowl | null {
   const bowled = card.bowling.filter((line) => line.legalBalls > 0);
-  const best = [...bowled].sort(
-    (a, b) => b.wickets - a.wickets || a.runs - b.runs || a.legalBalls - b.legalBalls,
+  const wicketless = bowled.every((line) => line.wickets === 0);
+  const best = [...bowled].sort((a, b) =>
+    wicketless
+      ? a.runs * b.legalBalls - b.runs * a.legalBalls || b.legalBalls - a.legalBalls
+      : b.wickets - a.wickets || a.runs - b.runs || a.legalBalls - b.legalBalls,
   )[0];
   return best === undefined
     ? null
@@ -46,7 +53,7 @@ export function inningsHighlights(
   card: CricketInningsCard,
   nameOf: (id: string) => string,
 ): InningsHighlights {
-  return { top: topOf(card, nameOf), best: bestOf(card, nameOf), extras: extrasOf(card.extras) };
+  return { top: topOf(card, nameOf), best: bestOf(card, nameOf), extras: extrasShown(card.extras) };
 }
 
 /** The blocks of a decided match; none before it is decided. */
@@ -66,6 +73,14 @@ export function summaryOf(
       team: sides.get(card.side) ?? card.side,
       ...inningsHighlights(card, nameOf),
     }));
+}
+
+/** The summary's extras: all zero reads just the total (T19 fix 11); otherwise the card's own line. */
+function extrasShown(extras: CricketInningsCard['extras']): PadText<CricketPadKey> | null {
+  if (extras?.total === 0) {
+    return { key: 'scoring.cricket.board.summary.extrasNone', vars: { total: 0 } };
+  }
+  return extrasOf(extras);
 }
 
 /** The extras and their kinds; a penalty is named only when one was awarded. */

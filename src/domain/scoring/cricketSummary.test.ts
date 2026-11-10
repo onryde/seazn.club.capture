@@ -84,6 +84,32 @@ describe('inningsHighlights', () => {
     expect(got.best?.name).toBe('Name y');
   });
 
+  it('best bowl: a wicket-taker beats any wicketless bowler, however tight', () => {
+    const got = inningsHighlights(
+      card([], [bowl('x', 12, 0, 0, '2'), bowl('y', 6, 30, 1, '1')]),
+      names,
+    );
+    expect(got.best?.name).toBe('Name y');
+  });
+
+  it('best bowl: with no wicket, the lower economy; equal economy goes to the more balls', () => {
+    // 0-3 in 3 balls and 0-6 in 6 balls are both 1.0 a ball: the 6-ball bowler.
+    expect(
+      inningsHighlights(card([], [bowl('c', 3, 3, 0, '0.3'), bowl('d', 6, 6, 0, '1')]), names).best
+        ?.name,
+    ).toBe('Name d');
+    // 0-3 in 3 balls (1.0) against 0-5 in 6 (0.83): the 6-ball bowler.
+    expect(
+      inningsHighlights(card([], [bowl('c', 3, 3, 0, '0.3'), bowl('d', 6, 5, 0, '1')]), names).best
+        ?.name,
+    ).toBe('Name d');
+    // Equal economy and balls: the card's order.
+    expect(
+      inningsHighlights(card([], [bowl('c', 6, 6, 0, '1'), bowl('d', 6, 6, 0, '1')]), names).best
+        ?.name,
+    ).toBe('Name c');
+  });
+
   it('best bowl: none for a bowler-less innings, or one with no ball bowled', () => {
     expect(inningsHighlights(card([bat(1, 1, 1)], []), names).best).toBeNull();
     expect(inningsHighlights(card([], [bowl('x', 0, 1, 0, '0')]), names).best).toBeNull();
@@ -100,5 +126,13 @@ describe('inningsHighlights', () => {
       'scoring.cricket.card.extrasPen',
     );
     expect(inningsHighlights(card([], [], null), names).extras).toBeNull();
+  });
+
+  it('extras: all zero reads just the total', () => {
+    const none = { wides: 0, noBalls: 0, byes: 0, legByes: 0, penalties: 0, total: 0 };
+    expect(inningsHighlights(card([], [], none), names).extras).toStrictEqual({
+      key: 'scoring.cricket.board.summary.extrasNone',
+      vars: { total: 0 },
+    });
   });
 });

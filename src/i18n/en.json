@@ -708,6 +708,7 @@
   "scoring.cricket.board.onStrike": "On strike",
   "scoring.cricket.board.summary.top": "Top bat",
   "scoring.cricket.board.summary.best": "Best bowl",
+  "scoring.cricket.board.summary.extrasNone": "Extras {total}",
   "scoring.cricket.break.title": "Innings break",
   "scoring.cricket.break.tied": "Tied — super over",
   "scoring.cricket.break.tiedAgain": "Tied again — super over {number}",

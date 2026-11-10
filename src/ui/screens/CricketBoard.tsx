@@ -512,10 +512,11 @@ const styles = StyleSheet.create({
   summary: { gap: space.xs, flexShrink: 0 },
   summaryBlock: { gap: 0, flexShrink: 0 },
   summaryTeam: { color: colour.ink2, height: layout.creaseRow, flexShrink: 0 },
+  // Baseline, not centre: the small tag and the 22 dp name read on one line (device-checked, fix 11).
   summaryRow: {
     height: layout.creaseRow,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'baseline',
     gap: space.xs,
     flexShrink: 0,
   },

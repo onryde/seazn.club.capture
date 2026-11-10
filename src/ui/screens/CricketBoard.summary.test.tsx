@@ -77,6 +77,13 @@ describe('the result’s summary', () => {
     expect(second.queryByTestId('summary-extras')).toBeNull();
   });
 
+  it('all-zero extras read just the total, from the dictionary', () => {
+    const none = { key: 'scoring.cricket.board.summary.extrasNone', vars: { total: 0 } } as const;
+    const view = { ...VIEW, summary: [{ ...VIEW.summary![0]!, extras: none }] };
+    renderWithPorts(<CricketBoard view={view} />);
+    expect(screen.getByTestId('summary-extras').textContent).toBe('Extras 0');
+  });
+
   it('a board without a summary (play, a break) draws none', () => {
     renderWithPorts(<CricketBoard view={{ ...VIEW, summary: null }} />);
     expect(screen.queryByTestId('summary-block')).toBeNull();
