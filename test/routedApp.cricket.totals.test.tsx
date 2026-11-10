@@ -106,7 +106,8 @@ describe('over totals on the pad', () => {
     key('Wickets', 'more', 1);
     await press(app, RECORD);
     // Twelve balls are the innings (KO_2): it is over, and the other side's innings starts in totals too, from over 1.
-    expect(screen.getByTestId('board-innings').textContent).toBe('Innings 2 · Away CC');
+    expect(screen.getByTestId('board-team').textContent).toBe('Away CC');
+    expect(screen.getByTestId('board-innings').textContent).toBe('Innings 2');
     expect(runs()).toBe('0/0');
     expect(heading()).toBe('Over 1 totals');
     expect((await summaries(app, seed)).map((event) => event.payload)).toEqual([
@@ -188,7 +189,8 @@ describe('over totals on the pad', () => {
     key('Balls', 'fewer', 2);
     expect([valueOf('runs'), valueOf('wickets'), valueOf('balls')]).toEqual(['3', '10', '4']);
     await press(app, RECORD);
-    expect(screen.getByTestId('board-innings').textContent).toBe('Innings 2 · Away CC');
+    expect(screen.getByTestId('board-team').textContent).toBe('Away CC');
+    expect(screen.getByTestId('board-innings').textContent).toBe('Innings 2');
     expect(heading()).toBe('Over 1 totals');
     expect([valueOf('runs'), valueOf('wickets'), valueOf('balls')]).toEqual(['0', '0', '6']);
     expect((await summaries(app, seed)).map((event) => event.payload)).toEqual([
@@ -255,9 +257,15 @@ describe('a tie in over totals', () => {
   it('without one, it is the result Tied, shown as any result', async () => {
     const seed = seedOf(TIE, LEAGUE_2);
     await scanned(seed);
+    // The result heads the recorded card now, and the strip does not repeat it (T19 fix 5).
     expect(
-      within(screen.getByTestId('pad-strip')).getByText(en['scoring.cricket.result.tie']),
+      within(screen.getByTestId('pad-card')).getByText(en['scoring.cricket.result.tie']),
     ).toBeTruthy();
+    expect(
+      screen.queryByText(en['scoring.cricket.result.tie'], {
+        selector: '[data-testid="pad-strip"] *',
+      }),
+    ).toBeNull();
     expect(screen.queryByTestId('cricket-totals')).toBeNull();
   });
 });

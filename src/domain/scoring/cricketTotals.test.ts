@@ -309,8 +309,9 @@ describe('a tie in over totals', () => {
     const display = displayOf(TIE, withCfg(NO_AWAY_PLAYERS, LEAGUE_2));
     expect(display.stage).toBe('decided');
     expect(totalsView(display)).toBeNull();
-    const strip = cricketPad(display).strip[0];
-    expect(strip?.text).toStrictEqual({ key: 'scoring.cricket.result.tie' });
-    expect(wordsOf(strip?.text ?? { key: 'scoring.cricket.result.draw' })).toBe('Match tied');
+    const { card } = cricketPad(display);
+    const title = card?.kind === 'resultRecorded' ? card.title : undefined;
+    expect(title).toStrictEqual({ key: 'scoring.cricket.result.tie' });
+    expect(wordsOf(title ?? { key: 'scoring.cricket.result.draw' })).toBe('Match tied');
   });
 });

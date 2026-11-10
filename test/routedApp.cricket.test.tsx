@@ -48,7 +48,8 @@ describe('a cricket match from the scan to the board', () => {
     expect(screen.queryByTestId('half-first')).toBeNull();
     expect(screen.getByTestId('board-runs').textContent).toBe('5/0');
     expect(screen.getByTestId('board-overs').textContent).toBe('(0.3 ov)');
-    expect(screen.getByTestId('board-innings').textContent).toBe('Innings 1 · Riverside CC');
+    expect(screen.getByTestId('board-team').textContent).toBe('Riverside CC');
+    expect(screen.getByTestId('board-innings').textContent).toBe('Innings 1');
     const striker = screen.getByTestId('board-batter-first');
     expect(within(striker).getByText('B. Okafor')).toBeTruthy();
     expect(within(striker).getByLabelText(en['scoring.cricket.board.onStrike'])).toBeTruthy();
@@ -220,7 +221,8 @@ describe('the innings break, from the last ball to Start innings', () => {
     expect((await ledger(app, seed)).length).toBe(before);
     expect(screen.getByTestId('cricket-board')).toBeTruthy();
     expect(screen.queryByTestId('cricket-setup')).toBeNull();
-    expect(screen.getByTestId('board-innings').textContent).toBe('Innings 2 · Away CC');
+    expect(screen.getByTestId('board-team').textContent).toBe('Away CC');
+    expect(screen.getByTestId('board-innings').textContent).toBe('Innings 2');
     // T19 device run D3: the line says the innings begun, not innings 1's last ball; the first ball then says itself.
     expect(screen.getByTestId('last-tap-sentence').textContent).toBe('Innings 2 started');
     await tap(app, '1 run');
@@ -272,7 +274,8 @@ describe('the innings break, from the last ball to Start innings', () => {
     await tap(app, en['scoring.cricket.setup.startInnings']);
     expect(screen.getByTestId('cricket-board')).toBeTruthy();
     await tap(app, en['scoring.pad.undo']);
-    expect(screen.getByTestId('board-innings').textContent).toBe('Innings 1 · Home CC');
+    expect(screen.getByTestId('board-team').textContent).toBe('Home CC');
+    expect(screen.getByTestId('board-innings').textContent).toBe('Innings 1');
     expect((await ledger(app, seed)).at(-1)?.type).toBe('core.void');
     expect(screen.getByTestId('last-tap-sentence').textContent).toBe('Undone — Dot ball');
     await tap(app, en['scoring.cricket.ball.dot']);

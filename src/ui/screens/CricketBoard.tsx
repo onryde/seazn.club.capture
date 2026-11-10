@@ -1,6 +1,11 @@
 import { memo } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import type { BoardScore, CreaseLine, CricketBoardView } from '@/domain/scoring/cricketPad';
+import type {
+  BoardResult,
+  BoardScore,
+  CreaseLine,
+  CricketBoardView,
+} from '@/domain/scoring/cricketPad';
 import type { CricketBowler, OverChip } from '@/domain/scoring/cricketTypes';
 import { useT } from '@/hooks/useLanguage';
 import { usePadText } from '@/hooks/usePadText';
@@ -24,7 +29,11 @@ export const CricketBoard = memo(function CricketBoard({
 }) {
   return (
     <View testID="cricket-board" style={styles.board}>
-      <ScorePanel score={view.score} onOpenPlayers={onOpenPlayers} />
+      {view.result === null ? (
+        <ScorePanel score={view.score} onOpenPlayers={onOpenPlayers} />
+      ) : (
+        <ResultPanel result={view.result} />
+      )}
       <Crease crease={view.crease} bowler={view.bowler} onOpenPlayers={onOpenPlayers} />
       <OverStrip over={view.over} status={view.status} />
     </View>
@@ -63,11 +72,14 @@ function ScoreLines({ score }: { readonly score: BoardScore }) {
   const { t } = useT();
   return (
     <>
-      <View style={styles.scoreLine}>
-        <Text variant="scoreCompact" testID="board-runs">{`${score.runs}/${score.wickets}`}</Text>
-        <Text variant="label" testID="board-overs" style={styles.overs}>
-          {t('scoring.cricket.board.overs', { overs: score.overs })}
-        </Text>
+      <View style={styles.head}>
+        <TeamName team={score.team} testID="board-team" />
+        <View style={styles.scoreLine}>
+          <Text variant="scoreCompact" testID="board-runs">{`${score.runs}/${score.wickets}`}</Text>
+          <Text variant="label" testID="board-overs" style={styles.overs}>
+            {t('scoring.cricket.board.overs', { overs: score.overs })}
+          </Text>
+        </View>
       </View>
       <Text variant="control" testID="board-innings" numberOfLines={1} style={styles.innings}>
         {words(score.innings)}
@@ -78,6 +90,61 @@ function ScoreLines({ score }: { readonly score: BoardScore }) {
     </>
   );
 }
+
+/**
+ * The batting team's name: one line that shrinks to fit down to `layout.boardTeamMinScale`, then ends in an ellipsis
+ * (owner, 2026-11-10). Mixed case, as the organiser typed it (AGENTS.md §5's exception for names). The shrinking is
+ * native's: jsdom shows only the one line.
+ */
+const TeamName = memo(function TeamName({
+  team,
+  testID,
+  beside = false,
+}: {
+  readonly team: string;
+  readonly testID: string;
+  readonly beside?: boolean;
+}) {
+  return (
+    <Text
+      variant="label"
+      testID={testID}
+      numberOfLines={1}
+      adjustsFontSizeToFit
+      minimumFontScale={layout.boardTeamMinScale}
+      ellipsizeMode="tail"
+      style={beside ? styles.teamBeside : styles.team}
+    >
+      {team}
+    </Text>
+  );
+});
+
+/**
+ * A result's two scores (T19 fix 5, Part 2): a row a side, the side that batted first on top, its name shrinking to fit
+ * and its runs/wickets with the overs on the right.
+ */
+const ResultPanel = memo(function ResultPanel({ result }: { readonly result: BoardResult }) {
+  const { t } = useT();
+  return (
+    <View testID="board-result" style={styles.result}>
+      {result.map((row, index) => (
+        <View
+          key={index}
+          testID={index === 0 ? 'board-result-first' : 'board-result-second'}
+          style={styles.resultRow}
+        >
+          <TeamName team={row.team} testID="board-result-team" beside />
+          <Text variant="metricValue" testID="board-result-figures" style={styles.resultFigures}>
+            {row.overs === null
+              ? row.figures
+              : `${row.figures} ${t('scoring.cricket.board.overs', { overs: row.overs })}`}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+});
 
 /** The two batters (striker first) and the bowler, a fixed row each, empty until they are picked. */
 const Crease = memo(function Crease({
@@ -213,6 +280,17 @@ const CHIP_HEIGHT = layout.overStrip - typeScale.metricUnit.lineHeight - space.x
 const styles = StyleSheet.create({
   board: { flex: 1, gap: space.sm },
   score: { height: layout.scorePanel, gap: space.xs, overflow: 'hidden' },
+  head: { gap: 0 },
+  team: { color: colour.ink },
+  teamBeside: { flex: 1, color: colour.ink },
+  resultFigures: { color: colour.ink, flexShrink: 0 },
+  result: { height: layout.resultPanel, gap: space.xs, overflow: 'hidden' },
+  resultRow: {
+    height: layout.creaseRow,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+  },
   scoreLine: { flexDirection: 'row', alignItems: 'baseline', gap: space.sm },
   // A fixed box that never shrinks (T19 D1): the whole over's shorter text was cut on the phone in a box of its own
   // width.

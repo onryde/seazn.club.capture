@@ -72,6 +72,10 @@ const column = (width: number) => width - 2 * space.md;
 const nameRoom = (width: number, figures: string) =>
   column(width) - space.md - 2 * space.xs - figuresWidth(figures);
 
+/** The batting team's name over the score (T19 fix 5): a usual one, and the longest the fit tests carry. */
+const TEAM_TWELVE = 'Hillcrest CC';
+const TEAM_LONGEST = 'Southern Districts Cricket Association XI';
+
 /** The longest numbers a board can show: an unlimited innings' score and overs, a long chase, a long spell. */
 const SCORE = '999/10';
 const OVERS = '189.5';
@@ -94,14 +98,31 @@ describe.each(WIDTHS)('the cricket board at %i dp', (width) => {
   );
 
   it.each(LANGUAGES)(
-    'the innings line holds its words and number before the side’s name: %s',
+    'the innings line holds its words and number, with no side’s name (it heads the score now): %s',
     (_, dictionary) => {
-      for (const key of ['scoring.cricket.history.innings', 'scoring.cricket.history.superOver']) {
-        const before = fill(said(dictionary, key), { number: 12, side: '' });
-        expect(controlWidth(before), key).toBeLessThanOrEqual(column(width));
+      for (const key of ['scoring.cricket.board.innings', 'scoring.cricket.board.superOver']) {
+        const line = fill(said(dictionary, key), { number: 12 });
+        expect(controlWidth(line), key).toBeLessThanOrEqual(column(width));
       }
     },
   );
+
+  // T19 fix 5: the batting team's name heads the score, one line in `label` that shrinks to the floor, then is cut.
+  it('the team line holds a twelve-character name at full size and the first word of the longest at the floor', () => {
+    expect(labelWidth(TEAM_TWELVE)).toBeLessThanOrEqual(column(width));
+    expect(labelWidth(TEAM_LONGEST) * layout.boardTeamMinScale).toBeGreaterThan(
+      labelWidth('Southern'),
+    );
+    expect(labelWidth('Association') * layout.boardTeamMinScale).toBeLessThanOrEqual(column(width));
+  });
+
+  it('the longest fixture name just fits the column at full size, and a name up to 1.4 times wider fits at the floor', () => {
+    expect(labelWidth(TEAM_LONGEST)).toBeLessThanOrEqual(column(320));
+    expect(column(320) - labelWidth(TEAM_LONGEST)).toBeLessThan(2);
+    expect(1.4 * labelWidth(TEAM_LONGEST) * layout.boardTeamMinScale).toBeLessThanOrEqual(
+      column(320),
+    );
+  });
 
   it.each(LANGUAGES)('the chase line holds the longest chase on one line: %s', (_, dictionary) => {
     for (const key of ['scoring.cricket.board.chase.other', 'scoring.cricket.board.need']) {
@@ -156,10 +177,17 @@ describe('a chip', () => {
 });
 
 describe('the board’s regions', () => {
-  it('the score panel holds the score, the innings line and the chase line', () => {
+  it('the score panel holds the team line, the score, the innings line and the chase line', () => {
     expect(
-      typeScale.scoreCompact.lineHeight + 2 * typeScale.control.lineHeight + 2 * space.xs,
+      typeScale.label.lineHeight +
+        typeScale.scoreCompact.lineHeight +
+        2 * typeScale.control.lineHeight +
+        2 * space.xs,
     ).toBeLessThanOrEqual(layout.scorePanel);
+  });
+
+  it('the result panel holds two rows of a crease row’s height', () => {
+    expect(2 * layout.creaseRow + space.xs).toBeLessThanOrEqual(layout.resultPanel);
   });
 
   it('a crease row holds a line of names and of figures', () => {
@@ -314,10 +342,10 @@ describe('the keys’ rooms', () => {
 
   /**
    * The pad's height, portrait: the screen's padding (2 × 16), the header (48), the strip (16), the board (the score
-   * panel, three crease rows and the over strip, `space.sm` apart: 266), the keys (two run rows, the extras, the actions,
+   * panel with the team line, three crease rows and the over strip, `space.sm` apart: 276), the keys (two run rows, the extras, the actions,
    * `space.sm` apart: 256), the last-tap line (3 lines of 18: 54), the tool row (none: 0), and the pad's five gaps (8).
    */
-  it('the board, the keys and the line fit the owner’s phone, about 360 × 724, with 12 dp to spare', () => {
+  it('the board, the keys and the line fit the owner’s phone, about 360 × 724, with 2 dp to spare', () => {
     const board = layout.scorePanel + 3 * layout.creaseRow + layout.overStrip + 2 * space.sm;
     const keys =
       2 * layout.cricketRunKey + layout.cricketExtraKey + layout.cricketActionKey + 3 * space.sm;
@@ -331,8 +359,8 @@ describe('the keys’ rooms', () => {
       keys +
       line +
       4 * space.sm;
-    expect([board, keys, line]).toEqual([266, 256, 54]);
-    expect(724 - pad).toBe(12);
+    expect([board, keys, line]).toEqual([276, 256, 54]);
+    expect(724 - pad).toBe(2);
   });
 });
 
@@ -896,7 +924,7 @@ describe.each(WIDTHS)('over totals at %i dp', (width) => {
 describe('over totals on the pad', () => {
   /**
    * The totals body is the score panel, the note (three lines at most), the heading, three rows of a touch and Record over
-   * (a plate of 56), `space.sm` apart. The keys' body is the board and the keys: 266 and 256. It fits wherever those fit.
+   * (a plate of 56), `space.sm` apart. The keys' body is the board and the keys: 276 and 256. It fits wherever those fit.
    */
   it('the score, the note, the entry and Record over are shorter than the board and the keys', () => {
     const rows = 3 * layout.touch + 2 * space.sm;
@@ -910,8 +938,8 @@ describe('over totals on the pad', () => {
       rows +
       space.sm +
       56;
-    const keysBody = 266 + space.sm + 256;
-    expect(totals).toBe(112 + 8 + 66 + 8 + 24 + 8 + 160 + 8 + 56);
+    const keysBody = 276 + space.sm + 256;
+    expect(totals).toBe(134 + 8 + 66 + 8 + 24 + 8 + 160 + 8 + 56);
     expect(totals).toBeLessThan(keysBody);
   });
 
@@ -1506,6 +1534,71 @@ describe.each(WIDTHS)('the scorecard at %i dp', (width) => {
   it.each(LANGUAGES)('%s: the section heading is one line in caps', (_, dictionary) => {
     const title = said(dictionary, 'scoring.cricket.card.fallTitle');
     expect(linesOf(title, column(width), capsOf('state')), title).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// T19 fix 5, Part 2: the result board. The card's title is the result in `panelTitle` caps (two lines at most), its
+// sentence is `body`; below it two score rows (a name that shrinks, the figures), then the not-out pair. No keys stand at
+// a result, so the height is not the constraint: the words are.
+// ---------------------------------------------------------------------------------------------------------------
+const RESULT_TITLE_LINES = 2;
+const RESULT_BODIES = [
+  'scoring.card.resultRecorded.namedBodyOpen',
+  'scoring.card.resultRecorded.namedBodyClosed',
+];
+
+describe.each(WIDTHS)('the result board at %i dp', (width) => {
+  /** The card's text room: the column less the card's padding and the edge bar. */
+  const cardRoom = column(width) - 2 * space.md - layout.padSideBar;
+  const capsTitle = (text: string) =>
+    barlow700.width(text.toUpperCase(), typeScale.panelTitle.fontSize) +
+    typeScale.panelTitle.letterSpacing * [...text].length;
+
+  it.each(LANGUAGES)(
+    '%s: every result is two lines as the card’s title (three for a thirty-character club), every word whole',
+    (_, dictionary) => {
+      for (const key of RESULT_KEYS) {
+        for (const [name, lines] of [
+          [TWELVE, RESULT_TITLE_LINES],
+          [THIRTY, RESULT_TITLE_LINES + 1],
+        ] as const) {
+          const title = fill(said(dictionary, key), { name, count: CHASE.runs });
+          expect(linesOf(title, cardRoom, capsTitle), title).toBeLessThanOrEqual(lines);
+          for (const word of title.split(' ')) {
+            expect(capsTitle(word), word).toBeLessThanOrEqual(cardRoom);
+          }
+        }
+      }
+    },
+  );
+
+  it.each(LANGUAGES)('%s: the card’s sentence keeps every word whole', (_, dictionary) => {
+    for (const key of RESULT_BODIES) {
+      const sentence = said(dictionary, key);
+      for (const word of sentence.split(' '))
+        expect(bodyOf(word), word).toBeLessThanOrEqual(cardRoom);
+    }
+  });
+
+  it.each(LANGUAGES)(
+    '%s: a score row holds the longest figures and a name’s first word',
+    (_, dictionary) => {
+      const figures = `${SCORE} ${fill(said(dictionary, 'scoring.cricket.board.overs'), { overs: OVERS })}`;
+      const room = column(width) - space.sm - figuresWidth(figures);
+      // At the floor, the first word of the longest name is still whole beside the longest figures.
+      expect(labelWidth('Southern') * layout.boardTeamMinScale).toBeLessThanOrEqual(room);
+      // A usual name is whole at full size beside a usual score.
+      const usual = `${'188/9'} ${fill(said(dictionary, 'scoring.cricket.board.overs'), { overs: '19.4' })}`;
+      expect(labelWidth(TEAM_TWELVE)).toBeLessThanOrEqual(
+        column(width) - space.sm - figuresWidth(usual),
+      );
+    },
+  );
+
+  it('two score rows and the not-out pair stand in the board’s height under the card, and the card’s lines', () => {
+    const rows = layout.resultPanel + 3 * layout.creaseRow + layout.overStrip + 2 * space.sm;
+    expect(rows).toBeLessThan(276 + space.sm + 256);
   });
 });
 

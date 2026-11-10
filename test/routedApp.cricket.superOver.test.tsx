@@ -1,9 +1,9 @@
-import { act, fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import en from '@/i18n/en.json';
 import { cricketSeed } from '@/services/fakeCricketPad';
 import type { FakeMatchSeed } from '@/services/fakeScoringPort';
-import { AWAY, DOT, HOME, TIED_KO, player, superOverOf, times } from './cricketLedger';
+import { AWAY, DOT, FOUR, HOME, ONE, TIED_KO, player, superOverOf, times } from './cricketLedger';
 import { FAKE_SCORING_SECRET } from './fakeScoringLinkPort';
 import { TEST_NOW } from './fakePorts';
 import { RAW } from './scoringHomeFixtures';
@@ -31,10 +31,22 @@ const SUPER: FakeMatchSeed = {
   sides: { home: HOME, away: AWAY },
 };
 
+/** The same, decided: the away side made 2 off its super over, the home side four off its first ball and won. */
+const SUPER_WON: FakeMatchSeed = {
+  ...cricketSeed({
+    events: [
+      ...TIED_KO,
+      ...superOverOf('A', player('H', 9), [ONE, ONE, ...times(4, DOT)]),
+      ...superOverOf('H', player('A', 9), [FOUR]),
+    ].map(({ type, payload }) => ({ type, payload })),
+  }),
+  sides: { home: HOME, away: AWAY },
+};
+
 let seconds = 0;
-async function scanned() {
+async function scanned(seed: FakeMatchSeed = SUPER) {
   seconds = 0;
-  const app = await launchApp({ scoringSeed: SUPER });
+  const app = await launchApp({ scoringSeed: seed });
   app.scanner.queue({ outcome: 'scanned', raw: RAW });
   act(() => screen.getByRole('button', { name: /Remote Scoring/ }).click());
   await flush(400);
@@ -73,5 +85,20 @@ describe('More in a super over', () => {
     );
     await flush(400);
     expect(await count(app)).toBe(before + 1);
+  });
+});
+
+describe('the result of a super over (T19 fix 5)', () => {
+  it('the card is headed by who won, with both halves of the super over under it; the strip repeats nothing', async () => {
+    await scanned(SUPER_WON);
+    const card = screen.getByTestId('pad-card');
+    expect(within(card).getByText('Home CC won on the super over')).toBeTruthy();
+    expect(card.textContent).toContain('Result recorded.');
+    const first = screen.getByTestId('board-result-first');
+    const second = screen.getByTestId('board-result-second');
+    expect(first.textContent).toBe('Away CC2/0 (1 ov)');
+    expect(second.textContent).toBe('Home CC4/0 (0.1 ov)');
+    expect(screen.queryByTestId('board-runs')).toBeNull();
+    expect(within(screen.getByTestId('pad-strip')).queryByText(/won on the super over/)).toBeNull();
   });
 });

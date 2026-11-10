@@ -417,9 +417,18 @@ const base = {
   /**
    * The cricket board's regions (S2-4 spec §5 rows 2 to 4; plan Task 8, preflight D1), `space.sm` apart: each a fixed
    * height, so nothing moves as an over fills, a wicket falls or a chase starts. The score panel is the score in
-   * `scoreCompact` (68), then the innings line and the chase line in `control` (18 each), `space.xs` between them.
+   * `scoreCompact` (68) under the batting team's name in `label` (22, no gap between them: the name heads the score),
+   * then the innings line and the chase line in `control` (18 each), `space.xs` between them (T19 fix 5, owner 2026-11-10).
    */
-  scorePanel: 112,
+  scorePanel: 134,
+  /**
+   * The batting team's name over the score shrinks to fit its line down to this fraction of its size, then ends in an
+   * ellipsis (owner, 2026-11-10; the controller's floor: legible at arm's length, §5). iOS honours it; Android's own
+   * floor is 4 dp (`rn-text-fit`), so on Android a long name shrinks further.
+   */
+  boardTeamMinScale: 0.7,
+  /** A result's two rows (T19 fix 5, Part 2): a crease row each, `space.xs` between them. */
+  resultPanel: 56,
   /**
    * The overs beside the score, a fixed box at least this wide (T19 device run D1): on the phone a whole over's shorter
    * text ("(1 ov)") was cut to "(1" in a box measured to its own width. The widest overs the board shows, three digits
@@ -427,8 +436,8 @@ const base = {
    * (`cricketFit.test.ts`).
    */
   boardOvers: 72,
-  /** A crease row (a batter, or the bowler): one line of `label` (22) with `space.xs` above and below. */
-  creaseRow: 30,
+  /** A crease row (a batter, or the bowler): one line of `label` (22) with 2 dp above and below (30 before the team line). */
+  creaseRow: 26,
   /** This over: its label in `metricUnit` (16), `space.xs`, then the row of chips, each `overStrip` less those two tall. */
   overStrip: 48,
   /** A delivery's chip on the over strip: one width for every chip ("·", "4", "7nb", "11p"), so the strip never shifts. */

@@ -983,7 +983,7 @@ describe('the innings break and the result (Task 16)', () => {
       8,
       0,
       '1.5',
-      'Innings 1 · Home CC',
+      'Innings 1',
     ]);
     expect(pad(view).board.bowler?.id).toBe(A(10));
     expect((await typesOf(fakes, LAST_BALL_DUE)).at(-1)).toBe('core.void');
@@ -1034,11 +1034,7 @@ describe('the innings break and the result (Task 16)', () => {
     act(() => pad(view).actions.undo());
     await flush();
     const score = pad(view).board.score;
-    expect([score?.runs, score?.overs, said(score?.innings)]).toEqual([
-      8,
-      '1.5',
-      'Innings 1 · Home CC',
-    ]);
+    expect([score?.runs, score?.overs, said(score?.innings)]).toEqual([8, '1.5', 'Innings 1']);
   });
 
   it('Undo of the deciding ball inside 45 s reopens; after, it does not', async () => {
@@ -1047,7 +1043,12 @@ describe('the innings break and the result (Task 16)', () => {
     await flush();
     await wait();
     expect(pad(view).display.stage).toBe('decided');
-    expect(said(pad(view).view.strip[0]?.text)).toBe('Away CC won by 4 wickets');
+    // The result heads the card (T19 fix 5), through the Undo window's rewrite of it, and the strip is empty.
+    const card = pad(view).view.card;
+    expect(said(card?.kind === 'resultRecorded' ? card.title : undefined)).toBe(
+      'Away CC won by 4 wickets',
+    );
+    expect(pad(view).view.strip[0]?.text).toBeNull();
     expect(pad(view).view.card).toMatchObject({
       kind: 'resultRecorded',
       undoLeft: expect.any(Number),
@@ -1060,7 +1061,7 @@ describe('the innings break and the result (Task 16)', () => {
     act(() => pad(view).actions.run(1));
     await flush();
     await wait(46_000);
-    expect(pad(view).view.card).toEqual({ kind: 'resultRecorded', undoLeft: null });
+    expect(pad(view).view.card).toMatchObject({ kind: 'resultRecorded', undoLeft: null });
     expect(pad(view).view.lastTap?.undo).toBe(false);
     const before = await typesOf(fakes, WINNING_BALL_DUE);
     act(() => pad(view).actions.undo());

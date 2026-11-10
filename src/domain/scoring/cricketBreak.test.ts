@@ -9,6 +9,7 @@ import { envelopeOf } from '@/domain/scoring/setBasedEngine';
 import { translatePad } from '@/i18n/padText';
 import { createTranslator } from '@/i18n/translate';
 import {
+  ALL_OUT_FIRST,
   AWAY_BOWLERS,
   DOT,
   FIRST_INNINGS_8,
@@ -266,7 +267,9 @@ describe('the result (spec §4.7)', () => {
       { margin: { kind: 'wickets', value: 4 }, winner: 'second' },
     ]);
     const view = cricketPad(display);
-    const words = view.strip[0]?.text ?? null;
+    // The result heads the recorded card now (T19 fix 5); the strip is left empty.
+    expect(view.strip[0]?.text).toBeNull();
+    const words = view.card?.kind === 'resultRecorded' ? (view.card.title ?? null) : null;
     const said = (lang: 'en' | 'es' | 'fr' | 'nl') =>
       words === null ? null : translatePad(createTranslator(lang), words);
     expect(said('en')).toBe('Away CC won by 4 wickets');
@@ -274,7 +277,7 @@ describe('the result (spec §4.7)', () => {
     expect(said('fr')).toBe('Away CC a gagné par 4 wickets');
     expect(said('nl')).toBe('Away CC won met 4 wickets');
     // "Result recorded — the organiser finalizes it": the kit's card, with the Undo window filled in by the hook.
-    expect(view.card).toStrictEqual({ kind: 'resultRecorded', undoLeft: null });
+    expect(view.card).toMatchObject({ kind: 'resultRecorded', undoLeft: null });
     expect(cricketBreakCard(display)).toBeNull();
   });
 });
@@ -333,9 +336,9 @@ describe('repeated super overs (T19 D12)', () => {
       'begin.s6': ['first'],
     });
     const board = cricketBoard(display);
-    expect(board.score === null ? null : translatePad(en, board.score.innings)).toBe(
-      'Super over 3 · Home CC',
-    );
+    expect(
+      board.score === null ? null : [board.score.team, translatePad(en, board.score.innings)],
+    ).toStrictEqual(['Home CC', 'Super over 3']);
     const folded = foldCricket({
       bootstrap: MATCH,
       ledger: ledgerOf(THIRD_FIRST_HALF),
@@ -582,5 +585,58 @@ describe('the status line at a break (T19 D13)', () => {
       text: 'Over recorded · 8/1 (2 ov)',
       undo: true,
     });
+  });
+});
+
+// T19 fix 5: the batting team's name heads the board, and a result says who won with both sides' scores of the contest.
+describe('the board names the team, and a result names the winner (T19 fix 5)', () => {
+  /** The knockout tied, the away side's super over 2/0, then the home side's four off its first ball: home wins on it. */
+  const SUPER_OVER_WON: readonly Spec[] = [
+    ...TIED_KO,
+    ...superOverOf('A', player('H', 9), [ONE, ONE, ...times(4, DOT)]),
+    ...superOverOf('H', player('A', 9), [FOUR]),
+  ];
+
+  it('a super over’s board: the team on its own, then "Super over 2" without it', () => {
+    const board = cricketBoard(displayOf(TIED_KO));
+    expect(board.score?.team).toBe('Away CC');
+    const superOver = cricketBoard(displayOf([...TWO_SUPER_OVERS_TIED]));
+    expect(superOver.score?.team).toBe('Away CC');
+    expect(translatePad(createTranslator('en'), superOver.score!.innings)).toBe('Super over 3');
+  });
+
+  it('decided on a super over: both halves of it, the side that batted first on top; the card says who won', () => {
+    const display = displayOf(SUPER_OVER_WON);
+    const view = cricketPad(display);
+    expect(display.stage).toBe('decided');
+    expect(cricketBoard(display).result).toStrictEqual([
+      { team: 'Away CC', figures: '2/0', overs: '1' },
+      { team: 'Home CC', figures: '4/0', overs: '0.1' },
+    ]);
+    const title = view.card?.kind === 'resultRecorded' ? view.card.title : undefined;
+    expect(translatePad(createTranslator('en'), title!)).toBe('Home CC won on the super over');
+    expect(view.strip[0]?.text).toBeNull();
+  });
+
+  it('decided in its innings: the two innings, the first side on top; not a result before then', () => {
+    const decided = cricketBoard(
+      displayOf([...ALL_OUT_FIRST, ...inningsOf('A', HOME_BOWLERS, [ONE, ONE])]),
+    );
+    expect(decided.result).toStrictEqual([
+      { team: 'Home CC', figures: '1/10', overs: '1.5' },
+      { team: 'Away CC', figures: '2/0', overs: '0.2' },
+    ]);
+    expect(cricketBoard(displayOf(FIRST_INNINGS_8)).result).toBeNull();
+  });
+
+  it('a tie of the whole match with no super over shows the two innings and the words "Match tied"', () => {
+    const display = displayOf(TIED_KO, NO_PICKS, withCfg(MATCH, LEAGUE_2));
+    const view = cricketPad(display);
+    const title = view.card?.kind === 'resultRecorded' ? view.card.title : undefined;
+    expect(title && translatePad(createTranslator('en'), title)).toBe('Match tied');
+    expect(cricketBoard(display).result).toStrictEqual([
+      { team: 'Home CC', figures: '8/0', overs: '2' },
+      { team: 'Away CC', figures: '8/0', overs: '2' },
+    ]);
   });
 });

@@ -46,7 +46,7 @@ export function withUndoWindow<K extends string>(
   const open = left !== null && lastTap?.undo === true;
   return {
     ...view,
-    card: { kind: 'resultRecorded', undoLeft: open ? left : null },
+    card: { ...card, undoLeft: open ? left : null },
     lastTap: lastTap === null || open ? lastTap : { ...lastTap, undo: false },
   };
 }

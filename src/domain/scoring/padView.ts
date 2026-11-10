@@ -223,13 +223,18 @@ export type PadHistoryGroup<K extends string> = {
 };
 
 /** Why the pad is not taking taps, said on a card (the web pad's own states, `device.*`). */
-export type PadStateCard =
+export type PadStateCard<K extends string = never> =
   | { readonly kind: 'notStarted' }
   /**
    * `undoLeft`: the whole seconds this phone's Undo stays open (owner, 2026-11-03), or null once it is closed or never
    * was. A sport's pad says null; `withUndoWindow` (`undoWindow.ts`) fills it from the phone's clock.
    */
-  | { readonly kind: 'resultRecorded'; readonly undoLeft: number | null }
+  | {
+      readonly kind: 'resultRecorded';
+      readonly undoLeft: number | null;
+      /** A sport that has the result in words (cricket) heads the card with them in place of "Result recorded". */
+      readonly title?: PadText<K>;
+    }
   /**
    * The organiser's lock: the match is finalized and the card says so. Also the card of a View-only screen whose reason
    * this build does not know, which keeps what the card said before it had reasons.
@@ -310,7 +315,7 @@ export type PadView<K extends string> = {
   readonly lastTap: PadLastTap<K> | null;
   readonly sync: PadSync;
   readonly tools: readonly PadTool<K>[];
-  readonly card: PadStateCard | null;
+  readonly card: PadStateCard<K> | null;
 };
 
 /**
@@ -322,7 +327,7 @@ export type PadView<K extends string> = {
  */
 export type CardPlacement = 'instead' | 'withScore' | 'forControls';
 
-export function cardPlacement(card: PadStateCard): CardPlacement {
+export function cardPlacement(card: PadStateCard<string>): CardPlacement {
   if (card.kind === 'notStarted' || card.kind === 'linkInvalid') return 'instead';
   return card.kind === 'updateNeeded' ? 'forControls' : 'withScore';
 }
@@ -331,7 +336,7 @@ export function cardPlacement(card: PadStateCard): CardPlacement {
  * Whether the link names a match, so the top bar offers its Rules (owner ruling 15, 2026-10-31) and its History (owner
  * ruling 21): on the pad and under every card but a dead link's, which names none.
  */
-export function matchKnown(card: PadStateCard | null): boolean {
+export function matchKnown(card: PadStateCard<string> | null): boolean {
   return card?.kind !== 'linkInvalid';
 }
 
@@ -340,7 +345,7 @@ export function matchKnown(card: PadStateCard | null): boolean {
  * 2026-11-03), where the card tells the scorer to ask the organiser. Everywhere else it stays in its place, disabled
  * when it is not offered, so the sentence beside it never changes width.
  */
-export function hasUndoCell(card: PadStateCard | null): boolean {
+export function hasUndoCell(card: PadStateCard<string> | null): boolean {
   return !(card?.kind === 'resultRecorded' && card.undoLeft === null);
 }
 
@@ -366,7 +371,7 @@ const SCREEN_RELEASED: ReadonlySet<PadStateCard['kind']> = new Set([
  * organiser may finalise the result while the scorer watches the card, so the 45 s of Undo are not what the screen is
  * held for.
  */
-export function holdsScreen(card: PadStateCard | null): boolean {
+export function holdsScreen(card: PadStateCard<string> | null): boolean {
   return card === null || !SCREEN_RELEASED.has(card.kind);
 }
 
@@ -380,7 +385,7 @@ export function holdsScreen(card: PadStateCard | null): boolean {
  */
 export function withCard<K extends string>(
   view: PadView<K>,
-  card: PadStateCard | null,
+  card: PadStateCard<K> | null,
 ): PadView<K> {
   if (card === null) return view;
   const [top, bottom] = view.halves;
@@ -399,7 +404,7 @@ export function withCard<K extends string>(
 
 function lastTapUnder<K extends string>(
   lastTap: PadLastTap<K> | null,
-  card: PadStateCard,
+  card: PadStateCard<string>,
 ): PadLastTap<K> | null {
   if (lastTap === null || cardPlacement(card) !== 'withScore') return null;
   return card.kind === 'resultRecorded' ? lastTap : { ...lastTap, undo: false };

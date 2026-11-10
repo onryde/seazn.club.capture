@@ -205,19 +205,15 @@ describe('cricketPad', () => {
     expect(translatePad(en, cricketPad(displayOf([])).tally.said)).toBe('No score yet');
   });
 
-  it('a decided match: the result in words in the strip, and the recorded result’s card', () => {
+  it('a decided match: the result in words is the recorded card’s title, and the strip says nothing of it', () => {
     const view = cricketPad(displayOf(DECIDED));
-    const note = view.strip[0]?.text ?? null;
-    expect(note === null ? null : translatePad(en, note)).toBe('Away CC won by 10 wickets');
-    expect(view.card).toStrictEqual({ kind: 'resultRecorded', undoLeft: null });
-    expect(cricketPad(displayOf(TIED_KO)).strip).toStrictEqual([
-      { slot: 'note', text: null, lines: 2 },
-    ]);
-  });
-
-  // The controller's carried item (Task 16 concern 2): a club's whole name in the result may take a second line.
-  it('the result may take two lines in the strip, where the kit gives every other fact one', () => {
-    expect(cricketPad(displayOf(DECIDED)).strip[0]?.lines).toBe(2);
+    expect(view.strip).toStrictEqual([{ slot: 'note', text: null }]);
+    expect(view.card).toStrictEqual({
+      kind: 'resultRecorded',
+      undoLeft: null,
+      title: { key: 'scoring.cricket.result.wickets.other', count: 10, vars: { name: 'Away CC' } },
+    });
+    expect(cricketPad(displayOf(TIED_KO)).strip).toStrictEqual([{ slot: 'note', text: null }]);
   });
 
   it('Match details carry the rules of the format', () => {

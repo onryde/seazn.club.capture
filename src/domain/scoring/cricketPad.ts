@@ -10,7 +10,13 @@ import {
 import { tapEndedInnings } from '@/domain/scoring/cricketPicks';
 import { cricketResultWords } from '@/domain/scoring/cricketResult';
 import { cricketRuleRows } from '@/domain/scoring/cricketRules';
-import { padSideOf, superOverNumber, turnOf, type CricketTurn } from '@/domain/scoring/cricketTurn';
+import {
+  numberOfOrdinal,
+  padSideOf,
+  superOverNumber,
+  turnOf,
+  type CricketTurn,
+} from '@/domain/scoring/cricketTurn';
 import type {
   BatterLine,
   CricketBowler,
@@ -43,7 +49,16 @@ import { padMarks } from '@/domain/scoring/setBasedPad';
 
 const SYNCED: PadSync = { kind: 'synced' };
 
-const RESULT_RECORDED: PadStateCard = { kind: 'resultRecorded', undoLeft: null };
+/** The recorded result's card: its title is the engine's result in words once there is one (T19 fix 5, Part 2). */
+function recordedCard(display: CricketDisplay): PadStateCard<CricketPadKey> {
+  const { result } = display;
+  if (result === null) return { kind: 'resultRecorded', undoLeft: null };
+  return {
+    kind: 'resultRecorded',
+    undoLeft: null,
+    title: cricketResultWords(result, display.sides),
+  };
+}
 
 /** The match is decided: the engine has a result, which the organiser may have finalized. */
 export const cricketDecided = (display: CricketDisplay): boolean => display.stage === 'decided';
@@ -70,9 +85,6 @@ export function wordsOf(display: CricketDisplay): CricketWords {
   };
 }
 
-/** The result may take two lines in the strip: a club's whole name makes it longer than the kit's one (Task 18). */
-const RESULT_LINES = 2;
-
 /**
  * The pad for a cricket match: the sides' halves, the rules for Match details, the result in words in the strip once one
  * stands, the last tap with the one Undo, and a recorded result's card. `sync` is the transport's word, not the match's.
@@ -89,8 +101,8 @@ export function cricketPad(
     strip: [
       {
         slot: 'note',
-        text: display.result === null ? null : cricketResultWords(display.result, display.sides),
-        lines: RESULT_LINES,
+        // The result is the card's title now (T19 fix 5, Part 2); the strip is left to a line that needs it.
+        text: null,
       },
     ],
     lastTap: lastTapOf(display),
@@ -98,7 +110,7 @@ export function cricketPad(
     tools: [],
     card: null,
   };
-  return withCard(view, cricketDecided(display) ? RESULT_RECORDED : null);
+  return withCard(view, cricketDecided(display) ? recordedCard(display) : null);
 }
 
 /** A side's latest innings, runs/wickets ("25/3"), or nothing before it has batted. */
@@ -173,8 +185,12 @@ function lastTapOf(display: CricketDisplay): PadLastTap<CricketPadKey> | null {
 /** A batter at the crease as the board lists them, and whether they face the next ball (the board's lime dot). */
 export type CreaseLine = BatterLine & { readonly striker: boolean };
 
-/** The score panel: runs/wickets, the overs bowled ("1.5"), the innings and the side batting, and the chase while one stands. */
+/**
+ * The score panel: the batting team's name, runs/wickets, the overs bowled ("1.5"), the innings ("Innings 2", "Super over
+ * 2"; the team is the line above it) and the chase while one stands.
+ */
 export type BoardScore = {
+  readonly team: string;
   readonly runs: number;
   readonly wickets: number;
   readonly overs: string;
@@ -191,15 +207,29 @@ export type BoardScore = {
  */
 export type CricketBoardView = {
   readonly score: BoardScore | null;
+  /** At a result, both sides' scores of the deciding contest in place of the score (T19 fix 5, Part 2). */
+  readonly result: BoardResult | null;
   readonly crease: readonly [CreaseLine, CreaseLine | null] | null;
   readonly bowler: CricketBowler | null;
   readonly over: { readonly number: number; readonly chips: readonly OverChip[] };
   readonly status: PadText<CricketPadKey> | null;
 };
 
+/** A side's line at a result: its name, its runs/wickets (an innings each joined by " & " in a longer match), its overs. */
+export type BoardResultRow = {
+  readonly team: string;
+  readonly figures: string;
+  readonly overs: string | null;
+};
+
+/** The deciding contest's two sides, the side that batted first on top. */
+export type BoardResult = readonly [BoardResultRow, BoardResultRow];
+
 export function cricketBoard(display: CricketDisplay): CricketBoardView {
+  const result = display.stage === 'decided' ? resultRows(display) : null;
   return {
     score: display.innings === null ? null : scoreOfInnings(display, display.innings),
+    result,
     crease: creaseShown(display),
     bowler: display.bowler,
     over: display.over,
@@ -249,14 +279,44 @@ function notOutAtResult(display: CricketDisplay): CricketBoardView['crease'] {
 }
 
 function scoreOfInnings(display: CricketDisplay, innings: CricketInnings): BoardScore {
-  const words = wordsOf(display);
   return {
+    team: display.sides[innings.batting].name,
     runs: innings.runs,
     wickets: innings.wickets,
     overs: oversText(innings.legalBalls, display.cfg.ballsPerOver),
-    innings: headingOf({ ordinal: innings.ordinal, batting: innings.batting }, words),
+    innings: {
+      key: innings.superOver ? 'scoring.cricket.board.superOver' : 'scoring.cricket.board.innings',
+      vars: { number: numberOfOrdinal(innings.ordinal) },
+    },
     chase: display.stage === 'decided' ? null : chaseOf(innings),
   };
+}
+
+/**
+ * The deciding contest's scores (T19 fix 5, Part 2): a match decided on a super over shows that super over's two halves
+ * (the tied main totals are Match details'), any other the innings of the match. Each side's line, the side that batted
+ * first on top; a side with more than one innings joins their runs/wickets and shows no overs. None when no innings
+ * stands (a walkover, an award).
+ */
+function resultRows(display: CricketDisplay): BoardResult | null {
+  const { superOver } = display.state;
+  const list =
+    superOver !== null && superOver.innings.length > 0 ? superOver.innings : display.state.innings;
+  const last =
+    superOver !== null && superOver.innings.length > 0 ? superOverNumber(list.length - 1) : null;
+  const played = list.filter((_, index) => last === null || superOverNumber(index) === last);
+  const sides = [...new Set(played.map((one) => one.battingSide))];
+  const rows = sides.map((side): BoardResultRow => {
+    const own = played.filter((one) => one.battingSide === side);
+    const only = own.length === 1 ? own[0] : undefined;
+    return {
+      team: display.sides[padSideOf(side)].name,
+      figures: own.map((one) => `${one.runs}/${one.wickets}`).join(' & '),
+      overs: only === undefined ? null : oversText(only.legalBalls, display.cfg.ballsPerOver),
+    };
+  });
+  const [first, second] = rows;
+  return first === undefined || second === undefined ? null : [first, second];
 }
 
 /** "Need 9 off 12 balls", or "Need 9" in an innings with no ball limit; nothing when no chase stands. */

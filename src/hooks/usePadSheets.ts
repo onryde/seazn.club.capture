@@ -40,7 +40,7 @@ export type PadSheetDriver = {
 export type PadSheetSnapshot = {
   readonly display: BadmintonDisplay;
   readonly history: readonly PadHistoryGroup<BadmintonPadKey>[];
-  readonly card: PadStateCard | null;
+  readonly card: PadStateCard<string> | null;
   /** The reconnect question (owner ruling 43), while it stands: the real match's; the preview has none. */
   readonly ask?: PadAsk | null;
 };

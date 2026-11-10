@@ -17,12 +17,14 @@ import { renderWithPorts } from '../../../test/renderWithPorts';
 
 const BOARD: CricketBoardView = {
   score: {
+    team: 'Home CC',
     runs: 25,
     wickets: 3,
     overs: '2',
-    innings: { key: 'scoring.cricket.history.innings', vars: { number: 1, side: 'Home CC' } },
+    innings: { key: 'scoring.cricket.board.innings', vars: { number: 1 } },
     chase: null,
   },
+  result: null,
   crease: [
     { id: 'H-p4', name: 'Home Player 4', runs: 12, balls: 7, striker: true },
     { id: 'H-p5', name: 'Home Player 5', runs: 3, balls: 4, striker: false },
@@ -49,10 +51,11 @@ const EIGHT_CHIPS: readonly OverChip[] = [
 const CHASING: CricketBoardView = {
   ...BOARD,
   score: {
+    team: 'Away CC',
     runs: 8,
     wickets: 0,
     overs: '0.1',
-    innings: { key: 'scoring.cricket.history.innings', vars: { number: 2, side: 'Away CC' } },
+    innings: { key: 'scoring.cricket.board.innings', vars: { number: 2 } },
     chase: { key: 'scoring.cricket.board.chase.other', count: 11, vars: { runs: 1 } },
   },
   status: { key: 'scoring.cricket.board.freeHit' },
@@ -65,7 +68,8 @@ describe('CricketBoard', () => {
     renderWithPorts(<CricketBoard view={BOARD} />);
     expect(screen.getByTestId('board-runs').textContent).toBe('25/3');
     expect(screen.getByTestId('board-overs').textContent).toBe('(2 ov)');
-    expect(screen.getByTestId('board-innings').textContent).toBe('Innings 1 · Home CC');
+    expect(screen.getByTestId('board-team').textContent).toBe('Home CC');
+    expect(screen.getByTestId('board-innings').textContent).toBe('Innings 1');
     const striker = screen.getByTestId('board-batter-first');
     expect(within(striker).getByText('Home Player 4')).toBeTruthy();
     expect(within(striker).getByText('12 (7)')).toBeTruthy();
@@ -177,7 +181,7 @@ describe('CricketBoard', () => {
       fill('scoring.cricket.board.chase.other', { runs: 1, count: 11 }),
     );
     expect(screen.getByTestId('board-innings').textContent).toBe(
-      fill('scoring.cricket.history.innings', { number: 2, side: 'Away CC' }),
+      fill('scoring.cricket.board.innings', { number: 2 }),
     );
     expect(screen.getByTestId('board-overs').textContent).toBe(
       fill('scoring.cricket.board.overs', { overs: '0.1' }),

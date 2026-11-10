@@ -71,7 +71,10 @@ describe('cricketBoard', () => {
       0,
       '1',
     ]);
-    expect(score === null ? null : translatePad(en, score.innings)).toBe('Innings 1 · Home CC');
+    expect(score === null ? null : [score.team, translatePad(en, score.innings)]).toStrictEqual([
+      'Home CC',
+      'Innings 1',
+    ]);
     expect(score?.chase).toBeNull();
     expect(board.crease).toStrictEqual([
       { id: H(2), name: 'Home Player 2', runs: 3, balls: 3, striker: true },
@@ -121,7 +124,10 @@ describe('cricketBoard', () => {
     expect(after === null || after.chase === null ? null : translatePad(en, after.chase)).toBe(
       'Need 8 off 11 balls',
     );
-    expect(after === null ? null : translatePad(en, after.innings)).toBe('Innings 2 · Away CC');
+    expect(after === null ? null : [after.team, translatePad(en, after.innings)]).toStrictEqual([
+      'Away CC',
+      'Innings 2',
+    ]);
   });
 
   it('a chase of one ball says ball; nl the same in its own words', () => {

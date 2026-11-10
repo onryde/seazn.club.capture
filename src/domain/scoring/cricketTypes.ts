@@ -378,6 +378,8 @@ export type CricketResultKey =
 export type CricketBoardKey =
   | Counted<'scoring.cricket.board.chase'>
   | 'scoring.cricket.board.need'
+  | 'scoring.cricket.board.innings'
+  | 'scoring.cricket.board.superOver'
   | 'scoring.cricket.board.freeHit'
   | 'scoring.cricket.board.onStrike';
 
