@@ -337,7 +337,8 @@ type Due = { readonly needs: CricketDisplay['needs']; readonly begun: boolean };
 /**
  * Where the match stands for the pad's screens (`CricketStage`). A super over nobody can bat in is the organiser's
  * (ruling 74); an innings scored in over totals stays so until the next innings (§4.10); a later innings, or a super
- * over's, waits on its setup while its openers or its bowler are not picked, or Start innings is not tapped.
+ * over's, waits on its setup while its openers or its bowler are not picked, or Start innings is not tapped. The first
+ * innings waits on its picks alone, after a start with no players (the setup stage is the one before Start).
  */
 function stageOf(
   state: CricketState,
@@ -351,8 +352,17 @@ function stageOf(
   if (state.phase === 'super_over')
     return entered ? dueStage(turn, due, 'superOverSetup') : 'tiedNoPlayers';
   if (turn?.innings?.fine === null || !entered) return 'totals';
-  return turn !== null && turn.index > 0 ? dueStage(turn, due, 'break') : 'live';
+  if (turn !== null && turn.index > 0) return dueStage(turn, due, 'break');
+  return openedWithoutPicks(turn, due) ? 'break' : 'live';
 }
+
+/**
+ * The first innings (a super over's stage is decided before this), started with no team sheet and the sheets saved after (T19 fix 7): open to its first ball with its
+ * openers or its bowler not picked, so the setup stands under no card. Start was already recorded, so only a missing pick
+ * holds it, never Start innings (which the first innings has none of).
+ */
+const openedWithoutPicks = (turn: CricketTurn | null, due: Due): boolean =>
+  turn?.innings === null && due.needs !== null;
 
 /** The setup's stage while the innings due is not yet opened and waits on a pick or on Start innings; else live. */
 const dueStage = (turn: CricketTurn | null, due: Due, waiting: CricketStage): CricketStage =>

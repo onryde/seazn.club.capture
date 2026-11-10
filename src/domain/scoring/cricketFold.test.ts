@@ -6,6 +6,7 @@ import { NO_PICKS, type PendingPicks } from '@/domain/scoring/pendingPicks';
 import type { QueuedEvent } from '@/domain/scoring/queue';
 import type { Bootstrap } from '@/domain/scoring/wire';
 import {
+  AWAY,
   AWAY_BOWLERS,
   DOT,
   FIRST_INNINGS_8,
@@ -84,6 +85,12 @@ const batter = (id: string, name: string, runs: number, balls: number) => ({
 /** The home side's eleven in the team sheet's order. */
 const HOME_ORDER = Array.from({ length: 11 }, (_, i) => H(i + 1));
 
+/** Neither team sheet saved: no rows on either side (Match started, the organiser not yet in). */
+const NO_SHEETS: Bootstrap = {
+  ...MATCH,
+  sides: { home: { ...HOME, lineup: [] }, away: { ...AWAY, lineup: [] } },
+};
+
 const OPENERS_I1 = { 'openers.i1': [H(1), H(2)] };
 
 describe('the stage', () => {
@@ -119,9 +126,31 @@ describe('the stage', () => {
   });
 
   it('is live once started, and not decided', () => {
-    const display = displayOf(OPENING, { picks: OPENERS_I1 });
+    const display = displayOf(OPENING, { picks: { ...OPENERS_I1, 'bowler.i1.0': [A(11)] } });
     expect(display.stage).toBe('live');
     expect(display.result).toBeNull();
+  });
+
+  // T19 fix 7 (device, build 982): Match started with no team sheet, the sheets saved after. Players are entered and the
+  // first innings is open to its first ball with no openers and no bowler: the picks are asked for (§4.5), never the keys.
+  it('players entered after the start: the first innings asks for its openers, then its bowler, then is live', () => {
+    const noSheets = displayOf(OPENING, { bootstrap: NO_SHEETS });
+    expect(noSheets.stage).toBe('totals');
+    expect(noSheets.needs).toBeNull();
+    const entered = displayOf(OPENING);
+    expect(entered.stage).toBe('break');
+    expect(entered.needs).toBe('openers');
+    expect(entered.innings?.ordinal).toBe('i1');
+    const openers = displayOf(OPENING, { picks: OPENERS_I1 });
+    expect(openers.stage).toBe('break');
+    expect(openers.needs).toBe('bowler');
+    const ready = displayOf(OPENING, { picks: { ...OPENERS_I1, 'bowler.i1.0': [A(11)] } });
+    expect(ready.stage).toBe('live');
+    expect(ready.needs).toBeNull();
+  });
+
+  it('a first innings with a ball in it is live whatever the picks say', () => {
+    expect(displayOf([...OPENING, firstOver(1, { bat: 1 })]).stage).toBe('live');
   });
 
   it('a side with no players is totals', () => {

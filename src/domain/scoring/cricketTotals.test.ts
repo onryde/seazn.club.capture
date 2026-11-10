@@ -22,6 +22,7 @@ import {
   MATCH,
   NO_AWAY_PLAYERS,
   OPENING,
+  ball,
   ledgerOf,
   summary,
   withCfg,
@@ -286,7 +287,15 @@ describe('what the screen says above the entry', () => {
 
   // Fix round (controller, 2026-11-09): the over-end sheet no longer opens an entry, so a live match has none to show.
   it('a live match, players entered, has no entry', () => {
-    const live = displayOf(OPENING, MATCH);
+    const first = ball({
+      over: 0,
+      ballInOver: 1,
+      striker: 'H-p1',
+      nonStriker: 'H-p2',
+      bowler: 'A-p11',
+      bat: 1,
+    });
+    const live = displayOf([...OPENING, first], MATCH);
     expect(live.stage).toBe('live');
     expect(totalsView(live)).toBeNull();
   });
