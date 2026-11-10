@@ -39,6 +39,7 @@ const BOARD: CricketBoardView = {
   bowler: null,
   over: { number: 1, chips: [] },
   status: null,
+  summary: null,
 };
 
 describe('the batting team’s name over the score', () => {

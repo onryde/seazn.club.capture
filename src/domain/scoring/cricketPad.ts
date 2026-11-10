@@ -7,6 +7,7 @@ import {
   undoneSaid,
   type CricketWords,
 } from '@/domain/scoring/cricketHistory';
+import { summaryOf, type SummaryBlock } from '@/domain/scoring/cricketSummary';
 import { tapEndedInnings } from '@/domain/scoring/cricketPicks';
 import { cricketResultWords } from '@/domain/scoring/cricketResult';
 import { cricketRuleRows } from '@/domain/scoring/cricketRules';
@@ -214,6 +215,8 @@ export type CricketBoardView = {
   /** Null when there is no over to show: a decided match with no delivery, an innings break (T19 fix 9). */
   readonly over: { readonly number: number; readonly chips: readonly OverChip[] } | null;
   readonly status: PadText<CricketPadKey> | null;
+  /** At a result, each main innings' top bat, best bowl and extras (T19 fix 10); null while the match is played. */
+  readonly summary: readonly SummaryBlock[] | null;
 };
 
 /** A side's line at a result: its name, its runs/wickets (an innings each joined by " & " in a longer match), its overs. */
@@ -235,6 +238,7 @@ export function cricketBoard(display: CricketDisplay): CricketBoardView {
     bowler: display.bowler,
     over: overShown(display),
     status: display.freeHit ? { key: 'scoring.cricket.board.freeHit' } : null,
+    summary: summaryOf(display, wordsOf(display).names),
   };
 }
 

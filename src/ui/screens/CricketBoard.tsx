@@ -6,6 +6,7 @@ import type {
   CreaseLine,
   CricketBoardView,
 } from '@/domain/scoring/cricketPad';
+import type { SummaryBlock } from '@/domain/scoring/cricketSummary';
 import type { CricketBowler, OverChip } from '@/domain/scoring/cricketTypes';
 import { useT } from '@/hooks/useLanguage';
 import { usePadText } from '@/hooks/usePadText';
@@ -64,6 +65,7 @@ export const CricketBoard = memo(function CricketBoard({
       <Crease crease={view.crease} bowler={view.bowler} onOpenPlayers={onOpenPlayers} />
       <FreeHit status={view.status} />
       {fit.strip && view.over !== null ? <OverStrip over={view.over} shown={shown} /> : null}
+      <Summary summary={view.summary} />
       {spacers.bottom ? <View testID="board-spare-end" style={styles.spareEnd} /> : null}
     </View>
   );
@@ -211,6 +213,119 @@ const ResultPanel = memo(function ResultPanel({ result }: { readonly result: Boa
           </Text>
         </View>
       ))}
+    </View>
+  );
+});
+
+/**
+ * A result's summary (T19 fix 10): a block a main innings, in batting order, with the side's name, its top bat, the other
+ * side's best bowl and the extras. Read only, every row a fixed height (`layout.creaseRow`) so nothing moves, no rung of
+ * giving way: the board's own clip cuts what the room does not hold, at the bottom, and never draws over anything. A row
+ * with nothing to say (no ball faced, none bowled, over totals) is left out.
+ */
+const Summary = memo(function Summary({
+  summary,
+}: {
+  readonly summary: readonly SummaryBlock[] | null;
+}) {
+  if (summary === null) return null;
+  return (
+    <View testID="board-summary" style={styles.summary}>
+      {summary.map((block, index) => (
+        <SummaryBlockView key={index} block={block} />
+      ))}
+    </View>
+  );
+});
+
+const SummaryBlockView = memo(function SummaryBlockView({
+  block,
+}: {
+  readonly block: SummaryBlock;
+}) {
+  const words = usePadText();
+  const { t } = useT();
+  const { top, best } = block;
+  return (
+    <View testID="summary-block" style={styles.summaryBlock}>
+      <Text
+        variant="label"
+        testID="summary-team"
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={layout.boardTeamMinScale}
+        ellipsizeMode="tail"
+        style={styles.summaryTeam}
+      >
+        {block.team}
+      </Text>
+      {top === null ? null : (
+        <SummaryRow
+          testID="summary-top"
+          label={t('scoring.cricket.board.summary.top')}
+          name={top.name}
+          figures={`${top.runs} (${top.balls})`}
+        />
+      )}
+      {best === null ? null : (
+        <SummaryRow
+          testID="summary-best"
+          label={t('scoring.cricket.board.summary.best')}
+          name={best.name}
+          figures={`${best.wickets}-${best.runs} (${best.overs})`}
+        />
+      )}
+      {block.extras === null ? null : (
+        <View style={styles.summaryRow}>
+          <Text
+            variant="metricUnit"
+            testID="summary-extras"
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            style={styles.summaryLabel}
+          >
+            {words(block.extras)}
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+});
+
+/** One row: its label, the name (one line, an ellipsis) and the figures; a screen reader reads it as one line. */
+const SummaryRow = memo(function SummaryRow({
+  testID,
+  label,
+  name,
+  figures,
+}: {
+  readonly testID: string;
+  readonly label: string;
+  readonly name: string;
+  readonly figures: string;
+}) {
+  return (
+    <View
+      testID={testID}
+      accessible
+      accessibilityLabel={`${label}, ${name}, ${figures}`}
+      style={styles.summaryRow}
+    >
+      <Text variant="metricUnit" numberOfLines={1} style={styles.summaryTag}>
+        {label}
+      </Text>
+      <Text
+        variant="label"
+        testID={`${testID}-name`}
+        numberOfLines={1}
+        ellipsizeMode="tail"
+        style={styles.summaryName}
+      >
+        {name}
+      </Text>
+      <Text variant="metricValue" testID={`${testID}-figures`} style={styles.figures}>
+        {figures}
+      </Text>
     </View>
   );
 });
@@ -394,6 +509,19 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   head: { gap: 0 },
+  summary: { gap: space.xs, flexShrink: 0 },
+  summaryBlock: { gap: 0, flexShrink: 0 },
+  summaryTeam: { color: colour.ink2, height: layout.creaseRow, flexShrink: 0 },
+  summaryRow: {
+    height: layout.creaseRow,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs,
+    flexShrink: 0,
+  },
+  summaryTag: { color: colour.ink3, flexShrink: 0 },
+  summaryName: { flex: 1, color: colour.ink },
+  summaryLabel: { color: colour.ink2, flex: 1 },
   team: { color: colour.ink },
   teamBeside: { flex: 1, color: colour.ink },
   resultFigures: { color: colour.ink, flexShrink: 0 },

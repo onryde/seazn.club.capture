@@ -706,6 +706,8 @@
   "scoring.cricket.board.over": "Over {number}",
   "scoring.cricket.board.overLast": "Over {number} · {shown} dernières sur {total}",
   "scoring.cricket.board.onStrike": "Face au lanceur",
+  "scoring.cricket.board.summary.top": "Meilleur batteur",
+  "scoring.cricket.board.summary.best": "Meilleur lanceur",
   "scoring.cricket.break.title": "Pause entre les manches",
   "scoring.cricket.break.tied": "Égalité — super over",
   "scoring.cricket.break.tiedAgain": "Encore égalité · super over {number}",

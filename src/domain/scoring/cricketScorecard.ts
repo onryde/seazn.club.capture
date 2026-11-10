@@ -1,4 +1,5 @@
 import type { CricketInningsCard } from '@seazn/engine/sports/cricket';
+import { extrasOf } from '@/domain/scoring/cricketSummary';
 import { wordsOf } from '@/domain/scoring/cricketPad';
 import { superOverNumber } from '@/domain/scoring/cricketTurn';
 import type { CricketDisplay, CricketPadKey } from '@/domain/scoring/cricketTypes';
@@ -138,19 +139,4 @@ function withFielders(
 function didNotBatOf(ids: readonly string[], nameOf: NameOf): Text | null {
   if (ids.length === 0) return null;
   return { key: 'scoring.cricket.card.didNotBat', vars: { names: ids.map(nameOf).join(', ') } };
-}
-
-/** The extras and their kinds; a penalty is named only when one was awarded. */
-function extrasOf(extras: CricketInningsCard['extras']): Text | null {
-  if (extras === null) return null;
-  const vars = {
-    total: extras.total,
-    wides: extras.wides,
-    noBalls: extras.noBalls,
-    byes: extras.byes,
-    legByes: extras.legByes,
-  };
-  return extras.penalties === 0
-    ? { key: 'scoring.cricket.card.extras', vars }
-    : { key: 'scoring.cricket.card.extrasPen', vars: { ...vars, penalties: extras.penalties } };
 }

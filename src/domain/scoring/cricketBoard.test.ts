@@ -351,3 +351,44 @@ describe('cricketBoard strip at a result and at a break (T19 fix 9)', () => {
     expect(boardOf(OVER_ONE_DONE).over).toStrictEqual({ number: 2, chips: [] });
   });
 });
+
+// T19 fix 10: a decided match's summary, off the scorecard. Worked from the script by hand: Home 1 all out, a single then ten
+// wickets on ten balls (Home Player 1 is on strike again for the seventh ball, so faces two; A-p11 bowls the first over: 1 run, 5 wickets, 6 balls; A-p10 the second: 0 runs, 5 wickets, 5
+// balls); Away then single, single (H-p11, 2 balls, 2 runs), winning at once.
+describe('cricketBoard summary (T19 fix 10)', () => {
+  const decided = [...ALL_OUT_FIRST, ...inningsOf('A', HOME_BOWLERS, [ONE, ONE])];
+
+  it('a decided match has a block per main innings, in batting order', () => {
+    const summary = boardOf(decided).summary;
+    expect(summary?.map((block) => block.team)).toStrictEqual(['Home CC', 'Away CC']);
+    expect(summary?.[0]?.top).toStrictEqual({ name: 'Home Player 1', runs: 1, balls: 2 });
+    expect(summary?.[0]?.best).toStrictEqual({
+      name: 'Away Player 10',
+      wickets: 5,
+      runs: 0,
+      overs: '0.5',
+    });
+    // Both Away openers made 1 off 1: the earlier in the order.
+    expect(summary?.[1]?.top).toStrictEqual({ name: 'Away Player 1', runs: 1, balls: 1 });
+    expect(summary?.[1]?.best).toStrictEqual({
+      name: 'Home Player 11',
+      wickets: 0,
+      runs: 2,
+      overs: '0.2',
+    });
+  });
+
+  it('none while the match is played, and none at a break', () => {
+    expect(boardOf(OVER_ONE_DONE).summary).toBeNull();
+    expect(boardOf(FIRST_INNINGS_8).summary).toBeNull();
+  });
+
+  it('super overs are left out: a tie decided there has the two main innings only', () => {
+    const board = boardOf([
+      ...TIED_KO,
+      ...superOverOf('A', player('H', 9), [ONE, ONE, ...times(4, DOT)]),
+      ...superOverOf('H', player('A', 9), times(6, DOT)),
+    ]);
+    expect(board.summary).toHaveLength(2);
+  });
+});

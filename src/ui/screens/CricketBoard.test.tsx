@@ -32,6 +32,7 @@ const BOARD: CricketBoardView = {
   bowler: { id: 'A-p11', name: 'Away Player 11', figures: '2-0-25-3' },
   over: { number: 3, chips: [] },
   status: null,
+  summary: null,
 };
 
 const chip = (text: string, tone: OverChip['tone']): OverChip => ({ text, tone });

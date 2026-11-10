@@ -32,6 +32,7 @@ const BOARD: CricketBoardView = {
   bowler: { id: 'h', name: 'Christopher Alexander Fitzwilliam-Montague', figures: '0.2-0-1-0' },
   over: { number: 1, chips: SIX },
   status: null,
+  summary: null,
 };
 
 function measured(view: CricketBoardView, size: { width: number; height: number } | null) {
