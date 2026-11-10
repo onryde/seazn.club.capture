@@ -93,13 +93,18 @@ S2), so several scorers may write and the ledger's `expected_seq` keeps them
 honest. Each sport has its own pad screen over a shared kit, never one pad
 with sport conditions (S2 ruling 38; owner, 2026-11-02).
 
-The phone scores badminton (S2-1), table tennis (S2-2) and chess (S2-3,
-`docs/specs/2026-11-04-s2-3-chess-design.md`, rulings 57–62). Chess records one
+The phone scores badminton (S2-1), table tennis (S2-2), chess (S2-3,
+`docs/specs/2026-11-04-s2-3-chess-design.md`, rulings 57–62) and cricket (S2-4,
+`docs/specs/2026-11-07-s2-4-cricket-design.md`, rulings 64–85). Chess records one
 game's result only (57, 58), and for a drawn knockout game also its tie-break
 (ruling 63, `docs/specs/2026-11-05-s2-3b-chess-tiebreak-design.md`). Its key is the engine's shared `boardgame`, and
 every `boardgame` match is treated as chess (61). Forfeit, walkover, abandon
 and lots are the organiser's: the phone never sends `core.forfeit`,
 `core.settle`, `core.abandon` or a forfeit method.
+Cricket records every ball, wicket and over with the players the organiser entered,
+or an over's totals when none are (ruling 66); its toss, order, openers and bowler
+picks are the phone's own until a ball carries them, and Undo takes back this
+phone's own balls one at a time (81). It never sends a forfeit, an abandon or a settle.
 
 Adding a fourth mode, or a screen outside a mode, is a product decision, not
 an implementation detail. Raise it; don't build it.
@@ -166,9 +171,9 @@ src/
                    # the record upload's credential, kept 24 h after its code goes (R4)
     policy/        # fallback strategy, degradation ladder
     scoring/       # Remote Scoring: wire shapes, the tap queue, sync, the match reducer, and one
-                   # module set per sport (`badminton*`, `tableTennis*`, `chess*`) behind `ScoringSport`
+                   # module set per sport (`badminton*`, `tableTennis*`, `chess*`, `cricket*`) behind `ScoringSport`
                    # (`sportFor`, a table keyed by the bootstrap's `sport_key`: `badminton`, `tabletennis`,
-                   # `boardgame`). Generic files never import a sport's: lint (`SPORT_MODULES`,
+                   # `boardgame`, `cricket`). Generic files never import a sport's: lint (`SPORT_MODULES`,
                    # `SPORT_OWN_FILES`, both casings) enforces it
   i18n/            # en/es/fr/nl dictionaries, t()/tp(), formatTime(). Pure.
   ui/
