@@ -410,8 +410,8 @@ describe('the reconnect question (owner ruling 43)', () => {
     await column(view, 'goal.first');
     await pick(view, 'dontKnow');
     await wait();
-    await column(view, 'card.first');
-    expect(stepOf(view)?.title).toBe('scoring.football.sheet.card');
+    await column(view, 'yellow.first');
+    expect(stepOf(view)?.title).toBe('scoring.football.sheet.yellow');
     fakes.scoring.addOtherScorerEvent('football.goal', {
       by: AWAY_ENTRANT,
       at: { period: 'H1', elapsed: 2 },
@@ -586,7 +586,7 @@ describe('the columns’ sheets (design §6.3)', () => {
     });
   });
 
-  it('Card → Second yellow lists only the booked', async () => {
+  it('Yellow lists every bookable player, a yellowed one noted; choosing him books a second yellow', async () => {
     const booked = footballSeed({
       events: [
         START,
@@ -594,11 +594,40 @@ describe('the columns’ sheets (design §6.3)', () => {
         { type: 'football.card', payload: { by: HOME_ENTRANT, person: home(4), color: 'yellow' } },
       ],
     });
-    const { view } = await opened({ seed: booked });
-    await column(view, 'card.first');
-    expect(stepOf(view)?.ids).toEqual(['color.yellow', 'color.second_yellow', 'color.red']);
-    await pick(view, 'color.second_yellow');
-    expect(stepOf(view)?.ids).toEqual([P(home(4))]);
+    const { fakes, view } = await opened({ seed: booked });
+    await column(view, 'yellow.first');
+    expect(stepOf(view)?.ids).toContain(P(home(4)));
+    expect(stepOf(view)?.ids).toContain(P(home(7)));
+    expect(stepOf(view)?.ids.some((id) => id.startsWith('color.'))).toBe(false);
+    await pick(view, P(home(4)));
+    await pick(view, 'noReason');
+    expect((await lastEvent(fakes))?.payload).toMatchObject({
+      by: HOME_ENTRANT,
+      person: home(4),
+      color: 'second_yellow',
+    });
+  });
+
+  it('Red books a red for the player chosen', async () => {
+    const { fakes, view } = await opened();
+    await column(view, 'red.second');
+    await pick(view, P(away(6)));
+    await pick(view, 'noReason');
+    expect((await lastEvent(fakes))?.payload).toMatchObject({
+      by: AWAY_ENTRANT,
+      person: away(6),
+      color: 'red',
+    });
+  });
+
+  it('a double tap on Yellow opens one sheet', async () => {
+    const { view } = await opened();
+    await column(view, 'yellow.first');
+    await column(view, 'yellow.first');
+    expect(stepOf(view)?.title).toBe('scoring.football.sheet.yellow');
+    press(view, (actions) => actions.cancelSheet());
+    await flush();
+    expect(pad(view).sheet).toBeNull();
   });
 
   it('Sub → off → on queues one football.sub with asOf', async () => {
@@ -618,7 +647,7 @@ describe('the columns’ sheets (design §6.3)', () => {
   it('Sub is disabled with No team sheet on noSlots, and opens nothing', async () => {
     const seed = footballSeed({ sheet: 'noSlots', events: [START, KICK_OFF] });
     const { view } = await opened({ seed });
-    const sub = footballBoard(pad(view).display, pad(view).view.card).columns[0].actions[2];
+    const sub = footballBoard(pad(view).display, pad(view).view.card).columns[0].actions[3];
     expect(sub).toMatchObject({
       id: 'sub.first',
       enabled: false,

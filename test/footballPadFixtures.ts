@@ -3,7 +3,18 @@ import type { FootballDisplay, FootballTypes } from '@/domain/scoring/footballTy
 import type { PadHistoryGroup } from '@/domain/scoring/padView';
 import type { QueuedEvent } from '@/domain/scoring/queue';
 import type { Bootstrap } from '@/domain/scoring/wire';
-import { at, clock, goal, kick, ledgerOf, MATCH, period, start, type Spec } from './footballLedger';
+import {
+  at,
+  card,
+  clock,
+  goal,
+  kick,
+  ledgerOf,
+  MATCH,
+  period,
+  start,
+  type Spec,
+} from './footballLedger';
 
 /**
  * Football matches at the moments the pad tests look at (S2-5 plan P Task 8), folded by the real fold. Only the ledgers
@@ -77,3 +88,9 @@ export const KICKS_4_3: readonly Spec[] = [...LEVEL_AFTER_ET, ...kicks('H+ A+ H+
 
 /** Home 4, away 1 after four rounds: away can no longer catch up, so home's fourth kick decides it. */
 export const KICKS_4_1: readonly Spec[] = [...LEVEL_AFTER_ET, ...kicks('H+ A+ H+ A- H+ A- H+')];
+
+/** Kick-off, then the home side's number 4 shown a yellow (the fake's ids: `ent-home-p4`). */
+export const YELLOWED_HOME_4: readonly Spec[] = [
+  ...KICK_OFF,
+  card({ by: 'H', color: 'yellow', person: 'ent-home-p4' }),
+];

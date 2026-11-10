@@ -1,7 +1,7 @@
 import type { GameTime } from '@seazn/engine/core';
 import { footballPadRules } from '@seazn/engine/pad';
 import type { FootballCfg } from '@seazn/engine/sports/football';
-import type { ClockBarView } from '@/domain/scoring/clockBarView';
+import type { ClockBarAction, ClockBarView } from '@/domain/scoring/clockBarView';
 import { clockText, matchTime, PHASE_ORDER } from '@/domain/scoring/footballClock';
 import { periodWordOf } from '@/domain/scoring/footballHistory';
 import {
@@ -29,7 +29,7 @@ const SIDES: readonly PadSide[] = ['first', 'second'];
 export type BoardAction = {
   readonly id: string;
   readonly label: Text;
-  /** Goal, the lime plate (AGENTS.md §5's primary); the others on `surface2`. */
+  /** Goal, or Scored in the shootout: the lime square that carries the team's score (owner ruling 132); the others on `surface2`. */
   readonly primary: boolean;
   readonly enabled: boolean;
   /** The one line under a disabled button ("No subs left", "No team sheet"), or none. */
@@ -47,7 +47,7 @@ export type BoardColumn = {
 
 /**
  * The two columns, home first, and in the shootout each team's kicks in order (scored or not), for the ●/○ rows. In
- * play a column is Goal, Card and Sub; in the shootout (and once one has decided the match) Scored and Missed, live only
+ * play a column is Goal, Yellow, Red and Sub; in the shootout (and once one has decided the match) Scored and Missed, live only
  * in the column whose kick the engine says is next, or in both before the first kick, which the engine leaves to the
  * teams. Nothing is live under a card, before the start or once the match is decided.
  */
@@ -79,18 +79,18 @@ function columnOf(display: FootballDisplay, side: PadSide, live: boolean): Board
 
 const action = (
   id: string,
-  word: 'goal' | 'card' | 'sub' | 'scored' | 'missed',
+  word: 'goal' | 'yellow' | 'red' | 'sub' | 'scored' | 'missed',
   enabled: boolean,
   note: Text | null = null,
 ): BoardAction => ({
   id,
   label: { key: `scoring.football.column.${word}` },
-  primary: word === 'goal',
+  primary: word === 'goal' || word === 'scored',
   enabled,
   note,
 });
 
-/** Goal, Card and Sub. Sub says why it is off: the team has no sheet to name a player from, or no substitution left. */
+/** Goal, Yellow, Red and Sub. Sub says why it is off: the team has no sheet to name a player from, or no substitution left. */
 function playActions(
   display: FootballDisplay,
   side: PadSide,
@@ -99,7 +99,8 @@ function playActions(
   const subNote = subNoteOf(display, side);
   return [
     action(`goal.${side}`, 'goal', live),
-    action(`card.${side}`, 'card', live),
+    action(`yellow.${side}`, 'yellow', live),
+    action(`red.${side}`, 'red', live),
     action(`sub.${side}`, 'sub', live && subNote === null, subNote),
   ];
 }
@@ -129,7 +130,7 @@ function kicksOf(
   return [of('first'), of('second')];
 }
 
-const ACTIONS = ['goal', 'card', 'sub', 'scored', 'missed'] as const;
+const ACTIONS = ['goal', 'yellow', 'red', 'sub', 'scored', 'missed'] as const;
 
 /** A column button's id read back: what it does and for which team; anything else is no button of the board. */
 export function parseFootballAction(
@@ -153,7 +154,7 @@ export type MoreItem = { readonly id: string; readonly label: Text };
 /**
  * The More sheet's items (design §6.4), each only while the engine takes its event in this phase: a missed penalty for
  * each team, a sin-bin for each when the match has sin-bins (`cfg.sinBinMinutes`, plan decision PD1), Back from sin-bin
- * for each player in the bin, a shot for each, Correct clock once the period's Start stands, and Match details always.
+ * for each player in the bin, a shot for each, Adjust clock once the period's Start stands, and Match details always.
  */
 export function footballMoreItems(display: FootballDisplay): readonly MoreItem[] {
   const takes = (type: string) =>
@@ -202,17 +203,6 @@ const backItems = (display: FootballDisplay): MoreItem[] =>
     })),
   );
 
-/**
- * Whether `side` leads (design §6.2: its score is the LED lime): more goals, or level on goals, more kicks scored in the
- * shootout. Level, neither does.
- */
-export function footballLeads(display: FootballDisplay, side: PadSide): boolean {
-  const other: PadSide = side === 'first' ? 'second' : 'first';
-  const { goals, shootout } = display;
-  if (goals[side] !== goals[other]) return goals[side] > goals[other];
-  return shootout !== null && shootout.scored[side] > shootout.scored[other];
-}
-
 /** Whether a sin-bin ending at `over` is over at `now`: its end reached in its period, or any later period under way. */
 export function binOver(over: GameTime | null, now: GameTime): boolean {
   if (over === null) return false;
@@ -244,17 +234,21 @@ export function footballClockBar(
     : (display.clock.asOf ?? { period: enginePhase, elapsed: 0 });
   const time = clockText(matchTime(at, cfg));
   const running = display.clock.anchor?.running === true;
+  const paused = inPlay && !running && display.clock.started;
   return {
     time,
     period: periodOf(display),
     said: { key: 'scoring.football.clock.said', vars: { time } },
-    action: inPlay
-      ? {
-          kind: running ? 'pause' : 'start',
-          label: { key: running ? 'scoring.football.clock.pause' : 'scoring.football.clock.start' },
-        }
-      : null,
+    paused: paused ? { key: 'scoring.football.clock.paused' } : null,
+    action: inPlay ? plateOf(running, paused) : null,
   };
+}
+
+/** The plate: Pause while running; else Resume once the period's first start stands, and Start before it. */
+function plateOf(running: boolean, paused: boolean): ClockBarAction<FootballPadKey> {
+  if (running) return { kind: 'pause', label: { key: 'scoring.football.clock.pause' } };
+  if (paused) return { kind: 'resume', label: { key: 'scoring.football.clock.resume' } };
+  return { kind: 'start', label: { key: 'scoring.football.clock.start' } };
 }
 
 /** Correct's time (design §7.5): `seconds` into the period in play, counted the way the match counts (`matchTime` reads a negative as 0:00 of it). */

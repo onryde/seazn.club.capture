@@ -5,8 +5,7 @@ import {
   footballBoard,
   footballClockBar,
   footballCorrectTime,
-  footballLeads,
-  footballTakesCorrect,
+  parseFootballAction,
   type BoardAction,
   type BoardBin,
   type BoardColumn,
@@ -139,7 +138,7 @@ type ClockLeafProps = {
 
 /**
  * The one part that ticks (AGENTS §8): the shared clock's reading once a second while it runs, as the clock bar draws it.
- * A tap on the time opens Correct while the match takes one (`footballTakesCorrect`).
+ * The time is no button: Correct opens from More alone (the controller's ruling 134).
  */
 const FootballClockLeaf = memo(function FootballClockLeaf({
   display,
@@ -149,8 +148,7 @@ const FootballClockLeaf = memo(function FootballClockLeaf({
 }: ClockLeafProps) {
   useClockTick(display.clock.anchor?.running === true);
   const view = footballClockBar(display, readingNow());
-  const onCorrect = footballTakesCorrect(display) ? actions.correct : null;
-  return <ClockBar view={view} onAction={actions.clock} onCorrect={onCorrect} compact={compact} />;
+  return <ClockBar view={view} onAction={actions.clock} compact={compact} />;
 });
 
 type SideColumnProps = {
@@ -183,28 +181,50 @@ function useColumnView({ column, half, display, readingNow }: SideColumnProps): 
       label: half.label,
       bar: half.bar,
       value: half.value,
-      lead: footballLeads(display, column.side),
       cards: display.sides[column.side].cards,
       said: half.marks?.said.map(words) ?? [],
       tags: column.bins.map((bin, at) => (
         <SinBinTag key={at} bin={bin} display={display} readingNow={readingNow} />
       )),
-      actions: column.actions.map((action) => teamAction(action, words)),
+      actions: column.actions.map((action) => teamAction(action, half, words)),
     }),
     [half, column, display, readingNow, words],
   );
 }
 
-const teamAction = (
+/** The swatch of a card button: Yellow's caution, Red's dismissal (AGENTS §5: the pad's card icons, nothing else). */
+const SWATCH = { yellow: 'caution', red: 'dismissal' } as const;
+
+/** What a screen reader hears of the primary button: its word, the team and its score ("Goal, Home FC, 2"). */
+function primarySaid(
   action: BoardAction,
+  half: PadHalf<FootballPadKey>,
   words: (text: BoardAction['label']) => string,
-): TeamAction => ({
-  id: action.id,
-  label: words(action.label),
-  primary: action.primary,
-  enabled: action.enabled,
-  note: action.note === null ? null : words(action.note),
-});
+): string | null {
+  if (!action.primary) return null;
+  const key =
+    parseFootballAction(action.id)?.action === 'scored'
+      ? 'scoring.football.column.scoredSaid'
+      : 'scoring.football.column.goalSaid';
+  return words({ key, vars: { team: half.label, value: half.value } });
+}
+
+function teamAction(
+  action: BoardAction,
+  half: PadHalf<FootballPadKey>,
+  words: (text: BoardAction['label']) => string,
+): TeamAction {
+  const word = parseFootballAction(action.id)?.action;
+  return {
+    id: action.id,
+    label: words(action.label),
+    said: primarySaid(action, half, words),
+    primary: action.primary,
+    enabled: action.enabled,
+    note: action.note === null ? null : words(action.note),
+    swatch: word === 'yellow' || word === 'red' ? SWATCH[word] : null,
+  };
+}
 
 /**
  * A player in the sin-bin: the shirt number, and "Sin-bin over" once the clock passes the bin's end (design §6.4). It

@@ -13,12 +13,17 @@ export type ClockBarView<K extends string> = {
   readonly period: PadText<K> | null;
   /** What a screen reader hears for the face ("Match clock 45+1:20"): the period is read on its own line. */
   readonly said: PadText<K>;
-  /** The one button: Start while the clock is stopped, Pause while it runs; none where the clock takes neither. */
+  /** The word of the PAUSED tag, while the period has started and its clock is stopped; none otherwise. */
+  readonly paused: PadText<K> | null;
+  /**
+   * The one plate: Start before the period's first start, Pause while the clock runs, Resume while it is stopped after
+   * that; none where the clock takes none.
+   */
   readonly action: ClockBarAction<K> | null;
 };
 
 /** The clock bar's button: what it does, and its word. */
 export type ClockBarAction<K extends string> = {
-  readonly kind: 'start' | 'pause';
+  readonly kind: 'start' | 'pause' | 'resume';
   readonly label: PadText<K>;
 };

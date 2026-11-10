@@ -42,17 +42,19 @@ const nameWidth = (text: string) => barlow600.width(text, typeScale.matchName.fo
 const rowWidth = (text: string) => geist500.width(text, typeScale.controlInk.fontSize);
 /** `metricUnit`: Geist 500 at 12. A column button's note ("No subs left"). */
 const noteWidth = (text: string) => geist500.width(text, typeScale.metricUnit.fontSize);
-/** `tally`: Barlow Condensed 700 at 46, tabular digits (`zero.tf`); every other glyph at its own advance. */
-const clockWidth = (text: string) =>
+/** Barlow Condensed 700 at `size`, tabular digits (`zero.tf`); every other glyph at its own advance. The clock and the scores. */
+const digitsWidth = (text: string, size: number) =>
   [...text].reduce(
     (sum, char) =>
       sum +
       (/\d/.test(char)
         ? barlow700.advanceOfName('zero.tf')
         : barlow700.advance(char.codePointAt(0) ?? 0)) *
-        typeScale.tally.fontSize,
+        size,
     0,
   );
+/** `clockHero`: the clock's 80 dp digits. */
+const clockWidth = (text: string) => digitsWidth(text, typeScale.clockHero.fontSize);
 
 const words = (text: string) => text.split(' ');
 /** Every word of the text fits the room: what wraps is never broken at a letter, and nothing overflows. */
@@ -76,23 +78,15 @@ const teamText = (width: number) =>
   (column(width) - space.sm) / 2 - 2 * space.sm - layout.padSideBar;
 /** A column button's text: the column's text less the button's own padding (space.sm a side; it has no border). */
 const buttonText = (width: number) => teamText(width) - 2 * space.sm;
+/** The Goal square's text: the column's text less its padding (space.xs a side). */
+const squareText = (width: number) => teamText(width) - 2 * space.xs;
 /** A tool's text in a row of two (End of period and More): as padFit's `toolTextOf(2)`. */
 const toolText = (width: number) =>
   (column(width) - space.sm) / 2 - 2 * space.sm - 2 * layout.iconBorder;
 /** A sheet row's text: the screen less the sheet's padding and the row's (space.md a side each), less its border. */
 const rowText = (width: number) => width - 4 * space.md - 2 * layout.iconBorder;
-/** The clock bar's Start or Pause, whichever is wider in the language: its word, padding (space.sm a side) and border. */
-const clockButton = (dictionary: Dictionary) =>
-  Math.max(
-    ...['start', 'pause'].map((word) =>
-      actionWidth(said(dictionary, `scoring.football.clock.${word}`)),
-    ),
-  ) +
-  2 * space.sm +
-  2 * layout.iconBorder;
-/** The time's room: the bar less the button and the gap before it (the period has a line of its own under both). */
-const faceRoom = (width: number, dictionary: Dictionary) =>
-  column(width) - space.sm - clockButton(dictionary);
+/** The clock's face is the pad's whole column wide (the plate is under it, not beside it). */
+const faceRoom = (width: number) => column(width);
 
 /** Names as an organiser types them: the fake's two teams, and two of 24 characters that need three lines a column. */
 const FAKE_NAMES = ['Riverside FC', 'Northgate United'] as const;
@@ -201,80 +195,129 @@ describe('a team’s name on one line, on a compact board (ruling R1)', () => {
   });
 });
 
-describe('the clock bar at 320 and 360 in four languages (ruling 109; the controller’s ruling 7)', () => {
-  it('the longest reading, 120+15:00, is 193.2 dp of tabular digits', () => {
-    expect(clockWidth('120+15:00').toFixed(1)).toBe('193.2');
+describe('the clock hero at 320 and 360 in four languages (ruling 130)', () => {
+  it('the longest reading, 120+15:00, is 335.9 dp of tabular digits at the hero size of 80', () => {
+    expect(typeScale.clockHero.fontSize).toBe(80);
+    expect(clockWidth('120+15:00').toFixed(1)).toBe('335.9');
   });
 
-  it.each(LANGUAGES)(
-    '%s: 120+15:00 fits on its one line beside Start or Pause, whichever is wider',
-    (_lang, dictionary: Dictionary) => {
-      for (const width of WIDTHS)
-        expect(clockWidth('120+15:00'), `@${width}`).toBeLessThanOrEqual(
-          faceRoom(width, dictionary),
-        );
-    },
-  );
-
-  // The controller's fix-round ruling (d): at the 1.15 font-scale cap (`maxFontScale.tally`) the time shrinks to fit its
-  // one line, the clock alone, down to `clockFloor`.
-  it('at the 1.15 cap 120+15:00 is 222.1 dp: en fits at 320, nl needs 0.93 there, and none goes under 0.85', () => {
-    expect(maxFontScale.tally).toBe(1.15);
-    const grown = clockWidth('120+15:00') * 1.15;
-    expect(grown.toFixed(1)).toBe('222.1');
+  // The hero never grows with the phone's font scale (`maxFontScale.clockHero`), so the widest reading shrinks to its
+  // room by `room / 336` and the floor is the least it may shrink to. The time has the pad's whole column: the plate
+  // stands under it.
+  it('120+15:00 needs 0.86 of its size in the 288 dp face at 320 and 0.98 in the 328 at 360; never under the clock floor', () => {
+    expect(maxFontScale.clockHero).toBe(1);
     expect(layout.clockFloor).toBe(0.85);
-    expect((faceRoom(320, nl) / grown).toFixed(2)).toBe('0.93');
-    expect(faceRoom(320, en) / grown).toBeGreaterThan(1);
-    for (const [lang, dictionary] of LANGUAGES)
-      for (const width of WIDTHS)
-        expect(
-          Math.min(1, faceRoom(width, dictionary) / grown),
-          `${lang} @${width}`,
-        ).toBeGreaterThanOrEqual(layout.clockFloor);
+    expect(faceRoom(320)).toBe(288);
+    expect((faceRoom(320) / clockWidth('120+15:00')).toFixed(2)).toBe('0.86');
+    expect(faceRoom(360)).toBe(328);
+    expect((faceRoom(360) / clockWidth('120+15:00')).toFixed(2)).toBe('0.98');
+    for (const width of WIDTHS)
+      expect(
+        Math.min(1, faceRoom(width) / clockWidth('120+15:00')),
+        `@${width}`,
+      ).toBeGreaterThanOrEqual(layout.clockFloor);
   });
 
-  // The period's line is as wide as the bar, under the time and the button; even in the time's room beside the button,
-  // the longest period or break word of each language takes one line.
+  it('the readings a match shows fit at the full size at 320, bar the longest extra-time ones, which shrink above the floor', () => {
+    for (const reading of ['0:00', '45+2:30', '90+2:30', '105:00'])
+      expect(clockWidth(reading), reading).toBeLessThanOrEqual(faceRoom(320));
+    for (const reading of ['90+15:00', '120+15:00'])
+      expect(faceRoom(320) / clockWidth(reading), reading).toBeGreaterThanOrEqual(
+        layout.clockFloor,
+      );
+  });
+
+  it('the compact board’s time, 30 dp, holds 120+15:00 in the face at both widths', () => {
+    const time = digitsWidth('120+15:00', typeScale.tallyCompact.fontSize);
+    expect(time.toFixed(1)).toBe('126.0');
+    for (const width of WIDTHS) expect(time).toBeLessThanOrEqual(faceRoom(width));
+  });
+
+  // The period's line has the face's width, with its PAUSED tag (a word of its own, in a pill) beside it.
   it.each(LANGUAGES)(
-    '%s: every period and break word takes one line, even beside Start or Pause',
+    '%s: every period and break word takes one line beside the PAUSED tag, and Start, Pause and Resume fit their plate',
     (_lang, dictionary: Dictionary) => {
       const keys = Object.keys(dictionary).filter((key) =>
         /^scoring\.football\.(period|break)\./.test(key),
       );
       expect(keys.length).toBeGreaterThanOrEqual(13);
+      const tag = periodWidth(said(dictionary, 'scoring.football.clock.paused')) + 2 * space.xs + 2;
       for (const key of keys)
         for (const width of WIDTHS)
           expect(
-            linesOf(said(dictionary, key), faceRoom(width, dictionary), periodWidth),
+            linesOf(said(dictionary, key), faceRoom(width) - space.sm - tag, periodWidth),
             `${key} @${width}`,
           ).toBe(1);
+      // The plate is the whole column: its word and glyph (14 wide, a gap) fit with the padding either side.
+      for (const word of ['start', 'pause', 'resume'])
+        for (const width of WIDTHS)
+          expect(
+            actionWidth(said(dictionary, `scoring.football.clock.${word}`)) + 14 + 2 * space.sm,
+            `${word} @${width}`,
+          ).toBeLessThanOrEqual(column(width));
     },
   );
 });
 
+/**
+ * Yellow and Red, a row of two in the column's text: the gap between them (space.xs), a hairline border either side, the
+ * swatch (`padSwatch`) and the gap before the word (space.xs). The word shrinks to fit its one line down to
+ * `cardLabelFloor`.
+ */
+const cardWord = (width: number) =>
+  (teamText(width) - space.xs) / 2 - 2 * layout.iconBorder - layout.padSwatch - space.xs;
+
 describe('the column buttons at 320 and 360 in four languages', () => {
   it.each(LANGUAGES)(
-    '%s: Goal, Card, Sub, Scored and Missed each on its one line',
+    '%s: Sub and Missed each on their one line, and the Goal and Scored words under the numeral',
     (_lang, dictionary: Dictionary) => {
-      for (const word of ['goal', 'card', 'sub', 'scored', 'missed'])
+      for (const word of ['sub', 'missed'])
         for (const width of WIDTHS) {
           const label = said(dictionary, `scoring.football.column.${word}`);
           expect(actionWidth(label), `${label} @${width}`).toBeLessThanOrEqual(buttonText(width));
+        }
+      for (const word of ['goal', 'scored'])
+        for (const width of WIDTHS) {
+          const label = said(dictionary, `scoring.football.column.${word}`);
+          expect(periodWidth(label), `${label} @${width}`).toBeLessThanOrEqual(squareText(width));
         }
     },
   );
 
   it.each(LANGUAGES)(
-    '%s: a disabled button’s note (No subs left, No team sheet) in its two lines, no word broken',
+    '%s: Yellow and Red, side by side with their swatches, shrink to fit one line, never under the card label floor',
     (_lang, dictionary: Dictionary) => {
+      expect(layout.cardLabelFloor).toBe(0.75);
+      for (const word of ['yellow', 'red'])
+        for (const width of WIDTHS) {
+          const label = said(dictionary, `scoring.football.column.${word}`);
+          expect(
+            Math.min(1, cardWord(width) / periodWidth(label)),
+            `${label} @${width}`,
+          ).toBeGreaterThanOrEqual(layout.cardLabelFloor);
+        }
+    },
+  );
+
+  it('the room Yellow and Red have: 44 dp at 320 and 54 at 360; Amarilla, the widest, needs 0.84 and 1', () => {
+    expect(WIDTHS.map(cardWord)).toEqual([44, 54]);
+    const widest = periodWidth('Amarilla');
+    expect(widest.toFixed(1)).toBe('52.7');
+    expect((cardWord(320) / widest).toFixed(2)).toBe('0.84');
+    expect(cardWord(360) / widest).toBeGreaterThan(1);
+  });
+
+  it.each(LANGUAGES)(
+    '%s: a disabled button’s note (No subs left, No team sheet) on its one line, shrunk to fit above the note floor',
+    (_lang, dictionary: Dictionary) => {
+      expect(layout.noteFloor).toBe(0.75);
       for (const word of ['noSubs', 'noSheet'])
         for (const width of WIDTHS) {
           const note = said(dictionary, `scoring.football.column.${word}`);
-          expect(wordsFit(note, buttonText(width), noteWidth), `${note} @${width}`).toBe(true);
           expect(
-            linesOf(note, buttonText(width), noteWidth),
+            Math.min(1, buttonText(width) / noteWidth(note)),
             `${note} @${width}`,
-          ).toBeLessThanOrEqual(2);
+          ).toBeGreaterThanOrEqual(layout.noteFloor);
         }
     },
   );
@@ -340,39 +383,69 @@ describe('the sheets’ rows at 320 and 360 in four languages (design §6.3)', (
         }
     },
   );
+
+  it.each(LANGUAGES)(
+    '%s: the “2nd yellow · sent off” note takes one line under a player’s row, and the Yellow and Red titles keep their team',
+    (_lang, dictionary: Dictionary) => {
+      const note = said(dictionary, 'scoring.football.sheet.secondYellow');
+      for (const width of WIDTHS)
+        expect(noteWidth(note), `${note} @${width}`).toBeLessThanOrEqual(rowText(width));
+      for (const key of ['yellow', 'red'])
+        expect(said(dictionary, `scoring.football.sheet.${key}`)).toContain('{team}');
+    },
+  );
 });
 
-/** `scoreCompact` (64) or, on a compact board, `tallyCompact` (30): Barlow Condensed 700, tabular digits. A team's score. */
+/** A team's numeral in the Goal square: Barlow Condensed 700, tabular digits, at `scoreCompact` (64, full) or `tallyCompact` (30). */
 const scoreWidth = (text: string, role: 'scoreCompact' | 'tallyCompact') =>
-  [...text].reduce(
-    (sum, char) =>
-      sum +
-      (/\d/.test(char)
-        ? barlow700.advanceOfName('zero.tf')
-        : barlow700.advance(char.codePointAt(0) ?? 0)) *
-        typeScale[role].fontSize,
-    0,
-  );
+  digitsWidth(text, typeScale[role].fontSize);
 
-// The controller's fix-round ruling (f): the score shrinks to fit its line and is never cut. "G (K)" in the shootout;
-// two figures each is the widest a youth or mini match makes (ruling 104).
-describe('a team’s score in the shootout (ruling f)', () => {
-  it('“10 (4)” is 148.2 dp, over the 140 at 360: it needs 0.94; “10 (10)” is 180.1 and needs 0.67 at 320', () => {
+/** The widest Goal or Scored word in any language, uppercase caps: what a compact square sets beside its numeral. */
+const widestWord = (word: 'goal' | 'scored') =>
+  Math.max(
+    ...LANGUAGES.map(([, dictionary]) =>
+      periodWidth(said(dictionary, `scoring.football.column.${word}`)),
+    ),
+  );
+const widestSquareWord = Math.max(widestWord('goal'), widestWord('scored'));
+/** What the numeral has beside the word in a compact square: the square's text less the word and the gap (space.sm). */
+const compactNumeralRoom = (width: number, word: number) => squareText(width) - word - space.sm;
+
+// The controller's fix-round ruling (f): the numeral shrinks to fit its line and is never cut. "G (K)" in the shootout;
+// two figures each is the widest a youth or mini match makes (ruling 104). The full square has the numeral over its word
+// in the square's whole text; the compact one has it beside the word.
+describe('a team’s numeral in the Goal square (ruling f)', () => {
+  it('full: “10 (4)” is 148.2 dp, over the 132 at 360 less nothing: it needs 0.89; “10 (10)” is 180.1 and needs 0.62 at 320', () => {
+    expect(squareText(320)).toBe(112);
+    expect(squareText(360)).toBe(132);
     expect(scoreWidth('10 (4)', 'scoreCompact').toFixed(1)).toBe('148.2');
-    expect((teamText(360) / scoreWidth('10 (4)', 'scoreCompact')).toFixed(2)).toBe('0.94');
+    expect((squareText(360) / scoreWidth('10 (4)', 'scoreCompact')).toFixed(2)).toBe('0.89');
     expect(scoreWidth('10 (10)', 'scoreCompact').toFixed(1)).toBe('180.1');
-    expect((teamText(320) / scoreWidth('10 (10)', 'scoreCompact')).toFixed(2)).toBe('0.67');
+    expect((squareText(320) / scoreWidth('10 (10)', 'scoreCompact')).toFixed(2)).toBe('0.62');
   });
 
-  it('every score to two figures each, full or compact, at 320 and 360, needs no less than the floor of 0.6', () => {
+  it('every score to two figures each, full, at 320 and 360, needs no less than the floor of 0.6', () => {
     expect(layout.scoreFloor).toBe(0.6);
     for (const width of WIDTHS)
+      for (const score of ['0', '5 (4)', '10 (4)', '5 (10)', '10 (10)'])
+        expect(
+          Math.min(1, squareText(width) / scoreWidth(score, 'scoreCompact')),
+          `${score} @${width}`,
+        ).toBeGreaterThanOrEqual(layout.scoreFloor);
+  });
+
+  // In play the word is Goal, in the shootout Scored: each has its own widest word, so each is measured with its own.
+  it('compact: a goal count to two figures fits whole beside the widest Goal word; a shootout score to 10 (10) needs the floor or more beside the widest Scored word', () => {
+    for (const width of WIDTHS) {
+      const goalRoom = compactNumeralRoom(width, widestWord('goal'));
+      expect(scoreWidth('10', 'tallyCompact'), `10 @${width}`).toBeLessThanOrEqual(goalRoom);
+      const room = compactNumeralRoom(width, widestWord('scored'));
       for (const score of ['5 (4)', '10 (4)', '5 (10)', '10 (10)'])
-        for (const role of ['scoreCompact', 'tallyCompact'] as const)
-          expect(
-            Math.min(1, teamText(width) / scoreWidth(score, role)),
-            `${score} ${role} @${width}`,
-          ).toBeGreaterThanOrEqual(layout.scoreFloor);
+        expect(
+          Math.min(1, room / scoreWidth(score, 'tallyCompact')),
+          `${score} @${width}`,
+        ).toBeGreaterThanOrEqual(layout.scoreFloor);
+    }
   });
 });
 
@@ -401,17 +474,20 @@ describe('the marks’ row (ruling b)', () => {
 });
 
 /**
- * The team columns' height, portrait (ruling 105; `pad-layout-c-v3.html` option 2, "Goal shrunk to 3/4 of its size";
- * the controller's ruling 7). The split: the buttons share what the column leaves them by weight, Goal 0.75 and Card
- * and Sub 0.5 each (`layout.columnPrimary`, `layout.columnAction`; flex-basis 0), so they stand 3 : 2 : 2 while Card
- * and Sub are at least a touch target; below that each is held at 48 and the ratio gives way, never a target.
+ * The pad's height, portrait (rulings 130 and 132). Around the board sits the frame, 230 dp: the screen's padding (2 × 16),
+ * the top bar (48), the strip (16), the last-tap line (three lines of 18, 54), the tool row (48) and four gaps of 8. In the
+ * board: the clock hero over two columns, each every row a touch target at least, and the Goal square taking the rest.
+ *
+ * Full (a Goal square of at least 100 dp, so the 64 numeral stands over its word with air): the hero is the time's 84 and
+ * the period's 16 (100), 8, the 48 plate and 8: 164. A column is 2 × 8 of padding, a head of the name's two lines (60), 8
+ * and the marks' 16 (84), the Goal square (100), three gaps of 8 and two 48 rows (Yellow and Red, Sub): 320. 484 dp of
+ * board, a 714 window.
+ *
+ * Compact: the hero is a 48 face (the time's 32 and the period's 16), 4, the 48 plate and 8: 108. A column is 16, a head
+ * of one name line (30), 4 and the marks' 16 (50), a 48 Goal square, three gaps of 4 and the two 48 rows: 222. 330 dp of
+ * board, a 560 window: the phone the owner named, 360 × 640 laid out about 560 tall.
  */
-describe('the team columns’ height, portrait', () => {
-  /**
-   * Around the board: the screen's padding (2 × 16), the top bar (touch, 48), the strip (one line, 16), the last-tap line
-   * (three lines of 18, 54), the tool row (two lines of label in 2 × 4 + 2 × 1 + 2 × 19 = 48: football's tools carry no
-   * side line), and the four gaps between the five (8).
-   */
+describe('the pad’s height, portrait', () => {
   const STRIP = layout.padStripLines * typeScale.metricUnit.lineHeight;
   const LINE = layout.padLineLines * typeScale.control.lineHeight;
   const TOOLS = Math.max(
@@ -421,129 +497,87 @@ describe('the team columns’ height, portrait', () => {
       layout.padToolLines * typeScale.actionSecondary.lineHeight,
   );
   const AROUND = 2 * space.md + layout.touch + STRIP + LINE + TOOLS + 4 * space.sm;
-  /** The clock bar: the time's row (touch: the button, the face, the 48 dp digits) and the period's line, then a gap. */
-  const CLOCK = layout.touch + typeScale.diagSection.lineHeight + space.sm;
-  /** A column's head: the name's two lines, the score, and the marks' row (a card icon and its count, a sin-bin tag). */
-  const HEAD =
-    layout.padNameLines * typeScale.matchName.lineHeight +
-    space.xs +
-    typeScale.scoreCompact.lineHeight +
-    space.xs +
-    typeScale.periodScore.lineHeight;
-  /** What the buttons share: the column less its padding (space.sm a side), the head and the three gaps under it. */
-  const buttons = (height: number) => height - AROUND - CLOCK - 2 * space.sm - HEAD - 3 * space.sm;
-  const WEIGHTS = [layout.columnPrimary, layout.columnAction, layout.columnAction] as const;
-  const split = (height: number) => {
-    const total = WEIGHTS.reduce((sum, weight) => sum + weight, 0);
-    return WEIGHTS.map((weight) => (buttons(height) * weight) / total);
+  const NAME = typeScale.matchName.lineHeight;
+  const MARKS = typeScale.periodScore.lineHeight;
+  const PERIOD = typeScale.diagSection.lineHeight;
+
+  type Tier = { face: number; gap: number; head: number; goal: number };
+  const FULL: Tier = {
+    face: typeScale.clockHero.lineHeight + PERIOD,
+    gap: space.sm,
+    head: layout.padNameLines * NAME + space.sm + MARKS,
+    goal: typeScale.scoreCompact.lineHeight + PERIOD + 2 * space.sm,
   };
+  const COMPACT: Tier = {
+    face: Math.max(layout.touch, typeScale.tallyCompact.lineHeight + PERIOD),
+    gap: space.xs,
+    head: NAME + space.xs + MARKS,
+    goal: layout.touch,
+  };
+  const heroOf = (tier: Tier) => tier.face + tier.gap + layout.touch + space.sm;
+  /** Everything in a column but its Goal square, which takes what is left. */
+  const fixedOf = (tier: Tier) => 2 * space.sm + tier.head + 3 * tier.gap + 2 * layout.touch;
+  const FULL_BOARD = heroOf(FULL) + fixedOf(FULL) + FULL.goal;
 
-  it('weighs Goal, Card and Sub 0.75, 0.5 and 0.5', () => {
-    expect(WEIGHTS).toEqual([0.75, 0.5, 0.5]);
-  });
-
-  it('reserves 230 dp around the board, 72 for the clock bar and the gap under it, and 152 for a column’s head', () => {
-    expect([AROUND, CLOCK, HEAD]).toEqual([230, 72, 152]);
-  });
-
-  // The owner's phone, 360 × 804, has about 724 for the app in portrait (padFit.test.ts's estimate; a device check
-  // settles it).
-  it('on the owner’s phone, about 724 tall: Goal 98.6, Card and Sub 65.7 each, 3 : 2 : 2, every one at least 48', () => {
-    const [goal, card, sub] = split(724);
-    expect([goal, card, sub].map((height) => height!.toFixed(1))).toEqual(['98.6', '65.7', '65.7']);
-    expect(goal! / card!).toBeCloseTo(3 / 2, 10);
-    expect(card).toBe(sub);
-    for (const height of [goal, card, sub]) expect(height).toBeGreaterThanOrEqual(layout.touch);
-  });
-
-  it('holds 3 : 2 : 2 with every button at least 48 from 662 tall; at 661 Card and Sub would be under 48', () => {
-    expect(split(662)[1]).toBe(layout.touch);
-    expect(split(661)[1]).toBeLessThan(layout.touch);
-  });
-
-  /*
-   * The controller's fix-round ruling (c): below 3 : 2 : 2, Card and Sub hold 48 and Goal takes the rest, never less
-   * than 48. Its fix-round 2 ruling (R1, superseding round 1's compact head): the board's tier. The full tier needs the
-   * clock bar (72) over a column of three (336): 408 dp of board, a 638 window, the named threshold
-   * (`BOARD_FULL_HEIGHT`). Below it, compact: the clock bar is one row of a touch target (the time in `tallyCompact`, 32,
-   * over the period's 16) and the gap under it, 56; a column's head is the name on one line (30), the score in
-   * `tallyCompact` (32) and the marks' row (16), with two gaps of 4: 86; a column of three needs 2 × 8 + 86 +
-   * 3 × (8 + 48) = 270. The compact board needs 326, so it holds from a 556 window. The heights are the app's, after
-   * the insets: a 360 × 640 phone with three-button navigation lays the app out about 560 tall (the re-review's
-   * estimate; the owner's 360 × 804 is about 724), which a device check settles.
-   */
-  const COMPACT_CLOCK =
-    Math.max(layout.touch, typeScale.tallyCompact.lineHeight + typeScale.diagSection.lineHeight) +
-    space.sm;
-  const COMPACT_HEAD =
-    typeScale.matchName.lineHeight +
-    space.xs +
-    typeScale.tallyCompact.lineHeight +
-    space.xs +
-    typeScale.periodScore.lineHeight;
-  const columnOf = (head: number) => 2 * space.sm + head + 3 * (space.sm + layout.touch);
-  const FULL_BOARD = CLOCK + columnOf(HEAD);
-  /** The tier, the column's height and the buttons' heights in a window `height` tall: the screen's rule, written out. */
+  /** The tier, the Goal square's height and the column's, in a window `height` tall: the screen's rule, written out. */
   function laidOut(height: number) {
     const board = height - AROUND;
     const compact = board < FULL_BOARD;
-    const column = board - (compact ? COMPACT_CLOCK : CLOCK);
-    const room = column - 2 * space.sm - (compact ? COMPACT_HEAD : HEAD) - 3 * space.sm;
-    const total = WEIGHTS.reduce((sum, weight) => sum + weight, 0);
-    const [goal, card] = WEIGHTS.map((weight) => (room * weight) / total);
-    const buttons =
-      card! < layout.touch
-        ? [room - 2 * layout.touch, layout.touch, layout.touch]
-        : [goal!, card!, card!];
-    return { compact, column, room, buttons };
+    const tier = compact ? COMPACT : FULL;
+    const column = board - heroOf(tier);
+    return { compact, column, goal: column - fixedOf(tier) };
   }
-  const heights = (buttons: readonly number[]) => buttons.map((each) => each.toFixed(1));
 
-  it('the full tier needs 408 dp of board, the named threshold: full from a 638 window, compact under it', () => {
-    expect([CLOCK, columnOf(HEAD), FULL_BOARD]).toEqual([72, 336, 408]);
-    expect(BOARD_FULL_HEIGHT).toBe(FULL_BOARD);
-    expect(laidOut(638).compact).toBe(false);
-    expect(laidOut(637).compact).toBe(true);
+  it('reserves 230 dp around the board', () => {
+    expect(AROUND).toBe(230);
   });
 
-  it('compact: a 56 clock bar and a 270 column of three, so three targets hold from a 556 window, not under', () => {
-    expect([COMPACT_CLOCK, COMPACT_HEAD, columnOf(COMPACT_HEAD)]).toEqual([56, 86, 270]);
-    expect(Math.min(...laidOut(556).buttons)).toBe(layout.touch);
-    expect(Math.min(...laidOut(555).buttons)).toBeLessThan(layout.touch);
+  it('the full tier: a 164 hero over a 320 column, 484 dp of board, full from a 714 window', () => {
+    expect([heroOf(FULL), fixedOf(FULL) + FULL.goal, FULL_BOARD]).toEqual([164, 320, 484]);
+    expect(BOARD_FULL_HEIGHT).toBe(FULL_BOARD);
+    expect(laidOut(714).compact).toBe(false);
+    expect(laidOut(713).compact).toBe(true);
+  });
+
+  it('compact: a 108 hero over a 222 column of three 48 rows and a 48 square: it holds from a 560 window, not under', () => {
+    expect([heroOf(COMPACT), fixedOf(COMPACT) + COMPACT.goal]).toEqual([108, 222]);
+    expect(laidOut(560).goal).toBe(layout.touch);
+    expect(laidOut(559).goal).toBeLessThan(layout.touch);
   });
 
   it.each([
-    [560, true, ['52.0', '48.0', '48.0']],
-    [600, true, ['80.6', '53.7', '53.7']],
-    [637, true, ['96.4', '64.3', '64.3']],
-    [638, false, ['48.0', '48.0', '48.0']],
-    [640, false, ['50.0', '48.0', '48.0']],
-    [724, false, ['98.6', '65.7', '65.7']],
+    [560, true, 48],
+    [600, true, 88],
+    [640, true, 128],
+    [713, true, 201],
+    [714, false, 100],
+    [724, false, 110],
   ] as const)(
-    'a window %i tall: compact %s; Goal, Card and Sub %s, each at least 48, and nothing past the column',
-    (height, compact, expected) => {
+    'a window %i tall: compact %s, the Goal square %i dp, every other row 48, and the pad inside the window',
+    (height, compact, goal) => {
       const laid = laidOut(height);
       expect(laid.compact).toBe(compact);
-      expect(heights(laid.buttons)).toEqual(expected);
-      for (const each of laid.buttons) expect(each).toBeGreaterThanOrEqual(layout.touch);
-      expect(laid.buttons.reduce((sum, each) => sum + each, 0)).toBeCloseTo(laid.room, 10);
+      expect(laid.goal).toBe(goal);
+      expect(laid.goal).toBeGreaterThanOrEqual(layout.touch);
+      expect(AROUND + heroOf(compact ? COMPACT : FULL) + laid.column).toBe(height);
     },
   );
 
-  // The ruling's two phones: 360 and 320 dp wide, 560 tall as laid out. The heights do not depend on the width (every
-  // reserve above is fixed); what does is that the compact faces fit their rooms there.
+  // The ruling's two phones: 360 and 320 dp wide, 560 tall as laid out, and 640 tall at 320. The heights do not depend
+  // on the width (every reserve above is fixed); what does is that the compact faces fit their rooms there.
   it.each(WIDTHS)(
-    'at %i × 560: compact, the board inside the window, the time and the scores in their rooms',
+    'at %i × 560 and %i × 640: compact, no scroll, the time and the numerals in their rooms',
     (width) => {
-      const laid = laidOut(560);
-      expect(laid.compact).toBe(true);
-      expect(AROUND + COMPACT_CLOCK + laid.column).toBe(560);
-      expect(laid.column).toBeGreaterThanOrEqual(columnOf(COMPACT_HEAD));
-      const time =
-        (clockWidth('120+15:00') * typeScale.tallyCompact.fontSize) / typeScale.tally.fontSize;
-      for (const [lang, dictionary] of LANGUAGES)
-        expect(time, `${lang} @${width}`).toBeLessThanOrEqual(faceRoom(width, dictionary));
-      expect(scoreWidth('10 (10)', 'tallyCompact')).toBeLessThanOrEqual(teamText(width));
+      for (const height of [560, 640]) {
+        const laid = laidOut(height);
+        expect(laid.compact).toBe(true);
+        expect(laid.goal, `${width} × ${height}`).toBeGreaterThanOrEqual(layout.touch);
+      }
+      const time = digitsWidth('120+15:00', typeScale.tallyCompact.fontSize);
+      expect(time).toBeLessThanOrEqual(faceRoom(width));
+      expect(
+        scoreWidth('10', 'tallyCompact') + space.sm + widestSquareWord + 2 * space.xs,
+      ).toBeLessThanOrEqual(teamText(width));
     },
   );
 });

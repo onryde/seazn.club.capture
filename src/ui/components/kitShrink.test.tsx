@@ -38,11 +38,29 @@ const COLUMN: TeamColumnView = {
   label: 'Wolverhampton Wanderers',
   bar: 'lit',
   value: '10 (4)',
-  lead: true,
   cards: { yellow: 0, red: 0 },
   said: [],
   tags: [],
-  actions: [{ id: 'goal.first', label: 'Goal', primary: true, enabled: true, note: null }],
+  actions: [
+    {
+      id: 'goal.first',
+      label: 'Goal',
+      said: 'Goal, Wolverhampton Wanderers, 10 (4)',
+      primary: true,
+      enabled: true,
+      note: null,
+      swatch: null,
+    },
+    {
+      id: 'yellow.first',
+      label: 'Yellow',
+      said: null,
+      primary: false,
+      enabled: true,
+      note: null,
+      swatch: 'caution',
+    },
+  ],
 };
 
 describe('the kit’s shrink to fit', () => {
@@ -56,6 +74,18 @@ describe('the kit’s shrink to fit', () => {
       ellipsis: 'undefined',
     });
     expect(layout.scoreFloor).toBe(0.6);
+  });
+
+  it('the Yellow word shrinks to fit its one line, down to the card label floor, and is never wrapped', () => {
+    renderWithPorts(<TeamColumn view={COLUMN} onAction={vi.fn()} />);
+    expect(shrinkOf(screen.getByText('Yellow'))).toEqual({
+      variant: 'diagSection',
+      lines: '1',
+      fit: 'true',
+      floor: String(layout.cardLabelFloor),
+      ellipsis: 'undefined',
+    });
+    expect(layout.cardLabelFloor).toBe(0.75);
   });
 
   it('a team’s name with gaps shrinks to fit its two lines, down to the team name floor, then an ellipsis', () => {
@@ -76,11 +106,12 @@ describe('the kit’s shrink to fit', () => {
       time: '120+15:00',
       period: { key: 'scoring.football.period.ET_H2' },
       said: { key: 'scoring.football.clock.said', vars: { time: '120+15:00' } },
+      paused: null,
       action: { kind: 'pause', label: { key: 'scoring.football.clock.pause' } },
     };
-    renderWithPorts(<ClockBar view={view} onAction={vi.fn()} onCorrect={null} />);
+    renderWithPorts(<ClockBar view={view} onAction={vi.fn()} />);
     expect(shrinkOf(screen.getByText('120+15:00'))).toEqual({
-      variant: 'tally',
+      variant: 'clockHero',
       lines: '1',
       fit: 'true',
       floor: String(layout.clockFloor),

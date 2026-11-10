@@ -4,7 +4,6 @@ import {
   footballBoard,
   footballClockBar,
   footballCorrectTime,
-  footballLeads,
   footballMoreItems,
   footballTakesCorrect,
   parseFootballAction,
@@ -53,7 +52,8 @@ const button = (
 
 const playColumn = (side: 'first' | 'second', enabled: boolean, subNote: string | null = null) => [
   button(`goal.${side}`, 'goal', enabled, true),
-  button(`card.${side}`, 'card', enabled),
+  button(`yellow.${side}`, 'yellow', enabled),
+  button(`red.${side}`, 'red', enabled),
   button(
     `sub.${side}`,
     'sub',
@@ -67,7 +67,7 @@ const actionsOf = (board: ReturnType<typeof footballBoard>) =>
   board.columns.map((column) => column.actions);
 
 describe('footballBoard: the columns in play (design §6.2, §6.3)', () => {
-  it('each column is Goal (the lime plate), Card and Sub, for its own team', () => {
+  it('each column is Goal (the lime plate), Yellow, Red and Sub, for its own team', () => {
     const board = footballBoard(displayOf(KICK_OFF), null);
     expect(board.columns.map((column) => column.side)).toEqual(['first', 'second']);
     expect(actionsOf(board)).toEqual([playColumn('first', true), playColumn('second', true)]);
@@ -129,7 +129,7 @@ describe('footballBoard: the columns in play (design §6.2, §6.3)', () => {
 });
 
 const kickColumn = (side: 'first' | 'second', enabled: boolean) => [
-  button(`scored.${side}`, 'scored', enabled),
+  button(`scored.${side}`, 'scored', enabled, true),
   button(`missed.${side}`, 'missed', enabled),
 ];
 
@@ -164,7 +164,8 @@ describe('footballBoard: the shootout (design §6.5)', () => {
 describe('parseFootballAction', () => {
   it.each([
     ['goal.first', { action: 'goal', side: 'first' }],
-    ['card.second', { action: 'card', side: 'second' }],
+    ['yellow.first', { action: 'yellow', side: 'first' }],
+    ['red.second', { action: 'red', side: 'second' }],
     ['sub.first', { action: 'sub', side: 'first' }],
     ['scored.second', { action: 'scored', side: 'second' }],
     ['missed.first', { action: 'missed', side: 'first' }],
@@ -172,7 +173,7 @@ describe('parseFootballAction', () => {
     expect(parseFootballAction(id)).toEqual(parsed);
   });
 
-  it.each(['goal', 'goal.third', 'kick.first', 'goal.first.0', '', 'more'])(
+  it.each(['goal', 'card.first', 'goal.third', 'kick.first', 'goal.first.0', '', 'more'])(
     'reads %j as no button of the board',
     (id) => {
       expect(parseFootballAction(id)).toBeNull();
@@ -245,11 +246,12 @@ describe('footballMoreItems (design §6.4)', () => {
 const bar = (
   time: string,
   period: string | null,
-  action: 'start' | 'pause' | null,
+  action: 'start' | 'pause' | 'resume' | null,
 ): ClockBarView<string> => ({
   time,
   period: period === null ? null : { key: `scoring.football.${period}` },
   said: { key: 'scoring.football.clock.said', vars: { time } },
+  paused: action === 'resume' ? { key: 'scoring.football.clock.paused' } : null,
   action:
     action === null ? null : { kind: action, label: { key: `scoring.football.clock.${action}` } },
 });
@@ -264,6 +266,8 @@ describe('footballClockBar (design §6.1, §7.4)', () => {
     expect(footballClockBar(displayOf(halfTime), 0)).toEqual(
       bar('45:00', 'break.halfTime', 'start'),
     );
+    // After a break the new period's first start has not stood: Start, not Resume, and no Paused tag.
+    expect(footballClockBar(displayOf(halfTime), 0).paused).toBeNull();
   });
 
   it('reads 90+2:30 in added time, and 2nd half once the clock starts again', () => {
@@ -289,9 +293,9 @@ describe('footballClockBar (design §6.1, §7.4)', () => {
     );
   });
 
-  it('a paused clock offers Start', () => {
+  it('a clock stopped after the period’s first start offers Resume, and says Paused', () => {
     const paused = [...KICK_OFF, clock(false, at('H1', 300))];
-    expect(footballClockBar(displayOf(paused), 300)).toEqual(bar('5:00', 'period.H1', 'start'));
+    expect(footballClockBar(displayOf(paused), 300)).toEqual(bar('5:00', 'period.H1', 'resume'));
   });
 
   it('before the start: 0:00, no period, no button', () => {
@@ -326,6 +330,10 @@ describe('footballClockBar (design §6.1, §7.4)', () => {
     expect(word('scoring.football.column.noSheet')).toBe('No team sheet');
     expect(word('scoring.football.clock.start')).toBe('Start');
     expect(word('scoring.football.clock.pause')).toBe('Pause');
+    expect(word('scoring.football.clock.resume')).toBe('Resume');
+    expect(word('scoring.football.clock.paused')).toBe('Paused');
+    expect(word('scoring.football.column.yellow')).toBe('Yellow');
+    expect(word('scoring.football.column.red')).toBe('Red');
   });
 });
 
@@ -350,19 +358,10 @@ describe('what the pad reads of the board', () => {
 
 // The pad screen's small readers (plan P Task 12): what it draws but must not decide. Expected values from the design.
 describe('what the pad screen reads of the board', () => {
-  it('the leading side is the one with more goals; level, the one with more kicks scored; level and no kicks, neither', () => {
-    const homeAhead = displayOf([...KICK_OFF, goal({ by: 'H', at: at('H1', 60) })]);
-    expect([footballLeads(homeAhead, 'first'), footballLeads(homeAhead, 'second')]).toEqual([
-      true,
-      false,
-    ]);
-    const level = displayOf(KICK_OFF);
-    expect([footballLeads(level, 'first'), footballLeads(level, 'second')]).toEqual([false, false]);
-    const kicked = displayOf(KICKS_4_1);
-    expect([footballLeads(kicked, 'first'), footballLeads(kicked, 'second')]).toEqual([
-      true,
-      false,
-    ]);
+  // The lead mark is gone (the controller's ruling 135): the board no longer says who leads.
+  it('has no lead reader any more', async () => {
+    const board = await import('@/domain/scoring/footballBoard');
+    expect('footballLeads' in board).toBe(false);
   });
 
   it('a sin-bin is over once the reading reaches its end in its period, or in any later period', () => {

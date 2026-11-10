@@ -282,6 +282,19 @@ export const typeScale = {
     color: colour.lime,
   },
   /**
+   * The football pad's match clock, the biggest thing on it (owner ruling 130, "Clock hero"): the LED lime in Barlow
+   * Condensed, tabular, at 80 on an 84 dp line. "120+15:00" is the widest reading and needs 0.86 of it in a 320 dp
+   * face, so it never grows with the phone's font scale (`maxFontScale`) and shrinks no further than `clockFloor`
+   * (footballFit.test.ts). A compact board takes `tallyCompact` instead.
+   */
+  clockHero: {
+    fontFamily: font.displayBold,
+    fontSize: 80,
+    lineHeight: 84,
+    fontVariant: ['tabular-nums'],
+    color: colour.lime,
+  },
+  /**
    * The count in the pad's send badge (owner, 2026-11-02): the score's face, tabular so 9 to 10 does not jump, at 18 on
    * a 20 dp line. "99+" (25.8 dp) is the widest it draws (padFit.test.ts). Cream; the badge sets caution in trouble.
    */
@@ -311,11 +324,14 @@ export type TypeRole = keyof typeof typeScale;
  *   scale would make it 76.1 and push the row out of the screen (`padFit.test.ts`).
  * - `tallyCompact`: the tally's cap, so the compact board's time and scores grow no more than the full board's (the
  *   final review's fix-now, 2026-11-08); the time still shrinks to its one line as the full one does (`clockFloor`).
+ * - `clockHero`: the football clock's 80 dp digits fill a 320 dp face at 0.86 for the widest reading; a larger font
+ *   scale would take it under `clockFloor`, and the time is read at a glance, not by its size setting.
  * - `syncCount`: the badge's slot is 56 dp and the widest count, "99+", is 55.8 in it, so it does not grow at all. The
  *   badge's words are the screen reader's and are not drawn, so nothing is lost to a larger setting.
  */
 export const maxFontScale: Partial<Record<TypeRole, number>> = {
   tally: 1.15,
   tallyCompact: 1.15,
+  clockHero: 1,
   syncCount: 1,
 };

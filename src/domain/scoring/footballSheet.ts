@@ -62,7 +62,9 @@ type SheetWord =
   | 'assist'
   | 'noAssist'
   | 'whoPutItIn'
-  | 'card'
+  | 'yellow'
+  | 'red'
+  | 'secondYellow'
   | 'bench'
   | 'reason'
   | 'noReason'
@@ -87,6 +89,8 @@ export type FootballStepOption = {
   readonly tone: 'standard' | 'destructive';
   readonly kind?: 'choice' | 'heading' | 'toggle';
   readonly checked?: boolean;
+  /** A second line under the label (a yellowed player's "2nd yellow · sent off"). */
+  readonly note?: PadText<FootballSheetKey> | null;
 };
 
 /** One step on screen: its title, what is already chosen, and its choices (the kit's `StepSheetFacts`). */
@@ -112,8 +116,9 @@ export type FootballFlow =
       readonly kind: 'card';
       readonly side: PadSide;
       readonly stamp: Stamp;
-      readonly step: 'colour' | 'player' | 'reason';
-      readonly color: FootballCardWord | null;
+      readonly step: 'player' | 'reason';
+      /** The colour the button named; a Yellow on a player already yellowed becomes a second yellow at the player step. */
+      readonly color: FootballCardWord;
       readonly person: string | null;
     }
   | {
@@ -183,8 +188,16 @@ export function footballOpen(id: string, display: FootballDisplay, stamp: Stamp)
       return sheet
         ? flow({ kind: 'goal', side, stamp, step: 'scorer', penalty: false, scorer: null })
         : tap({ kind: 'goal', side, scorer: null, assist: null, penalty: false, stamp });
-    case 'card':
-      return flow({ kind: 'card', side, stamp, step: 'colour', color: null, person: null });
+    case 'yellow':
+    case 'red':
+      return flow({
+        kind: 'card',
+        side,
+        stamp,
+        step: sheet ? 'player' : 'reason',
+        color: action,
+        person: null,
+      });
     case 'sub':
       return sheet ? flow({ kind: 'sub', side, step: 'off', off: null }) : STAY;
     case 'scored':
@@ -361,31 +374,19 @@ function scorerStep(
   };
 }
 
-/** The colours in the order the sheet lists them, the engine's own; Second yellow only while someone has a yellow. */
-const COLOURS: readonly FootballCardWord[] = ['yellow', 'second_yellow', 'red'];
-
 const colourText = (color: FootballCardWord): PadText<FootballSheetKey> => ({
   key: `scoring.football.card.${color}`,
 });
 
 function cardStep(current: Flow<'card'>, display: FootballDisplay): FootballStepSheet {
   const team = display.sides[current.side];
-  const title = sheetText('card', { team: team.name });
-  if (current.step === 'colour' || current.color === null) {
-    const offered = COLOURS.filter(
-      (color) =>
-        footballPadRules.cardColors.includes(color) &&
-        (color !== 'second_yellow' || team.yellowed.length > 0),
-    );
-    const options = offered.map((color) => ({
-      id: `color.${color}`,
-      label: colourText(color),
-      tone: 'standard' as const,
-    }));
-    return { title, body: null, options };
-  }
   if (current.step === 'player') {
-    return { title, body: colourText(current.color), options: bookingOptions(team, current.color) };
+    const word = current.color === 'red' ? 'red' : 'yellow';
+    return {
+      title: sheetText(word, { team: team.name }),
+      body: null,
+      options: bookingOptions(team, current.color === 'yellow'),
+    };
   }
   return {
     title: sheetText('reason'),
@@ -394,22 +395,20 @@ function cardStep(current: Flow<'card'>, display: FootballDisplay): FootballStep
   };
 }
 
-/** Who may be shown `color`: a Second yellow only those with a yellow, a Yellow none of them, a Red anyone bookable. */
-function bookable(team: FootballSide, color: FootballCardWord): readonly FootballPlayer[] {
-  const booked = (player: FootballPlayer) => team.yellowed.includes(player.personId);
-  if (color === 'second_yellow') return team.cardable.filter(booked);
-  if (color === 'yellow') return team.cardable.filter((player) => !booked(player));
-  return team.cardable;
-}
-
 /** The players on the pitch first, then everyone else bookable under a "Bench" heading. */
-function bookingOptions(team: FootballSide, color: FootballCardWord): FootballStepOption[] {
-  const candidates = bookable(team, color);
+/** `noting`: a Yellow's list says which players are already on a yellow, whose next one is a sending-off. */
+function bookingOptions(team: FootballSide, noting: boolean): FootballStepOption[] {
   const onPitch = new Set(team.onPitch.map((player) => player.personId));
-  const first = candidates.filter((player) => onPitch.has(player.personId));
-  const rest = candidates.filter((player) => !onPitch.has(player.personId));
+  const first = team.cardable.filter((player) => onPitch.has(player.personId));
+  const rest = team.cardable.filter((player) => !onPitch.has(player.personId));
   const bench: FootballStepOption = { ...word('bench'), id: 'heading.bench', kind: 'heading' };
-  return [...playerOptions(first), ...(rest.length > 0 ? [bench, ...playerOptions(rest)] : [])];
+  const noted = (players: readonly FootballPlayer[]) =>
+    playerOptions(players).map((option, at) =>
+      noting && team.yellowed.includes(players[at]!.personId)
+        ? { ...option, note: sheetText('secondYellow') }
+        : option,
+    );
+  return [...noted(first), ...(rest.length > 0 ? [bench, ...noted(rest)] : [])];
 }
 
 /** No reason first, then the engine's reasons. */
@@ -579,13 +578,12 @@ function chooseGoal(current: Flow<'goal'>, id: string, display: FootballDisplay)
 
 function chooseCard(current: Flow<'card'>, id: string, display: FootballDisplay): FootballMove {
   const team = display.sides[current.side];
-  if (current.step === 'colour' || current.color === null) {
-    const color = COLOURS.find((candidate) => id === `color.${candidate}`) ?? null;
-    if (color === null) return STAY;
-    return flow({ ...current, color, step: team.sheet ? 'player' : 'reason' });
-  }
   if (current.step === 'player') {
-    return flow({ ...current, step: 'reason', person: playerChosen(team.cardable, id) });
+    const person = playerChosen(team.cardable, id);
+    // A yellow shown to a player already yellowed is the second one: a sending-off.
+    const second = current.color === 'yellow' && person !== null && team.yellowed.includes(person);
+    const color: FootballCardWord = second ? 'second_yellow' : current.color;
+    return flow({ ...current, step: 'reason', person, color });
   }
   const { side, person, color, stamp } = current;
   return tap({ kind: 'card', side, person, color, reason: reasonChosen(id), stamp });

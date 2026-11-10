@@ -153,45 +153,97 @@ describe('Goal (design §6.3)', () => {
   });
 });
 
-describe('Card (design §6.3)', () => {
-  it('asks the colour: Yellow and Red, and Second yellow only while someone has a yellow', () => {
-    expect(ids(flowOf(footballOpen('card.first', LIVE, STAMP)))).toEqual([
-      'color.yellow',
-      'color.red',
-    ]);
-    const booked = displayOf([...KICK_OFF, card({ by: 'H', color: 'yellow', person: 'H-p4' })]);
-    expect(ids(flowOf(footballOpen('card.first', booked, STAMP)), booked)).toEqual([
-      'color.yellow',
-      'color.second_yellow',
-      'color.red',
-    ]);
-  });
+// Yellow and Red replace Card (the controller's ruling 136): the button names the colour, so there is no colour step.
+describe('Yellow and Red (design §6.3)', () => {
+  const BENCH = [H(12), H(13), H(14), H(15), H(16)];
+  const booked = displayOf([...KICK_OFF, card({ by: 'H', color: 'yellow', person: 'H-p4' })]);
 
-  it('Second yellow lists only the booked; Yellow leaves them out; the bench under its heading', () => {
-    const booked = displayOf([...KICK_OFF, card({ by: 'H', color: 'yellow', person: 'H-p4' })]);
-    const second = flowOf(walk('card.first', ['color.second_yellow'], booked));
-    expect(ids(second, booked)).toEqual([H(4)]);
-    const yellow = flowOf(walk('card.first', ['color.yellow'], booked));
-    const bench = [H(12), H(13), H(14), H(15), H(16)];
-    expect(ids(yellow, booked)).toEqual([
-      ...PITCH_H.filter((id) => id !== H(4)),
-      'heading.bench',
-      ...bench,
-    ]);
-    expect(footballStep(yellow, booked).options[10]).toMatchObject({
+  it('Yellow opens at the player step, titled for the colour and the team: every bookable player, the bench under its heading', () => {
+    const yellow = flowOf(footballOpen('yellow.first', LIVE, STAMP));
+    expect(yellow).toMatchObject({ kind: 'card', step: 'player', color: 'yellow' });
+    expect(footballStep(yellow, LIVE).title).toEqual({
+      key: 'scoring.football.sheet.yellow',
+      vars: { team: 'Home FC' },
+    });
+    expect(ids(yellow)).toEqual([...PITCH_H, 'heading.bench', ...BENCH]);
+    expect(footballStep(yellow, LIVE).options[11]).toMatchObject({
       kind: 'heading',
       label: { key: 'scoring.football.sheet.bench' },
     });
   });
 
-  it('then the reason, No reason first; the tap names the player, the colour, the reason and the press’s stamp', () => {
-    const reason = flowOf(walk('card.second', ['color.red', A(6)]));
+  it('Red opens at the player step with the colour red over every bookable player', () => {
+    const red = flowOf(footballOpen('red.second', LIVE, STAMP));
+    expect(red).toMatchObject({ kind: 'card', step: 'player', color: 'red', side: 'second' });
+    expect(footballStep(red, LIVE).title).toEqual({
+      key: 'scoring.football.sheet.red',
+      vars: { team: 'Away FC' },
+    });
+    expect(ids(red)).toEqual([...PITCH_A, 'heading.bench', A(12), A(13), A(14), A(15), A(16)]);
+  });
+
+  it('a player already on a yellow stays in the Yellow list with the 2nd yellow note; no one else has one', () => {
+    const yellow = flowOf(footballOpen('yellow.first', booked, STAMP));
+    expect(ids(yellow, booked)).toEqual([...PITCH_H, 'heading.bench', ...BENCH]);
+    const options = footballStep(yellow, booked).options;
+    expect(options.filter((option) => option.note != null).map((option) => option.id)).toEqual([
+      H(4),
+    ]);
+    expect(options.find((option) => option.id === H(4))?.note).toEqual({
+      key: 'scoring.football.sheet.secondYellow',
+    });
+    const fresh = footballStep(flowOf(footballOpen('yellow.first', LIVE, STAMP)), LIVE);
+    expect(fresh.options.filter((option) => option.note != null)).toEqual([]);
+  });
+
+  it('a yellowed player on the bench carries the note too', () => {
+    const benched = displayOf([...KICK_OFF, card({ by: 'H', color: 'yellow', person: 'H-p14' })]);
+    const options = footballStep(
+      flowOf(footballOpen('yellow.first', benched, STAMP)),
+      benched,
+    ).options;
+    expect(options.find((option) => option.id === H(14))?.note).toEqual({
+      key: 'scoring.football.sheet.secondYellow',
+    });
+  });
+
+  it('Yellow on a fresh player books a yellow; on a yellowed one it books a second yellow', () => {
+    expect(walk('yellow.first', [H(7), 'reason.dissent'], booked)).toEqual({
+      kind: 'tap',
+      tap: {
+        kind: 'card',
+        side: 'first',
+        person: 'H-p7',
+        color: 'yellow',
+        reason: 'dissent',
+        stamp: STAMP,
+      },
+    });
+    expect(walk('yellow.first', [H(4), 'reason.dissent'], booked)).toMatchObject({
+      kind: 'tap',
+      tap: { kind: 'card', person: 'H-p4', color: 'second_yellow' },
+    });
+  });
+
+  it('Red books red, even for a player already on a yellow, and shows no 2nd yellow note', () => {
+    expect(walk('red.first', [H(4), 'reason.violent_conduct'], booked)).toMatchObject({
+      kind: 'tap',
+      tap: { kind: 'card', person: 'H-p4', color: 'red', reason: 'violent_conduct' },
+    });
+    const red = flowOf(footballOpen('red.first', booked, STAMP));
+    expect(footballStep(red, booked).options.filter((option) => option.note != null)).toEqual([]);
+  });
+
+  it('then the reason, No reason first, naming the player; the tap names the player, the colour, the reason and the stamp', () => {
+    const reason = flowOf(walk('red.second', [A(6)]));
+    expect(reason).toMatchObject({ step: 'reason', person: 'A-p6', color: 'red' });
+    expect(footballStep(reason, LIVE).title).toEqual({ key: 'scoring.football.sheet.reason' });
     expect(ids(reason).slice(0, 3)).toEqual([
       'noReason',
       'reason.unsporting_behaviour',
       'reason.dissent',
     ]);
-    expect(walk('card.second', ['color.red', A(6), 'reason.violent_conduct'])).toEqual({
+    expect(walk('red.second', [A(6), 'reason.violent_conduct'])).toEqual({
       kind: 'tap',
       tap: {
         kind: 'card',
@@ -202,9 +254,26 @@ describe('Card (design §6.3)', () => {
         stamp: STAMP,
       },
     });
-    expect(walk('card.second', ['color.red', A(6), 'noReason'])).toMatchObject({
-      tap: { reason: null },
-    });
+    expect(walk('red.second', [A(6), 'noReason'])).toMatchObject({ tap: { reason: null } });
+  });
+
+  it('there is no colour step: the old colour ids and the old Card button do nothing', () => {
+    expect(footballOpen('card.first', LIVE, STAMP)).toEqual({ kind: 'stay' });
+    const yellow = flowOf(footballOpen('yellow.first', LIVE, STAMP));
+    for (const id of ['color.yellow', 'color.second_yellow', 'color.red'])
+      expect(footballChoose(yellow, id, LIVE, STAMP)).toEqual({ kind: 'stay' });
+  });
+
+  // The fourth question, an empty input: everyone is sent off or none is bookable, so the list is empty and the step
+  // still draws (the screen's empty state), and nothing records.
+  it('an empty bookable list is an empty step, and a choice on it does nothing', () => {
+    const empty = {
+      ...LIVE,
+      sides: { ...LIVE.sides, first: { ...LIVE.sides.first, cardable: [] } },
+    };
+    const yellow = flowOf(footballOpen('yellow.first', empty, STAMP));
+    expect(footballStep(yellow, empty).options).toEqual([]);
+    expect(footballChoose(yellow, H(1), empty, STAMP)).toEqual({ kind: 'stay' });
   });
 });
 
@@ -320,11 +389,14 @@ describe('with no team sheet (design §6.6)', () => {
     });
   });
 
-  it('Card asks the colour and the reason, and names no player', () => {
-    const reason = flowOf(walk('card.first', ['color.yellow'], BARE));
-    expect(reason).toMatchObject({ step: 'reason', person: null });
-    expect(walk('card.first', ['color.yellow', 'reason.dissent'], BARE)).toMatchObject({
+  it('Yellow and Red open at the reason with the button’s colour, and name no player', () => {
+    const yellow = flowOf(footballOpen('yellow.first', BARE, STAMP));
+    expect(yellow).toMatchObject({ step: 'reason', person: null, color: 'yellow' });
+    expect(walk('yellow.first', ['reason.dissent'], BARE)).toMatchObject({
       tap: { kind: 'card', person: null, color: 'yellow', reason: 'dissent' },
+    });
+    expect(walk('red.second', ['reason.violent_conduct'], BARE)).toMatchObject({
+      tap: { kind: 'card', side: 'second', person: null, color: 'red', reason: 'violent_conduct' },
     });
   });
 

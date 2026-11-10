@@ -75,6 +75,13 @@ async function press(app: LaunchedApp, name: string, inside?: HTMLElement): Prom
   await flush(400);
 }
 
+/** The Goal square (Scored in the shootout) of a column: its name carries the team and the score, so it is found by its place. */
+async function pressSquare(app: LaunchedApp, side: 'first' | 'second'): Promise<void> {
+  later(app);
+  act(() => fireEvent.click(within(column(side)).getByTestId('goal-square')));
+  await flush(400);
+}
+
 /**
  * End of period, pressed once it has re-armed: it is off for 2 s after its label changes (the controller's ruling, final
  * review, 2026-11-08), and the scorer here presses it on the heels of the last period's Start.
@@ -131,8 +138,8 @@ async function kick(
   side: 'first' | 'second',
   scored: boolean,
 ): Promise<void> {
-  const column_ = scored ? 'scoring.football.column.scored' : 'scoring.football.column.missed';
-  await press(app, words[column_] ?? column_, column(side));
+  if (scored) await pressSquare(app, side);
+  else await press(app, words['scoring.football.column.missed'] ?? 'missed', column(side));
   await press(app, words['scoring.football.sheet.dontKnow'] ?? 'dontKnow');
 }
 
@@ -160,7 +167,7 @@ async function playKnockout(app: LaunchedApp, words: Words): Promise<void> {
   expect(lastTap()).toBe(fill(w('scoring.football.last.clockStart'), { at: ' · 0:00' }));
 
   // Goal → the scorer → the assist: one goal, the scorer and the assist in it, at the minute of the press.
-  await press(app, w('scoring.football.column.goal'), column('first'));
+  await pressSquare(app, 'first');
   const goalAt = seconds - kickOff;
   await press(app, '#9 R. Ito');
   await press(app, '#10 R. Jansen');
@@ -173,9 +180,8 @@ async function playKnockout(app: LaunchedApp, words: Words): Promise<void> {
   );
   expect([value('first'), value('second')]).toEqual(['1', '0']);
 
-  // Card → the colour → the player → the reason.
-  await press(app, w('scoring.football.column.card'), column('second'));
-  await press(app, w('scoring.football.card.yellow'));
+  // Yellow → the player → the reason (the button names the colour: no colour step).
+  await press(app, w('scoring.football.column.yellow'), column('second'));
   await press(app, '#5 N. Evans');
   await press(app, w('scoring.football.sheet.noReason'));
   expect(lastTap()).toBe(
@@ -208,7 +214,7 @@ async function playKnockout(app: LaunchedApp, words: Words): Promise<void> {
   expect(within(clockBar()).getByText(plain(w('scoring.football.period.H2')))).toBeTruthy();
 
   // Level at full time: a knockout goes to extra time, from 90:00.
-  await press(app, w('scoring.football.column.goal'), column('second'));
+  await pressSquare(app, 'second');
   await press(app, w('scoring.football.sheet.dontKnow'));
   expect([value('first'), value('second')]).toEqual(['1', '1']);
   await endPeriod(app, w('scoring.football.end.FT'));
@@ -289,7 +295,7 @@ async function playKnockout(app: LaunchedApp, words: Words): Promise<void> {
 }
 
 describe('a football match from the scan to the shootout', () => {
-  it('scan, Start match, then the pad: the clock at 0:00 in the 1st half with Start, both teams with Goal, Card and Sub', async () => {
+  it('scan, Start match, then the pad: the clock at 0:00 in the 1st half with Start, both teams with Goal, Yellow, Red and Sub', async () => {
     const app = await scanned(KNOCKOUT);
     expect(app.nav.current()).toBe('scoring');
     expect(screen.getByTestId('start-screen')).toBeTruthy();
@@ -335,19 +341,18 @@ describe('offline (design §7.3)', () => {
     app.scoring.goOffline(true);
     const pressedAt: number[] = [];
 
-    await press(app, en['scoring.football.column.goal'], column('first'));
+    await pressSquare(app, 'first');
     pressedAt.push(seconds);
     await press(app, en['scoring.football.sheet.dontKnow']);
     later(app, 70);
     await flush(0);
-    await press(app, en['scoring.football.column.card'], column('second'));
+    await press(app, en['scoring.football.column.yellow'], column('second'));
     pressedAt.push(seconds);
-    await press(app, en['scoring.football.card.yellow']);
     await press(app, '#5 N. Evans');
     await press(app, en['scoring.football.sheet.noReason']);
     later(app, 70);
     await flush(0);
-    await press(app, en['scoring.football.column.goal'], column('second'));
+    await pressSquare(app, 'second');
     pressedAt.push(seconds);
     await press(app, '#9 N. Ito');
     await press(app, en['scoring.football.sheet.noAssist']);

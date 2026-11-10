@@ -11,37 +11,29 @@ import type { ClockBarAction, ClockBarView } from '@/domain/scoring/clockBarView
 import { usePadText } from '@/hooks/usePadText';
 import type { MessageKey } from '@/i18n/messages';
 import { Text } from '@/ui/components/Text';
-import { type BoardTier, TIER_FACES } from '@/ui/theme/columnBoard';
+import { type BoardTier, faceHeight, PERIOD_HEIGHT, TIER_FACES } from '@/ui/theme/columnBoard';
 import { colour, layout, plateInk, pressedOpacity, radius, space } from '@/ui/theme/tokens';
 
 type ClockBarProps = {
   readonly view: ClockBarView<MessageKey>;
-  /** The one button's press: Start or Pause, as the view names it. */
+  /** The one plate's press: Start, Pause or Resume, as the view names it. */
   readonly onAction: () => void;
-  /** A tap on the time opens Correct (S2-5 design §7.5); none where the sport offers no Correct now. */
-  readonly onCorrect: (() => void) | null;
-  /** A compact board's bar (fix-round 2 ruling R1, `columnBoard.ts`): one row, the period under the time. */
+  /** A compact board's bar (fix-round 2 ruling R1, `columnBoard.ts`): the time a step down. */
   readonly compact?: boolean;
 };
 
 /**
- * A pad's match clock across the top (S2-5 design §6.1): the time in the LED lime with tabular figures, the period in
- * lilac caps under it, and one button at the right, Start while the clock is stopped and Pause while it runs. A kit part
- * with no sport named: the sport fills the view (`ClockBarView`) and the bar decides nothing. The time is a button that
- * opens Correct when the sport offers it; a screen reader hears it as the view says it ("Match clock 34:12"). The time
- * never wraps: it shrinks to fit its one line, down to `layout.clockFloor`, where the phone's font scale would push it
- * past the button (the controller's fix-round ruling d; the clock alone shrinks). The period wraps under it
- * (footballFit.test.ts holds both beside the button at 320 dp). Compact (fix-round 2 ruling R1), the bar is one row of a
- * touch target: the time a step down with the period under it inside the face, which says both.
+ * A pad's match clock across the top (S2-5 design §6.1; owner ruling 130, "Clock hero"): the time as the biggest thing
+ * on the pad, in the LED lime with tabular figures, the period in lilac caps under it, and one full-width lime plate
+ * under both: Start before the period's first start, Pause (a pause glyph) while it runs, Resume (a play glyph) while
+ * it is stopped. A stopped clock dims its digits to `ink3` and carries an orange PAUSED tag beside the period (orange,
+ * never red: AGENTS §5). A kit part with no sport named: the sport fills the view (`ClockBarView`) and the bar decides
+ * nothing. The face is no button (the controller's ruling 134): Correct opens from More alone, since a stray touch near
+ * the top edge opened it (device-run-1 F3). The time never wraps: it shrinks to fit its one line, down to
+ * `layout.clockFloor`. A screen reader hears the face as one ("Match clock 34:12, 1st half, Paused").
  */
-export const ClockBar = memo(function ClockBar({
-  view,
-  onAction,
-  onCorrect,
-  compact,
-}: ClockBarProps) {
+export const ClockBar = memo(function ClockBar({ view, onAction, compact }: ClockBarProps) {
   const words = usePadText();
-  const period = view.period === null ? null : words(view.period);
   const tier: BoardTier = compact === true ? 'compact' : 'full';
   return (
     <View testID="clock-bar" style={styles.bar}>
@@ -49,11 +41,12 @@ export const ClockBar = memo(function ClockBar({
         time={view.time}
         said={words(view.said)}
         tier={tier}
-        period={period}
-        onCorrect={onCorrect}
+        period={view.period === null ? null : words(view.period)}
+        paused={view.paused === null ? null : words(view.paused)}
       />
-      {view.action === null ? null : <ClockButton action={view.action} onPress={onAction} />}
-      {tier === 'compact' || period === null ? null : <PeriodLine period={period} />}
+      {view.action === null ? null : (
+        <ClockPlate action={view.action} onPress={onAction} tier={tier} />
+      )}
     </View>
   );
 });
@@ -62,120 +55,149 @@ type ClockFaceProps = {
   readonly time: string;
   readonly said: string;
   readonly tier: BoardTier;
-  /** The period's words: drawn under the time in a compact face, and said with it. */
   readonly period: string | null;
-  readonly onCorrect: (() => void) | null;
+  readonly paused: string | null;
 };
 
-/** The time: a button opening Correct when offered, else the same digits a screen reader reads once. */
-const ClockFace = memo(function ClockFace({ time, said, tier, period, onCorrect }: ClockFaceProps) {
-  const under = tier === 'compact' ? period : null;
-  const label = under === null ? said : `${said}, ${under}`;
-  const digits = <ClockDigits time={time} tier={tier} under={under} />;
-  if (onCorrect === null) {
-    return (
-      <View accessible accessibilityLabel={label} style={styles.face}>
-        {digits}
-      </View>
-    );
-  }
+/** The time over the period's line and the PAUSED tag, heard as one. */
+const ClockFace = memo(function ClockFace({ time, said, tier, period, paused }: ClockFaceProps) {
+  const label = [said, period, paused].filter((part) => part !== null).join(', ');
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      onPress={onCorrect}
-      style={facePressable}
-    >
-      {digits}
-    </Pressable>
-  );
-});
-
-type ClockDigitsProps = {
-  readonly time: string;
-  readonly tier: BoardTier;
-  /** The period under the time, in a compact face only. */
-  readonly under: string | null;
-};
-
-/** The time on its one line, shrinking to fit (ruling d), and in a compact face the period under it. The face says both. */
-function ClockDigits({ time, tier, under }: ClockDigitsProps) {
-  return (
-    <>
+    <View accessible accessibilityLabel={label} style={tier === 'compact' ? faceCompact : faceFull}>
       <Text
         variant={TIER_FACES[tier].time}
         numberOfLines={1}
         adjustsFontSizeToFit
         minimumFontScale={layout.clockFloor}
         aria-hidden
-        style={styles.time}
+        style={paused === null ? styles.time : styles.timePaused}
       >
         {time}
       </Text>
-      {under === null ? null : (
-        <Text variant="diagSection" numberOfLines={1} aria-hidden style={styles.periodUnder}>
-          {under}
+      <PeriodRow period={period} paused={paused} />
+    </View>
+  );
+});
+
+/** The period's one line, and beside it the PAUSED tag while the clock is stopped. */
+function PeriodRow({
+  period,
+  paused,
+}: {
+  readonly period: string | null;
+  readonly paused: string | null;
+}) {
+  return (
+    <View aria-hidden style={styles.periodRow}>
+      {period === null ? null : (
+        <Text variant="diagSection" numberOfLines={1} style={styles.period}>
+          {period}
         </Text>
       )}
-    </>
+      {paused === null ? null : (
+        <View testID="clock-paused" style={styles.pausedTag}>
+          <Text variant="diagSection" numberOfLines={1} style={styles.pausedWord}>
+            {paused}
+          </Text>
+        </View>
+      )}
+    </View>
   );
 }
 
-/** A full bar's period: its own line under the time and the button, as wide as the bar, in lilac caps. */
-function PeriodLine({ period }: { readonly period: string }) {
-  return (
-    <Text variant="diagSection" style={styles.period}>
-      {period}
-    </Text>
-  );
-}
-
-/** Start or Pause: the lime plate with night ink (AGENTS §5's primary), a touch target at least. */
-const ClockButton = memo(function ClockButton({
-  action,
-  onPress,
-}: {
+type ClockPlateProps = {
   readonly action: ClockBarAction<MessageKey>;
   readonly onPress: () => void;
-}) {
+  readonly tier: BoardTier;
+};
+
+/** The one plate: lime with night ink (AGENTS §5's primary), a glyph before Pause and Resume, a touch target tall. */
+const ClockPlate = memo(function ClockPlate({ action, onPress, tier }: ClockPlateProps) {
   const words = usePadText();
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={buttonPressable}>
-      <Text variant="actionSecondary" numberOfLines={1} style={styles.buttonLabel}>
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={tier === 'full' ? plateFull : plateCompact}
+    >
+      {action.kind === 'start' ? null : <PlateGlyph kind={action.kind} />}
+      <Text variant="actionSecondary" numberOfLines={1} style={styles.plateLabel}>
         {words(action.label)}
       </Text>
     </Pressable>
   );
 });
 
+/** Pause's two bars, or Resume's triangle, in night ink on the plate. Drawn, so not read by a screen reader. */
+function PlateGlyph({ kind }: { readonly kind: 'pause' | 'resume' }) {
+  return (
+    <View aria-hidden testID={`glyph-${kind}`} style={styles.glyph}>
+      {kind === 'pause' ? (
+        <>
+          <View style={styles.glyphBar} />
+          <View style={styles.glyphBar} />
+        </>
+      ) : (
+        <View style={styles.triangle} />
+      )}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  // The time and the button on one row; the period on its own row under them, as wide as the bar.
-  bar: {
+  bar: { alignSelf: 'stretch' },
+  face: { alignItems: 'center', justifyContent: 'center' },
+  faceFull: { minHeight: faceHeight('full') },
+  faceCompact: { minHeight: faceHeight('compact') },
+  time: { alignSelf: 'stretch', textAlign: 'center' },
+  timePaused: { alignSelf: 'stretch', textAlign: 'center', color: colour.ink3 },
+  periodRow: {
+    height: PERIOD_HEIGHT,
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    columnGap: space.sm,
-  },
-  face: { flex: 1, minWidth: 0, minHeight: layout.touch, justifyContent: 'center' },
-  facePressed: { opacity: pressedOpacity.link },
-  time: { flexShrink: 0 },
-  period: { width: '100%', color: colour.ink3 },
-  periodUnder: { color: colour.ink3 },
-  button: {
-    flexShrink: 0,
-    minWidth: layout.touch,
-    minHeight: layout.touch,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: space.sm,
+  },
+  period: { flexShrink: 1, color: colour.ink3 },
+  pausedTag: {
+    flexShrink: 0,
+    paddingHorizontal: space.xs,
+    borderWidth: layout.iconBorder,
+    borderColor: colour.caution,
+    borderRadius: radius.card,
+  },
+  pausedWord: { color: colour.caution },
+  plate: {
+    minHeight: layout.touch,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: space.sm,
     paddingHorizontal: space.sm,
     borderRadius: radius.card,
-    borderWidth: layout.iconBorder,
-    borderColor: colour.lime,
     backgroundColor: colour.lime,
   },
-  buttonPressed: { opacity: pressedOpacity.plate },
-  buttonLabel: { color: plateInk },
+  plateFullGap: { marginTop: space.sm },
+  plateCompactGap: { marginTop: space.xs },
+  platePressed: { opacity: pressedOpacity.plate },
+  plateLabel: { color: plateInk },
+  glyph: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3 },
+  glyphBar: { width: 4, height: 14, backgroundColor: plateInk },
+  // A play triangle: a box with no width whose left border is the point's body and whose top and bottom are clear.
+  triangle: {
+    width: 0,
+    height: 0,
+    borderTopWidth: 7,
+    borderBottomWidth: 7,
+    borderLeftWidth: 12,
+    borderTopColor: colour.clear,
+    borderBottomColor: colour.clear,
+    borderLeftColor: plateInk,
+  },
 });
+
+const faceFull = [styles.face, styles.faceFull];
+const faceCompact = [styles.face, styles.faceCompact];
 
 /** Module-level so render allocates no function. */
 function pressable(rest: StyleProp<ViewStyle>, pressedStyle: StyleProp<ViewStyle>) {
@@ -183,5 +205,5 @@ function pressable(rest: StyleProp<ViewStyle>, pressedStyle: StyleProp<ViewStyle
   return ({ pressed }: PressableStateCallbackType) => (pressed ? down : rest);
 }
 
-const facePressable = pressable(styles.face, styles.facePressed);
-const buttonPressable = pressable(styles.button, styles.buttonPressed);
+const plateFull = pressable([styles.plate, styles.plateFullGap], styles.platePressed);
+const plateCompact = pressable([styles.plate, styles.plateCompactGap], styles.platePressed);

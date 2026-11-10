@@ -7,10 +7,21 @@ import { footballSeed } from '@/services/fakeFootballPad';
 import type { FakeMatchSeed, FakeSeedEvent } from '@/services/fakeScoringPort';
 import { STORE_KEYS } from '@/services/modeStore';
 import { colour } from '@/ui/theme/tokens';
+import { typeScale } from '@/ui/theme/type';
 import { TEST_NOW } from '../../../test/fakePorts';
-import { KO_11, at, clock, goal, sinBin, start, type Spec } from '../../../test/footballLedger';
-import { KICK_OFF, KICKS_4_1, KICKS_4_3 } from '../../../test/footballPadFixtures';
+import {
+  KO_11,
+  at,
+  clock,
+  goal,
+  period,
+  sinBin,
+  start,
+  type Spec,
+} from '../../../test/footballLedger';
+import { KICK_OFF, KICKS_4_1, KICKS_4_3, YELLOWED_HOME_4 } from '../../../test/footballPadFixtures';
 import { screenIsHeld, type HoldLog } from '../../../test/heldScreen';
+import { declaredStyle } from '../../../test/declaredStyle';
 import { edgeOf } from '../../../test/pressState';
 import { layOut } from '../../../test/layOut';
 import { linesAllowed } from '../../../test/linesAllowed';
@@ -99,10 +110,8 @@ const clockBar = () => screen.getByTestId('clock-bar');
 const lastTap = () => screen.getByTestId('last-tap-sentence').textContent;
 const value = (side: 'first' | 'second') =>
   within(column(side)).getByTestId('column-value').textContent;
-const scoreColours = () =>
-  (['first', 'second'] as const).map(
-    (side) => getComputedStyle(within(column(side)).getByTestId('column-value')).color,
-  );
+const goalSaid = (team: string, score: string) =>
+  fill(en['scoring.football.column.goalSaid'], { team, value: score });
 const buttonNames = (side: 'first' | 'second') =>
   within(column(side))
     .getAllByRole('button')
@@ -139,6 +148,54 @@ describe('the clock bar', () => {
     ).toBeTruthy();
   });
 
+  it('the clock face is no button: nothing on the time presses', async () => {
+    const app = await open(LIVE);
+    await pass(app, 3000);
+    const time = within(clockBar()).getByText('0:03');
+    later(app);
+    act(() => fireEvent.click(time));
+    act(() => fireEvent.click(time.parentElement!));
+    await flush(400);
+    expect(screen.queryByTestId('clock-correct-sheet')).toBeNull();
+    expect(screen.queryByTestId('step-sheet')).toBeNull();
+    expect(within(clockBar()).getAllByRole('button')).toHaveLength(1);
+  });
+
+  it('the one plate reads Start, then Pause while running, then Resume with PAUSED shown, and Start again after a break', async () => {
+    const app = await open(STARTED);
+    const plate = (word: string) =>
+      within(clockBar()).getByRole('button', {
+        name: (en as Record<string, string>)[`scoring.football.clock.${word}`],
+      });
+    expect(plate('start')).toBeTruthy();
+    expect(within(clockBar()).queryByTestId('clock-paused')).toBeNull();
+    await press(app, en['scoring.football.clock.start'], clockBar());
+    expect(plate('pause')).toBeTruthy();
+    expect(within(clockBar()).queryByTestId('clock-paused')).toBeNull();
+    await press(app, en['scoring.football.clock.pause'], clockBar());
+    expect(plate('resume')).toBeTruthy();
+    expect(
+      within(within(clockBar()).getByTestId('clock-paused')).getByText(
+        en['scoring.football.clock.paused'],
+      ),
+    ).toBeTruthy();
+    expect(getComputedStyle(within(clockBar()).getByText(/^\d+:\d\d$/)).color).toBe(
+      edgeOf(colour.ink3),
+    );
+    await press(app, en['scoring.football.clock.resume'], clockBar());
+    expect(plate('pause')).toBeTruthy();
+    expect(within(clockBar()).queryByTestId('clock-paused')).toBeNull();
+  });
+
+  it('after Half-time the plate reads Start again, not Resume, and nothing says PAUSED', async () => {
+    await open(footballSeed({ events: asSeed([...KICK_OFF, period('HT', at('H1', 2700))]) }));
+    expect(
+      within(clockBar()).getByRole('button', { name: en['scoring.football.clock.start'] }),
+    ).toBeTruthy();
+    expect(within(clockBar()).queryByTestId('clock-paused')).toBeNull();
+    expect(within(clockBar()).getByText(en['scoring.football.break.halfTime'])).toBeTruthy();
+  });
+
   it('ticks alone: in 5 s of a running clock the two team columns render at most twice in all', async () => {
     const app = await open(LIVE);
     renders.columns = 0;
@@ -152,23 +209,46 @@ describe('the clock bar', () => {
 });
 
 describe('the team columns', () => {
-  it('show each team’s name, its score and Goal, Card and Sub', async () => {
+  it('head each column with the team’s name and put its score in the Goal square, over Goal; Yellow, Red and Sub follow', async () => {
     await open(LIVE);
     expect(within(column('first')).getByText('Riverside FC')).toBeTruthy();
     expect(within(column('second')).getByText('Northgate United')).toBeTruthy();
     expect([value('first'), value('second')]).toEqual(['0', '0']);
-    const words = [
-      en['scoring.football.column.goal'],
-      en['scoring.football.column.card'],
+    expect(buttonNames('first')).toEqual([
+      goalSaid('Riverside FC', '0'),
+      en['scoring.football.column.yellow'],
+      en['scoring.football.column.red'],
       en['scoring.football.column.sub'],
-    ];
-    expect(buttonNames('first')).toEqual(words);
-    expect(buttonNames('second')).toEqual(words);
+    ]);
+    expect(buttonNames('second')).toEqual([
+      goalSaid('Northgate United', '0'),
+      en['scoring.football.column.yellow'],
+      en['scoring.football.column.red'],
+      en['scoring.football.column.sub'],
+    ]);
+    const square = within(column('first')).getByTestId('goal-square');
+    expect(within(square).getByTestId('column-value').textContent).toBe('0');
+    expect(within(square).getByText(en['scoring.football.column.goal'])).toBeTruthy();
+    expect(screen.queryByText('Card')).toBeNull();
   });
 
-  it('a goal with its scorer shows on the last-tap line and the score; Undo takes it back', async () => {
+  it('draws no one-line scoreboard: each score is drawn once, inside its Goal square', async () => {
     const app = await open(LIVE);
-    await press(app, en['scoring.football.column.goal'], column('first'));
+    await press(app, goalSaid('Riverside FC', '0'), column('first'));
+    await press(app, '#9 R. Ito');
+    await press(app, en['scoring.football.sheet.noAssist']);
+    expect(screen.getAllByTestId('column-value')).toHaveLength(2);
+    for (const side of ['first', 'second'] as const)
+      expect(
+        within(within(column(side)).getByTestId('goal-square')).getByTestId('column-value'),
+      ).toBeTruthy();
+    expect(screen.getByTestId('tally').textContent).toBe('');
+    expect(screen.getAllByText('1')).toHaveLength(1);
+  });
+
+  it('a goal with its scorer shows on the last-tap line and in the square; Undo takes it back; both numerals are night ink', async () => {
+    const app = await open(LIVE);
+    await press(app, goalSaid('Riverside FC', '0'), column('first'));
     await press(app, '#9 R. Ito');
     await press(app, en['scoring.football.sheet.noAssist']);
     const said = fill(en['scoring.football.last.goal'], {
@@ -178,36 +258,99 @@ describe('the team columns', () => {
     });
     expect(lastTap()).toBe(said);
     expect(value('first')).toBe('1');
-    // The leading side's score in the LED lime, the other's in cream (design §6.2).
-    expect(scoreColours()).toEqual([edgeOf(colour.lime), edgeOf(colour.ink)]);
+    expect(
+      within(column('first')).getByRole('button', { name: goalSaid('Riverside FC', '1') }),
+    ).toBeTruthy();
+    // No lead mark (the controller's ruling 135): the bigger number says who leads.
+    for (const side of ['first', 'second'] as const)
+      expect(getComputedStyle(within(column(side)).getByTestId('column-value')).color).toBe(
+        edgeOf(colour.ground),
+      );
     await press(app, en['scoring.pad.undo']);
     expect(lastTap()).toBe(fill(en['scoring.football.last.undone'], { what: said }));
     expect(value('first')).toBe('0');
-    expect(scoreColours()).toEqual([edgeOf(colour.ink), edgeOf(colour.ink)]);
   });
 });
 
-// The controller's fix-round 2 ruling (R1): the board's own height picks its tier. The full tier needs the clock bar's
-// 72 dp (a 48 row, the period's 16 and the 8 under it) over a column of three's 336 (2 × 8, a 152 head, 3 × (8 + 48)):
-// 408. Below it the clock bar and both columns go compact, at once (footballFit.test.ts holds the heights).
+describe('Yellow and Red (ruling 136)', () => {
+  /** The home side's number 4 already on a yellow, after kick-off. */
+  const BOOKED = footballSeed({ events: asSeed(YELLOWED_HOME_4) });
+
+  it('Yellow opens the player list at once, with no colour step, titled for the colour and the team', async () => {
+    const app = await open(LIVE);
+    await press(app, en['scoring.football.column.yellow'], column('first'));
+    const sheet = screen.getByTestId('step-sheet');
+    expect(
+      within(sheet).getByText(fill(en['scoring.football.sheet.yellow'], { team: 'Riverside FC' })),
+    ).toBeTruthy();
+    expect(within(sheet).getByText('#9 R. Ito')).toBeTruthy();
+    expect(within(sheet).queryByText(en['scoring.football.card.second_yellow'])).toBeNull();
+    expect(within(sheet).queryByText(en['scoring.football.sheet.secondYellow'])).toBeNull();
+  });
+
+  it('a player on a yellow stays in the list with “2nd yellow · sent off”, and choosing him records a second yellow', async () => {
+    const app = await open(BOOKED);
+    await press(app, en['scoring.football.column.yellow'], column('first'));
+    const sheet = screen.getByTestId('step-sheet');
+    expect(within(sheet).getAllByText(en['scoring.football.sheet.secondYellow'])).toHaveLength(1);
+    later(app);
+    act(() => fireEvent.click(within(sheet).getByRole('button', { name: /^#4 / })));
+    await flush(400);
+    await press(app, en['scoring.football.sheet.noReason']);
+    expect(lastTap()).toContain(en['scoring.football.card.second_yellow']);
+  });
+
+  it('Red names the colour in the title, with no 2nd yellow note', async () => {
+    const app = await open(BOOKED);
+    await press(app, en['scoring.football.column.red'], column('second'));
+    const sheet = screen.getByTestId('step-sheet');
+    expect(
+      within(sheet).getByText(fill(en['scoring.football.sheet.red'], { team: 'Northgate United' })),
+    ).toBeTruthy();
+    expect(within(sheet).queryByText(en['scoring.football.sheet.secondYellow'])).toBeNull();
+  });
+
+  it('a double tap on Yellow opens one sheet, and Cancel closes it with nothing recorded', async () => {
+    const app = await open(LIVE);
+    later(app);
+    const yellow = within(column('first')).getByRole('button', {
+      name: en['scoring.football.column.yellow'],
+    });
+    act(() => fireEvent.click(yellow));
+    act(() => fireEvent.click(yellow));
+    await flush(400);
+    expect(screen.getAllByTestId('step-sheet')).toHaveLength(1);
+    await press(app, en['scoring.sheet.cancel']);
+    expect(screen.queryByTestId('step-sheet')).toBeNull();
+  });
+});
+
+// The controller's fix-round 2 ruling (R1), redone for the clock hero (ruling 130): the board's own height picks its tier.
+// The full tier needs the hero's 164 dp (a 100 face, 8, the 48 plate, 8) over a column of 320 (2 × 8, an 84 head, a 100
+// Goal square, 3 × 8, 2 × 48 buttons): 484. Below it the clock and both columns go compact, at once
+// (footballFit.test.ts holds the heights).
 describe('a short phone (ruling R1)', () => {
-  const said = (time: string) => en['scoring.football.clock.said'].replace('{time}', time);
   const H1 = en['scoring.football.period.H1'];
   const name = () => within(column('second')).getByText('Northgate United');
+  const timeSize = () => getComputedStyle(within(clockBar()).getByText('0:00')).fontSize;
+  const FULL = `${typeScale.clockHero.fontSize}px`;
+  const COMPACT = `${typeScale.tallyCompact.fontSize}px`;
 
-  it('at 408 dp of board the pad is full; at 407 the clock bar and the columns go compact', async () => {
+  it('at 484 dp of board the pad is full; at 483 the clock and the columns go compact', async () => {
     await open(STARTED);
     // Before the phone lays the board out, it is full.
     expect(linesAllowed(name())).toBe(2);
+    expect(timeSize()).toBe(FULL);
     expect(within(clockBar()).getByText(H1)).toBeTruthy();
     const board = screen.getByTestId('football-board');
-    layOut(board, { width: 328, height: 408 });
-    expect(within(clockBar()).queryByLabelText(`${said('0:00')}, ${H1}`)).toBeNull();
+    layOut(board, { width: 328, height: 484 });
+    expect(timeSize()).toBe(FULL);
     expect(linesAllowed(name())).toBe(2);
-    layOut(board, { width: 328, height: 407 });
-    expect(within(clockBar()).getByLabelText(`${said('0:00')}, ${H1}`)).toBeTruthy();
+    layOut(board, { width: 328, height: 483 });
+    expect(timeSize()).toBe(COMPACT);
     expect(linesAllowed(name())).toBe(1);
     expect(linesAllowed(within(column('first')).getByText('Riverside FC'))).toBe(1);
+    expect(declaredStyle(screen.getAllByTestId('goal-square')[0]!, 'flex-direction')).toBe('row');
   });
 
   it('a phone that grows again goes back to full', async () => {
@@ -215,19 +358,30 @@ describe('a short phone (ruling R1)', () => {
     const board = screen.getByTestId('football-board');
     layOut(board, { width: 328, height: 330 });
     expect(linesAllowed(name())).toBe(1);
-    layOut(board, { width: 328, height: 480 });
+    expect(timeSize()).toBe(COMPACT);
+    layOut(board, { width: 328, height: 500 });
     expect(linesAllowed(name())).toBe(2);
+    expect(timeSize()).toBe(FULL);
     expect(within(clockBar()).getByText(H1)).toBeTruthy();
-    expect(within(clockBar()).queryByLabelText(`${said('0:00')}, ${H1}`)).toBeNull();
   });
 });
 
 describe('the shootout and the end (design §6.5, §6.7)', () => {
   it('each column has Scored and Missed, live only for the team to kick, and the kicks so far', async () => {
     await open(footballSeed({ cfg: KO_11, events: asSeed(KICKS_4_3) }));
-    const kicks = [en['scoring.football.column.scored'], en['scoring.football.column.missed']];
-    expect(buttonNames('first')).toEqual(kicks);
-    expect(buttonNames('second')).toEqual(kicks);
+    const scored = (team: string, score: string) =>
+      fill(en['scoring.football.column.scoredSaid'], { team, value: score });
+    const missed = en['scoring.football.column.missed'];
+    expect(buttonNames('first')).toEqual([scored('Riverside FC', '5 (4)'), missed]);
+    expect(buttonNames('second')).toEqual([scored('Northgate United', '5 (3)'), missed]);
+    // The shootout's column is the square (Scored, with the same numeral) and Missed: no Yellow, Red or Sub.
+    expect(within(column('first')).queryByTestId('column-cards')).toBeNull();
+    expect(within(column('first')).getByTestId('goal-square')).toBeTruthy();
+    expect(
+      within(within(column('first')).getByTestId('goal-square')).getByText(
+        en['scoring.football.column.scored'],
+      ),
+    ).toBeTruthy();
     const disabled = (side: 'first' | 'second') =>
       within(column(side))
         .getAllByRole('button')
@@ -248,26 +402,29 @@ describe('the shootout and the end (design §6.5, §6.7)', () => {
   });
 });
 
-describe('the clock’s Correct, the sheets and a sin-bin', () => {
-  it('a tap on the time opens Correct, whose time runs on with the clock while it is open', async () => {
+/** Adjust clock as the scorer reaches it: More, then its row (the clock face opens nothing: ruling 134). */
+async function openAdjust(app: LaunchedApp): Promise<void> {
+  await press(app, en['scoring.football.tool.more']);
+  expect(en['scoring.football.more.correct']).toBe('Adjust clock');
+  await press(app, en['scoring.football.more.correct']);
+}
+
+describe('the clock’s Adjust clock, the sheets and a sin-bin', () => {
+  it('Adjust clock opens from More alone, and its time runs on with the clock while it is open', async () => {
     const app = await open(LIVE);
     await pass(app, 3000);
-    later(app);
-    act(() =>
-      fireEvent.click(
-        within(clockBar()).getByRole('button', {
-          name: fill(en['scoring.football.clock.said'], { time: '0:03' }),
-        }),
-      ),
-    );
-    await flush(400);
+    await openAdjust(app);
     const sheet = screen.getByTestId('clock-correct-sheet');
     expect(within(sheet).getByText(en['scoring.football.correct.title'])).toBeTruthy();
-    expect(within(sheet).getByText('0:04')).toBeTruthy();
+    expect(within(sheet).getByText(en['scoring.football.correct.title'])).toBeTruthy();
+    expect(
+      within(sheet).getByRole('button', { name: en['scoring.football.correct.set'] }),
+    ).toBeTruthy();
+    expect(within(sheet).getByText('0:05')).toBeTruthy();
     await pass(app, 3000);
-    expect(within(sheet).getByText('0:07')).toBeTruthy();
+    expect(within(sheet).getByText('0:08')).toBeTruthy();
     await press(app, en['scoring.football.correct.fwd60'], sheet);
-    expect(within(sheet).getByText('1:08')).toBeTruthy();
+    expect(within(sheet).getByText('1:09')).toBeTruthy();
   });
 
   // Fix round 1, M1: the floor flag is judged where the time is drawn, each second, so a running clock frees the back
@@ -278,15 +435,7 @@ describe('the clock’s Correct, the sheets and a sin-bin', () => {
     });
     const app = await open(scored);
     await pass(app, 4000);
-    later(app);
-    act(() =>
-      fireEvent.click(
-        within(clockBar()).getByRole('button', {
-          name: fill(en['scoring.football.clock.said'], { time: '0:04' }),
-        }),
-      ),
-    );
-    await flush(400);
+    await openAdjust(app);
     const sheet = screen.getByTestId('clock-correct-sheet');
     const back = () =>
       within(sheet).getByRole('button', { name: en['scoring.football.correct.back10'] });
@@ -302,7 +451,7 @@ describe('the clock’s Correct, the sheets and a sin-bin', () => {
 
   it('History from the top bar lists the goal; Match details opens from More', async () => {
     const app = await open(LIVE);
-    await press(app, en['scoring.football.column.goal'], column('first'));
+    await press(app, goalSaid('Riverside FC', '0'), column('first'));
     await press(app, en['scoring.football.sheet.dontKnow']);
     await press(app, en['scoring.history.title']);
     const history = screen.getByTestId('history');

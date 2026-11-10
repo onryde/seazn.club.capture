@@ -42,6 +42,8 @@ export const colour = {
    * surface2. An opaque surface2 fill was the sheet's own colour and all but invisible on surface.
    */
   pressFill: '#f5f0e833',
+  /** Nothing: the two empty sides of a drawn triangle (the clock plate's Resume glyph). */
+  clear: '#00000000',
 
   /** --sport-led. Tailwind lime-400 in sRGB, NOT the v3 --mk-lime hex. */
   lime: '#9ae600',
@@ -352,6 +354,8 @@ const base = {
   padCardWidth: 8,
   padCardHeight: 11,
   padCardRadius: 1,
+  /** The square swatch before Yellow's and Red's word (owner ruling 132): the card icon's colours, drawn as a square. */
+  padSwatch: 8,
   /**
    * The stopwatch beside the cards, drawn at this size in its 24-unit box (the ring a little over half of it), and the
    * height of the marks' row: the card sits at its middle (padFit.test.ts).
@@ -495,6 +499,10 @@ const base = {
    * dp, which needs 0.93 of it in nl's room at 320 (footballFit.test.ts).
    */
   clockFloor: 0.85,
+  /** The Yellow and Red words, in their half-width buttons on a 320 dp column: they shrink to this and no further. */
+  cardLabelFloor: 0.75,
+  /** A disabled column button's note ("Plus de remplacement" in fr is 127.7 dp in a 104 dp room at 320): one line, shrunk to this. */
+  noteFloor: 0.75,
   /**
    * A step sheet's rows scroll past this height (S2-5 design §6.3: a team's players and its bench can be 16 rows and
    * more), while the title and Cancel stay put: five 48 dp rows, their gaps and half of a sixth row, so a list that
