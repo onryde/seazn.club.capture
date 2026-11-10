@@ -242,13 +242,20 @@ export function cricketBoard(display: CricketDisplay): CricketBoardView {
   };
 }
 
+/** Stages with no over under way: a break, a super over due, and a tie waiting on the organiser (nobody can bat it). */
+const BETWEEN_OVERS: ReadonlySet<CricketDisplay['stage']> = new Set([
+  'break',
+  'superOverSetup',
+  'tiedNoPlayers',
+]);
+
 /**
  * The over the strip shows. A decided match shows the over that ended it (the next one will never be bowled); an innings
- * break or a super over due shows none, rather than an empty next over (T19 fix 9). Otherwise the over under way.
+ * break, a super over due or a tie waiting on the organiser shows none, rather than an empty next over (T19 fix 9). Otherwise the over under way.
  */
 function overShown(display: CricketDisplay): CricketBoardView['over'] {
   if (display.stage === 'decided') return display.lastOver;
-  if (display.stage === 'break' || display.stage === 'superOverSetup') return null;
+  if (BETWEEN_OVERS.has(display.stage)) return null;
   return display.over;
 }
 

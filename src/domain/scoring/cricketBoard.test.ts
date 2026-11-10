@@ -14,6 +14,8 @@ import {
   NO_BALL,
   ONE,
   OPENING,
+  NO_AWAY_PLAYERS,
+  voiding,
   OVER_ONE_DONE,
   WIDE,
   FOUR,
@@ -345,6 +347,33 @@ describe('cricketBoard strip at a result and at a break (T19 fix 9)', () => {
 
   it('an innings break shows no over: the next innings has none yet', () => {
     expect(boardOf(FIRST_INNINGS_8).over).toBeNull();
+  });
+
+  it('a super over due shows no over: the tie’s break has none yet', () => {
+    expect(boardOf(TIED_KO).over).toBeNull();
+  });
+
+  it('a tie waiting on the organiser (no players for a super over) shows no empty Over 1', () => {
+    const tie = [...OPENING, summary(8, 0, 12), summary(8, 1, 12)];
+    expect(boardOf(tie, NO_AWAY_PLAYERS).over).toBeNull();
+  });
+
+  it('an Undo of the last ball of an over shows that over with one chip fewer, as live play does', () => {
+    // Six singles in over 1 are seqs 3 to 8; voiding seq 8 leaves five.
+    expect(boardOf([...OVER_ONE_DONE, voiding(8)]).over).toStrictEqual({
+      number: 1,
+      chips: times(5, ONE).map(() => run(1)),
+    });
+  });
+
+  it('an Undo of the winning ball reopens the match on that over with the chips before it', () => {
+    // Twelve balls of the chase are seqs 15 to 26; the sixth of over 2 is the last, a dot.
+    const board = boardOf([
+      ...chased([...times(6, DOT), ONE, DOT, TWO, DOT, DOT, DOT]),
+      voiding(26),
+    ]);
+    expect(board.result).toBeNull();
+    expect(board.over).toStrictEqual({ number: 2, chips: [run(1), dot, run(2), dot, dot] });
   });
 
   it('play still shows the over under way: an over just ended reads the next, empty', () => {
