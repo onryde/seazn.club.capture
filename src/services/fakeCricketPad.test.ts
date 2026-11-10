@@ -18,7 +18,7 @@ const LINK = { origin: 'https://stg.seazn.club', token: FAKE_SCORING_SECRET };
 const FIXTURE = 'fake-cricket';
 
 let keys = 0;
-/** A body for the next tap, under cricket's epoch (3) and the seed's rules version (0). */
+/** A body for the next tap, under cricket's epoch (4) and the seed's rules version (0). */
 function body(expected_seq: number, type: string, payload: object): AppendBody {
   keys += 1;
   return {
@@ -26,7 +26,7 @@ function body(expected_seq: number, type: string, payload: object): AppendBody {
     type,
     payload,
     idempotency_key: `cricket-key-${keys}`,
-    engine_epoch: 3,
+    engine_epoch: 4,
     rules_version: 0,
   };
 }
