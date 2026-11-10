@@ -135,6 +135,11 @@ export type FakeMatchSeed = {
 export type FakeServerControls = {
   /** Another scorer's event (the organiser's, a browser's): written now, judged by the engine; an illegal one throws. */
   addOtherScorerEvent(type: string, payload: unknown): LedgerEvent;
+  /**
+   * The organiser's web console writes an event: the web records it with `device_link_id` null (a device-link write always
+   * carries its link), so it is no phone's. Judged by the engine; an illegal one throws.
+   */
+  addConsoleEvent(type: string, payload: unknown): LedgerEvent;
   /** The link is revoked: every call answers `LINK_REVOKED`. */
   revoke(): void;
   /** The organiser corrected the format: older `rules_version`s are refused; `cfg` is the corrected one, if it changed. */
@@ -277,6 +282,7 @@ function reads(server: Server): Omit<ScoringPort, 'append'> {
 function controls(server: Server): FakeServerControls {
   return {
     addOtherScorerEvent: (type, payload) => writeOther(server, type, payload),
+    addConsoleEvent: (type, payload) => writeOther(server, type, payload, null),
     revoke: () => {
       server.revoked = true;
     },
@@ -382,7 +388,7 @@ function write(
   server: Server,
   type: string,
   payload: unknown,
-  deviceLinkId: string,
+  deviceLinkId: string | null,
   key?: string,
 ): LedgerEvent | { readonly refused: string } {
   const seq = server.ledger.length + 1;
@@ -404,8 +410,13 @@ function write(
 }
 
 /** An event from another scorer, which the engine must take: a refusal is the test's or the seed's mistake. */
-function writeOther(server: Server, type: string, payload: unknown): LedgerEvent {
-  const event = write(server, type, payload, OTHER_SCORER_LINK_ID);
+function writeOther(
+  server: Server,
+  type: string,
+  payload: unknown,
+  link: string | null = OTHER_SCORER_LINK_ID,
+): LedgerEvent {
+  const event = write(server, type, payload, link);
   if ('refused' in event)
     throw new Error(`the fake refused another scorer's ${type}: ${event.refused}`);
   return event;

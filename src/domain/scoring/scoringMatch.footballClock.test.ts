@@ -604,7 +604,12 @@ describe('the resync watch (ruling 2)', () => {
 // of the queue, said in the record, and no resync. One that was raised but not overtaken reads from its own stamp, and
 // its resync from its first sighting. Every number below is written out: T is the phone's tap, the server runs OFFSET
 // ahead, and the browser is the other screen.
-describe('a clock tap another screen overtook is withdrawn (final review)', () => {
+// Run once for a second phone's link and once for the organiser's console, which the web writes with `device_link_id`
+// null (web append-event.ts:661): neither is this phone, so both overtake (N1 of the final re-review).
+describe.each([
+  ['a second phone', BROWSER_LINK],
+  ['the organiser’s console (no device link)', null],
+])('a clock tap %s overtook is withdrawn (final review)', (_who, otherLink) => {
   /** An event the browser recorded, `afterTapMs` after the phone's tap by the server's clock. */
   const browser = (seq: number, spec: Spec, afterTapMs: number): LedgerEvent => ({
     id: `ev-${seq}`,
@@ -613,7 +618,7 @@ describe('a clock tap another screen overtook is withdrawn (final review)', () =
     payload: spec.payload,
     recordedAt: iso(T + OFFSET + afterTapMs),
     voids: null,
-    deviceLinkId: BROWSER_LINK,
+    deviceLinkId: otherLink,
   });
 
   /** `event` stepped at `atMs`, every save it asked for landed then: the state, and every effect on the way. */

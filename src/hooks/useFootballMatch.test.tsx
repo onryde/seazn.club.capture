@@ -1099,7 +1099,11 @@ describe('a resync is a clock correction (ruling I1)', () => {
 // The controller's ruling, final review (2026-11-08), through the real match hook: a Start this phone queued offline,
 // overtaken by the console's own Start in the same half, is withdrawn when the phone is back. Never sent, said in the
 // record, and no resync: every screen keeps the console's clock.
-describe('a Start the console overtook (final review)', () => {
+// Twice: another phone's link, and the organiser's console, which the web writes with no device link (N1, final re-review).
+describe.each([
+  ['another phone', 'addOtherScorerEvent'],
+  ['the organiser’s console (no device link)', 'addConsoleEvent'],
+] as const)('a Start %s overtook (final review)', (_who, writer) => {
   it('is withdrawn: never sent, the record says H1, no resync, and the phone reads the console’s clock', async () => {
     const { fakes, view } = await opened({ seed: STARTED });
     fakes.scoring.goOffline(true);
@@ -1108,7 +1112,7 @@ describe('a Start the console overtook (final review)', () => {
     await wait(1_000);
     // The console's Start, 1 s after the phone's: the server records it at the time the fake's clock says now.
     const consoleStart = Date.now();
-    fakes.scoring.addOtherScorerEvent('football.clock', {
+    fakes.scoring[writer]('football.clock', {
       running: true,
       at: { period: 'H1', elapsed: 0 },
     });
@@ -1143,7 +1147,7 @@ describe('a Start the console overtook (final review)', () => {
     press(view, (actions) => actions.clock());
     await flush();
     await wait(1_000);
-    fakes.scoring.addOtherScorerEvent('football.clock', {
+    fakes.scoring[writer]('football.clock', {
       running: true,
       at: { period: 'H1', elapsed: 0 },
     });

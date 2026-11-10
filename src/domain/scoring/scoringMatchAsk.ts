@@ -52,7 +52,8 @@ const recordedSince = (event: LedgerEvent, floor: number): boolean =>
 /**
  * Of `events`, the ledger's copy of each queued tap whose fate is unknown (it was sent, or may have been, and no answer
  * came): by its type and its payload, in any key order, written by this phone's link (a co-scorer's identical rally is
- * theirs, and counts), recorded since the oldest tap was made, at the seq it was sent at plus one when it is the tap in
+ * theirs, and counts; an event with no link is the organiser's console's, never a copy, since the web stamps every
+ * device-link write with its link), recorded since the oldest tap was made, at the seq it was sent at plus one when it is the tap in
  * flight. Each tap has at most one copy and each event is the copy of at most one tap, the latest tap taking the latest
  * event (an older identical event is what the phone made before). An event whose id this phone already owns is nobody's
  * copy.
@@ -70,7 +71,7 @@ export function copiesOf(
   for (const tap of [...sync.queue.pending].reverse()) {
     if (!isUnresolved(sync, tap.key)) continue;
     const mine = (event: LedgerEvent): boolean =>
-      bootstrap === null || event.deviceLinkId === null || event.deviceLinkId === bootstrap.linkId;
+      bootstrap === null || event.deviceLinkId === bootstrap.linkId;
     const atSeq = (event: LedgerEvent): boolean =>
       sent?.key !== tap.key || event.seq === sent.expectedSeq + 1;
     const copy = latestFirst.find(

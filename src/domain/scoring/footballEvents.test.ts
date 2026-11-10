@@ -486,7 +486,10 @@ describe('footballEventFor: what the engine would refuse is never made', () => {
 
 /** When the queued taps below were made, by the phone's clock. */
 const T = '2026-11-07T14:30:00.000Z';
-const send = (bootstrap: Bootstrap | null = MATCH) => ({ bootstrap });
+const send = (bootstrap: Bootstrap | null = MATCH, ownEventIds: readonly string[] = []) => ({
+  bootstrap,
+  ownEventIds,
+});
 const queued = (spec: Spec, more: Partial<QueuedEvent> = {}): QueuedEvent => ({
   ...queuedOf('k1', spec, T),
   ...more,
@@ -586,6 +589,20 @@ describe('footballPayloadForSend withdraws a clock tap another screen overtook',
   it('the console’s Half-time, recorded after it, withdraws it too', () => {
     const ledger = ledgerOf([...KICK_OFF, period('HT', at('H1', 2700))]);
     expect(footballPayloadForSend(PAUSE, ledger, false, send())).toMatchObject(WITHDRAWN);
+  });
+
+  // The organiser's console writes `device_link_id` null (N1 of the final re-review): it is another screen's too.
+  it('the organiser’s console, with no device link, withdraws it as well: a Pause, and a Half-time', () => {
+    for (const spec of [clock(false, at('H1', 590)), period('HT', at('H1', 2700))]) {
+      const ledger = ledgerOf([...KICK_OFF, { ...spec, link: null }]);
+      expect(footballPayloadForSend(PAUSE, ledger, false, send())).toMatchObject(WITHDRAWN);
+    }
+    // The stand-in this phone sent itself (no link, in its own ids) is not the console's.
+    const own = ledgerOf([...KICK_OFF, { ...clock(false, at('H1', 590)), link: null }]);
+    const ownId = own[own.length - 1]!.id;
+    expect(footballPayloadForSend(PAUSE, own, false, send(MATCH, [ownId]))).not.toMatchObject(
+      WITHDRAWN,
+    );
   });
 
   it('a later goal is no clock event: the Pause is sent, raised to it', () => {

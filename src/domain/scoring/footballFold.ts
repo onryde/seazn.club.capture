@@ -235,7 +235,7 @@ function queuedOnto(
   tap: QueuedEvent,
 ): void {
   const { envelopes } = stream;
-  if (overtaken(tap, input.ledger, input.bootstrap.linkId)) {
+  if (overtaken(tap, input.ledger, input.bootstrap.linkId, input.ownEventIds)) {
     stream.legal.push(tap.key);
     return;
   }

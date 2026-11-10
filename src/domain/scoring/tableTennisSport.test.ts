@@ -168,7 +168,7 @@ describe('tableTennisSport: a tap', () => {
   });
 
   it('sends a rally’s serving only while no rally of the ledger already names one', () => {
-    const SEND = { bootstrap: null };
+    const SEND = { bootstrap: null, ownEventIds: [] };
     const queued = queuedOf('k1', rally({ wonBy: 'H', serving: 'H' }));
     expect(tableTennisSport.payloadForSend(queued, [], false, SEND)).toEqual({
       wonBy: HOME,

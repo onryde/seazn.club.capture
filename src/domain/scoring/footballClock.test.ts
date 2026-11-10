@@ -721,41 +721,63 @@ describe('overtaken: another screen’s later clock event in the tap’s period'
   const after = (...more: Spec[]) => ledgerOf([...KICK_OFF, ...more]);
 
   it('a browser clock event or period marker in H1 above the base overtakes it', () => {
-    expect(overtaken(START, after(clock(true, at('H1', 0))), PHONE_LINK)).toBe(true);
-    expect(overtaken(START, after(clock(false, at('H1', 300))), PHONE_LINK)).toBe(true);
-    expect(overtaken(START, after(period('HT', at('H1', 2700))), PHONE_LINK)).toBe(true);
+    expect(overtaken(START, after(clock(true, at('H1', 0))), PHONE_LINK, [])).toBe(true);
+    expect(overtaken(START, after(clock(false, at('H1', 300))), PHONE_LINK, [])).toBe(true);
+    expect(overtaken(START, after(period('HT', at('H1', 2700))), PHONE_LINK, [])).toBe(true);
   });
 
   it('what the scorer saw when tapping, at or under the base, overtakes nothing', () => {
-    expect(overtaken({ ...START, base: 3 }, after(clock(true, at('H1', 0))), PHONE_LINK)).toBe(
+    expect(overtaken({ ...START, base: 3 }, after(clock(true, at('H1', 0))), PHONE_LINK, [])).toBe(
       false,
     );
   });
 
-  it('this phone’s own events overtake nothing: its link’s, or a stand-in’s with none', () => {
+  it('this phone’s own events overtake nothing: its link’s, or a stand-in’s with none that it sent', () => {
     const own = (link: string | null): Spec => ({ ...clock(true, at('H1', 0)), link });
-    expect(overtaken(START, after(own(PHONE_LINK)), PHONE_LINK)).toBe(false);
-    expect(overtaken(START, after(own(null)), PHONE_LINK)).toBe(false);
-    expect(overtaken(START, after(own(BROWSER_LINK)), PHONE_LINK)).toBe(true);
+    expect(overtaken(START, after(own(PHONE_LINK)), PHONE_LINK, [])).toBe(false);
+    // The stand-in is the third event (`ev-3`), and this phone sent it.
+    expect(overtaken(START, after(own(null)), PHONE_LINK, ['ev-3'])).toBe(false);
+    expect(overtaken(START, after(own(BROWSER_LINK)), PHONE_LINK, [])).toBe(true);
+  });
+
+  // The organiser's web console writes `device_link_id` null (web append-event.ts:661), and it is not one this phone sent:
+  // it is another screen's, whatever it is (N1 of the final re-review).
+  it('the organiser’s console, which has no device link, overtakes it: a clock event or a period marker', () => {
+    const console = (spec: Spec): Spec => ({ ...spec, link: null });
+    expect(overtaken(START, after(console(clock(true, at('H1', 0)))), PHONE_LINK, [])).toBe(true);
+    expect(overtaken(START, after(console(clock(false, at('H1', 300)))), PHONE_LINK, [])).toBe(
+      true,
+    );
+    expect(overtaken(START, after(console(period('HT', at('H1', 2700)))), PHONE_LINK, [])).toBe(
+      true,
+    );
+    // Not when the id is one this phone sent: that is its own stand-in.
+    expect(overtaken(START, after(console(clock(true, at('H1', 0)))), PHONE_LINK, ['ev-3'])).toBe(
+      false,
+    );
   });
 
   it('a goal, another period, an unstamped clock event or a voided one overtake nothing', () => {
-    expect(overtaken(START, after(goal({ by: 'A', at: at('H1', 600) })), PHONE_LINK)).toBe(false);
-    expect(overtaken(START, after(clock(true, at('H2', 0))), PHONE_LINK)).toBe(false);
-    expect(overtaken(START, after(clock(true)), PHONE_LINK)).toBe(false);
+    expect(overtaken(START, after(goal({ by: 'A', at: at('H1', 600) })), PHONE_LINK, [])).toBe(
+      false,
+    );
+    expect(overtaken(START, after(clock(true, at('H2', 0))), PHONE_LINK, [])).toBe(false);
+    expect(overtaken(START, after(clock(true)), PHONE_LINK, [])).toBe(false);
     const voided = after(clock(true, at('H1', 0)), voiding('ev-3'));
-    expect(overtaken(START, voided, PHONE_LINK)).toBe(false);
+    expect(overtaken(START, voided, PHONE_LINK, [])).toBe(false);
   });
 
   it('only a clock tap with a base and a stamp is judged: a goal, an old queue file’s tap, an unstamped one', () => {
     const ledger = after(clock(true, at('H1', 0)));
     const goalTap = { ...queuedOf('k2', goal({ by: 'H', at: at('H1', 0) })), base: 2 };
-    expect(overtaken(goalTap, ledger, PHONE_LINK)).toBe(false);
-    expect(overtaken(queuedOf('k1', clock(true, at('H1', 0))), ledger, PHONE_LINK)).toBe(false);
-    expect(overtaken({ ...queuedOf('k3', clock(true)), base: 2 }, ledger, PHONE_LINK)).toBe(false);
+    expect(overtaken(goalTap, ledger, PHONE_LINK, [])).toBe(false);
+    expect(overtaken(queuedOf('k1', clock(true, at('H1', 0))), ledger, PHONE_LINK, [])).toBe(false);
+    expect(overtaken({ ...queuedOf('k3', clock(true)), base: 2 }, ledger, PHONE_LINK, [])).toBe(
+      false,
+    );
     // An unstamped tap has no period, so an unstamped clock event of another screen's is not in it either.
     const unstamped = after(clock(true));
-    expect(overtaken({ ...queuedOf('k4', clock(true)), base: 2 }, unstamped, PHONE_LINK)).toBe(
+    expect(overtaken({ ...queuedOf('k4', clock(true)), base: 2 }, unstamped, PHONE_LINK, [])).toBe(
       false,
     );
   });

@@ -9,7 +9,7 @@ import { NOW, savesOf, sendsOf } from '../../../test/scoringMatchFixtures';
 import { SINGLES, ledgerOf, start } from '../../../test/tableTennisLedger';
 
 // The send's context (plan S2-5 P Task 7; ruling 3 of Batch B): a sport that judges a payload against its own fold of
-// the ledger (football's stamps, against the fold's phase) is told the bootstrap the match holds. Nothing else: the
+// the ledger (football's stamps, against the fold's phase) is told the bootstrap the match holds and the ids of the events this phone sent (a link-less event of its own is its stand-in, any other the console's). Nothing else: the
 // send-time clock went with the controller's ruling of 2026-11-08, which keeps a payload a function of the tap and the
 // ledger. Any sport serves to show the pump passes it; table tennis is the one driven here.
 
@@ -46,12 +46,15 @@ function sendWith(sport: ScoringSport<TableTennisTypes>, sentAt: number) {
 }
 
 describe('the pump tells the sport the match it sends for', () => {
-  it('hands payloadForSend the bootstrap the match holds, and no clock', () => {
+  it('hands payloadForSend the bootstrap the match holds and the ids this phone sent, and no clock', () => {
     const payloadForSend = vi.fn(tableTennisSport.payloadForSend);
     const sent = sendWith({ ...tableTennisSport, payloadForSend }, NOW + 120_500);
     expect(sent?.body.idempotency_key).toBe('k-tap');
     expect(payloadForSend).toHaveBeenCalledTimes(1);
-    expect(payloadForSend.mock.calls[0]?.[3]).toEqual({ bootstrap: SINGLES });
+    expect(payloadForSend.mock.calls[0]?.[3]).toEqual({
+      bootstrap: SINGLES,
+      ownEventIds: [],
+    });
   });
 
   it('sends what the sport made of it, and keeps it in the queue', () => {

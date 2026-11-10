@@ -323,7 +323,7 @@ while paused). No time is read to judge it, so the server's copies say the same 
 too. If the app dies between the Start's acceptance and the resync, none is made, and other
 screens are off by the wait until the next clock tap (_the controller's_, 2026-11-08). A Start sent while no pad of
 its match is open gets no resync either: the watch is the pad's (`useResync`). A queued clock tap of this phone's that
-another screen overtook (a clock event or period marker from another link, in the tap's period, recorded after the tap
+another screen overtook (a clock event or period marker from another screen (another phone or the organiser's console, whose events carry no device link: a link-less event that is not one of this phone's own is the console's), in the tap's period, recorded after the tap
 was made: its seq is above the ledger tip the tap was made on, never judged by a clock) is withdrawn at its send:
 never sent, taken out of the queue, said in the record as `clockTapWithdrawn {phase}`, and no resync; until then the
 phone draws the match without it. A clock tap the send restamps but no other screen overtook reads from its own stamp,

@@ -592,3 +592,23 @@ describe('foldFootball: what it cannot fold', () => {
     expect(MATCH.cfg).toBe(KO_11);
   });
 });
+
+// A queued clock tap is overtaken only by another screen's event. This phone's own accepted Start is a stand-in with no
+// device link (`sync.ts`), above the Pause's base; the ids this phone sent tell it from the organiser's console, which the
+// web also writes with no link (N1 of the final re-review).
+describe('a queued clock tap and this phone’s own stand-in (no device link)', () => {
+  const PAUSE = { ...queuedOf('k2', clock(false, at('H1', 300))), base: 2 };
+  const ledger = ledgerOf([start(), clock(false, at('H1', 0)), clock(true, at('H1', 0))]).map(
+    (event) => (event.seq === 3 ? { ...event, deviceLinkId: null } : event),
+  );
+
+  it('is not overtaken by it: the Pause still stops the clock at 5:00', () => {
+    const { display } = folded({ ledger, queued: [PAUSE], ownEventIds: ['ev-3'] });
+    expect(display.clock.anchor).toMatchObject({ period: 'H1', elapsed: 300, running: false });
+  });
+
+  it('is overtaken by the same event when it is the console’s: the Pause is drawn without', () => {
+    const { display } = folded({ ledger, queued: [PAUSE], ownEventIds: [] });
+    expect(display.clock.anchor).toMatchObject({ period: 'H1', elapsed: 0, running: true });
+  });
+});

@@ -138,7 +138,7 @@ describe('footballSport: a tap', () => {
       createdAt: '2026-11-07T14:30:00.000Z',
       attempts: 1,
     };
-    const send = { bootstrap: MATCH };
+    const send = { bootstrap: MATCH, ownEventIds: [] };
     expect(footballSport.payloadForSend(queued, [], true, send)).toEqual({ by: 'ent-home' });
   });
 });

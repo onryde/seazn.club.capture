@@ -121,6 +121,18 @@ describe('the reconnect question stands when a fetch brings events another score
     expect(askOf(read.state)).toEqual({ foreign: 1, queued: 1 });
   });
 
+  // The web writes `device_link_id` null for the organiser's console and stamps every device-link write with its link, so a
+  // link-less event is never this phone's copy: a console point equal to a queued tap must not swallow the tap.
+  it('counts an identical rally with no device link: the organiser’s console’s, never the copy of the tap', () => {
+    const lost = [{ ...queuedOf('k1', rally('H')), attempts: 1 }];
+    const console = web([start(), { ...rally('H'), link: null }]).slice(1);
+    const read = step(opened(tapped(lost)), { kind: 'fetched', events: console }, NOW);
+    expect(askOf(read.state)).toEqual({ foreign: 1, queued: 1 });
+    expect(copiesOf(read.state, console).size).toBe(0);
+    const sent = run(read.state, { kind: 'answerAsk', answer: 'send' });
+    expect(sendsOf(sent.effects)).toHaveLength(1);
+  });
+
   it('does not count the copy of the tap in flight a ping’s fetch beat the answer with, but counts a co-scorer’s at that seq', () => {
     const { state } = sentOnce([queuedOf('k2', rally('H'))]);
     const mine = web([start(), { ...rally('H'), link: PHONE_LINK }]).slice(1);

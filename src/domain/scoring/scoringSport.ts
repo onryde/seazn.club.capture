@@ -131,9 +131,14 @@ export interface ScoringSport<S extends SportTypes> {
   pad(display: S['display'], sync: PadSync): PadView<S['padKey']>;
 }
 
-/** What a send is judged with besides the ledger: the bootstrap the match holds, or null before one is. */
+/**
+ * What a send is judged with besides the ledger: the bootstrap the match holds, or null before one is, and the ids of the
+ * events this phone sent (`ownEventIds`), which tell this phone's stand-ins (no link) from the organiser's console (no
+ * link either, and not in the list).
+ */
 export type SportSendContext = {
   readonly bootstrap: Bootstrap | null;
+  readonly ownEventIds: readonly string[];
 };
 
 /** A line a sport asks the record for: its event and fields, each key on the scrub's allow-list, never a person or an id. */

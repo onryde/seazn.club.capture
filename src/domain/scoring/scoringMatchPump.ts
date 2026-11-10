@@ -132,7 +132,10 @@ function sending<S extends SportTypes>(state: MatchState<S>, now: number): Part<
 function payloadNow<S extends SportTypes>(state: MatchState<S>, head: QueuedEvent): unknown {
   const { ledger } = state.sync;
   const copied = copiesOf(state, ledger).has(head.key);
-  return state.sport.payloadForSend(head, ledger, copied, { bootstrap: state.bootstrap });
+  return state.sport.payloadForSend(head, ledger, copied, {
+    bootstrap: state.bootstrap,
+    ownEventIds: state.sync.queue.ownEventIds,
+  });
 }
 
 /** Sync with the head carrying the payload it is sent with. */

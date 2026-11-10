@@ -377,24 +377,27 @@ export function restamp(
  * decision on the ground wins and that screen's clock is already true, so the tap is withdrawn at its send (never sent,
  * and no resync) and the fold draws the match without it. "After the tap was made" is read in the server's own order,
  * never on the phone's clock, which may be minutes out: a seq above the ledger tip the tap was made over (its `base`).
- * "Another screen's" is an event of another link than `linkId`, this phone's (its stand-ins carry none). A tap with no
- * `base` (a queue file from before it) or no stamp is never overtaken.
+ * "Another screen's" is any event that is not this phone's: not in `ownEventIds` (its stand-ins carry no link), and not of
+ * this phone's link `linkId`. An event with no link that is not a stand-in is the organiser's console (the web writes
+ * `device_link_id` null for it), so it is another screen's. A tap with no `base` (a queue file from before it) or no stamp is never overtaken.
  */
 export function overtaken(
   tap: Pick<QueuedEvent, 'type' | 'payload' | 'base'>,
   ledger: readonly LedgerEvent[],
   linkId: string,
+  ownEventIds: readonly string[],
 ): boolean {
   const { base } = tap;
   const period = gameTimeOf(tap.payload)?.period;
   if (tap.type !== CLOCK || base === undefined || period === undefined) return false;
   const voided = new Set(ledger.flatMap((event) => (event.voids === null ? [] : [event.voids])));
+  const own = new Set(ownEventIds);
   return ledger.some(
     (event) =>
       event.seq > base &&
       (event.type === CLOCK || event.type === PERIOD) &&
-      event.deviceLinkId !== null &&
       event.deviceLinkId !== linkId &&
+      !own.has(event.id) &&
       !voided.has(event.id) &&
       gameTimeOf(event.payload)?.period === period,
   );

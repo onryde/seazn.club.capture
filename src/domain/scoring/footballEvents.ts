@@ -290,7 +290,10 @@ export function footballPayloadForSend(
   send: SportSendContext,
 ): unknown {
   if (copied) return queued.payload;
-  if (send.bootstrap !== null && overtaken(queued, ledger, send.bootstrap.linkId)) {
+  if (
+    send.bootstrap !== null &&
+    overtaken(queued, ledger, send.bootstrap.linkId, send.ownEventIds)
+  ) {
     return withdrawnOf(queued);
   }
   const floor = newestStamp(standingOf(ledger));
