@@ -160,6 +160,36 @@ describe('fieldersFor', () => {
     expect(ids).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(A));
   });
 
+  // T19 fix 4 (seen on staging, super over 2: North's keeper bowls): a keeper who is the bowler cannot stump off their own
+  // bowling (Law 39), so a stumping never offers one. DOT_ONE's bowler is A-p11; the sheet's keepers are set here.
+  const keepingBy = (...keepers: readonly number[]): Bootstrap => ({
+    ...MATCH,
+    sides: {
+      ...MATCH.sides,
+      away: {
+        ...AWAY,
+        lineup: AWAY.lineup.map(({ roles: _roles, ...row }, i) =>
+          keepers.includes(i + 1) ? { ...row, roles: ['wicketkeeper'] } : row,
+        ),
+      },
+    },
+  });
+  const stumpedIds = (bootstrap: Bootstrap) =>
+    fieldersFor('stumped', displayOf(DOT_ONE, bootstrap)).map((one) => one.id);
+
+  it('stumped offers the named keeper while another bowls', () => {
+    expect(stumpedIds(keepingBy(5))).toEqual([A(5)]);
+  });
+
+  it('stumped, when the only named keeper is the bowler, offers the side without the bowler', () => {
+    expect(stumpedIds(keepingBy(11))).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(A));
+  });
+
+  it('stumped, with two named keepers and one bowling, offers the other one only', () => {
+    expect(stumpedIds(keepingBy(2, 11))).toEqual([A(2)]);
+    expect(stumpedIds(keepingBy(11, 7))).toEqual([A(7)]);
+  });
+
   it('caught offers the whole fielding side, the bowler too', () => {
     expect(fieldersFor('caught', displayOf(DOT_ONE))).toHaveLength(11);
   });

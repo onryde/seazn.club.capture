@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useCricketMatch } from '@/hooks/useCricketMatch';
 import { AWAY_ENTRANT, HOME_ENTRANT, liveCricketSeed, playerOf } from '@/services/fakeCricketPad';
+import type { FakeMatchSeed } from '@/services/fakeScoringPort';
 import { saveScoringLink } from '@/services/scoringLinkStore';
 import { FAKE_SCORING_SECRET } from '../../test/fakeScoringLinkPort';
 import { createFakePorts, timerClock, type FakePorts } from '../../test/fakePorts';
@@ -28,8 +29,8 @@ const wait = (ms = 1_000) =>
     await vi.advanceTimersByTimeAsync(ms);
   });
 
-async function opened() {
-  const fakes = createFakePorts({ clock: timerClock, scoringSeed: LIVE });
+async function opened(seed: FakeMatchSeed = LIVE) {
+  const fakes = createFakePorts({ clock: timerClock, scoringSeed: seed });
   await saveScoringLink(fakes.kv, LIVE.fixtureId, LINK, 'stg.seazn.club', 'cricket');
   const view = renderHook(() => useCricketMatch(LIVE.fixtureId), { wrapper: wrapperFor(fakes) });
   await flush();
@@ -144,6 +145,33 @@ describe('useCricketSheets', () => {
         bowlerCredited: true,
       },
     });
+  });
+
+  // T19 fix 4: Hillcrest's 11 bowls the live seed's over. Make that player the team sheet's only keeper (Law 39: the
+  // bowler cannot stump off their own bowling), and the stumping offers the side without them.
+  it('Out then Stumped, with the keeper bowling, lists the fielding side without the bowler', async () => {
+    const away = LIVE.sides.away;
+    const bowling = playerOf(AWAY_ENTRANT, 11);
+    const keeperBowls: FakeMatchSeed = {
+      ...LIVE,
+      sides: {
+        ...LIVE.sides,
+        away: {
+          ...away,
+          lineup: away.lineup.map(({ roles: _roles, ...row }) =>
+            row.personId === bowling ? { ...row, roles: ['wicketkeeper'] } : row,
+          ),
+        },
+      },
+    };
+    const { view } = await opened(keeperBowls);
+    act(() => pad(view).actions.openOut());
+    await wait();
+    act(() => pad(view).actions.choose('stumped'));
+    expect(stepName(view)).toBe('wicket.fielder');
+    expect(stepOptions(view).map((one) => one.id)).toEqual(
+      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => playerOf(AWAY_ENTRANT, n)),
+    );
   });
 
   it('a key on the heels of a recorded ball is its second touch: no sheet, and the line says Counted once', async () => {

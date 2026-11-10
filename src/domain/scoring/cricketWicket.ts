@@ -96,8 +96,10 @@ function fieldingOf(display: CricketDisplay): readonly CricketPlayer[] {
 
 /**
  * Who can have taken the wicket: a stumping is the keeper's (the team sheet's `wicketkeeper` role, else its `WK`
- * position: the fold's `keeper`), or, when the sheet names none, the fielding side without the bowler, who cannot keep to
- * their own bowling. Our rule, the web's too: the engine accepts any fielder. Every other kind offers the whole side.
+ * position: the fold's `keeper`), less the bowler, who cannot keep to their own bowling (Law 39; a keeper who bowls, as
+ * in a super over, is not offered). When no keeper is left, the sheet naming none or the only one bowling, it is the
+ * fielding side without the bowler. Our rule, the web's too: the engine accepts any fielder. Every other kind offers the
+ * whole side.
  */
 export function fieldersFor(
   kind: CricketBallWicketKind,
@@ -105,8 +107,9 @@ export function fieldersFor(
 ): readonly CricketPlayer[] {
   const side = fieldingOf(display);
   if (kind !== STUMPED) return side;
-  const keepers = side.filter((one) => one.keeper);
-  return keepers.length > 0 ? keepers : side.filter((one) => one.id !== display.bowler?.id);
+  const notBowling = side.filter((one) => one.id !== display.bowler?.id);
+  const keepers = notBowling.filter((one) => one.keeper);
+  return keepers.length > 0 ? keepers : notBowling;
 }
 
 function asks(kind: CricketBallWicketKind, rule: readonly string[]): boolean {
