@@ -59,9 +59,12 @@ const SCREEN_IMPORT = /import\s*\{([^}]*)\}\s*from\s*['"]@\/ui\/screens\/([A-Za-
 function screensImported(source: string): Map<string, string> {
   const named = new Map<string, string>();
   for (const match of source.matchAll(SCREEN_IMPORT)) {
+    const screen = `src/ui/screens/${match[2]}`;
+    // A plain `.ts` beside the screens (fit math) has no component to check: it is not a screen, so not followed.
+    if (!existsSync(join(root, `${screen}.tsx`)) && existsSync(join(root, `${screen}.ts`)))
+      continue;
     for (const name of (match[1] ?? '').split(',')) {
-      if (name.trim() !== '')
-        named.set(name.trim().replace(/^type\s+/, ''), `src/ui/screens/${match[2]}.tsx`);
+      if (name.trim() !== '') named.set(name.trim().replace(/^type\s+/, ''), `${screen}.tsx`);
     }
   }
   return named;
