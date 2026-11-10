@@ -574,6 +574,11 @@ drafts, for the owner's review**, as the rest of the cricket words.
 | Off the bat | Con el bate          | Avec la batte     | Van het bat  | `extras.bat`: the no-ball's runs off the bat; `extras.runs` "Runs" a bye's. |
 | How out?    | ¿Cómo fue eliminado? | Éliminé comment ? | Hoe uit?     | `wicket.how`: the wicket's first step. fr has a no-break space before `?`.  |
 
+T19 fix 8 (2026-11-10), es/fr/nl for the native-speaker review list: `extras.byesRun` (the no-ball sheet's run keys only) is
+_Byes run (not hit)_ / _Byes corridos (sin golpear)_ / _Byes courus (sans toucher)_ / _Byes gelopen (niet geraakt)_;
+`board.overLast` (the over strip when only the last balls show) is _Over 1 · last 6 of 10_ / _últimas 6 de 10_ / _6 dernières sur 10_ /
+_laatste 6 van 10_.
+
 ### Cricket wicket steps (S2-4 Task 12, 2026-11-08)
 
 The wicket steps' titles, rows and notes (`scoring.cricket.wicket.*`). The kinds of dismissal

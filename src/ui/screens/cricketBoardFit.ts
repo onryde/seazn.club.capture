@@ -11,9 +11,18 @@ export function chipsPerRow(width: number | null): number {
   return Math.max(1, Math.floor((width + space.xs) / (layout.overChip + space.xs)));
 }
 
-/** The rows the over's chips take: one while there are none or they fit, then a row more for each full one. */
-export function chipRows(count: number, width: number | null): number {
-  return Math.max(1, Math.ceil(count / chipsPerRow(width)));
+/** The deliveries a strip shows when the over's chips do not fit one row: the last six, newest at the right (owner, 2026-11-10). */
+export const LAST_BALLS = 6;
+
+/**
+ * How many of an over's `total` chips the strip draws (T19 fix 8; owner, 2026-11-10: "if doesn't fit, show only last 6
+ * balls?"). A board with keys under it keeps the strip to ONE row, so an over whose chips do not fit one row shows its last
+ * six; six always fit a row from 288 dp (6 x 40 + 5 x 4 = 260). A result's board has no keys and room, so it shows every chip
+ * and they wrap.
+ */
+export function chipsShown(total: number, width: number | null, result: boolean): number {
+  if (result || total <= chipsPerRow(width)) return total;
+  return Math.min(total, LAST_BALLS);
 }
 
 /** The strip's height with that many rows: the label, a row of chips, and a row more under it for each wrap. */
@@ -70,38 +79,41 @@ export function boardNeeds(
 
 /**
  * The first rung that fits `room` dp, else the last (the board is then clipped at its bottom by its own edge, never drawn
- * over the keys). An unmeasured board is drawn as designed, and so is a result's (no keys stand under it). A free hit due is a
+ * over the keys). The strip is counted as ONE row of chips: with keys under the board it never takes more (`chipsShown`).
+ * An unmeasured board is drawn as designed, and so is a result's (no keys stand under it). A free hit due is a
  * line of the board's own (`FreeHit`), counted here and never dropped.
  */
-export function fitBoard(
-  room: number | null,
-  chips: number,
-  width: number | null,
-  result = false,
-  freeHit = false,
-): BoardFit {
+export function fitBoard(room: number | null, result = false, freeHit = false): BoardFit {
   const first = BOARD_RUNGS[0] as BoardFit;
   // A result has no keys under it, so its board has room and is not given way (the strip stays).
   if (room === null || result) return first;
-  const rows = chipRows(chips, width);
-  const fits = (fit: BoardFit) => boardNeeds(fit, rows, undefined, freeHit) <= room;
+  const fits = (fit: BoardFit) => boardNeeds(fit, 1, undefined, freeHit) <= room;
   return BOARD_RUNGS.find(fits) ?? (BOARD_RUNGS[BOARD_RUNGS.length - 1] as BoardFit);
 }
 
 /**
  * The height the fitted board leaves unused, 0 while unmeasured, for a result (no keys stand under it) or when the board is
- * too short. It goes ABOVE the score, so the board sits against the keys (owner, 2026-11-10: "may be use some space between
- * undone message, just keep the scoring number little bit below?"); with nothing spare the score stays at the top and the
- * bottom clips, so the top is never the part cut.
+ * too short. Some of it goes ABOVE the score and the rest BELOW the strip (`spareSpacers`), so the score stays near the top.
  */
 export function boardSpare(
   room: number | null,
   fit: BoardFit,
-  chips: number,
-  width: number | null,
   result = false,
   freeHit = false,
 ): number {
   if (room === null || result) return 0;
-  return Math.max(0, room - boardNeeds(fit, chipRows(chips, width), undefined, freeHit));
+  return Math.max(0, room - boardNeeds(fit, 1, undefined, freeHit));
+}
+
+/**
+ * Where the spare goes (T19 fix 8; owner, 2026-11-10: "why not using enough space from top"): a spacer above the score of at
+ * most `space.md` (the style's `maxHeight`), and what is left under the strip. The top one only when the spare covers the
+ * board's gap (the gap sits between a spacer and the panel even at no height); the bottom one only when more than `space.md`
+ * is left to put there.
+ */
+export function spareSpacers(
+  spare: number,
+  gap: number,
+): { readonly top: boolean; readonly bottom: boolean } {
+  return { top: spare >= gap, bottom: spare >= gap && spare > space.md };
 }

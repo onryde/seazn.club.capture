@@ -9,7 +9,7 @@ import { typeScale } from '@/ui/theme/type';
 import {
   BOARD_RUNGS,
   boardNeeds,
-  chipRows,
+  chipsShown,
   chipsPerRow,
   fitBoard,
   stripHeight,
@@ -143,9 +143,10 @@ describe.each(WIDTHS)('the cricket board at %i dp', (width) => {
     expect(nameRoom(width, SPELL)).toBeGreaterThanOrEqual(labelWidth('W. Fitzgerald'));
   });
 
-  it('a six-ball over fits the column on one row, and an over of ten deliveries takes two', () => {
-    expect(chipRows(6, column(width))).toBe(1);
-    expect(chipRows(10, column(width))).toBe(2);
+  // T19 fix 8: six chips (6 x 40 + 5 x 4 = 260) fit one row at every width; an over of ten shows its last six there.
+  it('six chips fit the column on one row, and an over of ten shows its last six', () => {
+    expect(chipsShown(6, column(width), false)).toBe(6);
+    expect(chipsShown(10, column(width), false)).toBe(6);
     expect(6 * layout.overChip + 5 * space.xs).toBeLessThanOrEqual(column(width));
   });
 
@@ -162,6 +163,17 @@ describe.each(WIDTHS)('the cricket board at %i dp', (width) => {
 // T19 device run D1: the overs' box is a fixed width (CricketBoard's `overs`), so a whole over's shorter text is never
 // laid out in a box measured a hair short of it on the phone. It holds the widest overs in every language, with no
 // more than 2 dp to spare, so the box is the widest text's and not a guess.
+describe('the over’s label when the strip shows only its last balls', () => {
+  it.each(LANGUAGES)('is one line in the column at every width: %s', (_, dictionary) => {
+    const label = fill(said(dictionary, 'scoring.cricket.board.overLast'), {
+      number: 50,
+      shown: 6,
+      total: 12,
+    });
+    for (const width of WIDTHS) expect(unitWidth(label), label).toBeLessThanOrEqual(column(width));
+  });
+});
+
 describe('the overs’ box', () => {
   it.each(LANGUAGES)(
     'holds three digits of overs at the widest digit, and is that wide: %s',
@@ -188,10 +200,10 @@ describe('a chip', () => {
     expect(layout.overChip).toBe(40);
     expect(chipsPerRow(column(320))).toBe(6);
     expect(chipsPerRow(column(360))).toBe(7);
-    // The seventh delivery of an over (a wide, then the sixth ball) wraps at 320 and not at 360.
-    expect([chipRows(7, column(320)), chipRows(7, column(360))]).toEqual([2, 1]);
-    // Two rows is as many as an over can take: six legal balls with extras are never more than twelve.
-    expect(chipRows(12, column(320))).toBe(2);
+    // The seventh delivery of an over (a wide, then the sixth ball) is cut to the last six at 320 and not at 360.
+    expect([chipsShown(7, column(320), false), chipsShown(7, column(360), false)]).toEqual([6, 7]);
+    // A result's board has no keys, so its chips wrap: twelve at 320 are two rows.
+    expect(chipsShown(12, column(320), true)).toBe(12);
   });
 });
 
@@ -432,6 +444,7 @@ describe.each(WIDTHS)('the extras sheets at %i dp', (width) => {
     (_, dictionary) => {
       for (const key of [
         'scoring.cricket.extras.ran',
+        'scoring.cricket.extras.byesRun',
         'scoring.cricket.extras.bat',
         'scoring.cricket.extras.runs',
       ]) {
@@ -1661,14 +1674,14 @@ describe('the board’s height budget', () => {
   it.each(RUNG_AT)(
     '%i × %i dp takes rung %i of the ruling’s order with a six-ball over',
     (width, height, rung) => {
-      const fit = fitBoard(height - AROUND_THE_BOARD, 6, column(width));
+      const fit = fitBoard(height - AROUND_THE_BOARD);
       expect(BOARD_RUNGS.indexOf(fit)).toBe(rung);
     },
   );
 
   it('where a rung fits, the board and everything round it is within the height', () => {
     for (const [width, height, rung] of RUNG_AT) {
-      const needs = boardNeeds(BOARD_RUNGS[rung] as BoardFit, chipRows(6, column(width)));
+      const needs = boardNeeds(BOARD_RUNGS[rung] as BoardFit, 1);
       const room = height - AROUND_THE_BOARD;
       // 320 × 568: even the last rung asks 49 more than the room (it is clipped, never over the keys).
       if (height === 568) expect(needs - room).toBe(49);
@@ -1676,28 +1689,28 @@ describe('the board’s height budget', () => {
     }
   });
 
-  it('an over of ten deliveries (two rows of chips) hides the strip at 360 × 724, where six keep it', () => {
+  // T19 fix 8: the strip is one row whatever the over (an over of ten shows its last six), so it never hides for chips.
+  it('the rung does not depend on how many deliveries the over has: 360 × 724 takes rung 1 for six or ten', () => {
     const room = 724 - AROUND_THE_BOARD;
-    expect(BOARD_RUNGS.indexOf(fitBoard(room, 6, column(360)))).toBe(1);
-    expect(BOARD_RUNGS.indexOf(fitBoard(room, 10, column(360)))).toBe(3);
+    expect(BOARD_RUNGS.indexOf(fitBoard(room))).toBe(1);
   });
 
   it('a roomy phone keeps the board as designed, and an unmeasured board is drawn as designed', () => {
-    expect(BOARD_RUNGS.indexOf(fitBoard(800 - AROUND_THE_BOARD, 6, column(360)))).toBe(0);
-    expect(BOARD_RUNGS.indexOf(fitBoard(null, 12, null))).toBe(0);
+    expect(BOARD_RUNGS.indexOf(fitBoard(800 - AROUND_THE_BOARD))).toBe(0);
+    expect(BOARD_RUNGS.indexOf(fitBoard(null))).toBe(0);
   });
 
   it('a free hit due is counted (a line of 16 and a gap) and never dropped: it can take the strip at 360 × 724', () => {
     const room = 724 - AROUND_THE_BOARD;
     // 255 + 16 + 4 = 275 for the joined rung with its strip: 278 keeps the strip, 274 loses it.
-    expect(BOARD_RUNGS.indexOf(fitBoard(room, 6, column(360), false, true))).toBe(2);
-    expect(BOARD_RUNGS.indexOf(fitBoard(274, 6, column(360), false, true))).toBe(3);
+    expect(BOARD_RUNGS.indexOf(fitBoard(room, false, true))).toBe(2);
+    expect(BOARD_RUNGS.indexOf(fitBoard(274, false, true))).toBe(3);
     expect(boardNeeds(BOARD_RUNGS[3] as BoardFit, 1, undefined, true)).toBe(191 + 16 + 4);
     expect(boardNeeds(BOARD_RUNGS[4] as BoardFit, 1, undefined, true)).toBe(171 + 16 + 4);
   });
 
   it('a result’s board is not given way: no keys stand under it', () => {
-    expect(BOARD_RUNGS.indexOf(fitBoard(50, 6, column(320), true))).toBe(0);
+    expect(BOARD_RUNGS.indexOf(fitBoard(50, true))).toBe(0);
   });
 
   it('the rungs only ever ask for less, so the first that fits is the one that gives way least', () => {

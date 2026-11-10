@@ -102,9 +102,58 @@ describe('the board gives way to the room the keys leave', () => {
     expect(screen.getByTestId('board-innings').textContent).toBe('Innings 2');
   });
 
-  it('an over of ten deliveries needs two rows: at 290 dp (299 are needed) the strip goes', () => {
-    measured({ ...BOARD, over: { number: 1, chips: TEN } }, { width: 288, height: 290 });
-    expect(stripShown()).toBe(false);
+  // The owner's phone (build 982, NE2211 at 360 x 804): ten deliveries, 269 dp. One row above the keys: the last six.
+  it('ten deliveries on a live board: exactly the last six, in order, labelled, and the strip stays at 269 dp', () => {
+    measured({ ...BOARD, over: { number: 1, chips: TEN } }, { width: 328, height: 269 });
+    expect(stripShown()).toBe(true);
+    expect(screen.getAllByTestId('over-chip-text').map((one) => one.textContent)).toEqual([
+      '·',
+      '1',
+      'wd',
+      '1',
+      '5nb',
+      'W',
+    ]);
+    expect(screen.getByTestId('board-over').textContent).toContain('Over 1 · last 6 of 10');
+  });
+
+  it('seven deliveries at 328 dp wide fit one row (7 x 40 + 6 x 4 = 304): all seven, the plain label', () => {
+    const seven = [...SIX, chip('wd')];
+    measured({ ...BOARD, over: { number: 1, chips: seven } }, { width: 328, height: 269 });
+    expect(screen.getAllByTestId('over-chip')).toHaveLength(7);
+    expect(screen.getByTestId('board-over').textContent).not.toContain('last');
+    expect(screen.getByTestId('board-over').textContent).toContain('Over 1');
+  });
+
+  it('seven deliveries at 288 dp do not fit (6 a row): the last six', () => {
+    const seven = [...SIX, chip('wd')];
+    measured({ ...BOARD, over: { number: 1, chips: seven } }, { width: 288, height: 269 });
+    expect(screen.getAllByTestId('over-chip')).toHaveLength(6);
+    expect(screen.getByTestId('board-over').textContent).toContain('last 6 of 7');
+  });
+
+  it('a result board keeps every chip, wrapping, and the plain label', () => {
+    measured(
+      {
+        ...BOARD,
+        over: { number: 1, chips: TEN },
+        result: [
+          { team: 'A', figures: '1/0', overs: '1' },
+          { team: 'B', figures: '2/0', overs: '1' },
+        ],
+      },
+      { width: 328, height: 400 },
+    );
+    expect(screen.getAllByTestId('over-chip')).toHaveLength(10);
+    expect(screen.getByTestId('board-over').textContent).not.toContain('last');
+  });
+
+  it('the label follows the language', () => {
+    renderWithPorts(<CricketBoard view={{ ...BOARD, over: { number: 1, chips: TEN } }} />, {
+      deviceLanguages: ['nl'],
+    });
+    layOut(screen.getByTestId('cricket-board'), { width: 328, height: 300 });
+    expect(screen.getByTestId('board-over').textContent).toContain('Over 1 · laatste 6 van 10');
   });
 
   it('a board that regains room draws the strip again', () => {
@@ -186,6 +235,20 @@ describe('the board gives way to the room the keys leave', () => {
       expect(spacer()).toBe(false);
       layOut(screen.getByTestId('cricket-board'), { width: 288, height: 195 });
       expect(spacer()).toBe(true);
+    });
+
+    // The owner's phone with ten deliveries read 78 dp spare (build 982): 16 above the score, the rest below the strip.
+    it('a large spare is capped above the score at 16 dp and the rest goes under the strip', () => {
+      measured(BOARD, { width: 288, height: 363 });
+      expect(spacer()).toBe(true);
+      expect(getComputedStyle(screen.getByTestId('board-spare')).maxHeight).toBe('16px');
+      expect(screen.queryByTestId('board-spare-end')).not.toBeNull();
+    });
+
+    it('14 dp spare has the top spacer only, nothing left to put below', () => {
+      measured(BOARD, { width: 288, height: 269 });
+      expect(spacer()).toBe(true);
+      expect(screen.queryByTestId('board-spare-end')).toBeNull();
     });
 
     it('unmeasured, and a result’s board, keep their top alignment', () => {
