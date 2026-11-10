@@ -154,7 +154,10 @@ phone scores moves from 2.0.0 to the snapshot of engine PR onryde/seazn.club.eng
   73 files and 2582 tests on 2.0.0, and on the snapshot the same files with the same counts, plus
   `engineEpochs.test.ts`'s 2 (2584).
 
-**Device: pending.** The fold probe (Task 1 Step 7: a throwaway `probe/s2-4-engine` branch, strict
-`foldMatch` × 50 of a badminton best-of-3, a table tennis best-of-5, a cricket T20 with a super over and a
-chess game, each shown as `events · min / median / max ms`) and the Batch 1 device check (Step 8: a staging
-badminton, table tennis and chess match through a game, Undo, then the result) record their results here.
+**Device: passed** (2026-11-10). The fold probe ran on the throwaway `probe/s2-4-engine` (`7f76c2d6`, never merged):
+OnePlus NE2211, Android 16, release build 996 (`1.0.5-996`, engine 4.0.0), strict `foldMatch` × 50 a ledger, two runs.
+Medians: badminton best-of-3 (76 events) 0.94 and 0.89 ms, table tennis best-of-5 (95) 1.00 and 0.77 ms, chess (2)
+0.02 ms, and a cricket T20 tied with a super over each way (314) 7.83 and 7.88 ms, worst 8.45 ms: under one 60 Hz frame.
+The table and the laptop figures are in `2026-11-10-s2-4-results.md` §"R4". The Batch 1 staging check (Step 8) is the
+S2-2/S2-3/S2-4 device runs recorded in their results docs. The phone now pins 6.0.2 (cricket epoch 4, CK-SO-4); the fold's
+per-event path did not change since 4.0.0.
