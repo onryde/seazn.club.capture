@@ -126,6 +126,12 @@ describe('cricketSport', () => {
 });
 
 describe('cricketPad', () => {
+  // T20 fix 12: the result is the card's title, and no other fact comes and goes above the board, so there is no strip.
+  it('has no strip, in play and decided', () => {
+    expect(cricketPad(displayOf(OVER_ONE_DONE)).strip).toEqual([]);
+    expect(cricketPad(displayOf(ALL_OUT_FIRST)).strip).toEqual([]);
+  });
+
   it('the halves carry the side names, with no tap; the side batting is lit', () => {
     const view = cricketPad(displayOf(OVER_ONE_DONE));
     expect(

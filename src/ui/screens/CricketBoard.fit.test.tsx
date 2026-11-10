@@ -206,8 +206,9 @@ describe('the board gives way to the room the keys leave', () => {
   });
 
   // Owner, 2026-11-10: "may be use some space between undone message, just keep the scoring number little bit below?"
-  describe('spare height goes above the score', () => {
-    const spacer = () => screen.queryByTestId('board-spare') !== null;
+  describe('spare height goes under the strip, against the keys (T20 fix 12)', () => {
+    const spacer = () => screen.queryByTestId('board-spare-end') !== null;
+    const top = () => screen.queryByTestId('board-spare') !== null;
 
     it('300 dp (285 needed): the content sits against the keys', () => {
       measured(BOARD, { width: 288, height: 300 });
@@ -238,18 +239,24 @@ describe('the board gives way to the room the keys leave', () => {
       expect(spacer()).toBe(true);
     });
 
-    // The owner's phone with ten deliveries read 78 dp spare (build 982): 16 above the score, the rest below the strip.
-    it('a large spare is capped above the score at 16 dp and the rest goes under the strip', () => {
+    // Owner, 2026-11-10, build 1002: the score is the board's first row; no spacer ever stands above it.
+    it('a large spare goes below the strip and none above the score', () => {
       measured(BOARD, { width: 288, height: 363 });
       expect(spacer()).toBe(true);
-      expect(getComputedStyle(screen.getByTestId('board-spare')).maxHeight).toBe('16px');
-      expect(screen.queryByTestId('board-spare-end')).not.toBeNull();
+      expect(top()).toBe(false);
+      const board = screen.getByTestId('cricket-board');
+      expect(board.firstElementChild?.getAttribute('data-testid')).toBe('board-score');
     });
 
-    it('14 dp spare has the top spacer only, nothing left to put below', () => {
+    it('14 dp spare is drawn below too, and still none above', () => {
       measured(BOARD, { width: 288, height: 269 });
-      expect(spacer()).toBe(true);
-      expect(screen.queryByTestId('board-spare-end')).toBeNull();
+      expect([spacer(), top()]).toEqual([true, false]);
+    });
+
+    // The NE2211 after fix 12: 269.3 + 16 + 8 = 293.3 dp, rung 1 with 8.3 spare.
+    it('293.3 dp, the owner’s phone with no strip above: the score first, the spare below', () => {
+      measured(BOARD, { width: 288, height: 293.3 });
+      expect([spacer(), top()]).toEqual([true, false]);
     });
 
     it('unmeasured, and a result’s board, keep their top alignment', () => {

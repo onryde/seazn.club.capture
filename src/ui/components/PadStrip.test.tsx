@@ -7,6 +7,13 @@ import { linesAllowed } from '../../../test/linesAllowed';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
 describe('PadStrip', () => {
+  // T20 fix 12 (owner, 2026-11-10, build 1002: "why are we not using this space?"): a sport with no slots has no fact that
+  // could come and go, so the row reserves nothing and draws nothing.
+  it('draws nothing for a sport with no slots', () => {
+    renderWithPorts(<PadStrip items={[]} />);
+    expect(screen.queryByTestId('pad-strip')).toBeNull();
+  });
+
   it('draws every slot in order, with its fact in the operator’s words', () => {
     renderWithPorts(
       <PadStrip

@@ -11,7 +11,7 @@ import type { CricketBowler, OverChip } from '@/domain/scoring/cricketTypes';
 import { useT } from '@/hooks/useLanguage';
 import { usePadText } from '@/hooks/usePadText';
 import { Text } from '@/ui/components/Text';
-import { boardSpare, chipsShown, fitBoard, spareSpacers } from '@/ui/screens/cricketBoardFit';
+import { boardSpare, chipsShown, fitBoard, spareBelow } from '@/ui/screens/cricketBoardFit';
 import { colour, layout, space } from '@/ui/theme/tokens';
 
 /**
@@ -40,9 +40,8 @@ export const CricketBoard = memo(function CricketBoard({
   const done = view.result !== null;
   const freeHit = view.status !== null;
   const fit = useMemo(() => fitBoard(room, done, freeHit), [room, done, freeHit]);
-  // Spare height goes in two spacers, a little above the score and the rest under the strip (T19 fix 8); none spare, the top
-  // stays and the bottom clips.
-  const spacers = spareSpacers(boardSpare(room, fit, done, freeHit), fit.gap);
+  // Spare height goes under the strip, against the keys, and none above the score (T20 fix 12); none spare, the bottom clips.
+  const spare = spareBelow(boardSpare(room, fit, done, freeHit), fit.gap);
   const shown = chipsShown(view.over?.chips.length ?? 0, width, done);
   const tight = fit.gap === layout.boardGapTight;
   return (
@@ -51,7 +50,6 @@ export const CricketBoard = memo(function CricketBoard({
       onLayout={measured}
       style={tight ? styles.boardTight : styles.board}
     >
-      {spacers.top ? <View testID="board-spare" style={styles.spare} /> : null}
       {view.result === null ? (
         <ScorePanel
           score={view.score}
@@ -66,7 +64,7 @@ export const CricketBoard = memo(function CricketBoard({
       <FreeHit status={view.status} />
       {fit.strip && view.over !== null ? <OverStrip over={view.over} shown={shown} /> : null}
       <Summary summary={view.summary} />
-      {spacers.bottom ? <View testID="board-spare-end" style={styles.spareEnd} /> : null}
+      {spare ? <View testID="board-spare-end" style={styles.spareEnd} /> : null}
     </View>
   );
 });
@@ -487,10 +485,8 @@ type PanelStyle = (typeof styles)['score' | 'scoreJoined' | 'scoreCompact'];
 const styles = StyleSheet.create({
   // The board is the room the keys leave: clipped at its own bottom, so what cannot fit is cut and never drawn over them.
   board: { flex: 1, gap: space.sm, overflow: 'hidden' },
-  // Spare height above the score (owner, 2026-11-10): at most `space.md` of it, shrinks to nothing when the board is taller
-  // than the model thought, so any overflow clips the bottom and the top is never cut.
-  spare: { flexGrow: 1, flexShrink: 1, maxHeight: space.md },
-  // What the top spacer's cap leaves goes under the strip, against the keys (T19 fix 8).
+  // The spare height, under the strip against the keys (T20 fix 12); shrinks to nothing when the board is taller than the
+  // model thought, so any overflow clips the bottom and the score is never cut.
   spareEnd: { flexGrow: 1, flexShrink: 1 },
   boardTight: { flex: 1, gap: layout.boardGapTight, overflow: 'hidden' },
   // Every region keeps its height (`flexShrink: 0`): a board too short clips at its own bottom and never squeezes a row

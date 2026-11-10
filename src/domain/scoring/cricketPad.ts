@@ -87,8 +87,7 @@ export function wordsOf(display: CricketDisplay): CricketWords {
 }
 
 /**
- * The pad for a cricket match: the sides' halves, the rules for Match details, the result in words in the strip once one
- * stands, the last tap with the one Undo, and a recorded result's card. `sync` is the transport's word, not the match's.
+ * The pad for a cricket match: the sides' halves, the rules for Match details, no strip, the last tap with the one Undo, and a recorded result's card. `sync` is the transport's word, not the match's.
  */
 export function cricketPad(
   display: CricketDisplay,
@@ -99,13 +98,8 @@ export function cricketPad(
     tally: tallyOf(display),
     details: { context: display.context, rules: cricketRuleRows(display.cfg) },
     start: null,
-    strip: [
-      {
-        slot: 'note',
-        // The result is the card's title now (T19 fix 5, Part 2); the strip is left to a line that needs it.
-        text: null,
-      },
-    ],
+    // No strip (T20 fix 12): the result is the card's title (T19 fix 5), and no other fact comes and goes above the board.
+    strip: [],
     lastTap: lastTapOf(display),
     sync,
     tools: [],

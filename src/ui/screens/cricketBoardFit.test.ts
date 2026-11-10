@@ -4,7 +4,7 @@ import {
   boardSpare,
   boardNeeds,
   chipsShown,
-  spareSpacers,
+  spareBelow,
   chipsPerRow,
   fitBoard,
   stripHeight,
@@ -66,7 +66,7 @@ describe('the board gives way in the order of T19 fix 6', () => {
   });
 });
 
-// The spare height above the score: room less what the chosen rung needs (191 at the strip-less joined rung, 275 with a free
+// The spare height (drawn under the strip): room less what the chosen rung needs (191 at the strip-less joined rung, 275 with a free
 // hit at the joined rung with its strip), never negative.
 describe('the spare height', () => {
   const spare = (room: number | null, result = false, freeHit = false) => {
@@ -78,8 +78,15 @@ describe('the spare height', () => {
     expect([spare(200), spare(191)]).toEqual([9, 0]);
   });
 
-  it('the owner’s phone, 269 dp, has 14 spare over rung 2’s 255', () => {
+  it('269 dp has 14 spare over rung 2’s 255', () => {
     expect(spare(269)).toBe(14);
+  });
+
+  // The NE2211 at 360 x 804 measured 269.3 on build 981, plus the strip's 16 dp line and the pad's 8 dp gap (T20 fix 12)
+  // = 293.3, which is rung 1 (285) with 8.3 over.
+  it('the owner’s phone after fix 12, 293.3 dp (269.3 + 16 + 8), is rung 1 with 8.3 spare', () => {
+    expect(fitBoard(293.3)).toBe(BOARD_RUNGS[0]);
+    expect(spare(293.3)).toBeCloseTo(8.3, 9);
   });
 
   it('a free hit due takes 20 of it: 295 dp has 20 spare, 275 none', () => {
@@ -91,17 +98,13 @@ describe('the spare height', () => {
   });
 });
 
-// Spare 78 dp is the owner's phone with ten deliveries (build 982): 269 - 191 before; now the strip stays and the spare is 14.
+// T20 fix 12: all the spare goes under the over strip, against the keys, and none above the score.
 describe('where the spare goes', () => {
-  it('78 dp spare: a spacer above the score (capped at 16 by its style) and the rest under the strip', () => {
-    expect(spareSpacers(78, 4)).toEqual({ top: true, bottom: true });
+  it('78 dp spare is drawn below, and 4 dp (the gap itself) is too', () => {
+    expect([spareBelow(78, 4), spareBelow(4, 4)]).toEqual([true, true]);
   });
 
-  it('14 dp spare: the top spacer alone, nothing beyond its 16 cap to put below', () => {
-    expect(spareSpacers(14, 4)).toEqual({ top: true, bottom: false });
-  });
-
-  it('a spare under the board’s gap draws neither', () => {
-    expect(spareSpacers(3, 4)).toEqual({ top: false, bottom: false });
+  it('a spare under the board’s gap draws no spacer', () => {
+    expect(spareBelow(3, 4)).toBe(false);
   });
 });

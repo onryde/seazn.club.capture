@@ -99,6 +99,7 @@ describe('the result of a super over (T19 fix 5)', () => {
     expect(first.textContent).toBe('Away CC2/0 (1 ov)');
     expect(second.textContent).toBe('Home CC4/0 (0.1 ov)');
     expect(screen.queryByTestId('board-runs')).toBeNull();
-    expect(within(screen.getByTestId('pad-strip')).queryByText(/won on the super over/)).toBeNull();
+    // Cricket has no strip at all (T20 fix 12): the result is the card's, and nothing repeats it above the board.
+    expect(screen.queryByTestId('pad-strip')).toBeNull();
   });
 });

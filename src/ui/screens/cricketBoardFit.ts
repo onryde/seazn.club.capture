@@ -93,7 +93,7 @@ export function fitBoard(room: number | null, result = false, freeHit = false): 
 
 /**
  * The height the fitted board leaves unused, 0 while unmeasured, for a result (no keys stand under it) or when the board is
- * too short. Some of it goes ABOVE the score and the rest BELOW the strip (`spareSpacers`), so the score stays near the top.
+ * too short. It all goes below the strip (`spareBelow`).
  */
 export function boardSpare(
   room: number | null,
@@ -106,14 +106,10 @@ export function boardSpare(
 }
 
 /**
- * Where the spare goes (T19 fix 8; owner, 2026-11-10: "why not using enough space from top"): a spacer above the score of at
- * most `space.md` (the style's `maxHeight`), and what is left under the strip. The top one only when the spare covers the
- * board's gap (the gap sits between a spacer and the panel even at no height); the bottom one only when more than `space.md`
- * is left to put there.
+ * Whether the spare is drawn: all of it goes UNDER the over strip, against the keys (T20 fix 12; owner, 2026-11-10: "why are
+ * we not using this space?"), so the score is the board's first row. Only when it covers the board's gap, since the gap sits
+ * before a spacer even at no height.
  */
-export function spareSpacers(
-  spare: number,
-  gap: number,
-): { readonly top: boolean; readonly bottom: boolean } {
-  return { top: spare >= gap, bottom: spare >= gap && spare > space.md };
+export function spareBelow(spare: number, gap: number): boolean {
+  return spare >= gap;
 }
