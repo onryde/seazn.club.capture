@@ -10,14 +10,17 @@ import {
   foldQueue,
   foldRead,
   ownIds,
+  type MatchEffect,
   type MatchEvent,
   type MatchHeld,
   type MatchState,
 } from '@/domain/scoring/scoringMatchState';
+import { isAsking } from '@/domain/scoring/sync';
 import type { LedgerEvent } from '@/domain/scoring/wire';
 import { savesOf, sendsOf } from '../../../test/scoringMatchFixtures';
 import {
   at,
+  BROWSER_LINK,
   clock,
   eventId,
   ledgerOf,
@@ -593,5 +596,250 @@ describe('the resync watch (ruling 2)', () => {
         [undone.state, T + 125_000],
       ]).taps,
     ).toEqual([]);
+  });
+});
+
+// The controller's ruling, final review (2026-11-08), from the reviewer's probe: a queued clock tap of this phone's that
+// another screen's later clock event or period marker overtook in its period is withdrawn at its send: never sent, out
+// of the queue, said in the record, and no resync. One that was raised but not overtaken reads from its own stamp, and
+// its resync from its first sighting. Every number below is written out: T is the phone's tap, the server runs OFFSET
+// ahead, and the browser is the other screen.
+describe('a clock tap another screen overtook is withdrawn (final review)', () => {
+  /** An event the browser recorded, `afterTapMs` after the phone's tap by the server's clock. */
+  const browser = (seq: number, spec: Spec, afterTapMs: number): LedgerEvent => ({
+    id: `ev-${seq}`,
+    seq,
+    type: spec.type,
+    payload: spec.payload,
+    recordedAt: iso(T + OFFSET + afterTapMs),
+    voids: null,
+    deviceLinkId: BROWSER_LINK,
+  });
+
+  /** `event` stepped at `atMs`, every save it asked for landed then: the state, and every effect on the way. */
+  function run(state: MatchState<FootballTypes>, event: MatchEvent<FootballTypes>, atMs: number) {
+    const made = step(state, event, atMs);
+    let next = made.state;
+    const effects: MatchEffect[] = [...made.effects];
+    const owed = savesOf(made.effects);
+    for (let save = owed.shift(); save !== undefined; save = owed.shift()) {
+      const saved = step(next, { kind: 'saved', n: save.n }, atMs);
+      next = saved.state;
+      effects.push(...saved.effects);
+      owed.push(...savesOf(saved.effects));
+    }
+    return { state: next, effects };
+  }
+
+  /** The phone, offline, taps `tap` at T over `specs`: its one send at T comes to nothing. */
+  function offlineTap(specs: readonly Spec[], tap: FootballTap, key = 'k-clock') {
+    const tapped = run(readyOn(specs), { kind: 'tap', tap, key, at: iso(T) }, T);
+    const sent = sendsOf(tapped.effects)[0]!;
+    const answer = { kind: 'answered', sent: sent.sent, answer: { kind: 'offline' } } as const;
+    return run(tapped.state, answer, T + 1_000).state;
+  }
+
+  /** Back at `atMs`: the read brings `events`, the reconnect question (if asked) is answered Send, and the send is due. */
+  function backWith(state: MatchState<FootballTypes>, events: LedgerEvent[], atMs: number) {
+    const read = run(state, { kind: 'fetched', events }, atMs);
+    const asked = isAsking(read.state.sync)
+      ? run(read.state, { kind: 'answerAsk', answer: 'send' }, atMs)
+      : read;
+    const due = Math.max(wakeAt(asked.state, atMs) ?? atMs, atMs);
+    const sent = run(asked.state, { kind: 'tick' }, due);
+    const effects = [...read.effects, ...(asked === read ? [] : asked.effects), ...sent.effects];
+    return { read: read.state, state: sent.state, effects };
+  }
+
+  const withdrawnOf = (effects: readonly MatchEffect[]) =>
+    effects.flatMap((effect) => (effect.kind === 'withdrawn' ? [effect.line] : []));
+
+  /** The watch over the states the match went through, as the hook runs it: the resyncs it asked for. */
+  function resyncsOver(states: readonly (readonly [MatchState<FootballTypes>, number])[]) {
+    let memory = NO_RESYNC;
+    const taps: FootballTap[] = [];
+    for (const [state, atMs] of states) {
+      const stepped = resyncStep(memory, state, atMs);
+      memory = stepped.memory;
+      taps.push(...stepped.taps);
+    }
+    return taps;
+  }
+
+  it('the probe: the console starts 1 s after the phone’s Start and scores at 10:00; back at 12:01, every screen reads 12:00', () => {
+    const waiting = offlineTap([start()], KICK_START);
+    const back = backWith(
+      waiting,
+      [
+        browser(2, clock(true, at('H1', 0)), 1_000),
+        browser(
+          3,
+          { type: 'football.goal', payload: { by: 'ent-home', at: at('H1', 600) } },
+          601_000,
+        ),
+      ],
+      T + 721_000,
+    );
+    // While it waits after the read, the phone already reads the console's clock, not its own Start.
+    expect(readingAt(back.read, T + 721_000)).toBe(720);
+    expect(sendsOf(back.effects)).toEqual([]);
+    expect(withdrawnOf(back.effects)).toEqual([
+      { event: 'scoring.football.clockTapWithdrawn', fields: { phase: 'H1' } },
+    ]);
+    expect(back.state.sync.queue.pending).toEqual([]);
+    expect(readingAt(back.state, T + 721_000)).toBe(720);
+    expect(anchorOf(back.state)?.base).toBe('server');
+    expect(
+      resyncsOver([
+        [waiting, T + 1_000],
+        [back.read, T + 721_000],
+        [back.state, T + 721_000],
+      ]),
+    ).toEqual([]);
+    const fold = foldRead(back.state);
+    if (fold === null || fold.kind !== 'folded') throw new Error('did not fold');
+    expect(fold.display.lastTap?.kind).toBe('goal');
+    // History, oldest first: the start, the console's Start and its goal; no correction, and nothing of the phone's.
+    const said = [...fold.history]
+      .reverse()
+      .flatMap((group) => [...group.rows].reverse())
+      .map((row) => [typeof row.said === 'string' ? row.said : row.said.key, row.by]);
+    expect(said).toEqual([
+      ['scoring.football.last.start', 'otherScorer'],
+      ['scoring.football.last.clockStart', 'otherScorer'],
+      ['scoring.football.last.goal', 'otherScorer'],
+    ]);
+  });
+
+  it('an H1 Start overtaken by the console’s Half-time is withdrawn, and the break stays Half-time', () => {
+    const paused = [start(), clock(true, at('H1', 0)), clock(false, at('H1', 600))];
+    const waiting = offlineTap(paused, { kind: 'clock', running: true, elapsed: 600 });
+    const back = backWith(
+      waiting,
+      [browser(4, period('HT', at('H1', 2700)), 300_000)],
+      T + 400_000,
+    );
+    expect(foldRead(back.read)?.kind === 'folded' && foldRead(back.read)).toMatchObject({
+      display: { clock: { justEnded: 'H1', anchor: null } },
+    });
+    expect(sendsOf(back.effects)).toEqual([]);
+    expect(withdrawnOf(back.effects)).toEqual([
+      { event: 'scoring.football.clockTapWithdrawn', fields: { phase: 'H1' } },
+    ]);
+    expect(foldRead(back.state)).toMatchObject({
+      display: { clock: { justEnded: 'H1', anchor: null } },
+    });
+  });
+
+  // The taps below are made at T + 1.5 s, inside the retry's wait (the offline answer at T + 1 s put the next try at
+  // T + 2 s), so the Start is not in flight when they are made.
+  it('a goal queued behind the withdrawn Start goes once the queue without the Start is saved, not before', () => {
+    const waiting = offlineTap([start()], KICK_START);
+    const goalTap: FootballTap = {
+      kind: 'goal',
+      side: 'first',
+      scorer: null,
+      assist: null,
+      penalty: false,
+      stamp: at('H1', 1),
+    };
+    const behind = run(
+      waiting,
+      { kind: 'tap', tap: goalTap, key: 'k-goal', at: iso(T + 1_500) },
+      T + 1_500,
+    );
+    expect(sendsOf(behind.effects)).toEqual([]);
+    const console = [browser(2, clock(true, at('H1', 0)), 1_000)];
+    const read = run(behind.state, { kind: 'fetched', events: console }, T + 60_000).state;
+    // The console wrote while the taps waited: the reconnect question, answered Send. That step withdraws the Start and
+    // sends nothing: it saves the queue without it first.
+    expect(isAsking(read.sync)).toBe(true);
+    const withdrew = step(read, { kind: 'answerAsk', answer: 'send' }, T + 60_000);
+    expect(withdrawnOf(withdrew.effects)).toEqual([
+      { event: 'scoring.football.clockTapWithdrawn', fields: { phase: 'H1' } },
+    ]);
+    expect(sendsOf(withdrew.effects)).toEqual([]);
+    const saves = savesOf(withdrew.effects);
+    expect(saves.map((save) => save.queue?.pending.map((tap) => tap.key))).toEqual([['k-goal']]);
+    const landed = step(withdrew.state, { kind: 'saved', n: saves[0]!.n }, T + 60_000);
+    expect(sendsOf(landed.effects).map((send) => send.body.idempotency_key)).toEqual(['k-goal']);
+  });
+
+  it('an Undo waiting on the withdrawn Start goes with it: nothing is sent', () => {
+    const waiting = offlineTap([start()], KICK_START);
+    const undone = run(waiting, { kind: 'undo', key: 'k-undo', at: iso(T + 1_500) }, T + 1_500);
+    expect(undone.state.sync.queue.pending.map((tap) => [tap.key, tap.voidsKey])).toEqual([
+      ['k-clock', undefined],
+      ['k-undo', 'k-clock'],
+    ]);
+    const back = backWith(undone.state, [browser(2, clock(true, at('H1', 0)), 1_000)], T + 60_000);
+    expect(withdrawnOf(back.effects)).toHaveLength(1);
+    expect(sendsOf(back.effects)).toEqual([]);
+    expect(back.state.sync.queue.pending).toEqual([]);
+  });
+
+  // A tap never sent yet is judged by the fold on every read (`revalidate`): an overtaken one is kept for its send to
+  // withdraw, never dropped as no longer legal.
+  it('a Pause never sent yet, overtaken by the console’s Pause, is kept until its send and then withdrawn', () => {
+    const goalTap: FootballTap = {
+      kind: 'goal',
+      side: 'first',
+      scorer: null,
+      assist: null,
+      penalty: false,
+      stamp: at('H1', 1),
+    };
+    const waiting = offlineTap([start(), clock(true, at('H1', 0))], goalTap, 'k-goal');
+    const pause: FootballTap = { kind: 'clock', running: false, elapsed: 1 };
+    const behind = run(
+      waiting,
+      { kind: 'tap', tap: pause, key: 'k-pause', at: iso(T + 1_500) },
+      T + 1_500,
+    );
+    expect(behind.state.sync.queue.pending.map((tap) => [tap.key, tap.attempts])).toEqual([
+      ['k-goal', 1],
+      ['k-pause', 0],
+    ]);
+    const back = backWith(
+      behind.state,
+      [browser(3, clock(false, at('H1', 590)), 590_000)],
+      T + 600_000,
+    );
+    expect(back.state.sync.queue.pending.map((tap) => tap.key)).toEqual(['k-goal', 'k-pause']);
+    const sent = sendsOf(back.effects);
+    expect(sent.map((send) => send.body.idempotency_key)).toEqual(['k-goal']);
+    const answer = {
+      kind: 'answered',
+      sent: sent[0]!.sent,
+      answer: accepted(4, 'ev-own-4'),
+    } as const;
+    const goalIn = run(back.state, answer, T + 600_000);
+    expect(withdrawnOf(goalIn.effects)).toEqual([
+      { event: 'scoring.football.clockTapWithdrawn', fields: { phase: 'H1' } },
+    ]);
+    expect(sendsOf(goalIn.effects)).toEqual([]);
+    expect(goalIn.state.sync.queue.pending).toEqual([]);
+  });
+
+  it('raised but not overtaken (a console goal at 10:00, no clock event): it reads from its own 0:00, and resyncs to 12:00', () => {
+    const waiting = offlineTap([start()], KICK_START);
+    const goalAt600 = { type: 'football.goal', payload: { by: 'ent-home', at: at('H1', 600) } };
+    const back = backWith(waiting, [browser(2, goalAt600, 601_000)], T + 720_000);
+    // Waiting after the read: 12:00 from its own 0:00 at T, not 22:00 from the 10:00 the send will raise it to.
+    expect(readingAt(back.read, T + 720_000)).toBe(720);
+    expect(sendsOf(back.effects).map((send) => send.body.payload)).toEqual([
+      { running: true, at: at('H1', 600) },
+    ]);
+    const sent = sendsOf(back.effects)[0]!;
+    const answer = { kind: 'answered', sent: sent.sent, answer: accepted(3, 'ev-own-3') } as const;
+    const accepted3 = run(back.state, answer, T + 720_000).state;
+    expect(
+      resyncsOver([
+        [waiting, T + 1_000],
+        [back.read, T + 720_000],
+        [back.state, T + 720_000],
+        [accepted3, T + 720_000],
+      ]),
+    ).toEqual([{ kind: 'clock', running: true, elapsed: 720 }]);
   });
 });

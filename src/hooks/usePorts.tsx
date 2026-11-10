@@ -89,7 +89,8 @@ export type Ports = {
   readonly scoring: ScoringPort;
   /**
    * S2-5: how far the server's clock is ahead of this phone's, from the scoring answers' `Date` headers (design §7.2),
-   * for the football clock's shared match time. Subscribe to it; it changes only when an answer arrives (AGENTS §8).
+   * for the football clock's shared match time. It changes only when an answer arrives; the football clock reads
+   * `offsetMs()` when it is read (`useFootballClock`), and nothing subscribes to it today (AGENTS §8).
    */
   readonly serverClock: ServerClock;
   /** S2: the taps a phone has made and the server has not yet accepted, one file per match; no secret in it. */

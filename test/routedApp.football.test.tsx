@@ -75,6 +75,15 @@ async function press(app: LaunchedApp, name: string, inside?: HTMLElement): Prom
   await flush(400);
 }
 
+/**
+ * End of period, pressed once it has re-armed: it is off for 2 s after its label changes (the controller's ruling, final
+ * review, 2026-11-08), and the scorer here presses it on the heels of the last period's Start.
+ */
+async function endPeriod(app: LaunchedApp, name: string): Promise<void> {
+  await flush(2_000);
+  await press(app, name);
+}
+
 const column = (side: 'first' | 'second') => screen.getByTestId(`column-${side}`);
 const clockBar = () => screen.getByTestId('clock-bar');
 const lastTap = () => plain(screen.getByTestId('last-tap-sentence').textContent ?? '');
@@ -192,7 +201,7 @@ async function playKnockout(app: LaunchedApp, words: Words): Promise<void> {
   );
 
   // Half-time: the bar says it, with Start for the second half, which reads from 45:00.
-  await press(app, w('scoring.football.end.HT'));
+  await endPeriod(app, w('scoring.football.end.HT'));
   expect(within(clockBar()).getByText(plain(w('scoring.football.break.halfTime')))).toBeTruthy();
   expect(within(clockBar()).getByText('45:00')).toBeTruthy();
   await press(app, w('scoring.football.clock.start'), clockBar());
@@ -202,20 +211,20 @@ async function playKnockout(app: LaunchedApp, words: Words): Promise<void> {
   await press(app, w('scoring.football.column.goal'), column('second'));
   await press(app, w('scoring.football.sheet.dontKnow'));
   expect([value('first'), value('second')]).toEqual(['1', '1']);
-  await press(app, w('scoring.football.end.FT'));
+  await endPeriod(app, w('scoring.football.end.FT'));
   expect(within(clockBar()).getByText('90:00')).toBeTruthy();
   await press(app, w('scoring.football.clock.start'), clockBar());
   expect(within(clockBar()).getByText(plain(w('scoring.football.period.ET_H1')))).toBeTruthy();
   expect(plain(screen.getByTestId('strip-note').textContent ?? '')).toBe(
     plain(w('scoring.football.note.extraTime')),
   );
-  await press(app, w('scoring.football.end.ET_HT'));
+  await endPeriod(app, w('scoring.football.end.ET_HT'));
   await press(app, w('scoring.football.clock.start'), clockBar());
   expect(within(clockBar()).getByText(plain(w('scoring.football.period.ET_H2')))).toBeTruthy();
 
   // Still level after extra time: the kicks. Each column has Scored and Missed: live in both before the first kick (the
   // engine leaves who kicks first to the teams), then only for the team to kick.
-  await press(app, w('scoring.football.end.ET_FT'));
+  await endPeriod(app, w('scoring.football.end.ET_FT'));
   expect(within(clockBar()).getByText(plain(w('scoring.football.period.shootout')))).toBeTruthy();
   expect(
     within(clockBar()).queryByRole('button', { name: w('scoring.football.clock.start') }),

@@ -58,8 +58,9 @@ export type SportFold<S extends SportTypes> =
   | { readonly kind: 'unfoldable'; readonly reason: Unfoldable };
 
 /**
- * A tap as the event the server records. `base` is optional and a sport's to set: the score count its payload was made
- * at, which the runtime keeps on the queued tap (`QueuedEvent.base`) for the sport's `payloadForSend` to read.
+ * A tap as the event the server records. `base` is optional and a sport's to set: a count its payload was made at (table
+ * tennis: the score's; football's clock taps: the ledger's tip), which the runtime keeps on the queued tap
+ * (`QueuedEvent.base`) for the sport's `payloadForSend` to read.
  */
 export type SportEvent = {
   readonly type: string;
@@ -93,7 +94,8 @@ export interface ScoringSport<S extends SportTypes> {
    * with only while it does, since the server matches a resend by its key and never its payload. `send` holds the
    * bootstrap the match holds (`SportSendContext`), for a sport that judges a payload against the match's own fold
    * (football's stamps, against its phase). What it returns is written back into the queue, and the runtime knows the
-   * server's copy of a tap by its payload: a payload must never change between two sends made over the same ledger.
+   * server's copy of a tap by its payload: a payload must never change between two sends made over the same ledger. Or it
+   * answers a `withdrawal`: the tap is not sent at all (`SendWithdrawal`).
    */
   payloadForSend(
     queued: QueuedEvent,
@@ -133,6 +135,29 @@ export interface ScoringSport<S extends SportTypes> {
 export type SportSendContext = {
   readonly bootstrap: Bootstrap | null;
 };
+
+/** A line a sport asks the record for: its event and fields, each key on the scrub's allow-list, never a person or an id. */
+export type SportLine = {
+  readonly event: string;
+  readonly fields: Readonly<Record<string, string>>;
+};
+
+const WITHDRAWN: unique symbol = Symbol('withdrawn');
+
+/**
+ * What `payloadForSend` answers for a queued tap the sport takes back at its send: it is never sent, it leaves the
+ * queue (an Undo that waits on it goes with it), and the record says `line`. Football's clock tap another screen
+ * overtook is one (the controller's ruling, final review, 2026-11-08). No payload is a symbol, so none is mistaken for it.
+ */
+export type SendWithdrawal = { readonly withdrawn: typeof WITHDRAWN; readonly line: SportLine };
+
+export const withdrawal = (line: SportLine): SendWithdrawal => ({ withdrawn: WITHDRAWN, line });
+
+export const isWithdrawal = (answer: unknown): answer is SendWithdrawal =>
+  typeof answer === 'object' &&
+  answer !== null &&
+  'withdrawn' in answer &&
+  answer.withdrawn === WITHDRAWN;
 
 /** What a tap is made on: the match, and the display the scorer saw. */
 export type SportEventContext<S extends SportTypes> = {

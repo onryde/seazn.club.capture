@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import { StrictMode, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { footballBoard, footballClockBar } from '@/domain/scoring/footballBoard';
+import { scoringHubOf } from '@/hooks/scoringHub';
 import { useFootballMatch } from '@/hooks/useFootballMatch';
 import { footballSeed, HOME_ENTRANT, AWAY_ENTRANT } from '@/services/fakeFootballPad';
 import {
@@ -775,6 +776,71 @@ describe('the resync after a late Start (ruling 2)', () => {
     ]);
   });
 
+  // The final review's fix-now (2026-11-08): the app dies with the Start still in the queue. The cold start reads it from
+  // the queue's file, sends it, and the watch judges it from the queue's own time of the tap: one resync, by the wait.
+  it('a process death with a Start still queued: after the cold start it is sent, and one resync follows', async () => {
+    const first = await opened({ seed: STARTED });
+    first.fakes.scoring.goOffline(true);
+    const tapped = Date.now();
+    press(first.view, (actions) => actions.clock());
+    await flush();
+    await wait(1_000);
+    first.view.unmount();
+    await wait(119_000);
+    // The server and the queue's files outlive the app: the new ports are handed the same ones.
+    const server = first.fakes.scoring;
+    const fakes = createFakePorts({
+      clock: timerClock,
+      scoring: server,
+      tapQueue: first.fakes.tapQueue,
+    });
+    const accepted = acceptances(first.fakes);
+    server.goOffline(false);
+    const { view } = await opened({ seed: STARTED, fakes });
+    await wait(20_000);
+    await flush();
+    const waited = Math.floor((accepted[0]! - tapped) / 1000);
+    expect(waited).toBeGreaterThanOrEqual(120);
+    expect(await clockStamps(first.fakes)).toEqual([0, waited]);
+    expect(lines(first.fakes, 'scoring.football.clock').map((line) => line.fields.action)).toEqual([
+      'start',
+    ]);
+    expect(lines(fakes, 'scoring.football.clock').map((line) => line.fields.action)).toEqual([
+      'resync',
+    ]);
+    expect(pad(view).view.sync).toEqual({ kind: 'synced' });
+  });
+
+  // The same death, but the app comes back to Home and no pad opens: Home's sender sends the Start headless, and the
+  // watch is the pad's, so no resync is made (ruling 39's cost; design §7.2, final review). Other screens read it short by
+  // its wait until the next clock tap.
+  it('a process death with a Start still queued and no pad opened after: the Start alone is sent, with no resync', async () => {
+    const first = await opened({ seed: STARTED });
+    first.fakes.scoring.goOffline(true);
+    press(first.view, (actions) => actions.clock());
+    await flush();
+    await wait(1_000);
+    first.view.unmount();
+    await wait(119_000);
+    const server = first.fakes.scoring;
+    const fakes = createFakePorts({
+      clock: timerClock,
+      scoring: server,
+      tapQueue: first.fakes.tapQueue,
+    });
+    await saveScoringLink(fakes.kv, STARTED.fixtureId, LINK, HOST, 'football');
+    server.goOffline(false);
+    await act(async () => {
+      await scoringHubOf(fakes.ports).resume();
+    });
+    await wait(20_000);
+    await flush();
+    expect(await clockStamps(first.fakes)).toEqual([0]);
+    // The sender emptied the queue (an empty queue's file goes).
+    expect((await fakes.tapQueue.load(STARTED.fixtureId))?.pending ?? []).toEqual([]);
+    expect(lines(fakes, 'scoring.football.clock')).toEqual([]);
+  });
+
   it('a Start accepted 2 s after its tap is followed by none', async () => {
     const { fakes, view } = await opened({ seed: STARTED });
     const accepted = acceptances(fakes);
@@ -1027,5 +1093,129 @@ describe('a resync is a clock correction (ruling I1)', () => {
     await flush();
     await wait(1_000);
     expect(pad(view).display.lastTap).toMatchObject({ kind: 'clockCorrect' });
+  });
+});
+
+// The controller's ruling, final review (2026-11-08), through the real match hook: a Start this phone queued offline,
+// overtaken by the console's own Start in the same half, is withdrawn when the phone is back. Never sent, said in the
+// record, and no resync: every screen keeps the console's clock.
+describe('a Start the console overtook (final review)', () => {
+  it('is withdrawn: never sent, the record says H1, no resync, and the phone reads the console’s clock', async () => {
+    const { fakes, view } = await opened({ seed: STARTED });
+    fakes.scoring.goOffline(true);
+    press(view, (actions) => actions.clock());
+    await flush();
+    await wait(1_000);
+    // The console's Start, 1 s after the phone's: the server records it at the time the fake's clock says now.
+    const consoleStart = Date.now();
+    fakes.scoring.addOtherScorerEvent('football.clock', {
+      running: true,
+      at: { period: 'H1', elapsed: 0 },
+    });
+    await wait(600_000);
+    fakes.scoring.goOffline(false);
+    fakes.realtime.ping();
+    await flush();
+    await wait(16_000);
+    if (pad(view).sheet?.kind === 'ask') {
+      press(view, (actions) => actions.sendTaps());
+      await flush();
+      await wait(16_000);
+    }
+    expect(await typesOf(fakes, STARTED)).toEqual(['core.start', 'football.clock']);
+    expect(lines(fakes, 'scoring.football.clockTapWithdrawn').map((line) => line.fields)).toEqual([
+      { phase: 'H1' },
+    ]);
+    expect(lines(fakes, 'scoring.football.clock').map((line) => line.fields.action)).toEqual([
+      'start',
+    ]);
+    expect(pad(view).display.clock.anchor?.base).toBe('server');
+    expect(pad(view).readingNow()).toBe(Math.floor((Date.now() - consoleStart) / 1000));
+  });
+
+  // Web #1160 made only a cricket wicket's void latest-only (`assertUndoTarget`, `isCricketBall`); a football event is
+  // voided freely, and the server still refuses a void of a void or of an event already undone. The phone's Undo takes
+  // only its own latest standing tap with no other device's event after it, so after a withdrawal there is nothing of
+  // this phone's to take back: no void is queued or sent (nothing the server could refuse).
+  it('Undo after the withdrawal has nothing of this phone’s to take back: no void is sent', async () => {
+    const { fakes, view } = await opened({ seed: STARTED });
+    fakes.scoring.goOffline(true);
+    press(view, (actions) => actions.clock());
+    await flush();
+    await wait(1_000);
+    fakes.scoring.addOtherScorerEvent('football.clock', {
+      running: true,
+      at: { period: 'H1', elapsed: 0 },
+    });
+    await wait(600_000);
+    fakes.scoring.goOffline(false);
+    fakes.realtime.ping();
+    await flush();
+    await wait(16_000);
+    if (pad(view).sheet?.kind === 'ask') {
+      press(view, (actions) => actions.sendTaps());
+      await flush();
+      await wait(16_000);
+    }
+    expect(await typesOf(fakes, STARTED)).toEqual(['core.start', 'football.clock']);
+    press(view, (actions) => actions.undo());
+    await flush();
+    await wait(20_000);
+    expect(await typesOf(fakes, STARTED)).toEqual(['core.start', 'football.clock']);
+  });
+});
+
+// The controller's ruling, final review (2026-11-08): End of period re-arms 2 s after its label changes, so a second tap
+// can never move the match from Half-time straight on to Full time.
+describe('End of period re-arms 2 s after its label changes (final review)', () => {
+  const periodTool = (view: Match) => {
+    const tool = pad(view).view.tools.find((cell) => cell.id === 'period');
+    return tool === undefined ? null : { key: tool.label.key, enabled: tool.enabled };
+  };
+  const ended = (fakes: FakePorts) =>
+    lines(fakes, 'scoring.football.period').map((line) => line.fields.phase);
+
+  it('1.9 s after Half-time it is off and a press records nothing; at 2.0 s it ends the second half', async () => {
+    const { fakes, view } = await opened();
+    expect(periodTool(view)).toEqual({ key: 'scoring.football.end.HT', enabled: true });
+    press(view, (actions) => actions.tool('period'));
+    await flush();
+    expect(periodTool(view)).toEqual({ key: 'scoring.football.end.FT', enabled: false });
+    await wait(1_900);
+    expect(periodTool(view)).toEqual({ key: 'scoring.football.end.FT', enabled: false });
+    press(view, (actions) => actions.tool('period'));
+    await flush();
+    expect(ended(fakes)).toEqual(['HT']);
+    await wait(100);
+    expect(periodTool(view)).toEqual({ key: 'scoring.football.end.FT', enabled: true });
+    press(view, (actions) => actions.tool('period'));
+    await flush();
+    expect(ended(fakes)).toEqual(['HT', 'FT']);
+    expect(await typesOf(fakes)).toEqual([
+      'core.start',
+      'football.clock',
+      'football.period',
+      'football.period',
+    ]);
+  });
+
+  it('a pad opened mid-match takes End of period at once: its first drawing is no change', async () => {
+    const { fakes, view } = await opened();
+    expect(periodTool(view)).toEqual({ key: 'scoring.football.end.HT', enabled: true });
+    press(view, (actions) => actions.tool('period'));
+    await flush();
+    expect(ended(fakes)).toEqual(['HT']);
+  });
+
+  it('the label going back (Half-time undone) is a change too: off for 2 s, then End of first half again', async () => {
+    const { view } = await opened();
+    press(view, (actions) => actions.tool('period'));
+    await flush();
+    await wait(2_000);
+    press(view, (actions) => actions.undo());
+    await flush();
+    expect(periodTool(view)).toEqual({ key: 'scoring.football.end.HT', enabled: false });
+    await wait(2_000);
+    expect(periodTool(view)).toEqual({ key: 'scoring.football.end.HT', enabled: true });
   });
 });

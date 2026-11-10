@@ -8,7 +8,9 @@ export const OFFSET_LOG_STEP_MS = 2000;
  * The phone's one estimate of the server's clock (S2-5 design §7.2): fed by every scoring answer's sample
  * (`offsetSampleOf`, through the scoring port's `serverTime`), read by the football clock as `Date.now() + offsetMs()`.
  * Built once in the ports, before the scoring port it is handed to. It never ticks by itself: it changes only when an
- * answer arrives, so a screen subscribes to it (`useSyncExternalStore`) and never holds it in context (AGENTS §8).
+ * answer arrives. Nothing subscribes to it today: the football clock (`useFootballClock`) reads `offsetMs()` when it is
+ * read, on its clock leaf's one-second tick and when a button is pressed, so a new sample shows at the next tick.
+ * `subscribe` is there for a reader that must redraw on the sample itself; it is never held in context (AGENTS §8).
  */
 export type ServerClock = {
   /** How far the server's clock is ahead of this phone's, in ms (negative when behind): 0 until a sample. */
@@ -27,13 +29,8 @@ export type ServerClock = {
 export function createServerClock(deps: { readonly logger: Logger }): ServerClock {
   let samples: readonly number[] = [];
   let offset: number | null = null;
-  let said: number | null = null;
+  const say = offsetSayer(deps.logger);
   const listeners = new Set<() => void>();
-  const say = (ms: number): void => {
-    if (said !== null && Math.abs(ms - said) < OFFSET_LOG_STEP_MS) return;
-    said = ms;
-    deps.logger.info('scoring.clock.offset', { ms });
-  };
   return {
     offsetMs: () => offset ?? 0,
     sample: (sampleMs) => {
@@ -52,5 +49,15 @@ export function createServerClock(deps: { readonly logger: Logger }): ServerCloc
         listeners.delete(listener);
       };
     },
+  };
+}
+
+/** The record's `scoring.clock.offset {ms}`: said for the first estimate, then once it has moved a step from the last said. */
+function offsetSayer(logger: Logger): (ms: number) => void {
+  let said: number | null = null;
+  return (ms) => {
+    if (said !== null && Math.abs(ms - said) < OFFSET_LOG_STEP_MS) return;
+    said = ms;
+    logger.info('scoring.clock.offset', { ms });
   };
 }

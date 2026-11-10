@@ -139,6 +139,14 @@ describe('ClockBar, compact', () => {
     expect(screen.getByRole('button', { name: en['scoring.football.clock.pause'] })).toBeTruthy();
   });
 
+  // The final review's fix-now (2026-11-08): the period under the time is one line, cut with an ellipsis, never a second
+  // line that would grow the one-row bar past its touch target.
+  it('sets the period under the time on one line, cut with an ellipsis', () => {
+    renderBar(viewOf('pause'), true, 'en', true);
+    const style = getComputedStyle(screen.getByText(H1));
+    expect([style.whiteSpace, style.textOverflow]).toEqual(['nowrap', 'ellipsis']);
+  });
+
   it('with no Correct, the face says the time and the period as one, and is no button', () => {
     renderBar(viewOf('start'), false, 'en', true);
     const face = screen.getByLabelText(`${said('34:12')}, ${H1}`);

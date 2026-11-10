@@ -22,6 +22,7 @@ import {
 } from '@/hooks/useFootballSheets';
 import { useAskActions, useClosedByDeadLink, useStartActions } from '@/hooks/usePadMatchParts';
 import { useSettle, useTaps, type PadTapDriver } from '@/hooks/usePadTaps';
+import { usePeriodArm } from '@/hooks/usePeriodArm';
 import { usePorts, type Ports } from '@/hooks/usePorts';
 import { useLinks, useScoringMatch, useSender, type MatchSender } from '@/hooks/useScoringMatch';
 import { useBackToHome } from '@/hooks/useStreamLinks';
@@ -103,12 +104,14 @@ function useFootballPad(
   const taps = useTaps(driver, settle, sender.say, ignoreFlash);
   useResync(ports, runner, sender, display?.enginePhase ?? '');
   const sheets = useSheets(ports, sender, taps, pad, clock);
-  const actions = useActions({ ports, sender, runner, pad, taps, sheets, clock, setCardNote });
+  const armed = usePeriodArm(periodLabelOf(pad));
+  const parts = { ports, sender, runner, pad, taps, sheets, clock, setCardNote, armed };
+  const actions = useActions(parts);
   useBackCloses(sheets.open, sheets.cancel);
   useClosedInBackground(sheets.open, sheets.cancel);
   return useMemo(
-    () => modelOf(pad, sheets.view, cardNote, clock, actions),
-    [pad, sheets.view, cardNote, clock, actions],
+    () => modelOf(pad, sheets.view, cardNote, clock, actions, armed),
+    [pad, sheets.view, cardNote, clock, actions, armed],
   );
 }
 
@@ -119,11 +122,12 @@ function modelOf(
   cardNote: MessageKey | null,
   clock: FootballClockRead,
   actions: FootballPadActions,
+  armed: boolean,
 ): FootballPadModel | null {
   if (pad === null) return null;
   return {
     kind: 'pad',
-    view: pad.view,
+    view: armed ? pad.view : withPeriodOff(pad.view),
     sheet,
     line: pad.line,
     cardNote,
@@ -134,6 +138,18 @@ function modelOf(
     actions,
   };
 }
+
+/** End of period's label, as the pad draws it: none while the tool is not offered, unknown while the pad is loading. */
+const periodLabelOf = (pad: PadFacts | null): string | null | undefined =>
+  pad === null
+    ? undefined
+    : (pad.view.tools.find((tool) => tool.id === PERIOD_TOOL)?.label.key ?? null);
+
+/** The pad with End of period offered but off, while it re-arms. */
+const withPeriodOff = (view: PadFacts['view']): PadFacts['view'] => ({
+  ...view,
+  tools: view.tools.map((tool) => (tool.id === PERIOD_TOOL ? { ...tool, enabled: false } : tool)),
+});
 
 /**
  * The taps the bounce memory drives. Football has no half to tap. Undo is the one Undo: it takes this phone's last
@@ -247,6 +263,8 @@ type Parts = {
   readonly sheets: ReturnType<typeof useSheets>;
   readonly clock: FootballClockRead;
   readonly setCardNote: (note: MessageKey | null) => void;
+  /** End of period takes a press (`usePeriodArm`). */
+  readonly armed: boolean;
 };
 
 function useActions(parts: Parts): FootballPadActions {
@@ -317,10 +335,10 @@ function usePressing(parts: Parts) {
   );
   const tool = useCallback(
     (id: string) => {
-      if (id === PERIOD_TOOL) void opening(PERIOD_TAP, endPeriod);
+      if (id === PERIOD_TOOL && parts.armed) void opening(PERIOD_TAP, endPeriod);
       else if (id === MORE_TOOL) void opening(MORE_TAP, sheetActions.more);
     },
-    [opening, endPeriod, sheetActions],
+    [opening, endPeriod, sheetActions, parts.armed],
   );
   const correct = useCallback(
     () => void opening(CORRECT_TAP, sheetActions.openCorrect),

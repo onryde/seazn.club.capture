@@ -13,7 +13,7 @@ import {
   type QueueDead,
   type QueuedEvent,
 } from '@/domain/scoring/queue';
-import type { ScoringSport, SportFold, SportTypes } from '@/domain/scoring/scoringSport';
+import type { ScoringSport, SportFold, SportLine, SportTypes } from '@/domain/scoring/scoringSport';
 import { type SyncState, canDiscardQueued } from '@/domain/scoring/sync';
 import { type UndoTarget, undoEventFor, undoTarget } from '@/domain/scoring/undoTarget';
 import type {
@@ -146,7 +146,9 @@ export type MatchEffect =
    * `NO_LONGER_LEGAL`; anything else is `OTHER`). The runner says it in the record, one line for the taps one judgement
    * dropped: the pad's line is one sentence however many went, and the record is where the number is kept.
    */
-  | { readonly kind: 'dropped'; readonly code: string; readonly count: number };
+  | { readonly kind: 'dropped'; readonly code: string; readonly count: number }
+  /** The sport withdrew the head at its send (`SendWithdrawal`): the runner says the sport's line in the record. */
+  | { readonly kind: 'withdrawn'; readonly line: SportLine };
 
 export type SaveEffect = {
   readonly kind: 'save';

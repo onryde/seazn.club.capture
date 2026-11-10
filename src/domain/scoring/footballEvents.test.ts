@@ -67,16 +67,17 @@ describe('footballEventFor: each tap (design §8)', () => {
   it.each<[string, FootballTap, readonly Spec[], SportEvent]>([
     ['Start match', { kind: 'start' }, [], { type: 'core.start', payload: {} }],
     [
+      // A clock tap carries the ledger's tip it was made over: its send tells a later clock event of another screen's.
       'Start',
       { kind: 'clock', running: true, elapsed: 0 },
       [start()],
-      { type: 'football.clock', payload: { running: true, at: at('H1', 0) } },
+      { type: 'football.clock', payload: { running: true, at: at('H1', 0) }, base: 1 },
     ],
     [
       'Pause',
       { kind: 'clock', running: false, elapsed: 754 },
       KICK_OFF,
-      { type: 'football.clock', payload: { running: false, at: at('H1', 754) } },
+      { type: 'football.clock', payload: { running: false, at: at('H1', 754) }, base: 2 },
     ],
     [
       'Goal',
@@ -288,6 +289,7 @@ describe('footballEventFor: stamps (design §7.3)', () => {
     expect(eventOf({ kind: 'clock', running: true, elapsed: 0 }, AFTER_HT)).toEqual({
       type: 'football.clock',
       payload: { running: true, at: at('H2', 0) },
+      base: 3,
     });
   });
 
@@ -563,6 +565,51 @@ describe('footballPayloadForSend (design §7.2, §7.3; ruling 3)', () => {
       by: 'ent-home',
       at: at('H1', 600),
     });
+  });
+});
+
+// The controller's ruling, final review (2026-11-08): a queued clock tap of this phone's that another screen's later
+// clock event or period marker overtook in its period is withdrawn at its send, never sent. The phone's link is
+// MATCH's (`link-phone`); the ledger's events are the browser's unless a spec says otherwise.
+describe('footballPayloadForSend withdraws a clock tap another screen overtook', () => {
+  /** Kicked off (seq 1 and 2); the phone, offline, taps Pause at 10:00 over that ledger (its tip, 2). */
+  const PAUSE = queued(clock(false, at('H1', 600)), { base: 2 });
+  const WITHDRAWN = {
+    line: { event: 'scoring.football.clockTapWithdrawn', fields: { phase: 'H1' } },
+  };
+
+  it('the console’s own Pause, recorded after the tap, withdraws it: never sent, the record says H1', () => {
+    const ledger = ledgerOf([...KICK_OFF, clock(false, at('H1', 590))]);
+    expect(footballPayloadForSend(PAUSE, ledger, false, send())).toMatchObject(WITHDRAWN);
+  });
+
+  it('the console’s Half-time, recorded after it, withdraws it too', () => {
+    const ledger = ledgerOf([...KICK_OFF, period('HT', at('H1', 2700))]);
+    expect(footballPayloadForSend(PAUSE, ledger, false, send())).toMatchObject(WITHDRAWN);
+  });
+
+  it('a later goal is no clock event: the Pause is sent, raised to it', () => {
+    const ledger = ledgerOf([...KICK_OFF, goal({ by: 'A', at: at('H1', 650) })]);
+    expect(footballPayloadForSend(PAUSE, ledger, false, send())).toEqual({
+      running: false,
+      at: at('H1', 650),
+    });
+  });
+
+  it('a clock event the scorer saw when tapping (at or under its base) overtakes nothing', () => {
+    const ledger = ledgerOf([...KICK_OFF, clock(false, at('H1', 590))]);
+    const seen = queued(clock(true, at('H1', 590)), { base: 3 });
+    expect(footballPayloadForSend(seen, ledger, false, send())).toBe(seen.payload);
+  });
+
+  it('a copy the ledger holds goes as first sent: the server has it already', () => {
+    const ledger = ledgerOf([...KICK_OFF, clock(false, at('H1', 590))]);
+    expect(footballPayloadForSend(PAUSE, ledger, true, send())).toBe(PAUSE.payload);
+  });
+
+  it('with no bootstrap there is no link to tell another screen by: it is restamped as any tap', () => {
+    const ledger = ledgerOf([...KICK_OFF, clock(false, at('H1', 590))]);
+    expect(footballPayloadForSend(PAUSE, ledger, false, send(null))).toBe(PAUSE.payload);
   });
 });
 

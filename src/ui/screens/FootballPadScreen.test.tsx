@@ -336,6 +336,26 @@ describe('the clock’s Correct, the sheets and a sin-bin', () => {
     // One line, cut with an ellipsis where it does not fit (fix-round ruling b), so the buttons under it never move.
     expect(linesAllowed(within(column('first')).getByTestId('sin-bin'))).toBe(1);
   });
+
+  // The final review's fix-now (2026-11-08): a bin with no player named says just that it is over, with no empty name
+  // in front of a " · ".
+  it('a sin-bin with no player named reads just Sin-bin over once the clock passes its end', async () => {
+    const binned = footballSeed({
+      cfg: KO_11,
+      events: asSeed([
+        start(),
+        clock(true, at('H1', 0)),
+        sinBin({ by: 'H', at: at('H1', 0) }),
+        clock(false, at('H1', 0)),
+        clock(true, at('H1', 595)),
+      ]),
+    });
+    const app = await open(binned);
+    await pass(app, 6000);
+    expect(within(column('first')).getByTestId('sin-bin').textContent).toBe(
+      en['scoring.football.mark.sinBinOver'],
+    );
+  });
 });
 
 describe('the screen kept on', () => {

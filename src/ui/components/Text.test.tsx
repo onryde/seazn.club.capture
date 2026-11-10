@@ -30,6 +30,12 @@ describe('Text: the font scale a role stops at', () => {
     expect(handed.map((props) => props.maxFontSizeMultiplier)).toEqual([1.15, 1]);
   });
 
+  // The final review's fix-now (2026-11-08): the compact board's clock and scores are set in rooms measured at 1.15 too.
+  it('hands the compact tally the tally’s cap, 1.15', () => {
+    render(<Text variant="tallyCompact">45:00</Text>);
+    expect(handed.map((props) => props.maxFontSizeMultiplier)).toEqual([1.15]);
+  });
+
   it('hands every other role none: they follow the phone’s scale', () => {
     const others = (Object.keys(typeScale) as TypeRole[]).filter((role) => !(role in maxFontScale));
     expect(others.length).toBeGreaterThan(10);

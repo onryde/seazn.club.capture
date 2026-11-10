@@ -53,7 +53,7 @@ export type BoardColumn = {
  */
 export function footballBoard(
   display: FootballDisplay,
-  card: PadStateCard | null,
+  card: PadStateCard<string> | null,
 ): {
   readonly columns: readonly [BoardColumn, BoardColumn];
   readonly kicks: readonly [readonly boolean[], readonly boolean[]] | null;

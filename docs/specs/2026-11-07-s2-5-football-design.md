@@ -321,7 +321,13 @@ correction. History and the last-tap line say "Clock corrected" with its time, a
 Start under it. A Correct's own event reads the same, and so does a stopped clock event after a stopped one (a Correct
 while paused). No time is read to judge it, so the server's copies say the same as this phone's, after a cold start
 too. If the app dies between the Start's acceptance and the resync, none is made, and other
-screens are off by the wait until the next clock tap (_the controller's_, 2026-11-08).
+screens are off by the wait until the next clock tap (_the controller's_, 2026-11-08). A Start sent while no pad of
+its match is open gets no resync either: the watch is the pad's (`useResync`). A queued clock tap of this phone's that
+another screen overtook (a clock event or period marker from another link, in the tap's period, recorded after the tap
+was made: its seq is above the ledger tip the tap was made on, never judged by a clock) is withdrawn at its send:
+never sent, taken out of the queue, said in the record as `clockTapWithdrawn {phase}`, and no resync; until then the
+phone draws the match without it. A clock tap the send restamps but no other screen overtook reads from its own stamp,
+and its resync from its first sighting (_the controller's_, final review, 2026-11-08).
 
 The anchor's `recorded_at` is the clock of the web server that wrote the event (`append-event.ts:418`), and each
 screen's offset is measured against whichever web server answers it. Every screen agrees within the offset's

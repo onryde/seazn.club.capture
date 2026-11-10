@@ -68,7 +68,7 @@ export function FootballPadScreen({ model }: { readonly model: FootballPadModel 
 
 type BoardProps = {
   readonly display: FootballDisplay;
-  readonly card: PadStateCard | null;
+  readonly card: PadStateCard<string> | null;
   readonly halves: readonly [PadHalf<FootballPadKey>, PadHalf<FootballPadKey>];
   readonly readingNow: () => number;
   readonly actions: FootballPadActions;
@@ -232,10 +232,14 @@ const SinBinTag = memo(function SinBinTag({
       ellipsizeMode="tail"
       style={over ? styles.binOver : styles.bin}
     >
-      {over ? `${bin.label} · ${t('scoring.football.mark.sinBinOver')}` : bin.label}
+      {over ? overText(bin.label, t('scoring.football.mark.sinBinOver')) : bin.label}
     </Text>
   );
 });
+
+/** "#4 · Sin-bin over", or just "Sin-bin over" for a bin with no player named (the final review's fix-now). */
+const overText = (label: string, over: string): string =>
+  label === '' ? over : `${label} · ${over}`;
 
 /** The sheet over the pad; the hook knows which is open and what each of its buttons means. */
 const PadSheet = memo(function PadSheet({

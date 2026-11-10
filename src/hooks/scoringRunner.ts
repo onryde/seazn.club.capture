@@ -221,6 +221,8 @@ export function createScoringRunner(ports: RunnerPorts, options: Options): Scori
         return reads.loadBootstrap();
       case 'dropped':
         return sayDropped(effect);
+      case 'withdrawn':
+        return ports.logger.info(effect.line.event, effect.line.fields);
     }
   };
 

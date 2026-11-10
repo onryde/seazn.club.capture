@@ -3,11 +3,11 @@ import { football } from '@seazn/engine/sports/football';
 import { describe, expect, it } from 'vitest';
 import {
   footballCfg,
-  footballLineupOf,
   footballOptions,
   footballRefusalOf,
   type FootballEngineMatch,
 } from '@/domain/scoring/footballEngine';
+import { teamSheetOf } from '@/domain/scoring/teamSheet';
 import { envelopeOf } from '@/domain/scoring/setBasedEngine';
 import type { Bootstrap, BootstrapSide } from '@/domain/scoring/wire';
 import {
@@ -45,7 +45,7 @@ function matchOf(bootstrap: Bootstrap): FootballEngineMatch {
   return {
     fixtureId: bootstrap.fixtureId,
     cfg,
-    lineups: { home: footballLineupOf(home).lineup, away: footballLineupOf(away).lineup },
+    lineups: { home: teamSheetOf(home).lineup, away: teamSheetOf(away).lineup },
   };
 }
 
@@ -62,7 +62,7 @@ const refusalAfter = (bootstrap: Bootstrap, specs: readonly Spec[]) => {
   return footballRefusalOf(match, envelopes(match, specs));
 };
 
-describe('footballLineupOf', () => {
+describe('teamSheetOf', () => {
   it('starting and bench rows fold to 11 on the pitch and 5 on the bench', () => {
     const squads = squadsAfter(MATCH, [start()]);
     expect(squads.home.onPitch).toEqual(ids('H', 1, 11));
@@ -89,7 +89,7 @@ describe('footballLineupOf', () => {
         { personId: 'H-late', pairOrder: 1, slot: 'starting' },
       ],
     };
-    expect(footballLineupOf(side)).toStrictEqual({
+    expect(teamSheetOf(side)).toStrictEqual({
       lineup: {
         entrantId: 'ent-home',
         slots: [
@@ -119,7 +119,7 @@ describe('footballLineupOf', () => {
         { personId: 'H-p1', pairOrder: null, squadNumber: 1 },
       ],
     };
-    expect(footballLineupOf(side)).toStrictEqual({
+    expect(teamSheetOf(side)).toStrictEqual({
       lineup: {
         entrantId: 'ent-home',
         slots: [
@@ -154,13 +154,13 @@ describe('footballLineupOf', () => {
       ...HOME,
       lineup: [{ personId: 'H-p1', pairOrder: null, slot: 'starting', orderNo: 1, squadNumber: 0 }],
     };
-    expect(footballLineupOf(side).lineup.slots[0]?.squadNumber).toBe(0);
+    expect(teamSheetOf(side).lineup.slots[0]?.squadNumber).toBe(0);
   });
 
   it('rows with no slot fold as all starting', () => {
     const home = NO_SLOTS.sides.home;
     if (home === null) throw new Error('NO_SLOTS has a home side');
-    const { lineup, sheet } = footballLineupOf(home);
+    const { lineup, sheet } = teamSheetOf(home);
     expect(sheet).toBe(false);
     expect(lineup.slots.slice(0, 2)).toStrictEqual([
       { personId: 'H-p1', slot: 'starting', orderNo: 1 },
@@ -180,7 +180,7 @@ describe('footballLineupOf', () => {
         { personId: 'H-p4', pairOrder: null, orderNo: 4, positionKey: 'CB' },
       ],
     };
-    expect(footballLineupOf(side)).toStrictEqual({
+    expect(teamSheetOf(side)).toStrictEqual({
       lineup: {
         entrantId: 'ent-home',
         slots: [
@@ -210,7 +210,7 @@ describe('footballLineupOf', () => {
         { personId: 'H-p5', pairOrder: null, slot: 'bench' },
       ],
     };
-    expect(footballLineupOf(side).lineup.slots.map((slot) => slot.personId)).toEqual([
+    expect(teamSheetOf(side).lineup.slots.map((slot) => slot.personId)).toEqual([
       'H-p9',
       'H-p2',
       'H-p5',
@@ -228,9 +228,7 @@ describe('footballLineupOf', () => {
         { personId: 'H-p1', pairOrder: null, slot: 'bench' },
       ],
     };
-    expect(
-      footballLineupOf(side).lineup.slots.map((slot) => [slot.personId, slot.orderNo]),
-    ).toEqual([
+    expect(teamSheetOf(side).lineup.slots.map((slot) => [slot.personId, slot.orderNo])).toEqual([
       ['H-p7', 1],
       ['H-p3', 2],
       ['H-p8', 12],
@@ -241,7 +239,7 @@ describe('footballLineupOf', () => {
   it('no rows folds with an empty lineup', () => {
     const home = NO_SHEET.sides.home;
     if (home === null) throw new Error('NO_SHEET has a home side');
-    expect(footballLineupOf(home)).toStrictEqual({
+    expect(teamSheetOf(home)).toStrictEqual({
       lineup: { entrantId: 'ent-home', slots: [] },
       sheet: false,
     });

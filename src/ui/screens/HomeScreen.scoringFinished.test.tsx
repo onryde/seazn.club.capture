@@ -599,6 +599,7 @@ describe('a football match on Home', () => {
     await fakes.tapQueue.saveBoot(FAKE_MATCH, {
       bootstrap: { ...FOOTBALL_MATCH, fixtureId: FAKE_MATCH },
       toss: null,
+      picks: NO_PICKS,
     });
   }
 

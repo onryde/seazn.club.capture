@@ -17,6 +17,7 @@ import {
   anchorBase,
   anchorOf,
   newestStamp,
+  overtaken,
   periodStarted,
   correctionsIn,
   restamp,
@@ -25,7 +26,6 @@ import {
 } from '@/domain/scoring/footballClock';
 import {
   footballCfg,
-  footballLineupOf,
   footballRefusalOf,
   type FootballEngineMatch,
 } from '@/domain/scoring/footballEngine';
@@ -50,12 +50,14 @@ import {
 } from '@/domain/scoring/footballTypes';
 import type { MatchContext } from '@/domain/scoring/matchContext';
 import type { PadSide } from '@/domain/scoring/padView';
+import type { QueuedEvent } from '@/domain/scoring/queue';
 import type { SportFold, SportFoldInput, Unfoldable } from '@/domain/scoring/scoringSport';
 import { lastTapOf } from '@/domain/scoring/setBasedBoard';
 import { envelopeOf, queuedEnvelopeOf } from '@/domain/scoring/setBasedEngine';
 import { voidedIn, voidsAgain } from '@/domain/scoring/setBasedFold';
 import type { LedgerEntry } from '@/domain/scoring/setBasedLedgerHistory';
 import { seatsOf, type Seats } from '@/domain/scoring/setBasedSides';
+import { teamSheetOf } from '@/domain/scoring/teamSheet';
 import { undoTarget } from '@/domain/scoring/undoTarget';
 import {
   matchContextOf,
@@ -87,6 +89,8 @@ type FootballStream = {
   readonly envelopes: EventEnvelope[];
   readonly entries: LedgerEntry[];
   readonly legal: string[];
+  /** A queued tap's payload as tapped, by its envelope's id: what the clock's anchor reads (`queuedOnto`). */
+  readonly tapped: Map<string, unknown>;
 };
 
 /** What the fold says of one event: the period it was recorded in, and the goals after it, top side first. */
@@ -169,8 +173,8 @@ function matchOf(bootstrap: Bootstrap): FootballMatch | Unfoldable {
   if (seats === null || context === null) return 'sides';
   const cfg = footballCfg(bootstrap.cfg);
   if (cfg === null) return 'cfg';
-  const home = footballLineupOf(seats.first);
-  const away = footballLineupOf(seats.second);
+  const home = teamSheetOf(seats.first);
+  const away = teamSheetOf(seats.second);
   return {
     engine: {
       fixtureId: bootstrap.fixtureId,
@@ -203,34 +207,50 @@ function playersOf(seat: BootstrapSide): ReadonlyMap<string, FootballPlayer> {
 // The stream the server would hold
 // ---------------------------------------------------------------------------------------------------------------
 
-/**
- * The ledger, then each queued tap, restamped against the stream before it, that the server would take after it (an
- * illegal tap is skipped and the ones behind it are judged without it).
- */
+/** The ledger, then this phone's queued taps on top, as the server would hold them (`queuedOnto`). */
 function streamOf(match: FootballMatch, input: SportFoldInput): FootballStream {
-  const { fixtureId } = match.engine;
   const own = new Set(input.ownEventIds);
-  const envelopes = input.ledger.map((event) => envelopeOf(fixtureId, event));
+  const envelopes = input.ledger.map((event) => envelopeOf(match.engine.fixtureId, event));
   const entries: LedgerEntry[] = envelopes.map((envelope) => ({
     envelope,
     own: own.has(envelope.id),
     sending: false,
   }));
-  const legal: string[] = [];
-  for (const tap of input.queued) {
-    const payload = restamp(
-      tap.type,
-      tap.payload,
-      newestStamp(standing(envelopes)),
-      phaseOf(match, envelopes),
-    );
-    const envelope = queuedEnvelopeOf(fixtureId, { ...tap, payload }, nextSeq(envelopes));
-    if (!mayAppend(match.engine, envelopes, envelope)) continue;
-    envelopes.push(envelope);
-    entries.push({ envelope, own: true, sending: true });
-    legal.push(tap.key);
+  const stream: FootballStream = { envelopes, entries, legal: [], tapped: new Map() };
+  for (const tap of input.queued) queuedOnto(match, input, stream, tap);
+  return stream;
+}
+
+/**
+ * One queued tap onto the stream: restamped against the stream before it, and appended if the server would take it (an
+ * illegal tap is skipped, and the ones behind it are judged without it). A clock tap another screen overtook stays the
+ * queue's, since its send withdraws it (`overtaken`), but the match is drawn without it. The clock's anchor reads a tap's
+ * stamp as tapped, never the one the restamp raised it to, so the phone's clock does not jump while it waits (the
+ * controller's ruling, final review, 2026-11-08).
+ */
+function queuedOnto(
+  match: FootballMatch,
+  input: SportFoldInput,
+  stream: FootballStream,
+  tap: QueuedEvent,
+): void {
+  const { envelopes } = stream;
+  if (overtaken(tap, input.ledger, input.bootstrap.linkId)) {
+    stream.legal.push(tap.key);
+    return;
   }
-  return { envelopes, entries, legal };
+  const floor = newestStamp(standing(envelopes));
+  const payload = restamp(tap.type, tap.payload, floor, phaseOf(match, envelopes));
+  const envelope = queuedEnvelopeOf(
+    match.engine.fixtureId,
+    { ...tap, payload },
+    nextSeq(envelopes),
+  );
+  if (!mayAppend(match.engine, envelopes, envelope)) return;
+  stream.legal.push(tap.key);
+  envelopes.push(envelope);
+  stream.entries.push({ envelope, own: true, sending: true });
+  stream.tapped.set(envelope.id, tap.payload);
 }
 
 const nextSeq = (envelopes: readonly EventEnvelope[]) =>
@@ -470,6 +490,7 @@ function displayOf(match: FootballMatch, input: SportFoldInput, read: Read): Foo
     lastTap: lastTapOf(stream.envelopes, recorded, (did) => (did.kind === 'start' ? null : did)),
     undoable: undoableOf(input, stream),
     kickedOff: kickedOffOf(stream.envelopes),
+    ledgerTip: input.ledger.reduce((tip, event) => Math.max(tip, event.seq), 0),
   };
 }
 
@@ -615,21 +636,25 @@ function clockOf(
 /** The stream's events as the clock reads them, in order. */
 function anchorEventsOf(input: SportFoldInput, stream: FootballStream): readonly AnchorEvent[] {
   const voided = voidedIn(stream.envelopes);
-  return stream.entries.map((entry, i) => anchorEventOf(input, entry, i, voided));
+  return stream.entries.map((entry, i) => anchorEventOf(input, entry, i, voided, stream.tapped));
 }
 
-/** One event as the anchor reads it: the ledger's at its `recorded_at`, on the clock `anchorBase` names; a queued tap's on the phone's. */
+/**
+ * One event as the anchor reads it: the ledger's at its `recorded_at`, on the clock `anchorBase` names; a queued tap's on
+ * the phone's, with its payload as tapped (`tapped`).
+ */
 function anchorEventOf(
   input: SportFoldInput,
   entry: LedgerEntry,
   index: number,
   voided: ReadonlySet<string>,
+  tapped: ReadonlyMap<string, unknown>,
 ): AnchorEvent {
   const { envelope } = entry;
   const event = entry.sending ? undefined : input.ledger[index];
   return {
     type: envelope.type,
-    payload: envelope.payload,
+    payload: tapped.get(envelope.id) ?? envelope.payload,
     atMs: Date.parse(envelope.recordedAt),
     base: event === undefined ? 'device' : anchorBase(event, input.ownEventIds),
     standing: !voided.has(envelope.id),

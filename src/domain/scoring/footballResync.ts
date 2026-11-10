@@ -71,8 +71,9 @@ export function resyncStep(memory: ResyncMemory, state: MatchState, nowMs: numbe
 
 /**
  * The Starts in the queue, into `waiting`: a running clock tap that starts a stopped clock, judged at its first sighting
- * that says so (the watch may not see every state). Seen again, it is read again, since the send may have restamped its
- * payload (`payloadForSend`).
+ * that says so (the watch may not see every state). Seen again, only its payload is read again, since the send may have
+ * restamped it (`payloadForSend`) and its event is known by it; its time and its own reading stay as first seen, so a
+ * stamp the restamp raised never moves the resync (the controller's ruling, final review, 2026-11-08).
  */
 function watchQueue(
   state: MatchState,
@@ -82,9 +83,13 @@ function watchQueue(
   const { pending } = state.sync.queue;
   pending.forEach((tap, at) => {
     if (decided.has(tap.key)) return;
-    if (!waiting.has(tap.key) && !startsTheClock(state, pending.slice(0, at))) return;
     const start = startOf(tap);
-    if (start !== null) waiting.set(tap.key, start);
+    const seen = waiting.get(tap.key);
+    if (seen !== undefined) {
+      if (start !== null) waiting.set(tap.key, { ...seen, payload: start.payload });
+    } else if (start !== null && startsTheClock(state, pending.slice(0, at))) {
+      waiting.set(tap.key, start);
+    }
   });
 }
 

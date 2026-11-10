@@ -1,5 +1,5 @@
 import type { QueuedEvent } from '@/domain/scoring/queue';
-import type { SportTypes } from '@/domain/scoring/scoringSport';
+import { isWithdrawal, type SportLine, type SportTypes } from '@/domain/scoring/scoringSport';
 import {
   type SyncState,
   markSending,
@@ -102,11 +102,9 @@ function revalidating<S extends SportTypes>(state: MatchState<S>): Part<S> {
 }
 
 /**
- * The next send, if one is due. The payload is decided BEFORE the attempt is marked (the sport's `payloadForSend`:
- * badminton's first rally drops its `serving` if a rally already stands), and written into the queued head in the same
- * step that marks the attempt, so the fold and sync see what the server is sent. The sport is told whether the ledger
- * holds the tap's copy (`copiesOf`, the reconnect question's own test; only a tap sent before has one), since only then
- * does the server hold the payload as first sent. The save before the send is the step's own.
+ * The next send, if one is due. The payload is decided BEFORE the attempt is marked (`payloadNow`), and written into the
+ * queued head in the same step that marks the attempt, so the fold and sync see what the server is sent. A head the
+ * sport withdraws instead is never sent (`withdrawing`). The save before the send is the step's own.
  */
 function sending<S extends SportTypes>(state: MatchState<S>, now: number): Part<S> {
   const { sync } = state;
@@ -114,18 +112,9 @@ function sending<S extends SportTypes>(state: MatchState<S>, now: number): Part<
   const body = nextSend(sync, now);
   const head = sync.queue.pending[0];
   if (body === null || head === undefined) return part(state);
-  const copied = copiesOf(state, sync.ledger).has(head.key);
-  const payload = state.sport.payloadForSend(head, sync.ledger, copied, {
-    bootstrap: state.bootstrap,
-  });
-  const decided: SyncState =
-    payload === head.payload
-      ? sync
-      : {
-          ...sync,
-          queue: { ...sync.queue, pending: [{ ...head, payload }, ...sync.queue.pending.slice(1)] },
-        };
-  const marked = markSending(decided, now).state;
+  const payload = payloadNow(state, head);
+  if (isWithdrawal(payload)) return withdrawing(state, head, payload.line);
+  const marked = markSending(withHeadPayload(sync, head, payload), now).state;
   const sentTap = marked.queue.pending[0];
   const next: MatchState<S> = {
     ...state,
@@ -133,4 +122,37 @@ function sending<S extends SportTypes>(state: MatchState<S>, now: number): Part<
     sent: { key: head.key, expectedSeq: body.expected_seq },
   };
   return part(next, [{ kind: 'send', body: { ...body, payload }, sent: sentTap }]);
+}
+
+/**
+ * The payload the sport sends the head with now (`payloadForSend`: badminton's first rally drops its `serving` if a rally
+ * already stands). The sport is told whether the ledger holds the tap's copy (`copiesOf`, the reconnect question's own
+ * test; only a tap sent before has one), since only then does the server hold the payload as first sent.
+ */
+function payloadNow<S extends SportTypes>(state: MatchState<S>, head: QueuedEvent): unknown {
+  const { ledger } = state.sync;
+  const copied = copiesOf(state, ledger).has(head.key);
+  return state.sport.payloadForSend(head, ledger, copied, { bootstrap: state.bootstrap });
+}
+
+/** Sync with the head carrying the payload it is sent with. */
+function withHeadPayload(sync: SyncState, head: QueuedEvent, payload: unknown): SyncState {
+  if (payload === head.payload) return sync;
+  const pending = [{ ...head, payload }, ...sync.queue.pending.slice(1)];
+  return { ...sync, queue: { ...sync.queue, pending } };
+}
+
+/**
+ * A head the sport withdrew (`SendWithdrawal`): it leaves the queue unsent, the step saves the queue without it (an Undo
+ * that waits on it goes with it, `withoutOrphanVoids`), the record says the sport's line, and the next tap goes once
+ * that save has landed.
+ */
+function withdrawing<S extends SportTypes>(
+  state: MatchState<S>,
+  head: QueuedEvent,
+  line: SportLine,
+): Part<S> {
+  const pending = state.sync.queue.pending.filter((tap) => tap.key !== head.key);
+  const sync: SyncState = { ...state.sync, queue: { ...state.sync.queue, pending } };
+  return part({ ...state, sync }, [{ kind: 'withdrawn', line }]);
 }

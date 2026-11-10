@@ -113,7 +113,7 @@ function ClockDigits({ time, tier, under }: ClockDigitsProps) {
         {time}
       </Text>
       {under === null ? null : (
-        <Text variant="diagSection" aria-hidden style={styles.periodUnder}>
+        <Text variant="diagSection" numberOfLines={1} aria-hidden style={styles.periodUnder}>
           {under}
         </Text>
       )}

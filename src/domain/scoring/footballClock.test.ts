@@ -11,6 +11,7 @@ import {
   newestStamp,
   PHASE_ORDER,
   periodLengths,
+  overtaken,
   periodStarted,
   reading,
   restamp,
@@ -20,7 +21,22 @@ import {
   type AnchorEvent,
   type ClockAnchor,
 } from '@/domain/scoring/footballClock';
-import { at, KO_11, LEAGUE_11, MINI, PHONE_LINK } from '../../../test/footballLedger';
+import {
+  at,
+  BROWSER_LINK,
+  clock,
+  goal,
+  KO_11,
+  LEAGUE_11,
+  ledgerOf,
+  MINI,
+  period,
+  PHONE_LINK,
+  queuedOf,
+  start,
+  voiding,
+  type Spec,
+} from '../../../test/footballLedger';
 
 /**
  * The football clock, pure (S2-5 design §7; plan P Task 5; controller rulings 1–3). Every expected value is written out
@@ -694,5 +710,53 @@ describe('whether the period’s first Start stands (ruling e)', () => {
     ).toBe(false);
     expect(periodStarted([clockEvent(false, { period: 'H1', elapsed: 0 }, T)], 'H1')).toBe(false);
     expect(periodStarted([clockEvent(true, { period: 'H2', elapsed: 0 }, T)], 'H1')).toBe(false);
+  });
+});
+
+// The controller's ruling, final review (2026-11-08). Kick-off on the browser (seq 1 and 2); the phone, offline, tapped
+// Start at 0:00 over that ledger, so its `base` is 2. The phone's link is `link-phone`.
+describe('overtaken: another screen’s later clock event in the tap’s period', () => {
+  const KICK_OFF: readonly Spec[] = [start(), clock(false, at('H1', 0))];
+  const START = { ...queuedOf('k1', clock(true, at('H1', 0))), base: 2 };
+  const after = (...more: Spec[]) => ledgerOf([...KICK_OFF, ...more]);
+
+  it('a browser clock event or period marker in H1 above the base overtakes it', () => {
+    expect(overtaken(START, after(clock(true, at('H1', 0))), PHONE_LINK)).toBe(true);
+    expect(overtaken(START, after(clock(false, at('H1', 300))), PHONE_LINK)).toBe(true);
+    expect(overtaken(START, after(period('HT', at('H1', 2700))), PHONE_LINK)).toBe(true);
+  });
+
+  it('what the scorer saw when tapping, at or under the base, overtakes nothing', () => {
+    expect(overtaken({ ...START, base: 3 }, after(clock(true, at('H1', 0))), PHONE_LINK)).toBe(
+      false,
+    );
+  });
+
+  it('this phone’s own events overtake nothing: its link’s, or a stand-in’s with none', () => {
+    const own = (link: string | null): Spec => ({ ...clock(true, at('H1', 0)), link });
+    expect(overtaken(START, after(own(PHONE_LINK)), PHONE_LINK)).toBe(false);
+    expect(overtaken(START, after(own(null)), PHONE_LINK)).toBe(false);
+    expect(overtaken(START, after(own(BROWSER_LINK)), PHONE_LINK)).toBe(true);
+  });
+
+  it('a goal, another period, an unstamped clock event or a voided one overtake nothing', () => {
+    expect(overtaken(START, after(goal({ by: 'A', at: at('H1', 600) })), PHONE_LINK)).toBe(false);
+    expect(overtaken(START, after(clock(true, at('H2', 0))), PHONE_LINK)).toBe(false);
+    expect(overtaken(START, after(clock(true)), PHONE_LINK)).toBe(false);
+    const voided = after(clock(true, at('H1', 0)), voiding('ev-3'));
+    expect(overtaken(START, voided, PHONE_LINK)).toBe(false);
+  });
+
+  it('only a clock tap with a base and a stamp is judged: a goal, an old queue file’s tap, an unstamped one', () => {
+    const ledger = after(clock(true, at('H1', 0)));
+    const goalTap = { ...queuedOf('k2', goal({ by: 'H', at: at('H1', 0) })), base: 2 };
+    expect(overtaken(goalTap, ledger, PHONE_LINK)).toBe(false);
+    expect(overtaken(queuedOf('k1', clock(true, at('H1', 0))), ledger, PHONE_LINK)).toBe(false);
+    expect(overtaken({ ...queuedOf('k3', clock(true)), base: 2 }, ledger, PHONE_LINK)).toBe(false);
+    // An unstamped tap has no period, so an unstamped clock event of another screen's is not in it either.
+    const unstamped = after(clock(true));
+    expect(overtaken({ ...queuedOf('k4', clock(true)), base: 2 }, unstamped, PHONE_LINK)).toBe(
+      false,
+    );
   });
 });

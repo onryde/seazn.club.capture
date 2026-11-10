@@ -140,7 +140,7 @@ describe('the fake judges football with the engine, as staging does', () => {
     ).toEqual({ kind: 'refused', status: 422, code: 'WRONG_PHASE' });
   });
 
-  // A sheetless team starts every row (`footballLineupOf`), so the fake takes a goal by any of its players, as the
+  // A sheetless team starts every row (`teamSheetOf`), so the fake takes a goal by any of its players, as the
   // phone's fold does: the two must fold the same pitch.
   it('folds a sheetless team as all starting: a goal by the sixteenth player stands', async () => {
     const port = createFakeScoringPort(footballSeed({ sheet: 'noSlots' }));

@@ -13,11 +13,7 @@ import { badmintonCfg, refusalOf } from '@/domain/scoring/badmintonEngine';
 import type { BadmintonTap } from '@/domain/scoring/badmintonPad';
 import { chessCfg, chessRefusalOf } from '@/domain/scoring/chessEngine';
 import { cricketRefusalOf, type CricketEngineMatch } from '@/domain/scoring/cricketEngine';
-import {
-  footballLineupOf,
-  footballRefusalOf,
-  type FootballEngineMatch,
-} from '@/domain/scoring/footballEngine';
+import { footballRefusalOf, type FootballEngineMatch } from '@/domain/scoring/footballEngine';
 import type { PadSide } from '@/domain/scoring/padView';
 import { envelopeOf, lineupOf } from '@/domain/scoring/setBasedEngine';
 import { tableTennisCfg, tableTennisRefusalOf } from '@/domain/scoring/tableTennisEngine';
@@ -112,8 +108,8 @@ const SPORTS: Readonly<Record<FakeSportKey, FakeSport>> = {
     refusalOf: (match: FootballEngineMatch, events) =>
       footballRefusalOf(match, events)?.code ?? null,
     lineupsOf: (sides) => ({
-      home: footballLineupOf(sides.home).lineup,
-      away: footballLineupOf(sides.away).lineup,
+      home: teamSheetOf(sides.home).lineup,
+      away: teamSheetOf(sides.away).lineup,
     }),
   },
 };

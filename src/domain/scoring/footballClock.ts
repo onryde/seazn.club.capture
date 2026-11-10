@@ -3,6 +3,7 @@ import { footballPadRules } from '@seazn/engine/pad';
 import type { FootballCfg } from '@seazn/engine/sports/football';
 import { isRecord } from '@/domain/credentials/wire';
 import type { FootballTap } from '@/domain/scoring/footballTypes';
+import type { QueuedEvent } from '@/domain/scoring/queue';
 import type { LedgerEvent } from '@/domain/scoring/wire';
 
 /**
@@ -369,6 +370,38 @@ export function restamp(
   if (type === 'football.sub') return withStamp(payload, subStamp(phase, floor));
   return floor.period === phase && at.elapsed < floor.elapsed ? withStamp(payload, floor) : payload;
 }
+
+/**
+ * Whether this phone's queued clock tap was overtaken (the controller's ruling, final review, 2026-11-08): another
+ * screen's clock event or period marker, recorded after the tap was made, stands in the tap's own period. The newest
+ * decision on the ground wins and that screen's clock is already true, so the tap is withdrawn at its send (never sent,
+ * and no resync) and the fold draws the match without it. "After the tap was made" is read in the server's own order,
+ * never on the phone's clock, which may be minutes out: a seq above the ledger tip the tap was made over (its `base`).
+ * "Another screen's" is an event of another link than `linkId`, this phone's (its stand-ins carry none). A tap with no
+ * `base` (a queue file from before it) or no stamp is never overtaken.
+ */
+export function overtaken(
+  tap: Pick<QueuedEvent, 'type' | 'payload' | 'base'>,
+  ledger: readonly LedgerEvent[],
+  linkId: string,
+): boolean {
+  const { base } = tap;
+  const period = gameTimeOf(tap.payload)?.period;
+  if (tap.type !== CLOCK || base === undefined || period === undefined) return false;
+  const voided = new Set(ledger.flatMap((event) => (event.voids === null ? [] : [event.voids])));
+  return ledger.some(
+    (event) =>
+      event.seq > base &&
+      (event.type === CLOCK || event.type === PERIOD) &&
+      event.deviceLinkId !== null &&
+      event.deviceLinkId !== linkId &&
+      !voided.has(event.id) &&
+      gameTimeOf(event.payload)?.period === period,
+  );
+}
+
+/** The record's line for a withdrawn clock tap: the period it was tapped in, and nothing of the tap or its screen. */
+export const WITHDRAWN_EVENT = 'scoring.football.clockTapWithdrawn';
 
 /** The payload with `at` set to `stamp`, or with no `at` at all (the engine's schemas are strict: absent, never null). */
 function withStamp(payload: unknown, stamp: GameTime | null): unknown {

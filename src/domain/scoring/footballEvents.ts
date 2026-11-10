@@ -1,6 +1,13 @@
-import type { GameTime } from '@seazn/engine/core';
+import { gameTimeOf, type GameTime } from '@seazn/engine/core';
 import { footballPadRules } from '@seazn/engine/pad';
-import { newestStamp, restamp, stampFor, subStamp } from '@/domain/scoring/footballClock';
+import {
+  newestStamp,
+  overtaken,
+  restamp,
+  stampFor,
+  subStamp,
+  WITHDRAWN_EVENT,
+} from '@/domain/scoring/footballClock';
 import { footballOptions } from '@/domain/scoring/footballEngine';
 import { footballLedgerPhase } from '@/domain/scoring/footballFold';
 import {
@@ -11,10 +18,12 @@ import {
   type FootballTypes,
 } from '@/domain/scoring/footballTypes';
 import type { QueuedEvent } from '@/domain/scoring/queue';
-import type {
-  SportEvent,
-  SportEventContext,
-  SportSendContext,
+import {
+  withdrawal,
+  type SendWithdrawal,
+  type SportEvent,
+  type SportEventContext,
+  type SportSendContext,
 } from '@/domain/scoring/scoringSport';
 import type { LedgerEvent } from '@/domain/scoring/wire';
 
@@ -81,13 +90,15 @@ const among = (players: readonly FootballPlayer[], personId: string | null): boo
 
 /**
  * Start or Pause, stamped in the fold's phase at the reading, never below a same-period `asOf`. A Start that waits in
- * the queue is sent as it was tapped (design §7.2): one accepted late is followed by a resync tap (`needsResync`).
+ * the queue is sent as it was tapped (design §7.2): one accepted late is followed by a resync tap (`needsResync`). It
+ * carries the ledger's tip it was made over as its `base`, so its send can tell another screen's later clock event from
+ * one the scorer saw (`overtaken`).
  */
 function clockEvent(tap: Tap<'clock'>, display: FootballDisplay): SportEvent {
   const { enginePhase, clock } = display;
   const floor = clock.asOf?.period === enginePhase ? clock.asOf.elapsed : 0;
   const at = { period: enginePhase, elapsed: Math.max(tap.elapsed, floor) };
-  return { type: 'football.clock', payload: { running: tap.running, at } };
+  return { type: 'football.clock', payload: { running: tap.running, at }, base: display.ledgerTip };
 }
 
 /** A goal for the column's team: the scorer and the assist on its pitch, never the same player; a penalty has no assist. */
@@ -268,7 +279,9 @@ function kickEvent(tap: Tap<'kick'>, display: FootballDisplay): SportEvent | nul
  * payload and the runtime still knows the server's copy of a tap whose answer was lost.
  *
  * The ledger's phase is folded from the bootstrap the match holds; with none (or a ledger that will not fold), the newest
- * stamp's period stands for it.
+ * stamp's period stands for it. A clock tap another screen overtook is not sent at all: it is withdrawn (`overtaken`;
+ * the controller's ruling, final review, 2026-11-08). With no bootstrap there is no link to tell another screen by, and
+ * the tap is restamped as any other.
  */
 export function footballPayloadForSend(
   queued: QueuedEvent,
@@ -277,11 +290,21 @@ export function footballPayloadForSend(
   send: SportSendContext,
 ): unknown {
   if (copied) return queued.payload;
+  if (send.bootstrap !== null && overtaken(queued, ledger, send.bootstrap.linkId)) {
+    return withdrawnOf(queued);
+  }
   const floor = newestStamp(standingOf(ledger));
   const folded = send.bootstrap === null ? null : footballLedgerPhase(send.bootstrap, ledger);
   const phase = folded ?? floor?.period ?? 'pre';
   return restamp(queued.type, queued.payload, floor, phase);
 }
+
+/** An overtaken clock tap's withdrawal: the record says the period it was tapped in (`overtaken` found one). */
+const withdrawnOf = (queued: QueuedEvent): SendWithdrawal =>
+  withdrawal({
+    event: WITHDRAWN_EVENT,
+    fields: { phase: gameTimeOf(queued.payload)?.period ?? '' },
+  });
 
 /** The ledger's events still in the match: no void, and nothing a void takes back. */
 function standingOf(ledger: readonly LedgerEvent[]): readonly LedgerEvent[] {

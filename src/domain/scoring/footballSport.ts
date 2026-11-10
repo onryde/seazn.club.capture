@@ -8,10 +8,11 @@ import type { ScoringSport } from '@/domain/scoring/scoringSport';
 
 /**
  * Football, as the match runtime scores it (`ScoringSport`; S2-5 plan P Task 9): the fold (`foldFootball`, remembered),
- * the event a tap is (`footballEventFor`), a send's payload, restamped and a waiting Start advanced
- * (`footballPayloadForSend`), and the pad (`footballPad`) are football's own modules; the rest reads its display. Football
- * has no serve and declares no ending to wait on: the final whistle and the shootout are events like any other, and the
- * engine decides the match.
+ * the event a tap is (`footballEventFor`), a send's payload (`footballPayloadForSend`: a stamp raised to the ledger's
+ * newest, never moved on for the time it waited, and a clock tap another screen overtook withdrawn), and the pad
+ * (`footballPad`) are football's own modules; the rest reads its display. A Start accepted late is followed by a resync
+ * the pad's hook taps (`footballResync.ts`), never by its own payload changing. Football has no serve and declares no
+ * ending to wait on: the final whistle and the shootout are events like any other, and the engine decides the match.
  */
 export const footballSport: ScoringSport<FootballTypes> = {
   key: 'football',

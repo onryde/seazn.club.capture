@@ -157,6 +157,11 @@ export type FootballDisplay = {
   readonly undoable: boolean;
   /** Anything stands after the start: End of period is offered only then, never tied to the clock. */
   readonly kickedOff: boolean;
+  /**
+   * The ledger's tip this display was folded over (its newest seq, 0 for none): a clock tap made on it carries it as its
+   * `base`, so its send tells another screen's later clock event from one the scorer saw (`overtaken`).
+   */
+  readonly ledgerTip: number;
 };
 
 /**
