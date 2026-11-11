@@ -18,6 +18,11 @@ export type ServerClock = {
   offsetMs(): number;
   /** One answer's sample of the offset. */
   sample(sampleMs: number): void;
+  /**
+   * Forgets the samples, keeping the offset until the next sample, which alone then decides (ruling 141): at a return
+   * to the foreground the steady clock the samples measured may have moved (`steadyClock.ts`).
+   */
+  dropSamples(): void;
   /** Called each time `offsetMs()` changes; answers the unsubscribe. */
   subscribe(listener: () => void): () => void;
 };
@@ -43,6 +48,9 @@ export function createServerClock(deps: { readonly logger: Logger }): ServerCloc
       offset = next;
       say(next);
       for (const listener of listeners) listener();
+    },
+    dropSamples: () => {
+      samples = [];
     },
     subscribe: (listener) => {
       listeners.add(listener);

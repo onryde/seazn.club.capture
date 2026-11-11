@@ -98,14 +98,16 @@ export function createNativePorts(
   });
   // S2-5 design §7.2: built before the scoring port, which feeds it every answer's `Date` header.
   const serverClock = createServerClock({ logger });
-  // Ruling 137: the clock the scoring port samples against and the football clock reads; a return to the foreground
-  // catches up the time the CPU slept.
+  // Ruling 137: the clock the scoring port samples against and the football clock reads. A return to the foreground
+  // catches up the time the CPU slept and drops the server clock's samples (ruling 141). Built before any runner, so it
+  // hears a return before the runner's read.
   const foreground = createNativeForeground();
   const steadyClock = createSteadyClock({
     wall: Date.now,
     mono: monotonicOf(globalThis),
     logger,
     foreground,
+    serverClock,
   });
   return {
     engine: wired.engine,

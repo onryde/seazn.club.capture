@@ -58,27 +58,66 @@ type Phone = {
   readonly sleep: (ms: number) => void;
 };
 
-/** A phone whose wall clock is `skew` off the server's at launch, its offset formed from `samples` of it. */
-async function phone(seed: FakeMatchSeed, skew = 0): Promise<Phone> {
+type Options = {
+  /** How far the phone's wall clock is off the server's at launch. */
+  readonly skew?: number;
+  /**
+   * Every answer of the fake server feeds the server clock, as `fetchScoringPort` does (server time less the steady
+   * clock, a round trip of 0): a test of what one fresh answer does. Without it, only the three launch samples count.
+   */
+  readonly sampled?: boolean;
+};
+
+const SCORING_CALLS = ['bootstrap', 'events', 'rules', 'append', 'realtimeToken'] as const;
+
+/** Each answer of `server` samples the offset against `steady`, as the real scoring port does. */
+function sampling(server: FakeScoringPort, serverClock: ServerClock, steady: () => number): void {
+  // No network, no answer, no sample (the fake's realtime grant ignores `goOffline`; a real one would fail).
+  let down = false;
+  const goOffline = server.goOffline.bind(server);
+  vi.spyOn(server, 'goOffline').mockImplementation((on: boolean) => {
+    down = on;
+    goOffline(on);
+  });
+  for (const call of SCORING_CALLS) {
+    const original = server[call].bind(server) as (...args: unknown[]) => Promise<unknown>;
+    vi.spyOn(server, call).mockImplementation((async (...args: unknown[]) => {
+      const answer = await original(...args);
+      if (!down) serverClock.sample(Date.now() - steady());
+      return answer;
+    }) as never);
+  }
+}
+
+/** A phone whose wall clock is `skew` off the server's at launch, its offset formed from three samples of it. */
+async function phone(
+  seed: FakeMatchSeed,
+  { skew = 0, sampled = false }: Options = {},
+): Promise<Phone> {
   let wallSkew = skew;
   let asleep = 0;
   const wall = () => Date.now() + wallSkew;
   const server = createFakeScoringPort(seed, { stamp: () => Date.now() });
   let steady: SteadyClock | null = null;
+  let serverClock: ServerClock | null = null;
   const fakes = createFakePorts({
     clock: () => new Date(wall()),
     scoring: server,
     steadyClock: { nowMs: () => steady!.nowMs() },
   });
+  serverClock = createServerClock({ logger: fakes.ports.logger });
+  // The ports are built before the server clock: it is handed in as the ports hold it.
+  Object.assign(fakes.ports, { serverClock });
+  // Built before the pad mounts, as `createNativePorts` builds it before any runner: it hears a return first.
   steady = createSteadyClock({
     wall,
     mono: () => Date.now() - asleep,
     logger: fakes.ports.logger,
     foreground: fakes.foreground,
+    serverClock,
   });
-  const serverClock = createServerClock({ logger: fakes.ports.logger });
-  // The ports are built before the server clock: it is handed in as the ports hold it.
-  Object.assign(fakes.ports, { serverClock });
+  const steadyNow = steady.nowMs;
+  if (sampled) sampling(server, serverClock, () => steadyNow());
   // The samples as the scoring port measures them, server less device now: three agree.
   for (let i = 0; i < 3; i += 1) serverClock.sample(-skew);
   await saveScoringLink(fakes.kv, seed.fixtureId, LINK, HOST, 'football');
@@ -96,8 +135,8 @@ async function phone(seed: FakeMatchSeed, skew = 0): Promise<Phone> {
   };
 }
 
-async function opened(seed: FakeMatchSeed = LIVE, skew = 0) {
-  const rig = await phone(seed, skew);
+async function opened(seed: FakeMatchSeed = LIVE, options: Options = {}) {
+  const rig = await phone(seed, options);
   const view = renderHook(() => useFootballMatch(seed.fixtureId), {
     wrapper: wrapperFor(rig.fakes),
   });
@@ -176,13 +215,13 @@ describe('a wall-clock jump never moves the match clock (F5, ruling 137)', () =>
   });
 
   it('a phone 5 minutes slow from launch reads the server’s time once the samples have come', async () => {
-    const { view } = await opened(LIVE, -300_000);
+    const { view } = await opened(LIVE, { skew: -300_000 });
     await wait(29_000);
     expect(pad(view).readingNow()).toBe(30);
   });
 
   it('with no sample yet, a phone 5 minutes slow reads its own time (the offset is what corrects it)', async () => {
-    const rig = await phone(LIVE, -300_000);
+    const rig = await phone(LIVE, { skew: -300_000 });
     Object.assign(rig.fakes.ports, {
       serverClock: createServerClock({ logger: rig.fakes.ports.logger }),
     });
@@ -250,5 +289,73 @@ describe('a wall-clock jump never moves the match clock (F5, ruling 137)', () =>
     sleep(600_000);
     act(() => fakes.foreground.fire());
     expect(pad(view).readingNow()).toBe(630);
+  });
+});
+
+// Rulings 141 and 142 (fix round 1): the device's F5 was made through Settings, with the app away, and the return puts
+// the steady clock back on the wall clock (it cannot tell that from a sleep). The return drops the offset's samples, the
+// focused runner reads at once, and that one answer's sample decides. A sleep is not a jump: a return writes no line.
+describe('a jump made while away is corrected by the next answer (rulings 141, 142)', () => {
+  const jumpLines = (fakes: FakePorts) =>
+    readRecord(fakes.record).filter((line) => line.event === 'scoring.clock.jump');
+
+  it('F5 as found: pad open, a Settings detour, the wall +4:58, the return: right once one answer lands', async () => {
+    const { view, server, fakes, jump } = await opened(LIVE, { sampled: true });
+    await wait(29_000);
+    expect(pad(view).readingNow()).toBe(30);
+    fakes.foreground.leave();
+    jump(JUMP_MS);
+    act(() => fakes.foreground.fire());
+    await flush();
+    expect(pad(view).readingNow()).toBe(30);
+    await goal(view);
+    const scored = (await ledger(server, LIVE)).at(-1);
+    expect(scored?.type).toBe('football.goal');
+    expect(stampOf(scored?.payload)).toBe(30);
+    expect(jumpLines(fakes)).toEqual([]);
+  });
+
+  it('a jump while active, then a later return: counted once, in the reading and in the record', async () => {
+    const { view, fakes, jump } = await opened(LIVE, { sampled: true });
+    await wait(29_000);
+    jump(JUMP_MS);
+    expect(pad(view).readingNow()).toBe(30);
+    await wait(5_000);
+    expect(pad(view).readingNow()).toBe(35);
+    fakes.foreground.leave();
+    act(() => fakes.foreground.fire());
+    await flush();
+    expect(pad(view).readingNow()).toBe(35);
+    await wait(5_000);
+    expect(pad(view).readingNow()).toBe(40);
+    expect(jumpLines(fakes).map((line) => line.fields)).toEqual([{ ms: JUMP_MS }]);
+  });
+
+  it('a sleep: the reading catches up and the record has no jump line', async () => {
+    const { view, fakes, sleep } = await opened(LIVE, { sampled: true });
+    await wait(29_000);
+    fakes.foreground.leave();
+    sleep(600_000);
+    act(() => fakes.foreground.fire());
+    await flush();
+    expect(pad(view).readingNow()).toBe(630);
+    expect(jumpLines(fakes)).toEqual([]);
+  });
+
+  // Accepted by ruling 141: with no answer after the return, the last offset stands, and so does the jump.
+  it('offline after a jump made while away: skewed until the next answer, then right', async () => {
+    const { view, server, fakes, jump } = await opened(LIVE, { sampled: true });
+    await wait(29_000);
+    server.goOffline(true);
+    fakes.foreground.leave();
+    jump(JUMP_MS);
+    act(() => fakes.foreground.fire());
+    await flush();
+    expect(pad(view).readingNow()).toBe(328);
+    server.goOffline(false);
+    // The runner's next read, after its wait for the network.
+    await wait(20_000);
+    await flush();
+    expect(pad(view).readingNow()).toBe(50);
   });
 });

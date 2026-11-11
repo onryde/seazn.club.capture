@@ -15,6 +15,8 @@ function rig(options: { readonly mono?: boolean } = {}) {
   let wallMs = T0;
   let monoMs = 1_234.5; // performance.now() counts from the runtime's start, never from the epoch
   let onReturn: (() => void) | null = null;
+  let active = true;
+  let drops = 0;
   const record = createRingRecord();
   const logger = createLogger({ record, now: () => 0 });
   const steady = createSteadyClock({
@@ -25,6 +27,12 @@ function rig(options: { readonly mono?: boolean } = {}) {
       subscribe: (listener) => {
         onReturn = listener;
         return () => undefined;
+      },
+      isForeground: () => active,
+    },
+    serverClock: {
+      dropSamples: () => {
+        drops += 1;
       },
     },
   });
@@ -49,7 +57,15 @@ function rig(options: { readonly mono?: boolean } = {}) {
     sleep: (ms: number) => {
       wallMs += ms;
     },
-    returns: () => onReturn?.(),
+    /** The app leaves the foreground. */
+    leaves: () => {
+      active = false;
+    },
+    returns: () => {
+      active = true;
+      onReturn?.();
+    },
+    drops: () => drops,
   };
 }
 
@@ -125,12 +141,73 @@ describe('createSteadyClock', () => {
     expect(steady.nowMs()).toBe(T0 + 10_000);
   });
 
-  it('the catch-up at a return is said once, and the next reading says nothing more', () => {
-    const { steady, sleep, returns, lines } = rig();
-    sleep(600_000);
+  // Ruling 142: a sleep is not a jump. A return writes no line, and the reading after it says nothing of what moved
+  // while the app was away, whichever way.
+  it.each([
+    ['a sleep', 600_000],
+    ['a wall clock set forward while away', 298_000],
+    ['a wall clock set back while away', -298_000],
+  ])('%s: the return and the readings after it write no jump line', (_, ms) => {
+    const { steady, jump, leaves, returns, lines } = rig();
+    leaves();
+    jump(ms);
     returns();
     steady.nowMs();
-    expect(lines('scoring.clock.jump').map((line) => line.fields)).toEqual([{ ms: 600_000 }]);
+    steady.nowMs();
+    expect(lines('scoring.clock.jump')).toEqual([]);
+  });
+
+  it('a reading made while the app is away writes no jump line, and the return none either', () => {
+    const { steady, jump, leaves, returns, lines } = rig();
+    leaves();
+    jump(298_000);
+    steady.nowMs();
+    returns();
+    steady.nowMs();
+    expect(lines('scoring.clock.jump')).toEqual([]);
+  });
+
+  it('a jump seen while active is said once, and the return after it says it again nowhere', () => {
+    const { steady, pass, jump, leaves, returns, lines } = rig();
+    jump(298_000);
+    steady.nowMs();
+    leaves();
+    pass(3_000);
+    returns();
+    steady.nowMs();
+    pass(1_000);
+    steady.nowMs();
+    expect(lines('scoring.clock.jump').map((line) => line.fields)).toEqual([{ ms: 298_000 }]);
+  });
+
+  it('a jump while active after a return is said again', () => {
+    const { steady, sleep, jump, leaves, returns, lines } = rig();
+    leaves();
+    sleep(600_000);
+    returns();
+    jump(-5_000);
+    steady.nowMs();
+    expect(lines('scoring.clock.jump').map((line) => line.fields)).toEqual([{ ms: -5_000 }]);
+  });
+
+  // Ruling 141: the offset was measured against the steady clock before the return; its samples are dropped at every
+  // return, so the next answer alone decides.
+  it('each return drops the server clock’s samples, a moved clock or not', () => {
+    const { leaves, returns, sleep, drops } = rig();
+    leaves();
+    sleep(600_000);
+    returns();
+    expect(drops()).toBe(1);
+    leaves();
+    returns();
+    expect(drops()).toBe(2);
+  });
+
+  it('with no monotonic source, a return still drops the samples', () => {
+    const { leaves, returns, drops } = rig({ mono: false });
+    leaves();
+    returns();
+    expect(drops()).toBe(1);
   });
 
   it('a second return with nothing moved changes nothing', () => {

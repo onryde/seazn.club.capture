@@ -109,4 +109,28 @@ describe('createServerClock', () => {
     clock.sample(5_000);
     expect(heard).toEqual(['first', 'second', 'second']);
   });
+
+  // Ruling 141: at a return to the foreground the steady clock may have moved by a sleep or a jump made while away, so
+  // the samples taken before it no longer measure it. The window is dropped; the offset stays until the next answer,
+  // whose one sample then decides.
+  it('dropSamples keeps the offset until the next sample, which alone decides', () => {
+    const { clock, offsetLines } = clockOver();
+    for (const sample of [1_000, 1_000, 1_000, 1_000, 1_000]) clock.sample(sample);
+    clock.dropSamples();
+    expect(clock.offsetMs()).toBe(1_000);
+    clock.sample(-297_000);
+    expect(clock.offsetMs()).toBe(-297_000);
+    clock.sample(-297_200); // [-297 000, -297 200]: the rounded mean, the old samples gone
+    expect(clock.offsetMs()).toBe(-297_100);
+    expect(offsetLines().map((line) => line.fields.ms)).toEqual([1_000, -297_000]);
+  });
+
+  it('dropSamples before any sample leaves 0, and a second drop changes nothing', () => {
+    const { clock } = clockOver();
+    clock.dropSamples();
+    clock.dropSamples();
+    expect(clock.offsetMs()).toBe(0);
+    clock.sample(4_000);
+    expect(clock.offsetMs()).toBe(4_000);
+  });
 });

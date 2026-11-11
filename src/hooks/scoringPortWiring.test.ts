@@ -213,6 +213,9 @@ describe('createNativePorts feeds the clock it hands the app (Batch A review, M1
  */
 type SteadyWiring = {
   readonly built: number;
+  readonly wall: string | null;
+  readonly mono: string | null;
+  readonly serverClockArg: string | null;
   readonly binding: string | null;
   readonly property: string | null;
   readonly scoringSteady: string | null;
@@ -224,6 +227,9 @@ function steadyWiringOf(source: string): SteadyWiring {
   const file = ts.createSourceFile('nativePorts.ts', source, ts.ScriptTarget.Latest, true);
   const found = {
     built: 0,
+    wall: null,
+    mono: null,
+    serverClockArg: null,
     binding: null,
     property: null,
     scoringSteady: null,
@@ -241,8 +247,12 @@ function steadyWiringOf(source: string): SteadyWiring {
     if (ts.isCallExpression(node) && node.expression.getText(file) === 'createSteadyClock') {
       found.built += 1;
       const [deps] = node.arguments;
-      if (deps !== undefined && ts.isObjectLiteralExpression(deps))
+      if (deps !== undefined && ts.isObjectLiteralExpression(deps)) {
         found.foregroundArg = textOf(named(deps, 'foreground'));
+        found.wall = textOf(named(deps, 'wall'));
+        found.mono = textOf(named(deps, 'mono'));
+        found.serverClockArg = textOf(named(deps, 'serverClock'));
+      }
     }
     if (ts.isVariableDeclaration(node) && node.name.getText(file) === 'steadyClock')
       found.binding = node.initializer?.getText(file).split('(')[0] ?? null;
@@ -269,6 +279,11 @@ function steadyWiringOf(source: string): SteadyWiring {
 describe('createNativePorts samples against the steady clock it hands the app (ruling 137)', () => {
   const WIRED: SteadyWiring = {
     built: 1,
+    // Ruling 137 is on only with the platform's monotonic source and the wall clock (fix round 1, M1).
+    wall: 'Date.now',
+    mono: 'monotonicOf(globalThis)',
+    // Ruling 141: the server clock the scoring port feeds, whose samples a return drops.
+    serverClockArg: 'serverClock',
     binding: 'createSteadyClock',
     property: 'steadyClock',
     scoringSteady: 'steadyClock',
@@ -280,7 +295,13 @@ describe('createNativePorts samples against the steady clock it hands the app (r
     const skeleton = (scoringSteady: string, foreground = 'foreground') => `
       export function createNativePorts() {
         const foreground = createNativeForeground();
-        const steadyClock = createSteadyClock({ wall: Date.now, mono, logger, foreground });
+        const steadyClock = createSteadyClock({
+          wall: Date.now,
+          mono: monotonicOf(globalThis),
+          logger,
+          foreground,
+          serverClock,
+        });
         return {
           foreground: ${foreground},
           scoring: scoringPortFor({ fetch, steadyClock: ${scoringSteady} }),
@@ -295,6 +316,9 @@ describe('createNativePorts samples against the steady clock it hands the app (r
     expect(steadyWiringOf(skeleton('steadyClock', 'createNativeForeground()'))).toMatchObject({
       foregroundProperty: 'createNativeForeground()',
     });
+    expect(
+      steadyWiringOf(skeleton('steadyClock').replace('monotonicOf(globalThis)', 'null')),
+    ).toMatchObject({ mono: 'null' });
   });
 
   it('the real createNativePorts: one steady clock, the scoring port’s, woken by the app’s foreground port', () => {

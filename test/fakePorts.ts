@@ -410,6 +410,7 @@ export function createFakeServerClock(): FakeServerClock {
   return {
     offsetMs: () => offset,
     sample: () => {},
+    dropSamples: () => {},
     subscribe: (listener) => {
       listeners.add(listener);
       return () => {
