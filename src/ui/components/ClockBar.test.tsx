@@ -5,7 +5,7 @@ import en from '@/i18n/en.json';
 import type { MessageKey } from '@/i18n/messages';
 import nl from '@/i18n/nl.json';
 import { ClockBar } from '@/ui/components/ClockBar';
-import { colour, layout } from '@/ui/theme/tokens';
+import { colour, layout, space } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
 import { declaredStyle } from '../../../test/declaredStyle';
 import { edgeOf, fillOf } from '../../../test/pressState';
@@ -153,14 +153,14 @@ describe('ClockBar', () => {
 // The compact board's bar (fix-round 2 ruling R1): the time a step down (`tallyCompact`), the period's one line under it,
 // the plate under both.
 describe('ClockBar, compact', () => {
-  it('sets the time a step down, the period under it on one line cut with an ellipsis, in a 48 dp face', () => {
+  it('sets the time a step down, the period under it on one line cut with an ellipsis, in a 48 dp face with 4 dp of padding a side, a 56 dp panel', () => {
     renderBar(viewOf('pause'), 'en', true);
     const face = screen.getByLabelText(`${said('34:12')}, ${H1}`);
     expect(within(face).getByText(H1)).toBeTruthy();
     expect(getComputedStyle(within(face).getByText('34:12')).fontSize).toBe(
       `${typeScale.tallyCompact.fontSize}px`,
     );
-    expect(declaredStyle(face, 'min-height')).toBe(`${layout.touch}px`);
+    expect(declaredStyle(face, 'min-height')).toBe(`${layout.touch + 2 * space.xs}px`);
     const style = getComputedStyle(screen.getByText(H1));
     expect([style.whiteSpace, style.textOverflow]).toEqual(['nowrap', 'ellipsis']);
   });

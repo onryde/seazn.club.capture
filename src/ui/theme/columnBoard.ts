@@ -37,9 +37,13 @@ export const MARKS_HEIGHT = typeScale.periodScore.lineHeight;
 /** The period's line, under the time. */
 export const PERIOD_HEIGHT = typeScale.diagSection.lineHeight;
 
-/** The clock's face: the time and the period's line under it (a touch target at least). */
+/**
+ * The clock's face, a rounded panel on `surface` (owner ruling 146, the mockup): the time and the period's line under it
+ * (a touch target at least), with the tier's gap of padding above and below.
+ */
 export function faceHeight(tier: BoardTier): number {
-  return Math.max(layout.touch, typeScale[TIER_FACES[tier].time].lineHeight + PERIOD_HEIGHT);
+  const { gap, time } = TIER_FACES[tier];
+  return Math.max(layout.touch, typeScale[time].lineHeight + PERIOD_HEIGHT) + 2 * gap;
 }
 
 /** The clock hero and the gap under it: the face, the gap, the one plate (a touch target), then the board's gap. */

@@ -522,8 +522,8 @@ describe('the marks’ row (ruling b)', () => {
  * before each of the three under the head.
  *
  * Full (a Goal square room of at least 100 dp, so the 64 numeral stands over its word with air): the hero is the time's 82
- * and the period's 16 (98), 8, the 48 plate and 8; a head of the name's two lines (60), 8
- * and the marks' 16 (84); three gaps of 8. Compact: a 48 face, 4, the 48 plate and 8 (108); a head of one name line (30), 4
+ * and the period's 16 in a panel with 8 of padding above and below (114), 8, the 48 plate and 8; a head of the name's two lines (60), 8
+ * and the marks' 16 (84); three gaps of 8. Compact: a 56 panel (a 48 face and 4 above and below), 4, the 48 plate and 8 (108); a head of one name line (30), 4
  * and the marks' 16 (50); three gaps of 4, and a Goal room of 48 at the least. The Goal square takes the room's width, or
  * its height when that is less, and is centred.
  */
@@ -543,13 +543,13 @@ describe('the pad’s height, portrait', () => {
 
   type Tier = { face: number; gap: number; head: number; goal: number };
   const FULL: Tier = {
-    face: typeScale.clockHero.lineHeight + PERIOD,
+    face: typeScale.clockHero.lineHeight + PERIOD + 2 * space.sm,
     gap: space.sm,
     head: layout.padNameLines * NAME + space.sm + MARKS,
     goal: typeScale.scoreCompact.lineHeight + PERIOD + 2 * space.sm,
   };
   const COMPACT: Tier = {
-    face: Math.max(layout.touch, typeScale.tallyCompact.lineHeight + PERIOD),
+    face: Math.max(layout.touch, typeScale.tallyCompact.lineHeight + PERIOD) + 2 * space.xs,
     gap: space.xs,
     head: NAME + space.xs + MARKS,
     goal: layout.touch,
@@ -579,30 +579,30 @@ describe('the pad’s height, portrait', () => {
     expect(AROUND).toBe(206);
   });
 
-  it('the full tier: a 162 hero over a 288 column, 450 dp of board, full from a 656 window', () => {
+  it('the full tier: a 178 hero over a 288 column, 466 dp of board, full from a 672 window', () => {
     expect(NOTE).toBe(NOTE_HEIGHT);
-    expect([heroOf(FULL), fixedOf(FULL, 0) + FULL.goal, FULL_BOARD]).toEqual([162, 288, 450]);
+    expect([heroOf(FULL), fixedOf(FULL, 0) + FULL.goal, FULL_BOARD]).toEqual([178, 288, 466]);
     expect(BOARD_FULL_HEIGHT).toBe(FULL_BOARD);
-    expect(laidOut(360, 656).compact).toBe(false);
-    expect(laidOut(360, 655).compact).toBe(true);
+    expect(laidOut(360, 672).compact).toBe(false);
+    expect(laidOut(360, 671).compact).toBe(true);
   });
 
-  it('compact: a 108 hero over a 190 column of a 48 square, the 48 row and the note line: it holds from a 504 window, not under', () => {
-    expect([heroOf(COMPACT), fixedOf(COMPACT, 0) + COMPACT.goal]).toEqual([108, 190]);
-    expect(laidOut(320, 504).room).toBe(layout.touch);
-    expect(laidOut(320, 503).room).toBeLessThan(layout.touch);
+  it('compact: a 116 hero over a 190 column of a 48 square, the 48 row and the note line: it holds from a 512 window, not under', () => {
+    expect([heroOf(COMPACT), fixedOf(COMPACT, 0) + COMPACT.goal]).toEqual([116, 190]);
+    expect(laidOut(320, 512).room).toBe(layout.touch);
+    expect(laidOut(320, 511).room).toBeLessThan(layout.touch);
   });
 
   // The five phones of the brief; 412 × 870 is the owner's NE2211 (1080 × 2412 at 480 dp is 412 wide, about 870 left after
   // the system bars) and 412 × 915 the whole screen. Each: the tier, the Goal room and the squares' sides, no scroll, every
   // control at least a touch target.
   it.each([
-    [360, 560, true, 104, 104, 44],
-    [320, 560, true, 104, 104, 37.3],
-    [320, 640, true, 184, 120, 37.3],
-    [360, 724, false, 168, 140, 44],
-    [412, 870, false, 309.3, 166, 52.7],
-    [412, 915, false, 354.3, 166, 52.7],
+    [360, 560, true, 96, 96, 44],
+    [320, 560, true, 96, 96, 37.3],
+    [320, 640, true, 176, 120, 37.3],
+    [360, 724, false, 152, 140, 44],
+    [412, 870, false, 293.3, 166, 52.7],
+    [412, 915, false, 338.3, 166, 52.7],
   ] as const)(
     'a %i × %i window: compact %s, the Goal room %f, the Goal square %i dp, the three small squares %f dp wide, the pad inside the window',
     (width, height, compact, room, side, small) => {
@@ -621,9 +621,9 @@ describe('the pad’s height, portrait', () => {
   );
 
   // The screen's own rule, not a copy: the board's height is the window less the 206 around it.
-  it('the real boardTier: compact at 503 and 655, full at 656', () => {
+  it('the real boardTier: compact at 511 and 671, full at 672', () => {
     const tierAt = (window: number) => boardTier(window - AROUND);
-    expect([503, 504, 560, 640, 655, 656, 724].map(tierAt)).toEqual([
+    expect([511, 512, 560, 640, 671, 672, 724].map(tierAt)).toEqual([
       'compact',
       'compact',
       'compact',

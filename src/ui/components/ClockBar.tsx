@@ -53,9 +53,15 @@ export const ClockBar = memo(function ClockBar({ view, onAction, compact }: Cloc
 
 const styles = StyleSheet.create({
   bar: { alignSelf: 'stretch' },
-  face: { alignItems: 'center', justifyContent: 'center' },
-  faceFull: { minHeight: faceHeight('full') },
-  faceCompact: { minHeight: faceHeight('compact') },
+  // A rounded panel on `surface`, as wide as the board, the time near its top edge (owner ruling 146, the mockup).
+  face: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.card,
+    backgroundColor: colour.surface,
+  },
+  faceFull: { minHeight: faceHeight('full'), paddingVertical: TIER_FACES.full.gap },
+  faceCompact: { minHeight: faceHeight('compact'), paddingVertical: TIER_FACES.compact.gap },
   time: { alignSelf: 'stretch', textAlign: 'center' },
   timePaused: { alignSelf: 'stretch', textAlign: 'center', color: colour.ink3 },
   periodRow: {
@@ -127,7 +133,12 @@ type ClockFaceProps = {
 const ClockFace = memo(function ClockFace({ time, said, tier, period, paused }: ClockFaceProps) {
   const label = [said, period, paused].filter((part) => part !== null).join(', ');
   return (
-    <View accessible accessibilityLabel={label} style={tier === 'compact' ? faceCompact : faceFull}>
+    <View
+      testID="clock-face"
+      accessible
+      accessibilityLabel={label}
+      style={tier === 'compact' ? faceCompact : faceFull}
+    >
       <Text
         variant={TIER_FACES[tier].time}
         numberOfLines={1}

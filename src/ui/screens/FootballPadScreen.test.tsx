@@ -6,7 +6,7 @@ import en from '@/i18n/en.json';
 import { footballSeed } from '@/services/fakeFootballPad';
 import type { FakeMatchSeed, FakeSeedEvent } from '@/services/fakeScoringPort';
 import { STORE_KEYS } from '@/services/modeStore';
-import { colour, layout } from '@/ui/theme/tokens';
+import { colour, layout, radius, space } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
 import { TEST_NOW } from '../../../test/fakePorts';
 import {
@@ -28,7 +28,7 @@ import {
 } from '../../../test/footballPadFixtures';
 import { screenIsHeld, type HoldLog } from '../../../test/heldScreen';
 import { declaredStyle } from '../../../test/declaredStyle';
-import { edgeOf } from '../../../test/pressState';
+import { edgeOf, fillOf } from '../../../test/pressState';
 import { layOut } from '../../../test/layOut';
 import { linesAllowed } from '../../../test/linesAllowed';
 import { LINK, linkKey } from '../../../test/scoringHomeFixtures';
@@ -375,6 +375,19 @@ describe('the clock under the header (ruling 146)', () => {
     expect((body as HTMLElement).contains(screen.getByTestId('football-board'))).toBe(true);
     expect(screen.getByTestId('football-board').firstElementChild).toBe(clockBar());
   });
+
+  // The mockup: the digits and the period line sit in one rounded panel on `surface`, tight padding, the plate under it.
+  it('draws the time and the period line in one rounded surface panel, the plate outside it', async () => {
+    await open(STARTED);
+    const panel = within(clockBar()).getByTestId('clock-face');
+    expect(getComputedStyle(panel).backgroundColor).toBe(fillOf(colour.surface));
+    expect(getComputedStyle(panel).borderTopLeftRadius).toBe(`${radius.card}px`);
+    expect(declaredStyle(panel, 'padding-top')).toBe(`${space.sm}px`);
+    expect(within(panel).getByText('0:00')).toBeTruthy();
+    expect(within(panel).getByText(en['scoring.football.period.H1'])).toBeTruthy();
+    expect(within(panel).queryByRole('button')).toBeNull();
+    expect(panel.parentElement).toBe(clockBar());
+  });
 });
 
 describe('Yellow and Red (ruling 136)', () => {
@@ -442,8 +455,8 @@ describe('Yellow and Red (ruling 136)', () => {
 });
 
 // The controller's fix-round 2 ruling (R1), redone for the clock hero (ruling 130): the board's own height picks its tier.
-// The full tier needs the hero's 162 dp (a 98 face, 8, the 48 plate, 8) over a column of 288 (2 × 8, an 84 head, a 100
-// Goal room, 3 × 8, the 48 row of squares and the 16 note line): 450. Below it the clock and both columns go compact, at once
+// The full tier needs the hero's 178 dp (a 114 panel, 8, the 48 plate, 8) over a column of 288 (2 × 8, an 84 head, a 100
+// Goal room, 3 × 8, the 48 row of squares and the 16 note line): 466. Below it the clock and both columns go compact, at once
 // (footballFit.test.ts holds the heights).
 describe('a short phone (ruling R1)', () => {
   const H1 = en['scoring.football.period.H1'];
@@ -452,17 +465,17 @@ describe('a short phone (ruling R1)', () => {
   const FULL = `${typeScale.clockHero.fontSize}px`;
   const COMPACT = `${typeScale.tallyCompact.fontSize}px`;
 
-  it('at 450 dp of board the pad is full; at 449 the clock and the columns go compact', async () => {
+  it('at 466 dp of board the pad is full; at 465 the clock and the columns go compact', async () => {
     await open(STARTED);
     // Before the phone lays the board out, it is full.
     expect(linesAllowed(name())).toBe(2);
     expect(timeSize()).toBe(FULL);
     expect(within(clockBar()).getByText(H1)).toBeTruthy();
     const board = screen.getByTestId('football-board');
-    layOut(board, { width: 328, height: 450 });
+    layOut(board, { width: 328, height: 466 });
     expect(timeSize()).toBe(FULL);
     expect(linesAllowed(name())).toBe(2);
-    layOut(board, { width: 328, height: 449 });
+    layOut(board, { width: 328, height: 465 });
     expect(timeSize()).toBe(COMPACT);
     expect(linesAllowed(name())).toBe(1);
     expect(linesAllowed(within(column('first')).getByText('Riverside FC'))).toBe(1);
