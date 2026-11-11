@@ -514,39 +514,41 @@ describe('restamp (design §7.3, ruling 3)', () => {
     stamp === undefined ? { by: 'ent-home' } : { by: 'ent-home', at: stamp };
 
   it('restamp raises a same-period stamp', () => {
-    expect(restamp('football.goal', goal(at('H1', 590)), at('H1', 600), 'H1')).toEqual(
+    expect(restamp('football.goal', goal(at('H1', 590)), at('H1', 600), 'H1', null)).toEqual(
       goal(at('H1', 600)),
     );
   });
 
   it('keeps a same-period stamp at or above the floor', () => {
     const payload = goal(at('H1', 600));
-    expect(restamp('football.goal', payload, at('H1', 600), 'H1')).toBe(payload);
+    expect(restamp('football.goal', payload, at('H1', 600), 'H1', null)).toBe(payload);
   });
 
   it('drops an earlier-period stamp', () => {
-    expect(restamp('football.goal', goal(at('H1', 2690)), at('H1', 2700), 'H2')).toEqual(goal());
+    expect(restamp('football.goal', goal(at('H1', 2690)), at('H1', 2700), 'H2', null)).toEqual(
+      goal(),
+    );
   });
 
   it('drops a stamp in a period the phase has left, with no floor', () => {
-    expect(restamp('football.goal', goal(at('H1', 100)), null, 'H2')).toEqual(goal());
+    expect(restamp('football.goal', goal(at('H1', 100)), null, 'H2', null)).toEqual(goal());
   });
 
   it('keeps a later one', () => {
     const payload = goal(at('H2', 30));
-    expect(restamp('football.goal', payload, at('H1', 2700), 'H2')).toBe(payload);
+    expect(restamp('football.goal', payload, at('H1', 2700), 'H2', null)).toBe(payload);
   });
 
   it('leaves a stamp in a later period than the fold’s, a sub’s included (ruling 3: otherwise as is)', () => {
     const later = goal(at('H2', 30));
-    expect(restamp('football.goal', later, at('H1', 2700), 'H1')).toBe(later);
+    expect(restamp('football.goal', later, at('H1', 2700), 'H1', null)).toBe(later);
     const sub = { by: 'ent-home', off: 'H-p8', on: 'H-p14', at: at('H2', 30) };
-    expect(restamp('football.sub', sub, at('H1', 2700), 'H1')).toBe(sub);
+    expect(restamp('football.sub', sub, at('H1', 2700), 'H1', null)).toBe(sub);
   });
 
   it('a sub below the floor with no stoppage is raised to the floor, as any tap', () => {
     const sub = { by: 'ent-home', off: 'H-p8', on: 'H-p14', at: at('H2', 600) };
-    expect(restamp('football.sub', sub, at('H2', 640), 'H2')).toEqual({
+    expect(restamp('football.sub', sub, at('H2', 640), 'H2', null)).toEqual({
       ...sub,
       at: at('H2', 640),
     });
@@ -554,7 +556,7 @@ describe('restamp (design §7.3, ruling 3)', () => {
 
   it('a sub keeps its own stamp when the floor is in an earlier period (ruling 154: no longer dropped)', () => {
     const sub = { by: 'ent-home', off: 'H-p8', on: 'H-p14', at: at('H2', 600) };
-    expect(restamp('football.sub', sub, at('H1', 2700), 'H2')).toBe(sub);
+    expect(restamp('football.sub', sub, at('H1', 2700), 'H2', null)).toBe(sub);
   });
 
   it('a sub queued offline joins another phone’s sub that landed first within 120 s, and not past it', () => {
@@ -563,6 +565,30 @@ describe('restamp (design §7.3, ruling 3)', () => {
     expect(restamp('football.sub', sub, theirs, 'H2', theirs)).toEqual({ ...sub, at: theirs });
     const late = { ...sub, at: at('H2', 711) };
     expect(restamp('football.sub', late, theirs, 'H2', theirs)).toBe(late);
+  });
+
+  // Review M1: a joined sub keeps its own reading in the queue; the send falls back to it when the stoppage is gone.
+  it('a joined sub whose stoppage is gone goes at its own reading; with the stoppage standing it stays joined', () => {
+    const joined = { by: 'ent-home', off: 'H-p8', on: 'H-p14', at: at('H2', 600) };
+    const own = at('H2', 700);
+    expect(restamp('football.sub', joined, at('H2', 0), 'H2', null, own)).toEqual({
+      ...joined,
+      at: own,
+    });
+    expect(restamp('football.sub', joined, null, 'H2', null, own)).toEqual({ ...joined, at: own });
+    const stoppage = at('H2', 600);
+    expect(restamp('football.sub', joined, stoppage, 'H2', stoppage, own)).toBe(joined);
+    // A later stamp standing above the reading raises it, as any tap.
+    expect(restamp('football.sub', joined, at('H2', 710), 'H2', null, own)).toEqual({
+      ...joined,
+      at: at('H2', 710),
+    });
+    // A reading in a period the phase has left is dropped with the stamp.
+    expect(restamp('football.sub', joined, at('H2', 2700), 'ET_H1', null, own)).toEqual({
+      by: 'ent-home',
+      off: 'H-p8',
+      on: 'H-p14',
+    });
   });
 
   it('a concussion replacement follows the same rule', () => {
@@ -582,17 +608,17 @@ describe('restamp (design §7.3, ruling 3)', () => {
 
   it('leaves a payload with no at', () => {
     const payload = goal();
-    expect(restamp('football.goal', payload, at('H1', 600), 'H1')).toBe(payload);
+    expect(restamp('football.goal', payload, at('H1', 600), 'H1', null)).toBe(payload);
   });
 
   it('leaves a stamp with no floor in the phase', () => {
     const payload = goal(at('H1', 10));
-    expect(restamp('football.goal', payload, null, 'H1')).toBe(payload);
+    expect(restamp('football.goal', payload, null, 'H1', null)).toBe(payload);
   });
 
   it('leaves a period it does not know', () => {
     const payload = goal(at('Q9', 10));
-    expect(restamp('football.goal', payload, at('H1', 600), 'H1')).toBe(payload);
+    expect(restamp('football.goal', payload, at('H1', 600), 'H1', null)).toBe(payload);
   });
 });
 

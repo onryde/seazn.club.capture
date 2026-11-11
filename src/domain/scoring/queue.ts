@@ -47,7 +47,17 @@ export type QueuedEvent = {
    * tap of a sport that sets none, and on a queue file written before it existed.
    */
   readonly base?: number;
+  /**
+   * The phone's own clock reading behind a stamp the sport put in the payload instead, kept here on the phone and never
+   * sent (`SportEvent.reading`). Football: a sub that joined a stoppage is queued with the stoppage's stamp, and its send
+   * falls back to this reading when the stoppage is gone (ruling 154, review M1). Absent on every other tap, and on a
+   * queue file written before it existed (the payload's stamp then stands).
+   */
+  readonly reading?: TapReading;
 };
+
+/** A clock reading: seconds into a period, as the engine's `GameTime` (`{ period, elapsed }`). */
+export type TapReading = { readonly period: string; readonly elapsed: number };
 
 /**
  * Why a queue can send no more, and nothing else discards a tap: the link is gone (the three codes the door answers 401

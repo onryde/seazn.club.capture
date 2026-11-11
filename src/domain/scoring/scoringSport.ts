@@ -1,7 +1,7 @@
 import type { PadRefusal } from '@/domain/scoring/padLine';
 import type { PendingPicks } from '@/domain/scoring/pendingPicks';
 import type { PadHistoryGroup, PadSide, PadSync, PadView } from '@/domain/scoring/padView';
-import type { QueuedEvent } from '@/domain/scoring/queue';
+import type { QueuedEvent, TapReading } from '@/domain/scoring/queue';
 import type { Bootstrap, LedgerEvent } from '@/domain/scoring/wire';
 
 /**
@@ -60,12 +60,15 @@ export type SportFold<S extends SportTypes> =
 /**
  * A tap as the event the server records. `base` is optional and a sport's to set: a count its payload was made at (table
  * tennis: the score's; football's clock taps: the ledger's tip), which the runtime keeps on the queued tap
- * (`QueuedEvent.base`) for the sport's `payloadForSend` to read.
+ * (`QueuedEvent.base`) for the sport's `payloadForSend` to read. `reading` likewise: the phone's own clock reading
+ * behind a stamp the payload carries instead (football: a sub that joined a stoppage), kept on the queued tap
+ * (`QueuedEvent.reading`) and never sent.
  */
 export type SportEvent = {
   readonly type: string;
   readonly payload: unknown;
   readonly base?: number;
+  readonly reading?: TapReading;
 };
 
 /**

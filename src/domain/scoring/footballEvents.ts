@@ -174,16 +174,18 @@ function subEvent(tap: Tap<'sub'>, display: FootballDisplay): SportEvent | null 
   const known = (players: readonly FootballPlayer[], id: string) =>
     players.some((p) => p.personId === id);
   if (!known(team.onPitch, tap.off) || !known(team.offeredOn, tap.on)) return null;
-  const at = subStampFor(
-    tap.stamp,
-    display.enginePhase,
-    display.clock.asOf,
-    display.clock.stoppage,
-  );
-  if (tap.concussion === true) return replacementEvent(team.entrantId, tap, at);
+  const { enginePhase, clock } = display;
+  const own = stampFor(tap.stamp, enginePhase, clock.asOf);
+  const at = subStampFor(tap.stamp, enginePhase, clock.asOf, clock.stoppage);
+  // A sub that joined keeps its own reading beside the payload, for its send to fall back to (review M1).
+  const kept = own !== null && !sameTime(own, at) ? { reading: own } : {};
+  if (tap.concussion === true) return { ...replacementEvent(team.entrantId, tap, at), ...kept };
   const payload = given({ by: team.entrantId, off: tap.off, on: tap.on, at });
-  return { type: 'football.sub', payload };
+  return { type: 'football.sub', payload, ...kept };
 }
+
+const sameTime = (a: GameTime, b: GameTime | null): boolean =>
+  b !== null && a.period === b.period && a.elapsed === b.elapsed;
 
 /**
  * A concussion sub (ruling 155): the engine's `core.lineup.replacement` naming the concussion exemption, which it holds
@@ -321,7 +323,8 @@ export function footballPayloadForSend(
   const floor = newestStamp(standing);
   const folded = send.bootstrap === null ? null : footballLedgerPhase(send.bootstrap, ledger);
   const phase = folded ?? floor?.period ?? 'pre';
-  return restamp(queued.type, queued.payload, floor, phase, subStoppageOf(standing, phase));
+  const stoppage = subStoppageOf(standing, phase);
+  return restamp(queued.type, queued.payload, floor, phase, stoppage, queued.reading);
 }
 
 /** An overtaken clock tap's withdrawal: the record says the period it was tapped in (`overtaken` found one). */

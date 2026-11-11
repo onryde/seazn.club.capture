@@ -590,6 +590,25 @@ describe('foldFootball: queued taps', () => {
     ]);
   });
 
+  // Ruling 154, review M1: a queued sub that joined a stoppage carries the stoppage's stamp and its own reading beside it.
+  // The stoppage undone, the fold draws the sub at its own reading; standing, at the stoppage's stamp.
+  it('a queued joined sub whose stoppage was undone is drawn at its own reading', () => {
+    const theirs = [...KICK_OFF, sub({ by: 'A', off: 'A-p8', on: 'A-p14', at: at('H1', 600) })];
+    const joined = {
+      ...queuedOf('k1', sub({ by: 'H', off: 'H-p7', on: 'H-p13', at: at('H1', 600) })),
+      reading: at('H1', 700),
+    };
+    const undone = folded({ ledger: ledgerOf([...theirs, voiding(eventId(3))]), queued: [joined] });
+    expect([undone.legalQueued, undone.display.lastTap]).toEqual([
+      ['k1'],
+      expect.objectContaining({ kind: 'sub', at: at('H1', 700) }),
+    ]);
+    const standing = folded({ ledger: ledgerOf(theirs), queued: [joined] });
+    expect(standing.display.lastTap).toEqual(
+      expect.objectContaining({ kind: 'sub', at: at('H1', 600) }),
+    );
+  });
+
   it('a queued goal stamped in H1 after HT stands unstamped', () => {
     const result = folded({
       ledger: ledgerOf([...KICK_OFF, period('HT', at('H1', 2700))]),

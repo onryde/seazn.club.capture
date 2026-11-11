@@ -248,7 +248,8 @@ function queuedOnto(
   const live = standing(envelopes);
   const floor = newestStamp(live);
   const phase = phaseOf(match, envelopes);
-  const payload = restamp(tap.type, tap.payload, floor, phase, subStoppageOf(live, phase));
+  const stoppage = subStoppageOf(live, phase);
+  const payload = restamp(tap.type, tap.payload, floor, phase, stoppage, tap.reading);
   const envelope = queuedEnvelopeOf(
     match.engine.fixtureId,
     { ...tap, payload },

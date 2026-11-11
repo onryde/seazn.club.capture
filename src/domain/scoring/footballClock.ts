@@ -447,24 +447,28 @@ export function stoppageClosesIn(stoppage: GameTime | null, elapsed: number): nu
  * A tap the ledger does not hold yet, stamped again against the fold it will meet (§7.3, ruling 3): `floor` is the
  * newest stamp standing before it, `phase` the fold's phase there. A stamp in a period the phase has left is dropped
  * rather than move a goal into the next half; a substitution joins the `stoppage` it would join now (`subStampFor`,
- * ruling 154), or keeps its own stamp; any other stamp in the floor's period below it is raised to it, never lowered. A
- * payload with no stamp, or one naming a period no football cfg has, is left as it is.
+ * ruling 154), or takes its own reading: `reading`, the one a sub queued at a stoppage's stamp kept beside it (review M1),
+ * else its payload's stamp. Any other stamp in the floor's period below it is raised to it, never lowered. A payload
+ * with no stamp, or one naming a period no football cfg has, is left as it is. `stoppage` is required: a caller that
+ * forgot it would silently lose the join.
  */
 export function restamp(
   type: string,
   payload: unknown,
   floor: GameTime | null,
   phase: string,
-  stoppage: GameTime | null = null,
+  stoppage: GameTime | null,
+  reading?: GameTime,
 ): unknown {
   const at = gameTimeOf(payload);
   if (at === null || rankOf(at.period) < 0) return payload;
   if (rankOf(at.period) < rankOf(phase)) return withStamp(payload, null);
-  if (at.period !== phase || floor === null) return payload;
+  if (at.period !== phase) return payload;
   if (isSubType(type)) {
-    const stamp = subStampFor(at, phase, floor, stoppage);
+    const stamp = subStampFor(reading ?? at, phase, floor, stoppage);
     return sameStamp(stamp, at) ? payload : withStamp(payload, stamp);
   }
+  if (floor === null) return payload;
   return floor.period === phase && at.elapsed < floor.elapsed ? withStamp(payload, floor) : payload;
 }
 

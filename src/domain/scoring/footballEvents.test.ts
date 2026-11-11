@@ -335,6 +335,31 @@ describe('footballEventFor: stamps (design §7.3)', () => {
     });
   });
 
+  // Review M1: a sub that joins keeps its own reading beside the payload, as the queue's local metadata (never sent), so
+  // its send can fall back to it when the stoppage it joined is gone.
+  it('a sub that joins the stoppage carries its own reading beside the payload; one that does not, none', () => {
+    expect(eventOf(subTap(at('H1', 700)), SUB_AT_600)).toEqual({
+      type: 'football.sub',
+      payload: { by: 'ent-home', off: 'H-p7', on: 'H-p13', at: at('H1', 600) },
+      reading: at('H1', 700),
+    });
+    expect(eventOf(subTap(at('H1', 800)), SUB_AT_600)).toEqual({
+      type: 'football.sub',
+      payload: { by: 'ent-home', off: 'H-p7', on: 'H-p13', at: at('H1', 800) },
+    });
+    expect(eventOf(subTap(null), SUB_AT_600)).not.toHaveProperty('reading');
+  });
+
+  it('a concussion sub that joins carries its own reading too', () => {
+    const trial = withCfg(MATCH, { ...KO_11, maxSubs: 5, subWindows: 3, concussionSubs: 1 });
+    const concussion = { ...subTap(at('H1', 700)), concussion: true } as const;
+    expect(eventOf(concussion, SUB_AT_600, trial)).toMatchObject({
+      type: 'core.lineup.replacement',
+      payload: { at: at('H1', 600) },
+      reading: at('H1', 700),
+    });
+  });
+
   it('the other team’s sub at the stoppage is joined too', () => {
     expect(eventOf(subTap(at('H1', 650), 'second'), SUB_AT_600)?.payload).toEqual({
       by: 'ent-away',
@@ -660,6 +685,29 @@ describe('footballPayloadForSend (design §7.2, §7.3; ruling 3)', () => {
       on: 'H-p13',
       at: at('H1', 640),
     });
+  });
+
+  // Review M1: the sub this one joined was undone (or never landed) before this one went: it is sent at its own reading.
+  it('a joined sub whose stoppage is gone is sent at its own reading, not the stoppage’s stamp', () => {
+    const theirs = [...KICK_OFF, sub({ by: 'A', off: 'A-p8', on: 'A-p14', at: at('H1', 600) })];
+    const joined = sub({ by: 'H', off: 'H-p7', on: 'H-p13', at: at('H1', 600) });
+    const tap = queued(joined, { reading: at('H1', 700) });
+    const undone = ledgerOf([...theirs, voiding(eventId(3))]);
+    expect(footballPayloadForSend(tap, undone, false, send())).toEqual({
+      by: 'ent-home',
+      off: 'H-p7',
+      on: 'H-p13',
+      at: at('H1', 700),
+    });
+    expect(footballPayloadForSend(tap, ledgerOf(KICK_OFF), false, send())).toMatchObject({
+      at: at('H1', 700),
+    });
+    // The stoppage still standing: it joins, as tapped.
+    expect(footballPayloadForSend(tap, ledgerOf(theirs), false, send())).toEqual(tap.payload);
+    // A tap from a queue file written before the reading was kept falls back to its payload's stamp.
+    expect(footballPayloadForSend(queued(joined), undone, false, send())).toEqual(
+      queued(joined).payload,
+    );
   });
 
   it('a sub queued offline keeps its own reading past the 120 s, or with a goal after the other sub', () => {

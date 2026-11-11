@@ -1,7 +1,7 @@
 import { type PadRefusal, TAKEN, refusing } from '@/domain/scoring/padLine';
 import type { PadSide } from '@/domain/scoring/padView';
 import { samePicks, type PendingPicks } from '@/domain/scoring/pendingPicks';
-import type { QueuedEvent } from '@/domain/scoring/queue';
+import type { QueuedEvent, TapReading } from '@/domain/scoring/queue';
 import type { SportFold, SportTypes } from '@/domain/scoring/scoringSport';
 import { undoRunOut } from '@/domain/scoring/scoringMatchWindow';
 import { discardQueued } from '@/domain/scoring/sync';
@@ -35,7 +35,7 @@ type UndoEvent = Extract<MatchEvent, { kind: 'undo' }>;
 /** A new tap in the queue, made now under the rules the phone holds, at the sender's stamp and on its clock. */
 const queuedOf = (
   state: MatchState,
-  make: { type: string; payload: unknown; base?: number },
+  make: { type: string; payload: unknown; base?: number; reading?: TapReading },
   key: string,
   { at, stampedOn }: TapStamp,
 ): QueuedEvent => ({
@@ -47,6 +47,7 @@ const queuedOf = (
   ...(stampedOn === undefined ? {} : { stampedOn }),
   attempts: 0,
   ...(make.base === undefined ? {} : { base: make.base }),
+  ...(make.reading === undefined ? {} : { reading: make.reading }),
 });
 
 const withTap = <S extends SportTypes>(state: MatchState<S>, tap: QueuedEvent): MatchState<S> => ({

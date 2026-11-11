@@ -7,6 +7,7 @@ import {
   type MatchQueue,
   type QueueDead,
   type QueuedEvent,
+  type TapReading,
 } from '@/domain/scoring/queue';
 import {
   bootstrapToWire,
@@ -539,6 +540,7 @@ function encodeQueue(queue: MatchQueue): string {
         attempts,
         voidsKey,
         base,
+        reading,
       }): QueuedEvent => ({
         key,
         type,
@@ -549,6 +551,7 @@ function encodeQueue(queue: MatchQueue): string {
         attempts,
         ...(voidsKey === undefined ? {} : { voidsKey }),
         ...(base === undefined ? {} : { base }),
+        ...(reading === undefined ? {} : { reading }),
       }),
     ),
     ownEventIds: queue.ownEventIds,
@@ -602,6 +605,7 @@ function readTap(raw: unknown): QueuedEvent | undefined {
   if (rulesVersion === undefined || attempts === undefined) return undefined;
   // A score count that is not a whole number reads as absent: the tap is the scorer's, and is kept without it.
   const base = readWhole(raw.base, 0);
+  const reading = readReading(raw.reading);
   const tap: QueuedEvent = {
     key,
     type,
@@ -611,10 +615,22 @@ function readTap(raw: unknown): QueuedEvent | undefined {
     ...stampedOnOf(raw),
     attempts,
     ...(base === undefined ? {} : { base }),
+    ...(reading === undefined ? {} : { reading }),
   };
   if (!('voidsKey' in raw)) return tap;
   const voidsKey = readText(raw.voidsKey);
   return voidsKey === undefined ? undefined : { ...tap, voidsKey };
+}
+
+/**
+ * A joined sub's own clock reading (`QueuedEvent.reading`): a period and whole seconds, or absent when garbled. The tap is
+ * the scorer's and is kept either way; without it the payload's stamp stands, as in a file written before it.
+ */
+function readReading(raw: unknown): TapReading | undefined {
+  if (!isRecord(raw)) return undefined;
+  const period = readText(raw.period);
+  const elapsed = readWhole(raw.elapsed, 0);
+  return period === undefined || elapsed === undefined ? undefined : { period, elapsed };
 }
 
 /** `null` is alive; a word is why not; anything else is garbled (`undefined`). */
