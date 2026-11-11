@@ -25,4 +25,9 @@ describe('the engine’s epochs are the ones each sport sends', () => {
     expect(foldEpochOf('football')).toBe(5);
     expect(footballSport.epoch).toBe(5);
   });
+
+  // Literal 1, copied by hand; the Task 2 seeds read the engine's own number, so this is the one that can catch a bump.
+  it('volleyball 1, as at engine 7.0.0', () => {
+    expect(foldEpochOf('volleyball')).toBe(1);
+  });
 });

@@ -8,7 +8,7 @@ import {
 import { boardgame } from '@seazn/engine/sports/boardgame';
 import { cricket } from '@seazn/engine/sports/cricket';
 import { football } from '@seazn/engine/sports/football';
-import { badminton, tabletennis } from '@seazn/engine/sports/setbased';
+import { badminton, tabletennis, volleyball } from '@seazn/engine/sports/setbased';
 import { badmintonCfg, refusalOf } from '@/domain/scoring/badmintonEngine';
 import type { BadmintonTap } from '@/domain/scoring/badmintonPad';
 import { chessCfg, chessRefusalOf } from '@/domain/scoring/chessEngine';
@@ -17,6 +17,8 @@ import { footballRefusalOf, type FootballEngineMatch } from '@/domain/scoring/fo
 import type { PadSide } from '@/domain/scoring/padView';
 import { envelopeOf, lineupOf } from '@/domain/scoring/setBasedEngine';
 import { tableTennisCfg, tableTennisRefusalOf } from '@/domain/scoring/tableTennisEngine';
+import { volleyballCfg, volleyballRefusalOf } from '@/domain/scoring/volleyballEngine';
+import { volleyballLineupOf } from '@/domain/scoring/volleyballLineup';
 import { teamSheetOf } from '@/domain/scoring/teamSheet';
 import {
   voidTargetOf,
@@ -45,8 +47,9 @@ import type { ScoringPort } from '@/services/scoringPort';
  */
 export type FakeSeedEvent = { readonly type: string; readonly payload: unknown };
 
-/** The sports the fake can serve: the set-based ones the phone scores, chess (the engine's `boardgame`), cricket and football. */
-export type FakeSportKey = 'badminton' | 'tabletennis' | 'boardgame' | 'cricket' | 'football';
+/** The sports the fake can serve: the set-based ones the phone scores, chess (the engine's `boardgame`), cricket, football and volleyball. */
+export type FakeSportKey =
+  'badminton' | 'tabletennis' | 'boardgame' | 'cricket' | 'football' | 'volleyball';
 
 /** What the fake hands a sport's judge: the match's id, its config as the sport's schema read it and its two lineups. */
 type FakeEngineMatch = {
@@ -88,6 +91,16 @@ const SPORTS: Readonly<Record<FakeSportKey, FakeSport>> = {
     cfg: chessCfg,
     refusalOf: chessRefusalOf,
     lineupsOf: startingLineups,
+  },
+  volleyball: {
+    module: volleyball,
+    cfg: volleyballCfg,
+    refusalOf: volleyballRefusalOf,
+    // The team sheet and the pair order (ruling 186), as the web builds them.
+    lineupsOf: (sides) => ({
+      home: volleyballLineupOf(sides.home),
+      away: volleyballLineupOf(sides.away),
+    }),
   },
   cricket: {
     module: cricket,
