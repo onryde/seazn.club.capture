@@ -18,6 +18,7 @@ import { TapFlash } from '@/ui/components/TapFlash';
 import { Text } from '@/ui/components/Text';
 import { scoreRole } from '@/ui/theme/scoreRole';
 import { colour, layout, plateInk, radius, space } from '@/ui/theme/tokens';
+import { typeScale } from '@/ui/theme/type';
 
 type PadWords = ReturnType<typeof usePadText>;
 
@@ -47,12 +48,13 @@ export const ScoreHalf = memo(function ScoreHalf({ half, flash, onTap }: ScoreHa
   const tap = useCallback(() => onTap(half.side), [onTap, half.side]);
   const [height, measure] = useHeight();
   const sub = half.sub === null ? null : words(half.sub);
+  const foot = half.foot == null ? null : words(half.foot.text);
   const said = half.marks.said.map(words);
   return (
     <Pressable
       testID={`half-${half.side}`}
       accessibilityRole="button"
-      accessibilityLabel={halfName(half, words, sub, said)}
+      accessibilityLabel={halfName(half, words, sub, said, foot)}
       accessibilityHint={words(half.hint)}
       disabled={!half.tappable}
       onPress={tap}
@@ -62,16 +64,46 @@ export const ScoreHalf = memo(function ScoreHalf({ half, flash, onTap }: ScoreHa
       <TapFlash cue={flash} />
       <HalfHead half={half} />
       <View style={styles.middle}>
-        <Text testID="score" variant={scoreRole(height)}>
+        <Text testID="score" variant={scoreRole(height === null ? null : height - footRoom(foot))}>
           {half.value}
         </Text>
       </View>
+      {foot === null ? null : <HalfCounts text={foot} caution={half.foot?.caution === true} />}
       <HalfFoot
         scores={half.periods?.scores ?? NO_SCORES}
         sub={sub}
         hint={half.tappable ? words(half.action ?? TAP) : null}
       />
     </Pressable>
+  );
+});
+
+/** The room the counts line takes out of the half's height, which the score's size is judged without (`scoreRole`). */
+const footRoom = (foot: string | null): number =>
+  foot === null ? 0 : typeScale.control.lineHeight;
+
+/**
+ * The side's counts on a line of their own above the bottom row (`PadHalf.foot`; volleyball's "T/O 1 of 2 · Subs 4 of 6"):
+ * `caution` once a count is at its number, never red. One line, cut with an ellipsis rather than wrapped. A screen reader
+ * hears the same words in the half's name, so this is hidden from it.
+ */
+const HalfCounts = memo(function HalfCounts({
+  text,
+  caution,
+}: {
+  readonly text: string;
+  readonly caution: boolean;
+}) {
+  return (
+    <Text
+      testID="half-counts"
+      variant="control"
+      numberOfLines={1}
+      aria-hidden
+      style={caution ? styles.countsCaution : styles.counts}
+    >
+      {text}
+    </Text>
   );
 });
 
@@ -100,11 +132,12 @@ function halfName(
   words: PadWords,
   sub: string | null,
   marks: readonly string[],
+  foot: string | null,
 ): string {
   const periods = half.periods === null ? NO_WORDS : half.periods.said.map(words);
   const serving = half.serving === null ? null : words(half.serving.said);
   const plate = half.plate === null ? null : words(half.plate);
-  return [half.label, half.value, ...periods, sub, ...marks, serving, plate]
+  return [half.label, half.value, ...periods, sub, foot, ...marks, serving, plate]
     .filter(isWords)
     .join(', ');
 }
@@ -309,6 +342,8 @@ const styles = StyleSheet.create({
   lostDigits: { color: colour.ink2 },
   // A disqualification's mark: the sanction tools' caution (never red: red means ON AIR, AGENTS §5).
   mark: { color: colour.caution },
+  counts: { color: colour.ink2 },
+  countsCaution: { color: colour.caution },
   plate: { paddingHorizontal: space.sm, paddingVertical: space.xs, backgroundColor: colour.lime },
   plateWord: { color: plateInk },
 });

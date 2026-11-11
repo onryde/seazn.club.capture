@@ -3,6 +3,7 @@ import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
 import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
+import { halfNeeds, scoreRole } from '@/ui/theme/scoreRole';
 import { layout, space } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
 import { loadFont } from '../../../test/fontMetrics';
@@ -362,5 +363,26 @@ describe('volleyball: every word it has is measured here (the sweep)', () => {
   it('names no key the dictionary lacks', () => {
     for (const key of Object.keys(ELSEWHERE))
       expect(Object.keys(en), key).toContain(`${VB}.${key}`);
+  });
+});
+
+// Task 11: the counts line (`PadHalf.foot`) is a line of its own in the half, so the score is sized from the half less that
+// line (`ScoreHalf`). The halves' height is the screen less the pad's fixed parts, written out from `padFit.test.ts`'s
+// arithmetic for the standard layout: 32 (the safe area above) + 48 (the top bar) + the strip + 54 (the last-tap line, three
+// lines) + 48 (the tool row) + five 8 dp gaps, shared by two halves. Whether text stays inside on a phone is the device's.
+describe('volleyball: the score keeps its room with the counts line in the half', () => {
+  const FIXED = 32 + 48 + layout.padStripLines * typeScale.metricUnit.lineHeight + 54 + 48 + 5 * 8;
+  const halfAt = (height: number) => (height - FIXED) / 2 - typeScale.control.lineHeight;
+
+  it('leaves the owner’s phone, 360 × 724, the score at 96 (the large 128 needs 226 and the half leaves 225)', () => {
+    expect(halfAt(724)).toBe(225);
+    expect(scoreRole(halfAt(724))).toBe('score');
+    expect(halfAt(724)).toBeGreaterThanOrEqual(halfNeeds('score'));
+  });
+
+  it('holds the compact score whole at 320 × 640, with 21 dp to spare', () => {
+    expect(halfAt(640)).toBe(183);
+    expect(scoreRole(halfAt(640))).toBe('scoreCompact');
+    expect(halfAt(640) - halfNeeds('scoreCompact')).toBe(21);
   });
 });
