@@ -12,6 +12,8 @@ import { TEST_NOW } from './fakePorts';
 import { KO_11, type Spec } from './footballLedger';
 import { KICK_OFF, LEVEL_AFTER_ET, kicks } from './footballPadFixtures';
 import { LINK, RAW, linkKey } from './scoringHomeFixtures';
+import { HOLD_MS } from '@/hooks/useHold';
+import { pressIn, pressOut } from './press';
 import { flush, launchApp, type LaunchedApp } from './routedApp';
 
 beforeEach(() => {
@@ -83,12 +85,18 @@ async function pressSquare(app: LaunchedApp, side: 'first' | 'second'): Promise<
 }
 
 /**
- * End of period, pressed once it has re-armed: it is off for 2 s after its label changes (the controller's ruling, final
+ * End of period, held for HOLD_MS (owner ruling 160) once it has re-armed: it is off for 2 s after its label changes (the controller's ruling, final
  * review, 2026-11-08), and the scorer here presses it on the heels of the last period's Start.
  */
-async function endPeriod(app: LaunchedApp, name: string): Promise<void> {
+async function endPeriod(app: LaunchedApp, name: string, hold: string): Promise<void> {
   await flush(2_000);
-  await press(app, name);
+  later(app);
+  const held = plain(fill(hold, { label: name }));
+  const button = screen.getByRole('button', { name: (accessible) => plain(accessible) === held });
+  pressIn(button);
+  await flush(HOLD_MS);
+  pressOut(button); // the same Pressable serves the next period end: an unreleased press drops its next keyDown
+  await flush(400);
 }
 
 const column = (side: 'first' | 'second') => screen.getByTestId(`column-${side}`);
@@ -215,7 +223,7 @@ async function playKnockout(app: LaunchedApp, words: Words): Promise<void> {
   );
 
   // Half-time: the bar says it, with Start for the second half, which reads from 45:00.
-  await endPeriod(app, w('scoring.football.end.HT'));
+  await endPeriod(app, w('scoring.football.end.HT'), w('scoring.football.hold.name'));
   expect(within(clockBar()).getByText(plain(w('scoring.football.break.halfTime')))).toBeTruthy();
   expect(within(clockBar()).getByText('45:00')).toBeTruthy();
   await press(app, w('scoring.football.clock.start'), clockBar());
@@ -225,18 +233,18 @@ async function playKnockout(app: LaunchedApp, words: Words): Promise<void> {
   await pressSquare(app, 'second');
   await press(app, w('scoring.football.sheet.dontKnow'));
   expect([value('first'), value('second')]).toEqual(['1', '1']);
-  await endPeriod(app, w('scoring.football.end.FT'));
+  await endPeriod(app, w('scoring.football.end.FT'), w('scoring.football.hold.name'));
   expect(within(clockBar()).getByText('90:00')).toBeTruthy();
   await press(app, w('scoring.football.clock.start'), clockBar());
   expect(within(clockBar()).getByText(plain(w('scoring.football.period.ET_H1')))).toBeTruthy();
   expect(screen.queryByTestId('pad-strip')).toBeNull();
-  await endPeriod(app, w('scoring.football.end.ET_HT'));
+  await endPeriod(app, w('scoring.football.end.ET_HT'), w('scoring.football.hold.name'));
   await press(app, w('scoring.football.clock.start'), clockBar());
   expect(within(clockBar()).getByText(plain(w('scoring.football.period.ET_H2')))).toBeTruthy();
 
   // Still level after extra time: the kicks. Each column has Scored and Missed: live in both before the first kick (the
   // engine leaves who kicks first to the teams), then only for the team to kick.
-  await endPeriod(app, w('scoring.football.end.ET_FT'));
+  await endPeriod(app, w('scoring.football.end.ET_FT'), w('scoring.football.hold.name'));
   expect(within(clockBar()).getByText(plain(w('scoring.football.period.shootout')))).toBeTruthy();
   expect(
     within(clockBar()).queryByRole('button', { name: w('scoring.football.clock.start') }),
