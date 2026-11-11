@@ -780,6 +780,14 @@ hersenschudding" (`sheet.concussionSub`, and `last.concussionSub` with the sub l
 "No quedan" / "Plus aucun" / "Geen meer" (`sheet.noneLeft`, under a spent Concussion sub). The concussion words follow
 the web's rules field (`rules.field.concussionSubs.label`). Drafts, not yet reviewed.
 
+Revision, 2026-11-11 (engine 7.0.0, F-R3: the extra-time substitution allowance): a Match details row under Subs.
+"Extra-time subs" / "Cambios en prórroga" / "Changements en prolongation" / "Wissels in verlenging"
+(`rules.extraTimeSubs`; fr avoids "Remplacements", 113 dp against the label column's 112); "+{subs} in {count} more
+window(s)" / "+{subs} en {count} ventana(s) más" / "+{subs} en {count} fois de plus" / "+{subs} in {count} extra
+wisselmoment(en)" (`rules.extraTimeSubsCapped`, as `rules.subsCapped`'s windows are worded); "+{subs}"
+(`rules.extraTimeSubsMax`); "+{count} window(s)" / "+{count} ventana(s)" / "+{count} fois" / "+{count}
+wisselmoment(en)" (`rules.extraTimeSubsWindows`). Drafts, not yet reviewed.
+
 ## App settings (2026-11-02)
 
 The app's own Settings, from the gear in Home's top-right corner (owner, 2026-11-02: "we should have common setting in a top

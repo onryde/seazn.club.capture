@@ -9,7 +9,7 @@ import { FAKE_SCORING_SECRET } from '../../test/fakeScoringLinkPort';
 const LINK: ScoringLink = { origin: 'https://stg.seazn.club', token: FAKE_SCORING_SECRET };
 
 let keys = 0;
-/** A body for the next tap: a key never seen before, football's epoch at engine 2.0.0 (4) and the seed's rules. */
+/** A body for the next tap: a key never seen before, football's epoch at engine 7.0.0 (5) and the seed's rules. */
 const body = (expected_seq: number, type: string, payload: unknown = {}): AppendBody => {
   keys += 1;
   return {
@@ -17,7 +17,7 @@ const body = (expected_seq: number, type: string, payload: unknown = {}): Append
     type,
     payload,
     idempotency_key: `football-key-${keys}`,
-    engine_epoch: 4,
+    engine_epoch: 5,
     rules_version: 0,
   };
 };
@@ -41,7 +41,7 @@ describe('fakeFootballPad: the seed', () => {
     expect(bootstrap).toMatchObject({
       fixtureId: 'fake-football',
       sportKey: 'football',
-      epochRequired: 4,
+      epochRequired: 5,
       rulesVersion: 0,
       screen: 'pad',
       lastSeq: 0,

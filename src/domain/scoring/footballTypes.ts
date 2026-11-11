@@ -330,6 +330,10 @@ export type FootballRuleWord =
   | 'subsMax'
   | 'subsWindows.other'
   | 'subsUnlimited'
+  | 'extraTimeSubs'
+  | 'extraTimeSubsCapped.other'
+  | 'extraTimeSubsMax'
+  | 'extraTimeSubsWindows.other'
   | 'sinBin'
   | 'minutes'
   | 'none';

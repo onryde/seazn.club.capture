@@ -66,6 +66,44 @@ describe('footballRuleRows', () => {
     ]);
   });
 
+  // Engine 7.0.0 (F-R3): `extraTimeSubs` raises each declared cap once the match reaches extra time. The row says the
+  // raise as the engine reads it (`effectiveSubCaps`), only where extra time is played and something is raised.
+  const ET_CAPPED = { ...KO_11, maxSubs: 5, subWindows: 3 };
+  it('says the extra-time allowance in its own row under Subs, when extra time is played', () => {
+    const rows = rowsOf({ ...ET_CAPPED, extraTimeSubs: { subs: 1, windows: 1 } });
+    expect(rows.slice(3, 5)).toEqual([
+      ['Subs', 'Up to 5 in 3 windows'],
+      ['Extra-time subs', '+1 in 1 more window'],
+    ]);
+    expect(rowsOf({ ...ET_CAPPED, extraTimeSubs: { subs: 2, windows: 2 } })[4]).toEqual([
+      'Extra-time subs',
+      '+2 in 2 more windows',
+    ]);
+  });
+
+  it('says only what the engine raises: a cap alone, windows alone', () => {
+    const extra = { extraTimeSubs: { subs: 1, windows: 1 } };
+    expect(rowsOf({ ...KO_11, maxSubs: 5, ...extra })[4]).toEqual(['Extra-time subs', '+1']);
+    expect(rowsOf({ ...KO_11, subWindows: 3, ...extra })[4]).toEqual([
+      'Extra-time subs',
+      '+1 window',
+    ]);
+    expect(rowsOf({ ...ET_CAPPED, extraTimeSubs: { subs: 1, windows: 0 } })[4]).toEqual([
+      'Extra-time subs',
+      '+1',
+    ]);
+  });
+
+  it('no extra-time row with no allowance, nothing it raises, or no extra time', () => {
+    const labels = (cfg: unknown) => rowsOf(cfg).map(([label]) => label);
+    const five = ['Format', 'Extra time', 'Shootout', 'Subs', 'Sin-bin'];
+    expect(labels(ET_CAPPED)).toEqual(five);
+    // An uncapped side stays uncapped: the engine raises nothing.
+    expect(labels({ ...KO_11, extraTimeSubs: { subs: 1, windows: 1 } })).toEqual(five);
+    expect(labels({ ...ET_CAPPED, extraTimeSubs: { subs: 0, windows: 0 } })).toEqual(five);
+    expect(labels({ ...CAPPED, extraTimeSubs: { subs: 1, windows: 1 } })).toEqual(five);
+  });
+
   it('a cap is said over rolling: it is what stops Sub', () => {
     expect(rowsOf({ ...MINI, maxSubs: 6 })[3]).toEqual(['Subs', 'Up to 6']);
   });

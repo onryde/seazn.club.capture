@@ -21,6 +21,7 @@ import {
   KICKS,
   PERIOD_ENDS,
   SUBS,
+  WC_CFG,
   wc2022Seed,
   YELLOWS,
   type Minute,
@@ -716,17 +717,19 @@ describe('the 2022 World Cup final, replayed through the phone', () => {
       expect(done.length).toBeGreaterThan(0);
     });
 
-    // Since F-R2 the concussion subs count outside the cap; what is left is F-R3: France reads "No subs left" from its
-    // fifth ordinary sub at 113, Argentina from its fifth at 116, with no sixth for extra time.
-    it.fails(
-      'F-R3: neither side is ever told "No subs left": both made every real substitution',
-      async () => {
-        const { observed } = (await replayed()).replay;
-        expect(observed.map((seen) => [seen.label, seen.display.subsLeft])).toEqual(
-          observed.map((seen) => [seen.label, { first: true, second: true }]),
-        );
-      },
-    );
+    // Since F-R2 the concussion subs count outside the cap, and since engine 7.0.0 (F-R3) extra time adds one sub and one
+    // window (`extraTimeSubs`): neither side is told "No subs left" before it has made every real substitution. Each reads
+    // it from its own sixth sub at 120+1 on, when it has none left (France's first, then Argentina's).
+    it('F-R3: neither side is told "No subs left" until it has made every real substitution', async () => {
+      const { observed } = (await replayed()).replay;
+      const spent: Record<string, { first: boolean; second: boolean }> = {
+        [subLabel(SUBS[11])]: { first: true, second: false },
+        [subLabel(SUBS[12])]: { first: false, second: false },
+      };
+      expect(observed.map((seen) => [seen.label, seen.display.subsLeft])).toEqual(
+        observed.map((seen) => [seen.label, spent[seen.label] ?? { first: true, second: true }]),
+      );
+    });
 
     it('F-R2: after the concussion substitution at 96, France may still substitute', async () => {
       const seen = await observedOf(subLabel(SUBS[6]));
@@ -753,19 +756,16 @@ describe('the 2022 World Cup final, replayed through the phone', () => {
       ]);
     });
 
-    it.fails(
-      'F-R3: 120+1 Koundé → Disasi (France’s 6th ordinary sub, the extra-time sub) is recorded',
-      async () => {
-        const seen = await observedOf(subLabel(SUBS[11]));
-        expect([seen.offered, seen.refusal, seen.recorded]).toEqual([
-          true,
-          null,
-          expect.objectContaining({ off: fra(5), on: fra(3) }),
-        ]);
-      },
-    );
+    it('F-R3: 120+1 Koundé → Disasi (France’s 6th ordinary sub, the extra-time sub) is recorded', async () => {
+      const seen = await observedOf(subLabel(SUBS[11]));
+      expect([seen.offered, seen.refusal, seen.recorded]).toEqual([
+        true,
+        null,
+        expect.objectContaining({ off: fra(5), on: fra(3) }),
+      ]);
+    });
 
-    it.fails('F-R3: 120+1 Tagliafico → Dybala (Argentina’s 6th sub) is recorded', async () => {
+    it('F-R3: 120+1 Tagliafico → Dybala (Argentina’s 6th sub) is recorded', async () => {
       const seen = await observedOf(subLabel(SUBS[12]));
       expect([seen.offered, seen.refusal, seen.recorded]).toEqual([
         true,
@@ -774,16 +774,27 @@ describe('the 2022 World Cup final, replayed through the phone', () => {
       ]);
     });
 
-    it('the engine refuses the two it would not take, by these codes (pinned so a change is seen)', async () => {
-      const refused = await Promise.all([SUBS[11], SUBS[12]].map((s) => observedOf(subLabel(s))));
-      // Observed codes, pinned as evidence for F-R2 and F-R3; reality is the it.fails tests above. The board offered none of
-      // them as an ordinary sub: Sub read "No subs left" before each was due. Each is a sixth ordinary sub (the kernel's cap
-      // first); the concussion replacement is outside the cap (F-R2), so Konaté at 113 is recorded.
-      expect(refused.map((seen) => [seen.label, seen.offered, seen.refusal])).toEqual([
-        [subLabel(SUBS[11]), false, 'INVALID_EVENT'],
-        // Argentina still holds its concussion exemption, so Sub opens; Normal sub is disabled (No subs left).
-        [subLabel(SUBS[12]), true, 'INVALID_EVENT'],
+    // Law 3 without the competition's extra allowance: the same two 6th subs over the same ledger, judged by a cfg with
+    // no `extraTimeSubs`, are refused (the code pinned so a change is seen).
+    it('without extraTimeSubs, each 6th sub at 120+1 is refused', async () => {
+      const { ledger } = (await replayed()).replay;
+      const envelopes = ledger.map((event) => envelopeOf(SEED.fixtureId, event));
+      const { extraTimeSubs: _allowance, ...lawOnly } = WC_CFG;
+      const withoutKey = { ...ENGINE_MATCH, cfg: footballCfg(lawOnly)! };
+      const refusalAt = (off: string, on: string) => {
+        const at = envelopes.findIndex((e) => {
+          const payload = e.payload as { off?: string; on?: string };
+          return e.type === 'football.sub' && payload.off === off && payload.on === on;
+        });
+        expect(at).toBeGreaterThan(0);
+        return footballRefusalOf(withoutKey, envelopes.slice(0, at + 1))?.code ?? null;
+      };
+      // France's is its 6th sub over the kernel's cap; Argentina's would open a 4th window over the window cap.
+      expect([refusalAt(fra(5), fra(3)), refusalAt(arg(3), arg(21))]).toEqual([
+        'INVALID_EVENT',
+        'SUB_WINDOW_EXCEEDED',
       ]);
+      expect(footballRefusalOf(ENGINE_MATCH, envelopes)).toBeNull();
     });
 
     it('up to 102 the engine counts the windows the match used: France 2 in normal time, Argentina 2 (64, 102)', async () => {
@@ -802,14 +813,26 @@ describe('the 2022 World Cup final, replayed through the phone', () => {
       expect(before113.map(minuteOf)).toEqual(["41'", "71'"]);
     });
 
-    // Molina → Montiel at the break opens no window; Argentina's 120+1 (its 4th window, the extra-time one) is F-R3's.
+    // Molina → Montiel at the break opens no window; Argentina's 120+1 is its 4th window, the extra-time one (F-R3, below).
     it('F-R1: each window sits at the minute it was used (France 41, 71; Argentina 64, 102, 116)', async () => {
       const state = await engineState();
       const minutes = (windows: readonly GameTime[] | undefined) => (windows ?? []).map(minuteOf);
       expect({
         france: minutes(state.squads.away.subWindows).slice(0, 2),
-        argentina: minutes(state.squads.home.subWindows),
+        argentina: minutes(state.squads.home.subWindows).slice(0, 3),
       }).toEqual({ france: ["41'", "71'"], argentina: ["64'", "102'", "116'"] });
+    });
+
+    it('F-R3: each side ends at 4 windows, the extra-time one at 120+1', async () => {
+      const state = await engineState();
+      const minutes = (windows: readonly GameTime[] | undefined) => (windows ?? []).map(minuteOf);
+      expect({
+        france: minutes(state.squads.away.subWindows),
+        argentina: minutes(state.squads.home.subWindows),
+      }).toEqual({
+        france: ["41'", "71'", "113'", "120+1'"],
+        argentina: ["64'", "102'", "116'", "120+1'"],
+      });
     });
 
     it('Molina → Montiel, in the break before extra time, is recorded unstamped', async () => {
@@ -885,13 +908,15 @@ describe('the 2022 World Cup final, replayed through the phone', () => {
       ]);
     });
 
-    it.fails(
-      'F-R3 (follows from it): every kick names its taker; Dybala is on the pitch',
-      async () => {
-        const { kicks } = await replayed();
-        expect(kicks.map((seen) => seen.missing)).toEqual(Array<null>(KICKS.length).fill(null));
-      },
-    );
+    it('F-R3 (follows from it): every kick names its taker; Dybala is on the pitch', async () => {
+      const { kicks } = await replayed();
+      expect(kicks.map((seen) => seen.missing)).toEqual(Array<null>(KICKS.length).fill(null));
+    });
+
+    it('F-R3: Dybala, on at 120+1, takes Argentina’s second kick (the fourth of the shootout) and scores', async () => {
+      const { kicks } = await replayed();
+      expect(kicks[3]?.recorded).toEqual({ by: ARG, person: arg(21), scored: true });
+    });
   });
 });
 

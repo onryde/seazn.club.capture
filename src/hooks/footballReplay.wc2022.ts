@@ -110,8 +110,8 @@ function side(
 
 /**
  * The competition's rules as the brief gives them (FIFA WC 2022): 2 × 45, extra time 2 × 15, a shootout of 5 kicks, five
- * substitutions in three windows, one concussion substitution outside the cap. The engine has no key for the extra-time
- * substitution or window, so none is invented here (that absence is finding F-R5).
+ * substitutions in three windows, one more substitution and one more window in extra time (Law 3; engine 7.0.0's
+ * `extraTimeSubs`, which closed F-R3), one concussion substitution outside the cap.
  */
 export const WC_CFG = {
   extraTime: { enabled: true, halfMinutes: 15 },
@@ -119,6 +119,7 @@ export const WC_CFG = {
   shootoutAttempts: 5,
   maxSubs: 5,
   subWindows: 3,
+  extraTimeSubs: { subs: 1, windows: 1 },
   concussionSubs: 1,
   teamSize: 11,
 } as const;

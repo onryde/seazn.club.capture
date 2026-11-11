@@ -54,9 +54,9 @@ describe('footballSport: which sport it is', () => {
     expect(footballSport.key).toBe('football');
   });
 
-  it('folds at the engine’s epoch for football (ruling 53), 4 at engine 2.0.0', () => {
+  it('folds at the engine’s epoch for football (ruling 53), 5 at engine 7.0.0', () => {
     expect(footballSport.epoch).toBe(FOLD_EPOCH.football);
-    expect(footballSport.epoch).toBe(4);
+    expect(footballSport.epoch).toBe(5);
   });
 
   it('remembers its fold: the same input is folded once, another is folded again', () => {

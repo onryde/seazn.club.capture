@@ -815,3 +815,65 @@ describe('the pad’s height, portrait', () => {
     expect(goalSide({ width: 140, height: 80 })).toBe(80);
   });
 });
+
+// Match details' rules table (`MatchCard`, in the sheet), as cricket's is measured (cricketFit.lines.test.ts): a label
+// column, the widest label's but at most `padRuleLabelMax`, then the value in what is left, both `body`, wrapping to two
+// lines at most. Every word must fit whole. Engine 7.0.0 added the Extra-time subs row (F-R3), the longest label. Only
+// its label is held here: two older labels already have a word past the 112 dp cap (fr "Remplacements" 113, nl
+// "Strafschoppenreeks" 143), routed to the device check and the copy owner rather than changed in this commit.
+describe('Match details’ rules, football', () => {
+  const geist400 = loadFont('geist-400');
+  const bodyOf = (text: string) => geist400.width(text, typeScale.body.fontSize);
+  const sheetColumn = (width: number) => width - 2 * space.md;
+  const LABELS = ['format', 'extraTime', 'shootout', 'subs', 'extraTimeSubs', 'sinBin'];
+  const values = (dictionary: Dictionary) =>
+    [
+      ['periods', { count: '2', minutes: '45' }],
+      ['shootoutKicks.other', { count: '10' }],
+      ['subsCapped.other', { subs: '10', count: '10' }],
+      ['subsWindows.other', { count: '10' }],
+      ['subsRolling', {}],
+      ['subsUnlimited', {}],
+      ['extraTimeSubsCapped.one', { subs: '1', count: '1' }],
+      ['extraTimeSubsCapped.other', { subs: '10', count: '10' }],
+      ['extraTimeSubsMax', { subs: '10' }],
+      ['extraTimeSubsWindows.other', { count: '10' }],
+      ['minutes', { minutes: '40 + 45' }],
+      ['none', {}],
+    ].map(([key, vars]) =>
+      fill(
+        said(dictionary, `scoring.football.rules.${key as string}`),
+        vars as Record<string, string>,
+      ),
+    );
+
+  it.each(WIDTHS.flatMap((width) => LANGUAGES.map(([lang, d]) => [width, lang, d] as const)))(
+    '%i dp, %s: every label and value keeps its words whole in the card’s columns',
+    (width, _lang, dictionary) => {
+      const labels = LABELS.map((label) => said(dictionary, `scoring.football.rules.${label}`));
+      const labelColumn = Math.min(
+        Math.ceil(Math.max(...labels.map(bodyOf))),
+        layout.padRuleLabelMax,
+      );
+      const valueRoom = sheetColumn(width) - labelColumn - space.md;
+      const label = said(dictionary, 'scoring.football.rules.extraTimeSubs');
+      expect(wordsFit(label, labelColumn, bodyOf), label).toBe(true);
+      expect(linesOf(label, labelColumn, bodyOf), label).toBeLessThanOrEqual(2);
+      for (const value of values(dictionary)) {
+        expect(wordsFit(value, valueRoom, bodyOf), value).toBe(true);
+        expect(linesOf(value, valueRoom, bodyOf), value).toBeLessThanOrEqual(2);
+      }
+    },
+  );
+
+  // Anti-vacuity: the new label is the one that wraps, in some language, at the label column's cap.
+  it('the Extra-time subs label takes two lines in some language', () => {
+    const most = Math.max(
+      ...LANGUAGES.map(([, dictionary]) => {
+        const label = said(dictionary, 'scoring.football.rules.extraTimeSubs');
+        return linesOf(label, layout.padRuleLabelMax, bodyOf);
+      }),
+    );
+    expect(most).toBe(2);
+  });
+});
