@@ -96,18 +96,24 @@ const action = (
   note,
 });
 
-/** Goal, Yellow, Red and Sub. Sub says why it is off: the team has no sheet to name a player from, or no substitution left. */
+/**
+ * Goal, Yellow, Red and Sub. Sub says why it is off: the team has no sheet to name a player from, or no substitution
+ * left. It stays on while the team has an ordinary sub or its concussion exemption left (ruling 155); with only the
+ * concussion left it still reads No subs left, and its sheet offers Normal sub disabled.
+ */
 function playActions(
   display: FootballDisplay,
   side: PadSide,
   live: boolean,
 ): readonly BoardAction[] {
   const subNote = subNoteOf(display, side);
+  const { sheet } = display.sides[side];
+  const subOn = sheet && (display.subsLeft[side] || display.concussionLeft[side]);
   return [
     action(`goal.${side}`, 'goal', live),
     action(`yellow.${side}`, 'yellow', live),
     action(`red.${side}`, 'red', live),
-    action(`sub.${side}`, 'sub', live && subNote === null, subNote),
+    action(`sub.${side}`, 'sub', live && subOn, subNote),
   ];
 }
 

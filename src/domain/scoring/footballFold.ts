@@ -377,6 +377,7 @@ const field = (payload: unknown, name: string): unknown =>
 function doneOf(match: FootballMatch, envelope: EventEnvelope): FootballDone | null {
   const { type, payload } = envelope;
   if (type === 'core.start') return { kind: 'start' };
+  if (type === 'core.lineup.replacement') return replacementDone(match, payload);
   if (type === 'football.clock') return clockDone(payload);
   if (type === 'football.period') return periodDone(payload);
   const side = sideOfEntrant(match, field(payload, 'by'));
@@ -448,6 +449,21 @@ function subDone(match: FootballMatch, side: PadSide, payload: unknown): Footbal
     : { kind: 'sub', side, off, on, at: gameTimeOf(payload) };
 }
 
+/**
+ * A concussion replacement (`core.lineup.replacement`, ruling 155): its `side` is the entrant, its `on` the kernel's slot.
+ * One naming another exemption, or a player this match does not know, has no words.
+ */
+function replacementDone(match: FootballMatch, payload: unknown): FootballDone | null {
+  const side = sideOfEntrant(match, field(payload, 'side'));
+  if (side === null || field(payload, 'exemption') !== 'concussion') return null;
+  const done = subDone(match, side, {
+    off: field(payload, 'off'),
+    on: field(field(payload, 'on'), 'personId'),
+    at: field(payload, 'at'),
+  });
+  return done?.kind === 'sub' ? { ...done, concussion: true } : null;
+}
+
 const binDone = (
   kind: 'sinBin' | 'sinBinEnd',
   match: FootballMatch,
@@ -498,6 +514,10 @@ function displayOf(match: FootballMatch, input: SportFoldInput, read: Read): Foo
     marker: markerOf(state),
     subsLeft: clock.stoppage === null ? subsLeftAt.fresh : subsLeftAt.joining,
     subsLeftAt,
+    concussionLeft: {
+      first: concussionLeftOf(state, sides.first, 'first'),
+      second: concussionLeftOf(state, sides.second, 'second'),
+    },
     lastTap: lastTapOf(stream.envelopes, recorded, (did) => (did.kind === 'start' ? null : did)),
     undoable: undoableOf(input, stream),
     kickedOff: kickedOffOf(stream.envelopes),
@@ -609,6 +629,19 @@ function subsLeftAtOf(
   });
   const freshLeft = asked(fresh);
   return { fresh: freshLeft, joining: clock.stoppage === null ? freshLeft : asked(joining) };
+}
+
+/**
+ * Whether a team may still make a concussion substitution (ruling 155): the competition runs the IFAB trial
+ * (`cfg.concussionSubs`), the team has used fewer than it allows (the fold's `exemptUsed`), and there is someone on the
+ * pitch and someone to bring on.
+ */
+function concussionLeftOf(state: FootballState, side: FootballSide, seat: PadSide): boolean {
+  const allowed = state.cfg.concussionSubs;
+  if (allowed === undefined || side.onPitch.length === 0 || side.offeredOn.length === 0)
+    return false;
+  const used = state.squads[ENGINE_SIDE[seat]].exemptUsed?.concussion ?? 0;
+  return used < allowed;
 }
 
 /** A stamp no window holds yet: a second past the newest stamp in the phase, or none while the clock has no reading. */

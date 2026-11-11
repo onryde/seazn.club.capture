@@ -426,9 +426,11 @@ describe('the sheets’ rows at 320 and 360 in four languages (design §6.3)', (
         fill(said(dictionary, 'scoring.football.more.sinBin'), { team }),
         fill(said(dictionary, 'scoring.football.more.shot'), { team }),
         fill(said(dictionary, 'scoring.football.more.sinBinEnd'), { player }),
+        // The concussion step (ruling 155): its title names the team, its two rows are words alone.
+        fill(said(dictionary, 'scoring.football.sheet.whichSub'), { team }),
         ...Object.keys(dictionary)
           .filter((key) =>
-            /^scoring\.football\.(reason|card|outcome)\.|^scoring\.football\.sheet\.(dontKnow|penalty|noAssist|noReason)$/.test(
+            /^scoring\.football\.(reason|card|outcome)\.|^scoring\.football\.sheet\.(dontKnow|penalty|noAssist|noReason|normalSub|concussionSub)$/.test(
               key,
             ),
           )
@@ -445,11 +447,15 @@ describe('the sheets’ rows at 320 and 360 in four languages (design §6.3)', (
   );
 
   it.each(LANGUAGES)(
-    '%s: the “2nd yellow · sent off” note takes one line under a player’s row, and the Yellow and Red titles keep their team',
+    '%s: the “2nd yellow · sent off”, “None left” and “No subs left” notes take one line under a row, and the Yellow and Red titles keep their team',
     (_lang, dictionary: Dictionary) => {
-      const note = said(dictionary, 'scoring.football.sheet.secondYellow');
-      for (const width of WIDTHS)
-        expect(noteWidth(note), `${note} @${width}`).toBeLessThanOrEqual(rowText(width));
+      // The concussion step's notes (ruling 155) sit under a row the same way.
+      const notes = ['sheet.secondYellow', 'sheet.noneLeft', 'column.noSubs'].map((key) =>
+        said(dictionary, `scoring.football.${key}`),
+      );
+      for (const note of notes)
+        for (const width of WIDTHS)
+          expect(noteWidth(note), `${note} @${width}`).toBeLessThanOrEqual(rowText(width));
       for (const key of ['yellow', 'red'])
         expect(said(dictionary, `scoring.football.sheet.${key}`)).toContain('{team}');
     },

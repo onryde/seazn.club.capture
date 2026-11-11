@@ -772,6 +772,14 @@ words for a clock correction (a Correct, or the resync after a late Start), is s
 "Reloj corregido" / "Chrono corrigé" / "Klok gecorrigeerd", the clock's face after it. The button keeps `more.correct`'s
 words above. Drafts, not yet reviewed.
 
+Revision, 2026-11-11 (the controller's ruling 155, the concussion substitution): the Sub sheet's third step and its
+History line. "Which sub? · {team}" / "¿Qué cambio? · {team}" / "Quel remplacement ? · {team}" / "Welke wissel? ·
+{team}" (`sheet.whichSub`); "Normal sub" / "Cambio normal" / "Remplacement normal" / "Gewone wissel"
+(`sheet.normalSub`); "Concussion sub" / "Cambio por conmoción" / "Remplacement pour commotion" / "Wissel bij
+hersenschudding" (`sheet.concussionSub`, and `last.concussionSub` with the sub line's words after it); "None left" /
+"No quedan" / "Plus aucun" / "Geen meer" (`sheet.noneLeft`, under a spent Concussion sub). The concussion words follow
+the web's rules field (`rules.field.concussionSubs.label`). Drafts, not yet reviewed.
+
 ## App settings (2026-11-02)
 
 The app's own Settings, from the gear in Home's top-right corner (owner, 2026-11-02: "we should have common setting in a top

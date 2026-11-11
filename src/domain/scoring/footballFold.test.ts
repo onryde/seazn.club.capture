@@ -451,6 +451,73 @@ describe('foldFootball: cards and substitutions', () => {
     });
   });
 
+  // Ruling 155: the concussion exemption, counted by the fold's `exemptUsed` against `concussionSubs`.
+  const replacement = (side: 'H' | 'A', off: string, on: string, stamp = at('H1', 300)): Spec => ({
+    type: 'core.lineup.replacement',
+    payload: {
+      side: side === 'H' ? 'ent-home' : 'ent-away',
+      off,
+      on: { personId: on, slot: 'bench', orderNo: 1 },
+      exemption: 'concussion',
+      at: stamp,
+    },
+  });
+  const TRIAL = withCfg(MATCH, { ...CAPPED, concussionSubs: 1 });
+
+  it('concussionLeft: none without the trial; one each with it, until a side uses it', () => {
+    expect(displayOf(KICK_OFF, withCfg(MATCH, CAPPED)).concussionLeft).toEqual({
+      first: false,
+      second: false,
+    });
+    expect(displayOf(KICK_OFF, TRIAL).concussionLeft).toEqual({ first: true, second: true });
+    const used = displayOf([...KICK_OFF, replacement('H', H(2), H(12))], TRIAL);
+    expect([used.concussionLeft, ids(used.sides.first.onPitch).includes(H(12))]).toEqual([
+      { first: false, second: true },
+      true,
+    ]);
+  });
+
+  it('concussionLeft is false once the bench is spent, the allowance unused', () => {
+    const benchSpent = [12, 13, 14, 15, 16].map((n, i) =>
+      sub({ by: 'H', off: H(n - 10), on: H(n), at: at('H1', 600 + i) }),
+    );
+    const trial = withCfg(MATCH, { ...KO_11, concussionSubs: 1 });
+    expect(displayOf([...KICK_OFF, ...benchSpent], trial).concussionLeft).toEqual({
+      first: false,
+      second: true,
+    });
+  });
+
+  it('a replacement naming another exemption has no words in History', () => {
+    const blood: Spec = {
+      type: 'core.lineup.replacement',
+      payload: {
+        side: 'ent-home',
+        off: H(2),
+        on: { personId: H(12), slot: 'bench', orderNo: 1 },
+        exemption: 'blood',
+        at: at('H1', 300),
+      },
+    };
+    const result = folded({ ledger: ledgerOf([...KICK_OFF, blood]), bootstrap: TRIAL });
+    const keys = result.history.flatMap((group) => group.rows.map((row) => row.said.key));
+    expect(keys).not.toContain('scoring.football.last.concussionSub');
+    expect(keys).not.toContain('scoring.football.last.sub');
+  });
+
+  it('a concussion replacement spends no ordinary sub and no window, and History says it', () => {
+    const result = folded({
+      ledger: ledgerOf([...KICK_OFF, replacement('A', A(2), A(12))]),
+      bootstrap: TRIAL,
+    });
+    expect(result.display.subsLeftAt.fresh).toEqual({ first: true, second: true });
+    const rows = result.history.flatMap((group) => group.rows.map((row) => row.said));
+    expect(rows[0]).toEqual({
+      key: 'scoring.football.last.concussionSub',
+      vars: { team: 'Away FC', off: '#2', on: '#12', at: " 6'" },
+    });
+  });
+
   it('subsLeft is false at maxSubs, with players still on the bench', () => {
     const threeSubs = [
       ...KICK_OFF,

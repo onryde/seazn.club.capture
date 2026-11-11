@@ -213,7 +213,11 @@ class Scorer {
       const ids = sheet.sheet.options.map((option) => option.id);
       steps.push(ids);
       let id = choice.id;
-      if (!ids.includes(id)) {
+      // A disabled row (Normal sub with no ordinary sub left) cannot be chosen: it is as good as not offered.
+      const live = sheet.sheet.options
+        .filter((option) => option.disabled !== true)
+        .map((o) => o.id);
+      if (!live.includes(id)) {
         missing ??= id;
         if (choice.orElse === undefined) {
           this.press((actions) => actions.cancelSheet());
@@ -428,12 +432,15 @@ async function play(
     );
   }
   const { side, off, on } = item.sub;
+  const concussion = 'concussion' in item.sub;
   const label = `sub ${said(at)} #${off}→#${on}`;
   const offered = scorer.buttonOf(side, 'sub')?.enabled === true;
   const tapped = offered
     ? await scorer.tapThrough(`sub.${side}`, [
         { id: `p.${personOf(side, off)}` },
         { id: `p.${personOf(side, on)}` },
+        // The final runs the IFAB concussion trial (`concussionSubs`): the sheet asks which kind (ruling 155).
+        { id: concussion ? 'concussionSub' : 'normalSub' },
       ])
     : { steps: [], missing: null };
   const observed = await observe(
@@ -441,7 +448,7 @@ async function play(
     label,
     expectedReading,
     reading,
-    'football.sub',
+    concussion ? 'core.lineup.replacement' : 'football.sub',
     { offered, ...tapped },
     before,
     null,
@@ -672,12 +679,16 @@ describe('the 2022 World Cup final, replayed through the phone', () => {
   });
 
   describe('substitutions', () => {
-    it('the subs up to 102 are all recorded, each with the players the scorer chose', async () => {
+    it('the subs up to 102 are all recorded, each with the players the scorer chose; Rabiot → Fofana as a concussion replacement', async () => {
       for (const s of SUBS.slice(0, 9)) {
         const seen = await observedOf(subLabel(s));
+        const off = personOf(s.side, s.off);
+        const on = personOf(s.side, s.on);
         expect([seen.label, seen.recorded]).toMatchObject([
           seen.label,
-          { by: ENTRANT[s.side], off: personOf(s.side, s.off), on: personOf(s.side, s.on) },
+          'concussion' in s
+            ? { side: ENTRANT[s.side], off, on: { personId: on }, exemption: 'concussion' }
+            : { by: ENTRANT[s.side], off, on },
         ]);
       }
     });
@@ -715,16 +726,13 @@ describe('the 2022 World Cup final, replayed through the phone', () => {
       },
     );
 
-    it.fails(
-      'F-R2: after the concussion substitution at 96, France may still substitute',
-      async () => {
-        const seen = await observedOf(subLabel(SUBS[6]));
-        expect(seen.recorded).not.toBeNull();
-        expect(seen.display.subsLeft.second).toBe(true);
-      },
-    );
+    it('F-R2: after the concussion substitution at 96, France may still substitute', async () => {
+      const seen = await observedOf(subLabel(SUBS[6]));
+      expect(seen.recorded).not.toBeNull();
+      expect(seen.display.subsLeft.second).toBe(true);
+    });
 
-    it.fails('F-R2: 113 Varane → Konaté (France’s 5th ordinary sub) is recorded', async () => {
+    it('F-R2: 113 Varane → Konaté (France’s 5th ordinary sub) is recorded', async () => {
       const seen = await observedOf(subLabel(SUBS[9]));
       expect([seen.offered, seen.refusal, seen.recorded]).toEqual([
         true,
@@ -764,16 +772,15 @@ describe('the 2022 World Cup final, replayed through the phone', () => {
       ]);
     });
 
-    it('the engine refuses the three it would not take, by these codes (pinned so a change is seen)', async () => {
-      const refused = await Promise.all(
-        [SUBS[9], SUBS[11], SUBS[12]].map((s) => observedOf(subLabel(s))),
-      );
+    it('the engine refuses the two it would not take, by these codes (pinned so a change is seen)', async () => {
+      const refused = await Promise.all([SUBS[11], SUBS[12]].map((s) => observedOf(subLabel(s))));
       // Observed codes, pinned as evidence for F-R2 and F-R3; reality is the it.fails tests above. The board offered none of
-      // them: Sub read "No subs left" (`subsLeft` false) before each was due. Each is a sixth sub (the kernel's cap first).
+      // them as an ordinary sub: Sub read "No subs left" before each was due. Each is a sixth ordinary sub (the kernel's cap
+      // first); the concussion replacement is outside the cap (F-R2), so Konaté at 113 is recorded.
       expect(refused.map((seen) => [seen.label, seen.offered, seen.refusal])).toEqual([
-        [subLabel(SUBS[9]), false, 'INVALID_EVENT'],
         [subLabel(SUBS[11]), false, 'INVALID_EVENT'],
-        [subLabel(SUBS[12]), false, 'INVALID_EVENT'],
+        // Argentina still holds its concussion exemption, so Sub opens; Normal sub is disabled (No subs left).
+        [subLabel(SUBS[12]), true, 'INVALID_EVENT'],
       ]);
     });
 
@@ -787,14 +794,11 @@ describe('the 2022 World Cup final, replayed through the phone', () => {
       expect(argTo102.map(minuteOf)).toEqual(["64'", "102'"]);
     });
 
-    it.fails(
-      'F-R2: the concussion substitution opens no window: France used 2 windows (41, 71) before 113',
-      async () => {
-        const state = await engineState();
-        const before113 = (state.squads.away.subWindows ?? []).filter((w) => w.period !== 'ET_H2');
-        expect(before113.map(minuteOf)).toEqual(["41'", "71'"]);
-      },
-    );
+    it('F-R2: the concussion substitution opens no window: France used 2 windows (41, 71) before 113', async () => {
+      const state = await engineState();
+      const before113 = (state.squads.away.subWindows ?? []).filter((w) => w.period !== 'ET_H2');
+      expect(before113.map(minuteOf)).toEqual(["41'", "71'"]);
+    });
 
     // Molina → Montiel at the break opens no window; Argentina's 120+1 (its 4th window, the extra-time one) is F-R3's.
     it('F-R1: each window sits at the minute it was used (France 41, 71; Argentina 64, 102, 116)', async () => {
@@ -903,9 +907,17 @@ describe('two subs 30 minutes apart, nothing between them', () => {
     await flush();
     await scorer.startClock();
     await scorer.to(elapsedAt({ minute: 10 }));
-    await scorer.tapThrough('sub.first', [{ id: `p.${arg(26)}` }, { id: `p.${arg(4)}` }]);
+    await scorer.tapThrough('sub.first', [
+      { id: `p.${arg(26)}` },
+      { id: `p.${arg(4)}` },
+      { id: 'normalSub' },
+    ]);
     await scorer.to(elapsedAt({ minute: 40 }));
-    await scorer.tapThrough('sub.first', [{ id: `p.${arg(11)}` }, { id: `p.${arg(8)}` }]);
+    await scorer.tapThrough('sub.first', [
+      { id: `p.${arg(11)}` },
+      { id: `p.${arg(8)}` },
+      { id: 'normalSub' },
+    ]);
     const ledger = await scorer.ledger();
     const envelopes = ledger.map((event) => envelopeOf(SEED.fixtureId, event));
     const state = foldMatch(
@@ -936,23 +948,26 @@ describe('a team with its windows spent, after its last sub', () => {
     ] as const;
     for (const [i, [off, on]] of pairs.entries()) {
       await scorer.to(elapsedAt({ minute: 10 * (i + 1) }));
-      await scorer.tapThrough('sub.first', [{ id: `p.${arg(off)}` }, { id: `p.${arg(on)}` }]);
+      await scorer.tapThrough('sub.first', [
+        { id: `p.${arg(off)}` },
+        { id: `p.${arg(on)}` },
+        { id: 'normalSub' },
+      ]);
     }
     const ledger = await scorer.ledger();
     expect(ledger.filter((event) => event.type === 'football.sub')).toHaveLength(3);
     // Sub was pressed for the third at 29:30, its stamp: the stoppage is open to 31:30 on the clock and closed at 31:31.
+    // The final runs the concussion trial, so Sub itself stays on (ruling 155): its note says the ordinary subs are out.
+    const sub = () => {
+      const button = footballBoard(scorer.pad.display, scorer.pad.view.card).columns[0].actions[3];
+      return [button?.enabled, button?.note?.key ?? null, scorer.pad.display.subsLeft.first];
+    };
     await scorer.to(elapsedAt({ minute: 31 }, 15));
-    expect([scorer.buttonOf('first', 'sub')?.enabled, scorer.pad.display.subsLeft.first]).toEqual([
-      true,
-      true,
-    ]);
+    expect(sub()).toEqual([true, null, true]);
     await scorer.to(elapsedAt({ minute: 32 }, 40));
-    expect([scorer.buttonOf('first', 'sub')?.enabled, scorer.pad.display.subsLeft.first]).toEqual([
-      false,
-      false,
-    ]);
-    // The other team has used no window: its Sub stays on.
-    expect(scorer.buttonOf('second', 'sub')?.enabled).toBe(true);
+    expect(sub()).toEqual([true, 'scoring.football.column.noSubs', false]);
+    // The other team has used no window: its ordinary subs are all there.
+    expect(scorer.pad.display.subsLeft.second).toBe(true);
     scorer.view.unmount();
   });
 });

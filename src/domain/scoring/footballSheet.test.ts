@@ -14,11 +14,14 @@ import {
   at,
   card,
   clock,
+  KO_11,
   ledgerOf,
   MATCH,
   NO_SHEET,
   sinBin,
   start,
+  sub,
+  withCfg,
   type Spec,
 } from '../../../test/footballLedger';
 
@@ -298,6 +301,84 @@ describe('Sub, the kicks and More (design §6.3–§6.5)', () => {
     expect(walk('sub.first', [H(7), H(14)])).toEqual({
       kind: 'tap',
       tap: { kind: 'sub', side: 'first', off: 'H-p7', on: 'H-p14', stamp: STAMP },
+    });
+  });
+
+  // The controller's ruling 155: with the IFAB concussion trial in force (`concussionSubs`), Sub has one more step after
+  // the player on: Normal sub or Concussion sub. Without it the flow is exactly as above.
+  const CONCUSSION = withCfg(MATCH, { ...KO_11, maxSubs: 5, subWindows: 3, concussionSubs: 1 });
+  const TRIAL = displayOf(KICK_OFF, CONCUSSION);
+
+  it('with concussionSubs, Sub asks Normal or Concussion after the player on; each records its own sub', () => {
+    const kind = flowOf(walk('sub.first', [H(7), H(14)], TRIAL));
+    expect(footballStep(kind, TRIAL)).toEqual({
+      title: { key: 'scoring.football.sheet.whichSub', vars: { team: 'Home FC' } },
+      body: null,
+      options: [
+        { id: 'normalSub', label: { key: 'scoring.football.sheet.normalSub' }, tone: 'standard' },
+        {
+          id: 'concussionSub',
+          label: { key: 'scoring.football.sheet.concussionSub' },
+          tone: 'standard',
+        },
+      ],
+    });
+    expect(walk('sub.first', [H(7), H(14), 'normalSub'], TRIAL)).toEqual({
+      kind: 'tap',
+      tap: { kind: 'sub', side: 'first', off: 'H-p7', on: 'H-p14', stamp: STAMP },
+    });
+    expect(walk('sub.first', [H(7), H(14), 'concussionSub'], TRIAL)).toEqual({
+      kind: 'tap',
+      tap: { kind: 'sub', side: 'first', off: 'H-p7', on: 'H-p14', stamp: STAMP, concussion: true },
+    });
+  });
+
+  it('the side’s exemption spent: Concussion sub is disabled with “None left” and takes no press', () => {
+    const spent = displayOf(
+      [
+        ...KICK_OFF,
+        {
+          type: 'core.lineup.replacement',
+          payload: {
+            side: 'ent-home',
+            off: 'H-p2',
+            on: { personId: 'H-p12', slot: 'bench', orderNo: 1 },
+            exemption: 'concussion',
+            at: at('H1', 300),
+          },
+        },
+      ],
+      CONCUSSION,
+    );
+    const kind = flowOf(walk('sub.first', [H(7), H(14)], spent));
+    expect(footballStep(kind, spent).options[1]).toEqual({
+      id: 'concussionSub',
+      label: { key: 'scoring.football.sheet.concussionSub' },
+      tone: 'standard',
+      disabled: true,
+      note: { key: 'scoring.football.sheet.noneLeft' },
+    });
+    expect(footballChoose(kind, 'concussionSub', spent, STAMP)).toEqual({ kind: 'stay' });
+  });
+
+  it('ordinary subs spent: Normal sub is disabled with “No subs left”, Concussion still records', () => {
+    const capped = withCfg(MATCH, { ...KO_11, maxSubs: 1, concussionSubs: 1 });
+    const used = displayOf(
+      [...KICK_OFF, sub({ by: 'H', off: 'H-p2', on: 'H-p12', at: at('H1', 300) })],
+      capped,
+    );
+    const kind = flowOf(walk('sub.first', [H(7), H(14)], used));
+    expect(footballStep(kind, used).options[0]).toEqual({
+      id: 'normalSub',
+      label: { key: 'scoring.football.sheet.normalSub' },
+      tone: 'standard',
+      disabled: true,
+      note: { key: 'scoring.football.column.noSubs' },
+    });
+    expect(footballChoose(kind, 'normalSub', used, STAMP)).toEqual({ kind: 'stay' });
+    expect(walk('sub.first', [H(7), H(14), 'concussionSub'], used)).toMatchObject({
+      kind: 'tap',
+      tap: { concussion: true },
     });
   });
 

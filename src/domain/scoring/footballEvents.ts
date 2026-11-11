@@ -174,14 +174,31 @@ function subEvent(tap: Tap<'sub'>, display: FootballDisplay): SportEvent | null 
   const known = (players: readonly FootballPlayer[], id: string) =>
     players.some((p) => p.personId === id);
   if (!known(team.onPitch, tap.off) || !known(team.offeredOn, tap.on)) return null;
-  const payload = given({
-    by: team.entrantId,
-    off: tap.off,
-    on: tap.on,
-    at: subStampFor(tap.stamp, display.enginePhase, display.clock.asOf, display.clock.stoppage),
-  });
+  const at = subStampFor(
+    tap.stamp,
+    display.enginePhase,
+    display.clock.asOf,
+    display.clock.stoppage,
+  );
+  if (tap.concussion === true) return replacementEvent(team.entrantId, tap, at);
+  const payload = given({ by: team.entrantId, off: tap.off, on: tap.on, at });
   return { type: 'football.sub', payload };
 }
+
+/**
+ * A concussion sub (ruling 155): the engine's `core.lineup.replacement` naming the concussion exemption, which it holds
+ * outside the substitution cap and its windows (`lineupPolicy`, `football.js`). `on` is the kernel's slot: the bench
+ * row's `slot` and `orderNo` are structural filler there, as in the engine's own lift of a `football.sub`
+ * (`subAsLineup`): it matches the player by `personId` alone.
+ */
+function replacementEvent(side: string, tap: Tap<'sub'>, at: GameTime | null): SportEvent {
+  const on = { personId: tap.on, slot: 'bench', orderNo: 1 };
+  const payload = given({ side, off: tap.off, on, exemption: CONCUSSION, at });
+  return { type: 'core.lineup.replacement', payload };
+}
+
+/** The engine's key for the IFAB concussion exemption (`lineupPolicy`'s `exemptions.concussion`). */
+const CONCUSSION = 'concussion';
 
 /** End of period: the marker the engine takes now, or nothing when it takes none. */
 function periodEvent(tap: Tap<'period'>, display: FootballDisplay): SportEvent | null {

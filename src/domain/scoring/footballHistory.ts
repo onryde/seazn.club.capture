@@ -159,10 +159,11 @@ function cardSaid(words: FootballWords, did: Done<'card'>): Text {
   };
 }
 
-/** A substitution names both players in the least room: "#8 off, #14 on". */
+/** A substitution names both players in the least room: "#8 off, #14 on"; a concussion one says so (ruling 155). */
 function subSaid(words: FootballWords, did: Done<'sub'>): Text {
   return {
-    key: 'scoring.football.last.sub',
+    key:
+      did.concussion === true ? 'scoring.football.last.concussionSub' : 'scoring.football.last.sub',
     vars: {
       team: words.names[did.side],
       off: playerMark(did.off),

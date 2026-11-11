@@ -88,6 +88,8 @@ export type FootballDone =
       readonly off: FootballPlayer;
       readonly on: FootballPlayer;
       readonly at: GameTime | null;
+      /** A concussion replacement (`core.lineup.replacement`, ruling 155); absent for an ordinary sub. */
+      readonly concussion?: true;
     }
   | { readonly kind: 'period'; readonly marker: string; readonly at: GameTime | null }
   | {
@@ -161,6 +163,11 @@ export type FootballDisplay = {
    * says it again as the clock runs past the stoppage (`footballSubsNow`).
    */
   readonly subsLeft: Readonly<Record<PadSide, boolean>>;
+  /**
+   * Whether each team may still make a concussion substitution (ruling 155): the competition runs the trial
+   * (`cfg.concussionSubs`), the team has not used its allowance (the fold's `exemptUsed`), and has someone to bring on.
+   */
+  readonly concussionLeft: Readonly<Record<PadSide, boolean>>;
   /** The same question for a sub that joins `clock.stoppage` (`joining`) and for one that opens a window of its own (`fresh`). */
   readonly subsLeftAt: {
     readonly joining: Readonly<Record<PadSide, boolean>>;
@@ -215,6 +222,8 @@ export type FootballTap =
       readonly on: string;
       /** The reading when Sub was pressed: the sub joins the stoppage from it, or keeps it (`subStampFor`, ruling 154). */
       readonly stamp: GameTime | null;
+      /** A concussion sub, outside the cap and its windows (ruling 155); absent for an ordinary one. */
+      readonly concussion?: true;
     }
   | { readonly kind: 'period'; readonly stamp: GameTime | null }
   | {
@@ -297,6 +306,7 @@ export type FootballLastWord =
   | 'ownGoal'
   | 'card'
   | 'sub'
+  | 'concussionSub'
   | 'period'
   | 'penaltyMiss'
   | 'sinBin'

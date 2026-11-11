@@ -71,6 +71,10 @@ type SheetWord =
   | 'noReason'
   | 'whoComesOff'
   | 'whoComesOn'
+  | 'whichSub'
+  | 'normalSub'
+  | 'concussionSub'
+  | 'noneLeft'
   | 'whoKicked'
   | 'whoTookIt'
   | 'goalkeeper'
@@ -90,6 +94,8 @@ export type FootballStepOption = {
   readonly tone: 'standard' | 'destructive';
   readonly kind?: 'choice' | 'heading' | 'toggle';
   readonly checked?: boolean;
+  /** Not offered now: greyed with its reason in `note`, and no press (`footballChoose` refuses it). */
+  readonly disabled?: boolean;
   /** A second line under the label (a yellowed player's "2nd yellow · sent off"). */
   readonly note?: PadText<FootballSheetKey> | null;
 };
@@ -126,8 +132,10 @@ export type FootballFlow =
       readonly kind: 'sub';
       readonly side: PadSide;
       readonly stamp: Stamp;
-      readonly step: 'off' | 'on';
+      /** `kind` asks Normal or Concussion, only where the competition runs the trial (ruling 155). */
+      readonly step: 'off' | 'on' | 'kind';
       readonly off: string | null;
+      readonly on?: string;
     }
   | { readonly kind: 'kick'; readonly side: PadSide; readonly scored: boolean }
   | {
@@ -438,10 +446,31 @@ function subStep(current: Flow<'sub'>, display: FootballDisplay): FootballStepSh
       options: playerOptions(team.onPitch),
     };
   }
+  if (current.step === 'kind') return subKindStep(current.side, display);
   return {
     title: sheetText('whoComesOn', { player: labelOf(team, current.off) ?? team.name }),
     body: null,
     options: playerOptions(team.offeredOn),
+  };
+}
+
+/**
+ * Normal sub or Concussion sub (ruling 155). Each is disabled with its reason when the team has none of it left: an
+ * ordinary sub "No subs left" (the cap or the windows), the concussion exemption "None left".
+ */
+function subKindStep(side: PadSide, display: FootballDisplay): FootballStepSheet {
+  const offered = (
+    key: 'normalSub' | 'concussionSub',
+    left: boolean,
+    note: PadText<FootballSheetKey>,
+  ) => (left ? word(key) : { ...word(key), disabled: true, note });
+  return {
+    title: sheetText('whichSub', teamOf(display, side)),
+    body: null,
+    options: [
+      offered('normalSub', display.subsLeft[side], { key: 'scoring.football.column.noSubs' }),
+      offered('concussionSub', display.concussionLeft[side], sheetText('noneLeft')),
+    ],
   };
 }
 
@@ -536,7 +565,8 @@ export function footballChoose(
   display: FootballDisplay,
   stamp: Stamp,
 ): FootballMove {
-  if (!footballStep(current, display).options.some((option) => option.id === id)) return STAY;
+  const offered = footballStep(current, display).options;
+  if (!offered.some((option) => option.id === id && option.disabled !== true)) return STAY;
   switch (current.kind) {
     case 'goal':
       return chooseGoal(current, id, display);
@@ -604,13 +634,21 @@ const reasonChosen = (id: string): string | null =>
 
 function chooseSub(current: Flow<'sub'>, id: string, display: FootballDisplay): FootballMove {
   const team = display.sides[current.side];
-  if (current.step === 'off' || current.off === null) {
-    const off = playerChosen(team.onPitch, id);
-    return off === null ? STAY : flow({ ...current, step: 'on', off });
+  const { side, off, stamp } = current;
+  if (current.step === 'off' || off === null) {
+    const chosen = playerChosen(team.onPitch, id);
+    return chosen === null ? STAY : flow({ ...current, step: 'on', off: chosen });
+  }
+  if (current.step === 'kind') {
+    if (current.on === undefined) return STAY;
+    const sub = { kind: 'sub', side, off, on: current.on, stamp } as const;
+    return tap(id === 'concussionSub' ? { ...sub, concussion: true } : sub);
   }
   const on = playerChosen(team.offeredOn, id);
-  const { side, off, stamp } = current;
-  return on === null ? STAY : tap({ kind: 'sub', side, off, on, stamp });
+  if (on === null) return STAY;
+  // Where the competition runs the concussion trial, one more step asks which kind of sub (ruling 155).
+  if (display.cfg.concussionSubs !== undefined) return flow({ ...current, step: 'kind', on });
+  return tap({ kind: 'sub', side, off, on, stamp });
 }
 
 const outcomeChosen = (id: string): string => id.slice('outcome.'.length);

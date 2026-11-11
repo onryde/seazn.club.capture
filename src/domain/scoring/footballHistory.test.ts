@@ -138,6 +138,18 @@ describe('doneSaid: the last-tap line’s words (design §6.7)', () => {
       'Sub · Northgate · Bloggs off, Jones on',
     ],
     [
+      'a concussion sub (ruling 155)',
+      {
+        kind: 'sub',
+        side: 'second',
+        off: player('p-8', 'Bloggs', 8),
+        on: player('p-14', 'Jones', 14),
+        at: at('H2', 930),
+        concussion: true,
+      },
+      "Concussion sub · Northgate · #8 off, #14 on 61'",
+    ],
+    [
       'a card',
       { kind: 'card', side: 'second', color: 'second_yellow', person: SILVA, at: at('H1', 600) },
       "Second yellow · Northgate · #10 Silva 11'",

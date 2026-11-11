@@ -647,6 +647,48 @@ describe('the columns’ sheets (design §6.3)', () => {
     });
   });
 
+  // Ruling 155: the concussion step shows only where the competition runs the trial (`concussionSubs`).
+  const TRIAL = footballSeed({
+    cfg: { maxSubs: 5, subWindows: 3, concussionSubs: 1 },
+    events: [START, KICK_OFF],
+  });
+
+  it('with concussionSubs, Sub asks Normal or Concussion; a double tap on Concussion records one replacement', async () => {
+    const { fakes, view } = await opened({ seed: TRIAL });
+    await wait(60_000);
+    await column(view, 'sub.first');
+    await pick(view, P(home(7)));
+    await pick(view, P(home(14)));
+    expect(stepOf(view)).toEqual({
+      title: 'scoring.football.sheet.whichSub',
+      ids: ['normalSub', 'concussionSub'],
+    });
+    await wait(300);
+    press(view, (actions) => actions.choose('concussionSub'));
+    press(view, (actions) => actions.choose('concussionSub'));
+    await flush();
+    await wait(2_000);
+    const events = await ledger(fakes, TRIAL);
+    expect(events.filter((event) => event.type === 'core.lineup.replacement')).toHaveLength(1);
+    expect(events.at(-1)?.payload).toMatchObject({
+      side: HOME_ENTRANT,
+      off: home(7),
+      on: { personId: home(14) },
+      exemption: 'concussion',
+    });
+    expect(pad(view).display.concussionLeft.first).toBe(false);
+    expect(pad(view).display.subsLeft.first).toBe(true);
+  });
+
+  it('without concussionSubs, Sub records at the player on, with no third step', async () => {
+    const { fakes, view } = await opened();
+    await column(view, 'sub.first');
+    await pick(view, P(home(7)));
+    await pick(view, P(home(14)));
+    expect(pad(view).sheet).toBeNull();
+    expect((await lastEvent(fakes))?.type).toBe('football.sub');
+  });
+
   it('Sub is disabled with No team sheet on noSlots, and opens nothing', async () => {
     const seed = footballSeed({ sheet: 'noSlots', events: [START, KICK_OFF] });
     const { view } = await opened({ seed });

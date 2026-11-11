@@ -121,6 +121,33 @@ describe('footballBoard: the columns in play (design §6.2, §6.3)', () => {
     expect(footballSubsNow(display, null).subsLeft).toEqual({ first: false, second: true });
   });
 
+  // Ruling 155: Sub opens while a side has an ordinary sub OR its concussion exemption left (and a bench); with only the
+  // concussion left it still reads No subs left under it.
+  it('Sub stays on with only the concussion exemption left, its note No subs left; off once both are spent', () => {
+    const trial = withCfg(MATCH, { ...CAPPED, maxSubs: 1, concussionSubs: 1 });
+    const oneSub = [...KICK_OFF, sub({ by: 'H', off: H(7), on: H(12), at: at('H1', 600) })];
+    const [first] = actionsOf(footballBoard(displayOf(oneSub, trial), null));
+    expect(first![3]).toEqual(
+      button('sub.first', 'sub', true, false, { key: 'scoring.football.column.noSubs' }),
+    );
+    const both = [
+      ...oneSub,
+      {
+        type: 'core.lineup.replacement',
+        payload: {
+          side: 'ent-home',
+          off: H(8),
+          on: { personId: H(13), slot: 'bench', orderNo: 1 },
+          exemption: 'concussion',
+          at: at('H1', 700),
+        },
+      },
+    ];
+    expect(actionsOf(footballBoard(displayOf(both, trial), null))[0]).toEqual(
+      playColumn('first', true, 'noSubs'),
+    );
+  });
+
   it('under a resultRecorded card every action is disabled', () => {
     const board = footballBoard(displayOf(KICK_OFF), { kind: 'resultRecorded', undoLeft: 30 });
     expect(actionsOf(board)).toEqual([playColumn('first', false), playColumn('second', false)]);

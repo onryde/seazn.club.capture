@@ -12,6 +12,7 @@ import {
   eventId,
   goal,
   kick,
+  KO_11,
   ledgerOf,
   MATCH,
   MINI,
@@ -364,6 +365,22 @@ describe('footballEventFor: stamps (design §7.3)', () => {
       by: 'ent-home',
       off: 'H-p7',
       on: 'H-p13',
+    });
+  });
+
+  // Ruling 155: a concussion sub is the engine's `core.lineup.replacement` with the concussion exemption, stamped as any
+  // sub (ruling 154). It spends no ordinary sub and no window.
+  it('a concussion sub is a core.lineup.replacement naming the concussion exemption', () => {
+    const trial = withCfg(MATCH, { ...KO_11, maxSubs: 5, subWindows: 3, concussionSubs: 1 });
+    expect(eventOf({ ...subTap(at('H1', 900)), concussion: true }, AT_600, trial)).toEqual({
+      type: 'core.lineup.replacement',
+      payload: {
+        side: 'ent-home',
+        off: 'H-p7',
+        on: { personId: 'H-p13', slot: 'bench', orderNo: 1 },
+        exemption: 'concussion',
+        at: at('H1', 900),
+      },
     });
   });
 
