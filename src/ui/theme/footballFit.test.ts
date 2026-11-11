@@ -428,6 +428,9 @@ describe('the sheets’ rows at 320 and 360 in four languages (design §6.3)', (
         fill(said(dictionary, 'scoring.football.more.sinBinEnd'), { player }),
         // The concussion step (ruling 155): its title names the team, its two rows are words alone.
         fill(said(dictionary, 'scoring.football.sheet.whichSub'), { team }),
+        // The shootout's More rows (ruling 156) are the card sheets' titles.
+        fill(said(dictionary, 'scoring.football.sheet.yellow'), { team }),
+        fill(said(dictionary, 'scoring.football.sheet.red'), { team }),
         ...Object.keys(dictionary)
           .filter((key) =>
             /^scoring\.football\.(reason|card|outcome)\.|^scoring\.football\.sheet\.(dontKnow|penalty|noAssist|noReason|normalSub|concussionSub)$/.test(

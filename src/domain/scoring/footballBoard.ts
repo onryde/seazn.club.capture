@@ -191,6 +191,8 @@ export type MoreItem = { readonly id: string; readonly label: Text };
  * The More sheet's items (design §6.4), each only while the engine takes its event in this phase: a missed penalty for
  * each team, a sin-bin for each when the match has sin-bins (`cfg.sinBinMinutes`, plan decision PD1), Back from sin-bin
  * for each player in the bin, a shot for each, Adjust clock once the period's Start stands, and Match details always.
+ * In the shootout, a Yellow card and a Red card for each team (the controller's ruling 156): the columns there are Scored
+ * and Missed, so a booking during the kicks is made from More.
  */
 export function footballMoreItems(display: FootballDisplay): readonly MoreItem[] {
   const takes = (type: string) =>
@@ -201,6 +203,7 @@ export function footballMoreItems(display: FootballDisplay): readonly MoreItem[]
     ...(bins ? perTeam(display, 'sinBin') : []),
     ...(takes('football.sinbin.end') ? backItems(display) : []),
     ...(takes('football.shot') ? perTeam(display, 'shot') : []),
+    ...(display.phase === 'shootout' && takes('football.card') ? cardItems(display) : []),
     ...(takes('football.clock') && display.clock.started
       ? [{ id: 'correct', label: more('correct') }]
       : []),
@@ -227,6 +230,18 @@ const perTeam = (display: FootballDisplay, word: 'penalty' | 'sinBin' | 'shot'):
     id: `${word}.${side}`,
     label: more(word, { team: display.sides[side].name }),
   }));
+
+/** A Yellow card and a Red card for each team, worded as the card sheets' titles (`Yellow card · {team}`). */
+const cardItems = (display: FootballDisplay): MoreItem[] =>
+  SIDES.flatMap((side) =>
+    (['yellow', 'red'] as const).map((color) => ({
+      id: `${color}.${side}`,
+      label: {
+        key: `scoring.football.sheet.${color}` as const,
+        vars: { team: display.sides[side].name },
+      },
+    })),
+  );
 
 /** Back from sin-bin, one per player in the bin, named as the sheets name a player (the team, for a bin with no name). */
 const backItems = (display: FootballDisplay): MoreItem[] =>

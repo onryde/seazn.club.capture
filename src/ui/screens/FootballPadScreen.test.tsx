@@ -548,6 +548,31 @@ describe('the shootout and the end (design §6.5, §6.7)', () => {
     expect([value('first'), value('second')]).toEqual(['5 (4)', '5 (3)']);
   });
 
+  // Controller ruling 156 (F-R4): the columns stay Scored and Missed; a booking during the kicks is made from More.
+  it('in the shootout More offers a Yellow and a Red card for each team, and its Yellow books a player', async () => {
+    const app = await open(footballSeed({ cfg: KO_11, events: asSeed(KICKS_4_3) }));
+    await press(app, en['scoring.football.tool.more']);
+    const sheet = screen.getByTestId('step-sheet');
+    const yellow = (team: string) => fill(en['scoring.football.sheet.yellow'], { team });
+    const red = (team: string) => fill(en['scoring.football.sheet.red'], { team });
+    for (const row of [
+      yellow('Riverside FC'),
+      red('Riverside FC'),
+      yellow('Northgate United'),
+      red('Northgate United'),
+    ])
+      expect(within(sheet).getByRole('button', { name: row })).toBeTruthy();
+    await press(app, yellow('Riverside FC'), sheet);
+    const players = screen.getByTestId('step-sheet');
+    expect(within(players).getByText(yellow('Riverside FC'))).toBeTruthy();
+    later(app);
+    act(() => fireEvent.click(within(players).getByRole('button', { name: '#9 R. Ito' })));
+    await flush(400);
+    await press(app, en['scoring.football.sheet.noReason']);
+    expect(lastTap()).toContain(en['scoring.football.card.yellow']);
+    expect(buttonNames('first')).toHaveLength(2);
+  });
+
   it('a decided match shows the result card over the columns, and the shootout’s score', async () => {
     await open(footballSeed({ cfg: KO_11, events: asSeed(KICKS_4_1) }));
     expect(screen.getByTestId('pad-card').textContent).toContain(

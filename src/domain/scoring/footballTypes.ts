@@ -287,6 +287,7 @@ export type FootballPadKey =
   | `scoring.football.card.${FootballCardWord}`
   | `scoring.football.outcome.${FootballOutcomeWord}`
   | `scoring.football.more.${'penalty' | 'sinBin' | 'sinBinEnd' | 'shot' | 'correct' | 'details'}`
+  | `scoring.football.sheet.${'yellow' | 'red'}`
   | 'scoring.football.mark.sinBinOver'
   | `scoring.football.last.${FootballLastWord}`
   | `scoring.football.rules.${FootballRuleWord}`

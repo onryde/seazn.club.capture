@@ -200,14 +200,7 @@ export function footballOpen(id: string, display: FootballDisplay, stamp: Stamp)
         : tap({ kind: 'goal', side, scorer: null, assist: null, penalty: false, stamp });
     case 'yellow':
     case 'red':
-      return flow({
-        kind: 'card',
-        side,
-        stamp,
-        step: sheet ? 'player' : 'reason',
-        color: action,
-        person: null,
-      });
+      return flow(cardFlow(side, action, stamp, sheet));
     case 'sub':
       return sheet ? flow({ kind: 'sub', side, stamp, step: 'off', off: null }) : STAY;
     case 'scored':
@@ -220,7 +213,25 @@ export function footballOpen(id: string, display: FootballDisplay, stamp: Stamp)
   }
 }
 
-/** A More item chosen (`penalty.first`, `sinBinEnd.second.0`, `correct`): one the sheet offers (`footballChoose` checks). */
+/** Yellow or Red at its first step: the player where the team has a sheet, else the reason. */
+const cardFlow = (
+  side: PadSide,
+  color: 'yellow' | 'red',
+  stamp: Stamp,
+  sheet: boolean,
+): FootballFlow => ({
+  kind: 'card',
+  side,
+  stamp,
+  step: sheet ? 'player' : 'reason',
+  color,
+  person: null,
+});
+
+/**
+ * A More item chosen (`penalty.first`, `sinBinEnd.second.0`, `correct`, in the shootout `yellow.first`): one the sheet
+ * offers (`footballChoose` checks).
+ */
 function moreItem(id: string, display: FootballDisplay, stamp: Stamp): FootballMove {
   if (id === 'correct' || id === 'details') return { kind: 'other', id };
   const [word, seat, index] = id.split('.');
@@ -229,6 +240,7 @@ function moreItem(id: string, display: FootballDisplay, stamp: Stamp): FootballM
   if (word === 'penalty' || word === 'sinBin' || word === 'shot') {
     return flow(moreFlow(word, side, stamp, display));
   }
+  if (word === 'yellow' || word === 'red') return flow(cardFlow(side, word, stamp, team.sheet));
   return backFromBin(side, team, Number(index), stamp);
 }
 

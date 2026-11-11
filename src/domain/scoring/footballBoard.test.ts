@@ -25,6 +25,7 @@ import {
   sinBin,
   start,
   sub,
+  type Spec,
   withCfg,
 } from '../../../test/footballLedger';
 import {
@@ -277,9 +278,39 @@ describe('footballMoreItems (design §6.4)', () => {
     ]);
   });
 
-  it('before kick-off and in the shootout, only what the engine takes there: Match details', () => {
+  it('before kick-off, only what the engine takes there: Match details', () => {
     expect(footballMoreItems(displayOf([]))).toEqual([item('details', 'details')]);
-    expect(footballMoreItems(displayOf(KICKS_4_3))).toEqual([item('details', 'details')]);
+  });
+
+  // Controller ruling 156 (F-R4): the shootout's columns stay Scored and Missed, so a booking during the kicks is in More.
+  const card = (id: string, color: 'yellow' | 'red', team: string) => ({
+    id,
+    label: { key: `scoring.football.sheet.${color}`, vars: { team } },
+  });
+
+  it('in the shootout: a Yellow card and a Red card for each team, then Match details', () => {
+    expect(footballMoreItems(displayOf(KICKS_4_3))).toEqual([
+      card('yellow.first', 'yellow', 'Home FC'),
+      card('red.first', 'red', 'Home FC'),
+      card('yellow.second', 'yellow', 'Away FC'),
+      card('red.second', 'red', 'Away FC'),
+      item('details', 'details'),
+    ]);
+  });
+
+  it('no card items in play, nor once the shootout has decided the match', () => {
+    const ids = (specs: readonly Spec[]) => footballMoreItems(displayOf(specs)).map((i) => i.id);
+    for (const specs of [KICK_OFF, KICKS_4_1]) {
+      expect(ids(specs).filter((id) => /^(yellow|red)\./.test(id))).toEqual([]);
+    }
+    expect(ids(KICKS_4_1)).toEqual(['details']);
+  });
+
+  // Like every More item, only while the engine takes the event: a shootout phase the engine would refuse a card in
+  // (here its `done`, set by hand) offers none.
+  it('no card items where the engine would not take a card, even with the shootout on screen', () => {
+    const refusing = { ...displayOf(KICKS_4_3), enginePhase: 'done' };
+    expect(footballMoreItems(refusing).map((i) => i.id)).toEqual(['details']);
   });
 
   // The engine empties the bin when a period ends, but an abandoned match keeps whoever was in it: Back from sin-bin is

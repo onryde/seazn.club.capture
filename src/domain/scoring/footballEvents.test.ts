@@ -419,6 +419,23 @@ describe('footballEventFor: stamps (design §7.3)', () => {
       payload: { by: 'ent-away', scored: false },
     });
   });
+
+  // Controller ruling 156 (F-R4): a booking during the kicks, from More. The engine takes a card in SHOOTOUT; the kicks
+  // have no running clock, so the card carries no at, as a kick does.
+  it('a card during the shootout carries no at', () => {
+    const tap: FootballTap = {
+      kind: 'card',
+      side: 'first',
+      person: 'H-p1',
+      color: 'yellow',
+      reason: 'unsporting_behaviour',
+      stamp: null,
+    };
+    expect(eventOf(tap, LEVEL_AFTER_ET)).toEqual({
+      type: 'football.card',
+      payload: { by: 'ent-home', person: 'H-p1', color: 'yellow', reason: 'unsporting_behaviour' },
+    });
+  });
 });
 
 describe('footballEventFor: what the engine would refuse is never made', () => {

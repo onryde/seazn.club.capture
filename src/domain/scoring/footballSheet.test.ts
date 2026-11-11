@@ -24,6 +24,7 @@ import {
   withCfg,
   type Spec,
 } from '../../../test/footballLedger';
+import { KICKS_4_1, KICKS_4_3 } from '../../../test/footballPadFixtures';
 
 /**
  * Football's step sheets (S2-5 design §6.3–§6.6; plan P Task 11): what each step offers and what a choice records. Every
@@ -454,6 +455,68 @@ describe('Sub, the kicks and More (design §6.3–§6.5)', () => {
       tap: { kind: 'sinBinEnd', side: 'second', person: 'A-p6', stamp: STAMP },
     });
     expect(footballChoose(MORE_FLOW, 'sinBinEnd.second.1', binned, STAMP)).toEqual({
+      kind: 'stay',
+    });
+  });
+});
+
+// Controller ruling 156 (F-R4): during the shootout More carries a Yellow and a Red card for each team, each opening
+// today's flow for that colour and team. The kicks have no running clock, so the card's stamp is the More stamp: none.
+describe('a card during the shootout (ruling 156)', () => {
+  const KICKING = displayOf(KICKS_4_3);
+
+  it('More lists a Yellow card and a Red card for each team, then Match details', () => {
+    expect(ids(MORE_FLOW, KICKING)).toEqual([
+      'yellow.first',
+      'red.first',
+      'yellow.second',
+      'red.second',
+      'details',
+    ]);
+  });
+
+  it('More’s Yellow card opens the Yellow flow for that team at its player step, titled as Yellow’s', () => {
+    const yellow = flowOf(footballChoose(MORE_FLOW, 'yellow.first', KICKING, null));
+    expect(yellow).toEqual({
+      kind: 'card',
+      side: 'first',
+      stamp: null,
+      step: 'player',
+      color: 'yellow',
+      person: null,
+    });
+    expect(footballStep(yellow, KICKING).title).toEqual({
+      key: 'scoring.football.sheet.yellow',
+      vars: { team: 'Home FC' },
+    });
+  });
+
+  it('More’s Red card for the other team: a player, then a reason, records the red with no stamp', () => {
+    const red = flowOf(footballChoose(MORE_FLOW, 'red.second', KICKING, null));
+    const reason = flowOf(footballChoose(red, A(1), KICKING, null));
+    expect(footballChoose(reason, 'reason.violent_conduct', KICKING, null)).toEqual({
+      kind: 'tap',
+      tap: {
+        kind: 'card',
+        side: 'second',
+        person: 'A-p1',
+        color: 'red',
+        reason: 'violent_conduct',
+        stamp: null,
+      },
+    });
+  });
+
+  it('a team with no sheet goes straight to the reason, as Yellow does in play', () => {
+    const bare = displayOf(KICKS_4_3, NO_SHEET);
+    expect(flowOf(footballChoose(MORE_FLOW, 'yellow.second', bare, null))).toMatchObject({
+      kind: 'card',
+      step: 'reason',
+    });
+  });
+
+  it('once the shootout has decided the match, a card item does nothing', () => {
+    expect(footballChoose(MORE_FLOW, 'yellow.first', displayOf(KICKS_4_1), null)).toEqual({
       kind: 'stay',
     });
   });

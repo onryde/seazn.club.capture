@@ -716,8 +716,10 @@ describe('the 2022 World Cup final, replayed through the phone', () => {
       expect(done.length).toBeGreaterThan(0);
     });
 
+    // Since F-R2 the concussion subs count outside the cap; what is left is F-R3: France reads "No subs left" from its
+    // fifth ordinary sub at 113, Argentina from its fifth at 116, with no sixth for extra time.
     it.fails(
-      'F-R2, F-R3: neither side is ever told "No subs left": both made every real substitution',
+      'F-R3: neither side is ever told "No subs left": both made every real substitution',
       async () => {
         const { observed } = (await replayed()).replay;
         expect(observed.map((seen) => [seen.label, seen.display.subsLeft])).toEqual(
@@ -853,14 +855,11 @@ describe('the 2022 World Cup final, replayed through the phone', () => {
       );
     });
 
-    it.fails(
-      'F-R4: Yellow is offered in the shootout, for E. Martínez’s booking during the kicks',
-      async () => {
-        const { shootoutButtons, shootoutMore } = (await replayed()).replay;
-        const offered = [...shootoutButtons.first, ...shootoutMore];
-        expect(offered).toContain('yellow.first');
-      },
-    );
+    it('F-R4: Yellow is offered in the shootout, for E. Martínez’s booking during the kicks', async () => {
+      const { shootoutButtons, shootoutMore } = (await replayed()).replay;
+      const offered = [...shootoutButtons.first, ...shootoutMore];
+      expect(offered).toContain('yellow.first');
+    });
   });
 
   describe('the shootout', () => {
