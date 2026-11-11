@@ -107,6 +107,7 @@ export const TeamColumn = memo(function TeamColumn({ view, onAction, compact }: 
             {note === null ? null : (
               <Text
                 testID="column-note"
+                aria-hidden
                 variant="metricUnit"
                 numberOfLines={1}
                 adjustsFontSizeToFit
@@ -360,13 +361,14 @@ const styles = StyleSheet.create({
     minWidth: 0,
     padding: space.sm,
     borderRadius: radius.card,
-    borderLeftWidth: layout.padSideBar,
+    // The colour bar is the column's top edge, following its rounded corners (owner ruling 147, the mockup).
+    borderTopWidth: layout.padSideBar,
     backgroundColor: colour.surface,
   },
   gapFull: { gap: TIER_FACES.full.gap },
   gapCompact: { gap: TIER_FACES.compact.gap },
-  lit: { borderLeftColor: colour.lime },
-  dim: { borderLeftColor: colour.ink3 },
+  lit: { borderTopColor: colour.lime },
+  dim: { borderTopColor: colour.ink3 },
   // Two lines' room whatever the name, so the two columns' squares and buttons line up side by side (footballFit.test.ts);
   // one line's in a compact head.
   name: { minHeight: layout.padNameLines * typeScale.matchName.lineHeight },
@@ -415,7 +417,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.card,
     backgroundColor: colour.surface2,
   },
-  markOff: { opacity: 0.4 },
+  markOff: { opacity: layout.disabledMark },
   swatch: {
     width: layout.padSquareSwatchWidth,
     height: layout.padSquareSwatchHeight,

@@ -39,11 +39,13 @@ export const PERIOD_HEIGHT = typeScale.diagSection.lineHeight;
 
 /**
  * The clock's face, a rounded panel on `surface` (owner ruling 146, the mockup): the time and the period's line under it
- * (a touch target at least), with the tier's gap of padding above and below.
+ * (a touch target at least), with the tier's gap of padding above and below and the lime hairline under it (ruling 147).
  */
 export function faceHeight(tier: BoardTier): number {
   const { gap, time } = TIER_FACES[tier];
-  return Math.max(layout.touch, typeScale[time].lineHeight + PERIOD_HEIGHT) + 2 * gap;
+  return (
+    Math.max(layout.touch, typeScale[time].lineHeight + PERIOD_HEIGHT) + 2 * gap + layout.iconBorder
+  );
 }
 
 /** The clock hero and the gap under it: the face, the gap, the one plate (a touch target), then the board's gap. */
@@ -70,16 +72,6 @@ export function goalHeight(tier: BoardTier): number {
 export const NOTE_HEIGHT = typeScale.metricUnit.lineHeight;
 
 /**
- * The side of a small square (owner ruling 144, "Big Goal, three small"): a third of the column's text width less the two
- * gaps between them (`space.xs`). The row is that tall, but never under a touch target: a column narrower than three
- * touch targets (about 160 dp, a phone under 360 wide) keeps `layout.touch` and the three squares are near-square
- * (controller ruling 145).
- */
-export const smallSide = (textWidth: number): number => (textWidth - 2 * space.xs) / 3;
-export const smallRowHeight = (textWidth: number): number =>
-  Math.max(layout.touch, smallSide(textWidth));
-
-/**
  * The Goal square's side (ruling 144): the column's whole text width, capped by the height the column leaves it. A
  * square that does not fit the height shrinks to it and is centred.
  */
@@ -87,11 +79,12 @@ export const goalSide = (room: { readonly width: number; readonly height: number
   Math.min(room.width, room.height);
 
 /**
- * The least height a column holds in: its padding, the head, the Goal square, the row of three squares (a touch target)
+ * The least height a column holds in: its padding and the colour bar on its top edge, the head, the Goal square, the row of three squares (a touch target)
  * and its note line, a gap before each of the three under the head's.
  */
 export const columnHeight = (tier: BoardTier): number =>
   2 * space.sm +
+  layout.padSideBar +
   headHeight(tier) +
   goalHeight(tier) +
   3 * TIER_FACES[tier].gap +
@@ -100,7 +93,9 @@ export const columnHeight = (tier: BoardTier): number =>
 
 /**
  * The compact threshold: the least board height the full tier holds in, the hero over a column of its least size. A
- * board under it is compact.
+ * board under it is compact. It is built with the least row of squares (48 dp); a column wide enough for squares taller
+ * than that (a tablet: 600 dp wide gives 84) would overflow by the difference just above this height. No phone does
+ * (every phone this wide is taller than the threshold first), so the board's width is not asked for here.
  */
 export const BOARD_FULL_HEIGHT = clockBarHeight('full') + columnHeight('full');
 
@@ -119,3 +114,26 @@ export function goalNumeralSize(tier: BoardTier, height: number): number {
   const least = typeScale[TIER_FACES.compact.numeral].fontSize;
   return Math.min(most, Math.max(least, Math.round(height * layout.goalNumeralRatio)));
 }
+
+/**
+ * The full tier's clock digits in dp for a board `width` by `height` dp laid out (owner ruling 150): `clockHero`'s size
+ * when the column has no height to spare, growing with the height that is left once the Goal square (which is width-capped,
+ * ruling 144) and the rest of the column are in, up to `layout.clockHeroMax`, and never so big that "120+15:00" takes more
+ * than the face at `layout.clockFloor`. Layout-time only: no tick reads it.
+ */
+export function clockHeroSize(board: { readonly width: number; readonly height: number }): number {
+  const base = typeScale.clockHero;
+  const text = (board.width - space.sm) / 2 - 2 * space.sm;
+  const row = Math.max(layout.touch, (text - 2 * space.xs) / 3);
+  const gap = TIER_FACES.full.gap;
+  const fixed = 2 * space.sm + layout.padSideBar + headHeight('full') + 3 * gap + row + NOTE_HEIGHT;
+  const spare = board.height - clockBarHeight('full') - fixed - Math.max(goalHeight('full'), text);
+  const ratio = base.lineHeight / base.fontSize;
+  const grown = Math.floor((base.lineHeight + Math.max(0, spare)) / ratio);
+  const widest = Math.floor(board.width / (layout.clockWidestEm * layout.clockFloor));
+  return Math.max(base.fontSize, Math.min(grown, layout.clockHeroMax, widest));
+}
+
+/** The line height for a clock hero of `size` dp: `clockHero`'s own ratio, rounded down so it never takes more than it was given. */
+export const clockHeroLine = (size: number): number =>
+  Math.floor((size * typeScale.clockHero.lineHeight) / typeScale.clockHero.fontSize + 1e-9);

@@ -150,17 +150,48 @@ describe('ClockBar', () => {
   });
 });
 
+// Owner rulings 147 and 150: the panel's lime hairline, and the digits grown into a tall phone's spare height.
+describe('ClockBar, the panel and the grown digits', () => {
+  it('has a thin lime hairline on the panel’s bottom edge', () => {
+    renderBar(viewOf('pause'));
+    const face = screen.getByTestId('clock-face');
+    expect(getComputedStyle(face).borderBottomColor).toBe(edgeOf(colour.lime));
+    expect(declaredStyle(face, 'border-bottom-width')).toBe(`${layout.iconBorder}px`);
+  });
+
+  it('sets the digits at the size it is given, with its line, and keeps clockHero’s with none', () => {
+    const grown = renderBar(viewOf('pause'));
+    expect(getComputedStyle(screen.getByText('34:12')).fontSize).toBe(
+      `${typeScale.clockHero.fontSize}px`,
+    );
+    grown.rendered.unmount();
+    const onAction = vi.fn();
+    renderWithPorts(<ClockBar view={viewOf('pause')} onAction={onAction} heroSize={106} />);
+    expect(getComputedStyle(screen.getByText('34:12')).fontSize).toBe('106px');
+    expect(getComputedStyle(screen.getByText('34:12')).lineHeight).toBe('108px');
+  });
+
+  it('a compact bar ignores a size: it keeps the step down', () => {
+    renderWithPorts(<ClockBar view={viewOf('pause')} onAction={vi.fn()} compact heroSize={106} />);
+    expect(getComputedStyle(screen.getByText('34:12')).fontSize).toBe(
+      `${typeScale.tallyCompact.fontSize}px`,
+    );
+  });
+});
+
 // The compact board's bar (fix-round 2 ruling R1): the time a step down (`tallyCompact`), the period's one line under it,
 // the plate under both.
 describe('ClockBar, compact', () => {
-  it('sets the time a step down, the period under it on one line cut with an ellipsis, in a 48 dp face with 4 dp of padding a side, a 56 dp panel', () => {
+  it('sets the time a step down, the period under it on one line cut with an ellipsis, in a 48 dp face with 4 dp of padding a side, a 57 dp panel with its hairline', () => {
     renderBar(viewOf('pause'), 'en', true);
     const face = screen.getByLabelText(`${said('34:12')}, ${H1}`);
     expect(within(face).getByText(H1)).toBeTruthy();
     expect(getComputedStyle(within(face).getByText('34:12')).fontSize).toBe(
       `${typeScale.tallyCompact.fontSize}px`,
     );
-    expect(declaredStyle(face, 'min-height')).toBe(`${layout.touch + 2 * space.xs}px`);
+    expect(declaredStyle(face, 'min-height')).toBe(
+      `${layout.touch + 2 * space.xs + layout.iconBorder}px`,
+    );
     const style = getComputedStyle(screen.getByText(H1));
     expect([style.whiteSpace, style.textOverflow]).toEqual(['nowrap', 'ellipsis']);
   });

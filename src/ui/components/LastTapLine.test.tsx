@@ -3,12 +3,37 @@ import { describe, expect, it, vi } from 'vitest';
 import en from '@/i18n/en.json';
 import nl from '@/i18n/nl.json';
 import { LastTapLine } from '@/ui/components/LastTapLine';
-import { layout } from '@/ui/theme/tokens';
+import { colour, layout } from '@/ui/theme/tokens';
+import { declaredStyle } from '../../../test/declaredStyle';
+import { edgeOf } from '../../../test/pressState';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
 const rally = { key: 'scoring.badminton.last.rally', vars: { side: 'L. Chen' } } as const;
 const sentence = en['scoring.badminton.last.rally'].replace('{side}', 'L. Chen');
 const undo = () => screen.getByRole('button', { name: en['scoring.pad.undo'] });
+
+// Owner ruling 148 (the mockup): Undo is an outlined button with an undo arrow before its word in bold caps, in every pad.
+describe('LastTapLine’s Undo', () => {
+  it('is outlined, at least 96 wide and a touch target tall, with the arrow glyph and its word in caps', () => {
+    renderWithPorts(
+      <LastTapLine lastTap={{ text: rally, undo: true }} refusal={null} onUndo={vi.fn()} />,
+    );
+    const button = undo();
+    expect(getComputedStyle(button).borderTopColor).toBe(edgeOf(colour.ink3));
+    expect(declaredStyle(button, 'min-width')).toBe(`${layout.padUndoMinWidth}px`);
+    expect(declaredStyle(button, 'min-height')).toBe(`${layout.touch}px`);
+    expect(button.querySelector('[data-testid="undo-glyph"]')).toBeTruthy();
+    expect(getComputedStyle(button.querySelector('div[dir]')!).textTransform).toBe('uppercase');
+  });
+
+  it('greys when it is not offered: the edge fades to the hairline and the word to the inert ink', () => {
+    renderWithPorts(
+      <LastTapLine lastTap={{ text: rally, undo: false }} refusal={null} onUndo={vi.fn()} />,
+    );
+    expect(getComputedStyle(undo()).borderTopColor).toBe(edgeOf(colour.rule));
+    expect(getComputedStyle(undo().querySelector('div[dir]')!).color).toBe(edgeOf(colour.ink3));
+  });
+});
 
 describe('LastTapLine', () => {
   it('says what the last tap did, and offers Undo on it', () => {

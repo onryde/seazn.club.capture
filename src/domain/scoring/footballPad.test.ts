@@ -103,7 +103,7 @@ describe('footballPad: the halves (design §6.2)', () => {
 });
 
 describe('footballPad: before the start, and no strip (design §6.7, ruling 146)', () => {
-  it('asks to start with no toss before the match starts, and reads Not started', () => {
+  it('asks to start with no toss before the match starts; the Start panel says so, no strip does', () => {
     const pad = padOf([]);
     expect(pad.start).toEqual({
       ask: { key: 'scoring.football.start.ask' },
@@ -320,9 +320,6 @@ describe('footballPad: its words', () => {
     expect(en['scoring.football.end.HT']).toBe('Half-time');
     expect(en['scoring.football.end.QT']).toBe('End Q1');
     expect(en['scoring.football.end.ET_FT']).toBe('End of extra time');
-    expect(en['scoring.football.note.extraTime']).toBe('Extra time');
-    expect(en['scoring.football.note.penalties']).toBe('Penalties');
-    expect(en['scoring.football.note.notStarted']).toBe('Not started');
     expect(en['scoring.football.last.goal']).toBe('Goal · {team}{who}{at}');
   });
 });

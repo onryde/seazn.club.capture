@@ -1,4 +1,5 @@
 import { act, fireEvent, screen, within } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
 import { Text } from 'react-native';
 import { describe, expect, it, vi } from 'vitest';
 import { TeamColumn, type TeamAction, type TeamColumnView } from '@/ui/components/TeamColumn';
@@ -89,6 +90,32 @@ describe('TeamColumn', () => {
     act(() => fireEvent.click(sub));
     expect(onAction).not.toHaveBeenCalled();
     expect(getComputedStyle(within(sub).getByText('Sub')).color).toBe(edgeOf(colour.ink3));
+  });
+
+  it('draws the disabled note once for a screen reader: the line is hidden, the name has it', () => {
+    renderColumn({
+      ...VIEW,
+      actions: [GOAL, YELLOW, RED, { ...SUB, enabled: false, note: 'No team sheet' }],
+    });
+    expect(screen.getByTestId('column-note').getAttribute('aria-hidden')).toBe('true');
+    expect(button('Sub, No team sheet')).toBeTruthy();
+  });
+
+  it('dims a disabled square’s mark by the token', () => {
+    renderColumn({
+      ...VIEW,
+      actions: [GOAL, YELLOW, RED, { ...SUB, enabled: false, note: 'No team sheet' }],
+    });
+    const mark = within(button('Sub, No team sheet')).getByTestId('sub-glyph').parentElement!;
+    expect(declaredStyle(mark, 'opacity')).toBe(`${layout.disabledMark}`);
+  });
+
+  // jsdom has no font padding, so nothing renders the difference: this guards the declaration (device-only effect, the
+  // empty band over the big digits on Android; owner ruling 146).
+  it('keeps includeFontPadding false on the clock hero role and on the Goal numeral style', () => {
+    expect(typeScale.clockHero.includeFontPadding).toBe(false);
+    const source = readFileSync(`${process.cwd()}/src/ui/components/TeamColumn.tsx`, 'utf8');
+    expect(source).toMatch(/numeral: \{[^}]*includeFontPadding: false/);
   });
 
   it('keeps the note line’s room with no note, so no team’s squares sit off the other’s', () => {
@@ -251,14 +278,20 @@ describe('TeamColumn', () => {
     expect(declaredStyle(button('Missed'), 'aspect-ratio')).toBe('');
   });
 
-  it('draws the first side’s edge bar in lime and the second’s in lilac', () => {
+  it('draws the first side’s colour bar on the top edge in lime and the second’s in lilac, and none on the left', () => {
     const first = renderColumn(VIEW);
-    expect(getComputedStyle(screen.getByTestId('team-column')).borderLeftColor).toBe(
+    expect(getComputedStyle(screen.getByTestId('team-column')).borderTopColor).toBe(
       edgeOf(colour.lime),
+    );
+    expect(declaredStyle(screen.getByTestId('team-column'), 'border-top-width')).toBe(
+      `${layout.padSideBar}px`,
+    );
+    expect(declaredStyle(screen.getByTestId('team-column'), 'border-left-width')).not.toBe(
+      `${layout.padSideBar}px`,
     );
     first.rendered.unmount();
     renderColumn({ ...VIEW, bar: 'dim' });
-    expect(getComputedStyle(screen.getByTestId('team-column')).borderLeftColor).toBe(
+    expect(getComputedStyle(screen.getByTestId('team-column')).borderTopColor).toBe(
       edgeOf(colour.ink3),
     );
   });

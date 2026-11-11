@@ -372,6 +372,26 @@ const base = {
    * 37.3 dp square at 320 dp at the label floor (footballFit.test.ts).
    */
   padSquareLabelSpacing: 0.2,
+  /** A disabled small square's mark (a swatch or Sub's arrows), dimmed (the label goes to `ink3`). */
+  disabledMark: 0.4,
+  /**
+   * Undo in the pad's last-tap line (owner ruling 148, the mockup): an outlined button at least `padUndoMinWidth` wide
+   * with a glyph before its word, the glyph drawn from boxes: an arrow's head `padUndoHead` long and `2 * padUndoHalf`
+   * tall pointing left, then a hook `padUndoBody` wide and `padUndoHeight` tall, `padUndoStroke` thick, curving back.
+   */
+  padUndoMinWidth: 96,
+  padUndoHead: 5,
+  padUndoHalf: 4,
+  padUndoBody: 10,
+  padUndoHeight: 10,
+  padUndoStroke: 2,
+  /**
+   * The football clock grows into the height a tall phone leaves over (owner ruling 150): from `clockHero`'s size toward
+   * `clockHeroMax`, never so wide that the longest reading, "120+15:00", takes more than `clockWidestEm` of the font size
+   * in the face, shrunk to `clockFloor`.
+   */
+  clockHeroMax: 110,
+  clockWidestEm: 4.2,
   /**
    * The clock plate's Pause and Resume glyphs, drawn from boxes (owner ruling 130): Pause is two bars `padGlyphBar` wide and
    * `padGlyphHeight` tall, `padGlyphGap` apart; Resume is a triangle `padGlyphLength` long and `2 * padGlyphHalf` tall.

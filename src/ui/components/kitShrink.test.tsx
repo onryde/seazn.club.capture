@@ -49,7 +49,7 @@ const COLUMN: TeamColumnView = {
       primary: true,
       enabled: true,
       note: null,
-      swatch: null,
+      mark: null,
     },
     {
       id: 'yellow.first',
@@ -58,7 +58,7 @@ const COLUMN: TeamColumnView = {
       primary: false,
       enabled: true,
       note: null,
-      swatch: 'caution',
+      mark: 'caution',
     },
   ],
 };

@@ -31,8 +31,9 @@ import {
 } from '@/ui/components/PadSheets';
 import { TeamColumn, type TeamAction, type TeamColumnView } from '@/ui/components/TeamColumn';
 import { Text } from '@/ui/components/Text';
-import { type BoardTier, boardTier } from '@/ui/theme/columnBoard';
+import { boardTier, clockHeroSize } from '@/ui/theme/columnBoard';
 import { colour, space } from '@/ui/theme/tokens';
+import { typeScale } from '@/ui/theme/type';
 
 /**
  * The football pad (S2-5 design §6; plan P Task 12; owner ruling 38: a screen per sport), drawn from the model of
@@ -81,7 +82,7 @@ type BoardProps = {
 const FootballBoardView = memo(function FootballBoardView(props: BoardProps) {
   const { display, card, readingNow, actions } = props;
   const board = useMemo(() => footballBoard(display, card), [display, card]);
-  const [compact, measured] = useCompactBoard();
+  const [{ compact, heroSize }, measured] = useBoardFaces();
   return (
     <View testID="football-board" onLayout={measured} style={styles.board}>
       <FootballClockLeaf
@@ -89,6 +90,7 @@ const FootballBoardView = memo(function FootballBoardView(props: BoardProps) {
         readingNow={readingNow}
         actions={actions}
         compact={compact}
+        heroSize={heroSize}
       />
       <SideColumns board={board} compact={compact} {...props} />
     </View>
@@ -120,13 +122,24 @@ function SideColumns({ board, halves, display, readingNow, compact, actions }: S
   );
 }
 
-/** Whether the board is compact, from its own height as laid out; full until the phone lays it out. */
-function useCompactBoard(): [boolean, (event: LayoutChangeEvent) => void] {
-  const [tier, setTier] = useState<BoardTier>('full');
+type BoardFaces = { readonly compact: boolean; readonly heroSize: number };
+const FIRST_FACES: BoardFaces = { compact: false, heroSize: typeScale.clockHero.fontSize };
+
+/**
+ * Whether the board is compact and how big the full tier's clock digits are, from the board's own size as laid out (full,
+ * at the least size, until the phone lays it out). Set on layout only; the state keeps its object while neither moves.
+ */
+function useBoardFaces(): [BoardFaces, (event: LayoutChangeEvent) => void] {
+  const [faces, setFaces] = useState<BoardFaces>(FIRST_FACES);
   const measured = useCallback((event: LayoutChangeEvent) => {
-    setTier(boardTier(event.nativeEvent.layout.height));
+    const { width, height } = event.nativeEvent.layout;
+    const compact = boardTier(height) === 'compact';
+    const heroSize = compact ? FIRST_FACES.heroSize : clockHeroSize({ width, height });
+    setFaces((was) =>
+      was.compact === compact && was.heroSize === heroSize ? was : { compact, heroSize },
+    );
   }, []);
-  return [tier === 'compact', measured];
+  return [faces, measured];
 }
 
 type ClockLeafProps = {
@@ -134,6 +147,7 @@ type ClockLeafProps = {
   readonly readingNow: () => number;
   readonly actions: FootballPadActions;
   readonly compact: boolean;
+  readonly heroSize: number;
 };
 
 /**
@@ -145,10 +159,11 @@ const FootballClockLeaf = memo(function FootballClockLeaf({
   readingNow,
   actions,
   compact,
+  heroSize,
 }: ClockLeafProps) {
   useClockTick(display.clock.anchor?.running === true);
   const view = footballClockBar(display, readingNow());
-  return <ClockBar view={view} onAction={actions.clock} compact={compact} />;
+  return <ClockBar view={view} onAction={actions.clock} compact={compact} heroSize={heroSize} />;
 });
 
 type SideColumnProps = {

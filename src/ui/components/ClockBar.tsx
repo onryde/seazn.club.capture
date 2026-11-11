@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import {
   type PressableStateCallbackType,
   Pressable,
@@ -11,7 +11,13 @@ import type { ClockBarAction, ClockBarView } from '@/domain/scoring/clockBarView
 import { usePadText } from '@/hooks/usePadText';
 import type { MessageKey } from '@/i18n/messages';
 import { Text } from '@/ui/components/Text';
-import { type BoardTier, faceHeight, PERIOD_HEIGHT, TIER_FACES } from '@/ui/theme/columnBoard';
+import {
+  type BoardTier,
+  clockHeroLine,
+  faceHeight,
+  PERIOD_HEIGHT,
+  TIER_FACES,
+} from '@/ui/theme/columnBoard';
 import { colour, layout, plateInk, pressedOpacity, radius, space } from '@/ui/theme/tokens';
 
 type ClockBarProps = {
@@ -20,6 +26,8 @@ type ClockBarProps = {
   readonly onAction: () => void;
   /** A compact board's bar (fix-round 2 ruling R1, `columnBoard.ts`): the time a step down. */
   readonly compact?: boolean;
+  /** The full tier's digits in dp, grown into a tall phone's spare height (ruling 150, `clockHeroSize`); default `clockHero`'s. */
+  readonly heroSize?: number;
 };
 
 /**
@@ -32,7 +40,12 @@ type ClockBarProps = {
  * the top edge opened it (device-run-1 F3). The time never wraps: it shrinks to fit its one line, down to
  * `layout.clockFloor`. A screen reader hears the face as one ("Match clock 34:12, 1st half, Paused").
  */
-export const ClockBar = memo(function ClockBar({ view, onAction, compact }: ClockBarProps) {
+export const ClockBar = memo(function ClockBar({
+  view,
+  onAction,
+  compact,
+  heroSize,
+}: ClockBarProps) {
   const words = usePadText();
   const tier: BoardTier = compact === true ? 'compact' : 'full';
   return (
@@ -41,6 +54,7 @@ export const ClockBar = memo(function ClockBar({ view, onAction, compact }: Cloc
         time={view.time}
         said={words(view.said)}
         tier={tier}
+        heroSize={heroSize}
         period={view.period === null ? null : words(view.period)}
         paused={view.paused === null ? null : words(view.paused)}
       />
@@ -59,6 +73,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: radius.card,
     backgroundColor: colour.surface,
+    // The mock's lime hairline on the panel's bottom edge (owner ruling 147).
+    borderBottomWidth: layout.iconBorder,
+    borderBottomColor: colour.lime,
   },
   faceFull: { minHeight: faceHeight('full'), paddingVertical: TIER_FACES.full.gap },
   faceCompact: { minHeight: faceHeight('compact'), paddingVertical: TIER_FACES.compact.gap },
@@ -127,10 +144,25 @@ type ClockFaceProps = {
   readonly tier: BoardTier;
   readonly period: string | null;
   readonly paused: string | null;
+  readonly heroSize: number | undefined;
 };
 
 /** The time over the period's line and the PAUSED tag, heard as one. */
-const ClockFace = memo(function ClockFace({ time, said, tier, period, paused }: ClockFaceProps) {
+const ClockFace = memo(function ClockFace({
+  time,
+  said,
+  tier,
+  period,
+  paused,
+  heroSize,
+}: ClockFaceProps) {
+  const grown = useMemo(
+    () =>
+      heroSize === undefined || tier === 'compact'
+        ? null
+        : { fontSize: heroSize, lineHeight: clockHeroLine(heroSize) },
+    [heroSize, tier],
+  );
   const label = [said, period, paused].filter((part) => part !== null).join(', ');
   return (
     <View
@@ -145,7 +177,7 @@ const ClockFace = memo(function ClockFace({ time, said, tier, period, paused }: 
         adjustsFontSizeToFit
         minimumFontScale={layout.clockFloor}
         aria-hidden
-        style={paused === null ? styles.time : styles.timePaused}
+        style={[paused === null ? styles.time : styles.timePaused, grown]}
       >
         {time}
       </Text>
