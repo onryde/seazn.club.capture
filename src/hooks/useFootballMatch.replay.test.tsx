@@ -726,6 +726,11 @@ describe('the 2022 World Cup final, replayed through the phone', () => {
         [subLabel(SUBS[11])]: { first: true, second: false },
         [subLabel(SUBS[12])]: { first: false, second: false },
       };
+      // Anti-vacuity: the two labels the expectation turns on are among the observations, and there are observations.
+      expect(observed.length).toBeGreaterThan(0);
+      expect(observed.map((seen) => seen.label)).toEqual(
+        expect.arrayContaining(Object.keys(spent)),
+      );
       expect(observed.map((seen) => [seen.label, seen.display.subsLeft])).toEqual(
         observed.map((seen) => [seen.label, spent[seen.label] ?? { first: true, second: true }]),
       );
@@ -775,26 +780,35 @@ describe('the 2022 World Cup final, replayed through the phone', () => {
     });
 
     // Law 3 without the competition's extra allowance: the same two 6th subs over the same ledger, judged by a cfg with
-    // no `extraTimeSubs`, are refused (the code pinned so a change is seen).
+    // no `extraTimeSubs`, are refused (the code and reason pinned so a change is seen).
     it('without extraTimeSubs, each 6th sub at 120+1 is refused', async () => {
       const { ledger } = (await replayed()).replay;
       const envelopes = ledger.map((event) => envelopeOf(SEED.fixtureId, event));
       const { extraTimeSubs: _allowance, ...lawOnly } = WC_CFG;
       const withoutKey = { ...ENGINE_MATCH, cfg: footballCfg(lawOnly)! };
-      const refusalAt = (off: string, on: string) => {
+      const prefixTo = (off: string, on: string) => {
         const at = envelopes.findIndex((e) => {
           const payload = e.payload as { off?: string; on?: string };
           return e.type === 'football.sub' && payload.off === off && payload.on === on;
         });
         expect(at).toBeGreaterThan(0);
-        return footballRefusalOf(withoutKey, envelopes.slice(0, at + 1))?.code ?? null;
+        return envelopes.slice(0, at + 1);
       };
+      const france = prefixTo(fra(5), fra(3));
+      const argentina = prefixTo(arg(3), arg(21));
       // France's is its 6th sub over the kernel's cap; Argentina's would open a 4th window over the window cap.
-      expect([refusalAt(fra(5), fra(3)), refusalAt(arg(3), arg(21))]).toEqual([
-        'INVALID_EVENT',
-        'SUB_WINDOW_EXCEEDED',
+      expect([
+        footballRefusalOf(withoutKey, france),
+        footballRefusalOf(withoutKey, argentina),
+      ]).toEqual([
+        { code: 'INVALID_EVENT', reason: 'sub-cap-reached' },
+        { code: 'SUB_WINDOW_EXCEEDED', reason: null },
       ]);
-      expect(footballRefusalOf(ENGINE_MATCH, envelopes)).toBeNull();
+      // With the key the same two subs, judged as the last event of their own prefix, are taken.
+      expect([
+        footballRefusalOf(ENGINE_MATCH, france),
+        footballRefusalOf(ENGINE_MATCH, argentina),
+      ]).toEqual([null, null]);
     });
 
     it('up to 102 the engine counts the windows the match used: France 2 in normal time, Argentina 2 (64, 102)', async () => {

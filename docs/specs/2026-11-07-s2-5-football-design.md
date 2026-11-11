@@ -123,14 +123,14 @@ fixture is spent; the device run needs a fresh one (§11).
 | `core.forfeit`, `core.abandon`, `core.settle`                                                                                                 | 403 `FORBIDDEN` ("Only an organiser can …")                                                                              |
 | `core.finalize`                                                                                                                               | 403 `FORBIDDEN` ("Finalizing needs an organiser or scorer account")                                                      |
 
-The bootstrap: `sport_key: "football"`, `engine_epoch_required: 4`, `cfg` with `halves`, `halfMinutes`,
+The bootstrap: `sport_key: "football"`, `engine_epoch_required: 5` (4 until engine 7.0.0), `cfg` with `halves`, `halfMinutes`,
 `extraTime`, `shootout`, `shootoutAttempts`, `sinBinMinutes` and the rest; each side's `lineup` is 16 rows of
 `{person_id, pair_order: null}` and nothing else. **It cannot tell the eleven from the bench**, which is what §10
 fixes. Ledger rows carry `{id, seq, type, payload, recorded_at, recorded_by, device_link_id, voids_event_id}`.
 
 Engine: `@onryde/seazn-engine` 2.0.0 (the phone's pin) has the same football module as 3.0.2 (origin/main 40d692b):
 no file under `sports/football`, `sports/period` or `core` changed between them, and football's fold epoch is 4 in
-both (`sport/fold-epoch.ts:51,61`). No engine bump is needed.
+both (`sport/fold-epoch.ts:51,61`). No engine bump was needed then; engine 7.0.0 (F-R3, the extra-time substitution allowance) moved football's fold epoch to 5, and the phone is pinned to it (revision, 2026-11-11).
 
 ## 5. How a scorer meets it
 
@@ -425,7 +425,7 @@ itself (`football.ts:2407`), and the phone's clock stops with it. **Start** in a
 | Shootout · Scored / Missed | `football.shootout.kick {by, person?, scored}`                                               |
 | Undo                       | `core.void {event_id}` (the kit's, unchanged)                                                |
 
-Every write carries `{sport: "football", epoch: 4}` and the rules version, as every S2 sport's does. The payloads are
+Every write carries `{sport: "football", epoch: 5}` and the rules version, as every S2 sport's does. The payloads are
 read from `football.ts:241-451` and each was accepted on staging (§4); the plan types them from the engine's own
 schemas (`FOOTBALL_EVENT_SCHEMAS`, `football.ts:474-485`), never a copy. The engine's `minute` field is not sent (the
 fold never reads it).
@@ -542,3 +542,5 @@ misleading message (§4); the controller tells the web session.
 - A `PadView` variant or composition (§9).
 - The shootout's ●/○ row and the "Sin-bin over" mark's drawing.
 - Football's Match details rows.
+
+Revision, 2026-11-11: the phone's pin is `@onryde/seazn-engine` 7.0.0 and football's epoch is 5. `extraTimeSubs` raises each declared substitution cap once the match reaches extra time (F-R3), and Match details has an Extra-time subs row under Subs that says what it adds, read through the engine's `effectiveSubCaps`.

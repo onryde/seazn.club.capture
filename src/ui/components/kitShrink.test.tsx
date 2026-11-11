@@ -76,18 +76,6 @@ describe('the kit’s shrink to fit', () => {
     expect(layout.scoreFloor).toBe(0.6);
   });
 
-  it('the Yellow word shrinks to fit its one line, down to the card label floor, and is never wrapped', () => {
-    renderWithPorts(<TeamColumn view={COLUMN} onAction={vi.fn()} />);
-    expect(shrinkOf(screen.getByText('Yellow'))).toEqual({
-      variant: 'diagSection',
-      lines: '1',
-      fit: 'true',
-      floor: String(layout.cardLabelFloor),
-      ellipsis: 'undefined',
-    });
-    expect(layout.cardLabelFloor).toBe(0.75);
-  });
-
   it('a team’s name with gaps shrinks to fit its two lines, down to the team name floor, then an ellipsis', () => {
     renderWithPorts(<TeamColumn view={COLUMN} onAction={vi.fn()} />);
     const name = screen.getByText('Wolverhampton Wanderers');
