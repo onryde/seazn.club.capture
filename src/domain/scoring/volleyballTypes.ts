@@ -2,6 +2,7 @@ import type { MatchContext } from '@/domain/scoring/matchContext';
 import type { PadSide } from '@/domain/scoring/padView';
 import type { SetBasedGame, SetBasedPhase } from '@/domain/scoring/setBasedBoard';
 import type { SetBasedSide } from '@/domain/scoring/setBasedSides';
+import type { VolleyballRuleKey } from '@/domain/scoring/volleyballRules';
 
 /**
  * Volleyball's types (S2-6 Task 4; the controller's ruling), table tennis's `tableTennisPad.ts` types in a file of their
@@ -183,12 +184,10 @@ export type VolleyballPadKey =
   | 'scoring.volleyball.last.subNamed'
   | 'scoring.volleyball.last.sanction'
   | 'scoring.volleyball.last.setScore'
-  | 'scoring.volleyball.undone.rally'
-  | 'scoring.volleyball.undone.timeout'
-  | 'scoring.volleyball.undone.sub'
-  | 'scoring.volleyball.undone.sanction'
-  | 'scoring.volleyball.undone.setScore'
+  | `scoring.volleyball.undone.${VolleyballUndoneTap['kind']}`
   | `scoring.sanction.${VolleyballSanctionLevel}`
+  | 'scoring.sanction.title'
+  | 'scoring.sanction.who'
   | 'scoring.volleyball.player'
   | 'scoring.volleyball.setsSaid.other'
   | 'scoring.volleyball.setsTally'
@@ -197,7 +196,6 @@ export type VolleyballPadKey =
   | 'scoring.volleyball.hint'
   | 'scoring.volleyball.start.ask'
   | 'scoring.volleyball.serving'
-  | 'scoring.volleyball.servingSaid'
   | 'scoring.volleyball.serverPerson'
   | 'scoring.volleyball.note.setting'
   | 'scoring.volleyball.note.goldenPoint'
@@ -205,6 +203,7 @@ export type VolleyballPadKey =
   | 'scoring.volleyball.foot.beach'
   | 'scoring.volleyball.tool.setScore'
   | 'scoring.volleyball.tool.timeout'
+  | 'scoring.volleyball.tool.timeoutShort'
   | 'scoring.volleyball.tool.sub'
   | 'scoring.volleyball.tool.serving'
   | 'scoring.volleyball.tool.more'
@@ -217,7 +216,8 @@ export type VolleyballPadKey =
   | 'scoring.volleyball.done.penalty'
   | 'scoring.volleyball.done.fieldSix'
   | 'scoring.volleyball.done.fieldTwo'
-  | 'scoring.volleyball.held';
+  | 'scoring.volleyball.held'
+  | VolleyballRuleKey;
 
 /** Volleyball's pad types: what the match runtime is generic over (`SportTypes`). */
 export type VolleyballTypes = {

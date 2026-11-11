@@ -91,12 +91,24 @@ export type PadHalf<K extends string> = {
    */
   readonly bar: PadBar;
   /**
+   * A line of the side's counts at the half's foot (volleyball's timeouts and substitutions in the set, S2-6 ruling 178),
+   * and whether a count is at its number (the kit draws it in `caution`). Optional: only a sport with such counts gives
+   * one, and a half without it is drawn as before.
+   */
+  readonly foot?: PadFoot<K> | null;
+  /**
    * What a tap does, said to a screen reader ("Tap to award the rally"). The half shows the one word "Tap" in the
    * bottom row while it takes a tap, in every sport and for every side (owner ruling 56: no side name; it supersedes
    * ruling 14's "Tap: rally to …"), so the kit says that word itself and nothing here carries it.
    */
   readonly hint: PadText<K>;
   readonly tappable: boolean;
+};
+
+/** The counts at a half's foot: the words, and whether any count is at the number it is counted against. */
+export type PadFoot<K extends string> = {
+  readonly text: PadText<K>;
+  readonly caution: boolean;
 };
 
 /**
