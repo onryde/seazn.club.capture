@@ -3,7 +3,7 @@ import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
 import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
-import { footballCfg, type FootballCfg } from '@/domain/scoring/footballEngine';
+import { footballCfg } from '@/domain/scoring/footballEngine';
 import { footballRuleRows } from '@/domain/scoring/footballRules';
 import { layout, space } from '@/ui/theme/tokens';
 import { KO_11 } from '../../../test/footballLedger';
@@ -860,8 +860,8 @@ describe('Match details’ rules, football', () => {
       subWindows: 3,
       extraTimeSubs: { subs: 1, windows: 1 },
     });
-    expect(everything).not.toBeNull();
-    const drawn = footballRuleRows(everything as FootballCfg).map(({ label }) =>
+    if (everything === null) throw new Error('the config does not parse');
+    const drawn = footballRuleRows(everything).map(({ label }) =>
       label.key.replace('scoring.football.rules.', ''),
     );
     expect(drawn).toEqual(['format', 'extraTime', 'shootout', 'subs', 'extraTimeSubs', 'sinBin']);
