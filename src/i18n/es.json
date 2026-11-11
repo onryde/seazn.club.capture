@@ -908,7 +908,7 @@
   "scoring.football.sheet.noReason": "Sin motivo",
   "scoring.football.sheet.whoComesOff": "¿Quién sale? · {team}",
   "scoring.football.sheet.whoComesOn": "¿Quién entra? · por {player}",
-  "scoring.football.sheet.whichSub": "¿Qué cambio? · {team}",
+  "scoring.football.sheet.whichSub": "¿Qué tipo de cambio? · {team}",
   "scoring.football.sheet.normalSub": "Cambio normal",
   "scoring.football.sheet.concussionSub": "Cambio por conmoción",
   "scoring.football.sheet.noneLeft": "No quedan",

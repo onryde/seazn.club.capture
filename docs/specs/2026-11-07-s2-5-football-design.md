@@ -81,6 +81,9 @@ Anti-goals (a failure even if it works):
 | 108 | The clock shows match time, as football counts it: the second half starts at 45:00, added time reads "90+3"; and the web console's football clock changes to match ("A, change console too", 2026-11-08).                                                                                                                                                                                          |
 | 109 | In added time the clock face shows the time passed, "90+2:30", and an event's minute is the minute being played, "90+3'" for the same moment, as football counts a goal at 0:30 as the 1st minute ("A", 2026-11-08).                                                                                                                                                                               |
 | 110 | The viewers' scoreboard overlay follows the same shared clock: the same anchor (§7.2), corrected to the server's time, and the same match time (§7.4, ruling 109), football only, in the same web PR. The streaming phone still draws no clock or score (AGENTS.md §7) ("apply rec", 2026-11-08).                                                                                                  |
+| 154 | A substitution joins the stoppage, taking the stamp of the sub it follows, when the newest stamped event in the period is a sub (either team's) and its own reading is no more than 120 s past that stamp; otherwise its own reading, at the tap and at send (§7.3) (_the controller's_, 2026-11-11, from the 2022 World Cup final replay).                                                        |
+| 155 | A concussion substitute where the competition runs the trial (`cfg.concussionSubs`): Sub asks Normal or Concussion after the player on, and Concussion sends `core.lineup.replacement` with `exemption: 'concussion'`, outside the cap, opening no window (§6.3) (_the controller's_, 2026-11-11, from the replay).                                                                                |
+| 156 | A card during the shootout: the columns stay Scored and Missed, and More carries a Yellow card and a Red card for each team, each opening the Yellow or Red flow, unstamped (§6.5) (_the controller's_, 2026-11-11, from the replay).                                                                                                                                                              |
 
 ## 4. What staging answered (probed before this design)
 
@@ -213,6 +216,12 @@ with rolling substitutions (the variant's, or `cfg.rollingSubs`) the players who
 {by, off, on, at}`. When the engine says the team has no substitution left (`maxSubs`, `subWindows`), Sub is disabled
 with one line, "No subs left" (_the controller's_; the builder reads the engine's judgement rather than counting).
 
+Where the competition runs the concussion trial (`cfg.concussionSubs`), Sub has one more step after the player on,
+_Which sub? · {team}_: _Normal sub_ and _Concussion sub_, each disabled with its reason when the team has none of it
+left ("No subs left", "None left"), and Sub stays enabled while either is left. A concussion sub sends
+`core.lineup.replacement {side, off, on: {personId, slot: 'bench', orderNo: 1}, exemption: 'concussion', at}`, which
+the engine holds outside the cap and its windows (ruling 155).
+
 ### 6.4 Bottom row
 
 `ToolRow`, at most two cells: **End of period** (its word is what it ends: _Half-time_, _Full time_, _End Q1_ …, _End
@@ -235,6 +244,10 @@ the engine says it is; the other is dimmed (kicks must alternate, §4). Each ope
 team's players and _Don't know_ (the engine's `person` is optional). Under the columns, a row of kick marks per team,
 ●/○. The deciding kick decides the match, and the pad shows the result as §5 says. _The controller's_ layout; the web
 shows kick tiles (`football.tsx:691`).
+
+The columns have no Card, so during the shootout More carries _Yellow card · {team}_ and _Red card · {team}_ for each
+team, while the engine takes a card there; each opens the Yellow or Red flow, and the card is unstamped, as a kick is
+(ruling 156).
 
 ### 6.6 With no team sheet
 
@@ -346,10 +359,17 @@ same period** (_the controller's_, after the builder check). The period always c
 phone's own count, since the fold decides it anyway (§4). A clock that has never been told the time stamps nothing:
 `at` is optional on every football payload, and absent beats wrong (the web's rule, `clock.ts` `stampOf`).
 
-**A substitution is stamped as the web stamps it** (`football.tsx:282-296`): with the fold's `asOf` when `asOf` is
-in the current phase, else with no `at`. Subs with the same stamp count as one window, and with a window cap a new
-window past the cap is refused (`football.ts:1376-1393`, `SUB_WINDOW_EXCEEDED`), so two changes at one stoppage must
-share a stamp; a live reading would put them in two windows (_the controller's_, the web's rule).
+**A substitution joins the stoppage, or takes its own reading** (ruling 154, replacing the web's rule of the fold's
+`asOf`, `football.tsx:282-296`, which gave a sub the minute of the last goal or clock event). Subs with the same
+stamp count as one window, and with a window cap a new window past the cap is refused (`football.ts:1376-1393`,
+`SUB_WINDOW_EXCEEDED`), so two changes at one stoppage must share a stamp. A sub joins the stoppage when the newest
+stamped event in the period is itself a substitution (either team's, a concussion replacement included) and the sub's
+own reading, taken when Sub was pressed, is no more than 120 s past that event's stamp (`SUB_STOPPAGE_SECONDS`): it
+then takes that exact stamp. Otherwise it takes its own reading, as any tap; with no reading, or in a break, it is
+unstamped and opens no window. The 120 s run from the shared stamp, never from the sub before, so a chain cannot
+creep, and any other stamped event ends the stoppage. Sub's own answer (subs left) is judged at the same reading, and
+the open sheet keeps the reading it was pressed at. A joined sub keeps its own reading beside it in the queue, never
+sent (`QueuedEvent.reading`), so one whose stoppage is undone before it goes is sent at its own reading.
 
 The web refuses an `at` earlier than the newest one (`NON_MONOTONIC_TIME`, §4), which a queued tap overtaken by
 another scorer's later events would cause. `payloadForSend` (S2 design §6.2), for a queued tap the ledger does not
