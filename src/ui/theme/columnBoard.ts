@@ -139,3 +139,52 @@ export function clockHeroSize(board: { readonly width: number; readonly height: 
 /** The line height for a clock hero of `size` dp: `clockHero`'s own ratio, rounded down so it never takes more than it was given. */
 export const clockHeroLine = (size: number): number =>
   Math.floor((size * typeScale.clockHero.lineHeight) / typeScale.clockHero.fontSize + 1e-9);
+
+/**
+ * Yellow, Red and Sub's words at `diagSection`'s size (14), upper case, no letterspacing: Barlow Condensed 600's advances,
+ * written out so the layout needs no font reader (`smallLabelFit.test.ts` checks every one against the font file and that
+ * the four dictionaries' words are all here).
+ */
+export const SMALL_WORD_WIDTH: Readonly<Record<string, number>> = {
+  YELLOW: 39.9,
+  RED: 19.2,
+  SUB: 19.2,
+  'AMAR.': 29.7,
+  ROJA: 25.6,
+  CAMBIO: 36.5,
+  JAUNE: 32.5,
+  ROUGE: 32.2,
+  'REMPL.': 35.2,
+  GEEL: 24.5,
+  ROOD: 26.1,
+  WISSEL: 36.5,
+};
+
+/**
+ * What the NE2211 drew over those advances: RED and SUB 7 to 9 % wider (build 1060). Its runtime shrink (`adjustsFontSizeToFit`)
+ * did not run there and "YELLOW" read "YELLO" in a room of 46 dp for a word of 39.9 x 1.1 = 43.9, so the size is computed.
+ */
+export const DEVICE_ADVANCE = 1.1;
+
+/**
+ * The size and the side inset of a small square's word, from the square's measured outer `side` (0 before it is laid out:
+ * the token's size). The word keeps `layout.padSquareLabelInset` clear of the outline and shrinks until it fits, never
+ * under `layout.cardLabelFloor` of the token (floored to a whole dp so it errs small); at the floor it gives up inset, not
+ * letters. Like the Goal numeral (ruling 138) it is layout-time: nothing here is measured by the runtime. A word the table
+ * does not hold is measured as 0.72 em a letter.
+ */
+export function smallLabelFit(
+  side: number,
+  word: string,
+): { readonly fontSize: number; readonly inset: number } {
+  const base = typeScale.diagSection.fontSize;
+  const inset = layout.padSquareLabelInset;
+  if (side <= 0) return { fontSize: base, inset };
+  const upper = word.toUpperCase();
+  const need = (SMALL_WORD_WIDTH[upper] ?? [...upper].length * base * 0.72) * DEVICE_ADVANCE;
+  const outer = side - 2 * layout.iconBorder;
+  const scale = Math.max(layout.cardLabelFloor, Math.min(1, (outer - 2 * inset) / need));
+  const fontSize = Math.floor(base * scale);
+  const left = (outer - need * (fontSize / base)) / 2;
+  return { fontSize, inset: Math.max(0, Math.min(inset, left)) };
+}

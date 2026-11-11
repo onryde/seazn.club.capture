@@ -336,22 +336,8 @@ describe('the column buttons at 320 and 360 in four languages', () => {
     },
   );
 
-  // Ruling 144: three squares share the column's text, a third each less the gaps; the word under the mark shrinks to its
-  // one line, never under the card label floor, and a word that cannot is shortened in the dictionary ("Rempl.", fr).
-  it.each(LANGUAGES)(
-    '%s: Yellow, Red and Sub, each under its mark in a small square, shrink to fit one line, never under the label floor',
-    (_lang, dictionary: Dictionary) => {
-      expect(layout.cardLabelFloor).toBe(0.75);
-      for (const word of ['yellow', 'red', 'sub'])
-        for (const width of WIDTHS) {
-          const label = said(dictionary, `scoring.football.column.${word}`);
-          expect(
-            Math.min(1, smallWordRoom(width) / squareWordWidth(label)),
-            `${label} @${width}`,
-          ).toBeGreaterThanOrEqual(layout.cardLabelFloor);
-        }
-    },
-  );
+  // Ruling 144: three squares share the column's text, a third each less the gaps. The word's size is computed from the
+  // square (`smallLabelFit`), tested with its literal widths in smallLabelFit.test.ts for every word, language and width.
 
   it('the room a word has: a 38.7 dp square holds 30.7 at 320 and 45.3 holds 37.3 at 360 (literal widths) once the outline (1 a side) and the label’s inset (3 a side) are out; Yellow, the widest word, needs 0.77 and 0.93', () => {
     expect(layout.padSquareLabelInset).toBe(SMALL_LABEL_INSET);

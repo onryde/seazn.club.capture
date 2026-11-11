@@ -125,12 +125,19 @@ describe('TeamColumn', () => {
     expect(screen.queryByTestId('column-note')).toBeNull();
   });
 
-  it('insets the small squares’ word from the outline (the device showed YELLOW touching it)', () => {
+  // Build 1060: the runtime shrink did not run on the NE2211 and "YELLOW" read "YELLO". The size is now set from the
+  // measured square (smallLabelFit.test.ts holds the numbers); here, that the column applies it.
+  it('sets the small squares’ word from the measured square: full size and a 3 dp inset at 54, smaller at 38.7', () => {
     renderColumn(VIEW);
-    const word = within(button('Yellow')).getByText('Yellow');
-    expect(declaredStyle(word, 'padding-left')).toBe(`${layout.padSquareLabelInset}px`);
-    expect(declaredStyle(word, 'padding-right')).toBe(`${layout.padSquareLabelInset}px`);
-    expect(layout.padSquareLabelInset).toBeGreaterThanOrEqual(3);
+    const square = button('Yellow');
+    const word = () => within(square).getByText('Yellow');
+    expect(declaredStyle(word(), 'font-size')).toBe('14px');
+    layOut(square, { width: 54, height: 54 });
+    expect(declaredStyle(word(), 'font-size')).toBe('14px');
+    expect(declaredStyle(word(), 'padding-left')).toBe('3px');
+    layOut(square, { width: 38.7, height: 48 });
+    expect(declaredStyle(word(), 'font-size')).toBe('10px');
+    expect(declaredStyle(word(), 'padding-left')).not.toBe('0px');
   });
 
   it('draws no note line at all when told none is reserved and the column has no note', () => {

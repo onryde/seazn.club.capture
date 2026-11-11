@@ -18,6 +18,7 @@ import {
   goalSide,
   MARKS_HEIGHT,
   NOTE_HEIGHT,
+  smallLabelFit,
   TIER_FACES,
 } from '@/ui/theme/columnBoard';
 import { colour, layout, plateInk, pressedOpacity, radius, space } from '@/ui/theme/tokens';
@@ -289,22 +290,28 @@ const GoalSquare = memo(function GoalSquare({ action, value, tier, onAction }: G
 const SmallSquare = memo(function SmallSquare({ action, onAction }: ColumnButtonProps) {
   const press = useCallback(() => onAction(action.id), [onAction, action.id]);
   const off = !action.enabled;
+  // The word's size is computed from the square as laid out, not left to the runtime's shrink, which did not run on the
+  // NE2211 (build 1060: "YELLO"); 0 until the first layout, then the token's size.
+  const [side, setSide] = useState(0);
+  const measured = useCallback((event: LayoutChangeEvent) => {
+    setSide(Math.round(event.nativeEvent.layout.width * 10) / 10);
+  }, []);
+  const fit = smallLabelFit(side, action.label);
+  const word = useMemo(
+    () => [styles.smallLabel, { fontSize: fit.fontSize, paddingHorizontal: fit.inset }],
+    [fit.fontSize, fit.inset],
+  );
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={nameOf(action)}
       disabled={off}
       onPress={press}
+      onLayout={measured}
       style={off ? smallOff : smallOn}
     >
       <SquareMark mark={action.mark} />
-      <Text
-        variant="diagSection"
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={layout.cardLabelFloor}
-        style={styles.smallLabel}
-      >
+      <Text variant="diagSection" numberOfLines={1} style={word}>
         {action.label}
       </Text>
     </Pressable>
@@ -448,7 +455,6 @@ const styles = StyleSheet.create({
   },
   smallLabel: {
     alignSelf: 'stretch',
-    paddingHorizontal: layout.padSquareLabelInset,
     textAlign: 'center',
     letterSpacing: layout.padSquareLabelSpacing,
     color: colour.ink,
