@@ -442,8 +442,8 @@ describe('Yellow and Red (ruling 136)', () => {
 });
 
 // The controller's fix-round 2 ruling (R1), redone for the clock hero (ruling 130): the board's own height picks its tier.
-// The full tier needs the hero's 164 dp (a 100 face, 8, the 48 plate, 8) over a column of 288 (2 × 8, an 84 head, a 100
-// Goal room, 3 × 8, the 48 row of squares and the 16 note line): 452. Below it the clock and both columns go compact, at once
+// The full tier needs the hero's 162 dp (a 98 face, 8, the 48 plate, 8) over a column of 288 (2 × 8, an 84 head, a 100
+// Goal room, 3 × 8, the 48 row of squares and the 16 note line): 450. Below it the clock and both columns go compact, at once
 // (footballFit.test.ts holds the heights).
 describe('a short phone (ruling R1)', () => {
   const H1 = en['scoring.football.period.H1'];
@@ -452,17 +452,17 @@ describe('a short phone (ruling R1)', () => {
   const FULL = `${typeScale.clockHero.fontSize}px`;
   const COMPACT = `${typeScale.tallyCompact.fontSize}px`;
 
-  it('at 452 dp of board the pad is full; at 451 the clock and the columns go compact', async () => {
+  it('at 450 dp of board the pad is full; at 449 the clock and the columns go compact', async () => {
     await open(STARTED);
     // Before the phone lays the board out, it is full.
     expect(linesAllowed(name())).toBe(2);
     expect(timeSize()).toBe(FULL);
     expect(within(clockBar()).getByText(H1)).toBeTruthy();
     const board = screen.getByTestId('football-board');
-    layOut(board, { width: 328, height: 452 });
+    layOut(board, { width: 328, height: 450 });
     expect(timeSize()).toBe(FULL);
     expect(linesAllowed(name())).toBe(2);
-    layOut(board, { width: 328, height: 451 });
+    layOut(board, { width: 328, height: 449 });
     expect(timeSize()).toBe(COMPACT);
     expect(linesAllowed(name())).toBe(1);
     expect(linesAllowed(within(column('first')).getByText('Riverside FC'))).toBe(1);

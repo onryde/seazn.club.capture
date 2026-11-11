@@ -399,7 +399,8 @@ const styles = StyleSheet.create({
     backgroundColor: colour.lime,
   },
   squareOff: { backgroundColor: colour.surface2 },
-  numeral: { flexShrink: 1 },
+  // No Android font padding over the big digits (it is an empty band above them; device-only).
+  numeral: { flexShrink: 1, includeFontPadding: false },
   // Three equal squares: a third of the column each, as tall as they are wide, but never under a touch target, so a column
   // under about 160 dp keeps 48 dp and they are near-square (controller ruling 145).
   smallRow: { flexDirection: 'row', gap: space.xs },

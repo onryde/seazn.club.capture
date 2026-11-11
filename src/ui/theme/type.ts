@@ -290,7 +290,10 @@ export const typeScale = {
   clockHero: {
     fontFamily: font.displayBold,
     fontSize: 80,
-    lineHeight: 84,
+    // 1.025 of the size, and no Android font padding above the ascent: the padding made an empty band over the digits
+    // (owner ruling 146, build 1039). Barlow's digits have no descenders; device-only to judge.
+    lineHeight: 82,
+    includeFontPadding: false,
     fontVariant: ['tabular-nums'],
     color: colour.lime,
   },
