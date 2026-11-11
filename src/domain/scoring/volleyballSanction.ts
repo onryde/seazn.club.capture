@@ -81,11 +81,6 @@ function afterLevel(
   return { kind: 'step', step: { step: 'person', side, level } };
 }
 
-/** Back: from the person to the level; from the level, out of the sheet (null). */
-export function backSanction(step: SanctionStep): SanctionStep | null {
-  return step.step === 'person' ? { step: 'level', side: step.side } : null;
-}
-
 export function sanctionSheet(
   step: SanctionStep,
   people: VolleyballPeople,
@@ -131,7 +126,7 @@ export function sanctionNote(
   if (level === 'expulsion' || level === 'disqualification') {
     return {
       key: beach ? 'scoring.volleyball.done.fieldTwo' : 'scoring.volleyball.done.fieldSix',
-      vars: { team: sideNames(sides[side]) },
+      vars: { level: levelWord(level), team: sideNames(sides[side]) },
     };
   }
   return null;

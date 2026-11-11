@@ -217,6 +217,7 @@ export type VolleyballPadKey =
   | 'scoring.volleyball.done.fieldSix'
   | 'scoring.volleyball.done.fieldTwo'
   | 'scoring.volleyball.held'
+  | 'scoring.volleyball.tossLost'
   | VolleyballRuleKey;
 
 /** Volleyball's pad types: what the match runtime is generic over (`SportTypes`). */

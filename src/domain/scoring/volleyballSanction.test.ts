@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  backSanction,
   chooseSanction,
   sanctionNote,
   sanctionSheet,
@@ -107,14 +106,6 @@ describe('volleyballSanction: level, then person', () => {
     expect(chooseSanction(person, 'warning', people)).toEqual({ kind: 'step', step: person });
   });
 
-  it('Back goes from person to level, and out of the sheet from level', () => {
-    expect(backSanction({ step: 'person', side: 'second', level: 'penalty' })).toEqual({
-      step: 'level',
-      side: 'second',
-    });
-    expect(backSanction(level)).toBeNull();
-  });
-
   it('every move it records is a tap the events file turns into the engine’s event', () => {
     const move = chooseSanction({ step: 'person', side: 'second', level: 'penalty' }, 'a3', people);
     expect(move.kind).toBe('record');
@@ -143,11 +134,11 @@ describe('volleyballSanction: the line after the sanction', () => {
     for (const lvl of ['expulsion', 'disqualification'] as const) {
       expect(sanctionNote(lvl, 'first', sides, false)).toEqual({
         key: 'scoring.volleyball.done.fieldSix',
-        vars: { team: 'Falcons' },
+        vars: { level: { key: `scoring.sanction.${lvl}` }, team: 'Falcons' },
       });
       expect(sanctionNote(lvl, 'second', sides, true)).toEqual({
         key: 'scoring.volleyball.done.fieldTwo',
-        vars: { team: 'Herons' },
+        vars: { level: { key: `scoring.sanction.${lvl}` }, team: 'Herons' },
       });
     }
   });

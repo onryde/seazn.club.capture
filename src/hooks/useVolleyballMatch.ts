@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState, useSyncExternalStore } from 'react';
 import { TAKEN, refusing, refusalLine } from '@/domain/scoring/padLine';
-import type { PadSide, PadView } from '@/domain/scoring/padView';
+import type { PadSide, PadText, PadView } from '@/domain/scoring/padView';
 import type { MatchPad } from '@/domain/scoring/scoringMatchView';
 import type { HalfFlash } from '@/domain/scoring/tapFlash';
 import { volleyballPeopleOf, type VolleyballPeople } from '@/domain/scoring/volleyballPeople';
@@ -100,7 +100,11 @@ function useVolleyballPad(
   const sheets = useSheets(runner, sender, held, taps.opening, pad, people);
   const actions = useActions({ sender, runner, pad, taps, sheets, held, setCardNote });
   useBackCloses(sheets.open, sheets.cancel);
-  const view = useMemo(() => (pad === null ? null : viewOf(pad, held.side)), [pad, held.side]);
+  const { lostToss } = sheets;
+  const view = useMemo(
+    () => (pad === null ? null : viewOf(pad, held.side, lostToss)),
+    [pad, held.side, lostToss],
+  );
   return useMemo(
     () =>
       pad === null || view === null
@@ -124,8 +128,18 @@ function useVolleyballPad(
  * serving" (ruling 180); and after a sanction whose consequence is the scorer's (a penalty gives the other side the
  * rally, an expulsion may leave a team short: rulings 174, 185, 189), that line in the last tap's place.
  */
-function viewOf(pad: PadFacts, held: PadSide | null): PadView<VolleyballPadKey> {
-  return withSanctionNote(withHeldServing(pad.view, held, pad.display), pad.display);
+function viewOf(
+  pad: PadFacts,
+  held: PadSide | null,
+  lostToss: number | null,
+): PadView<VolleyballPadKey> {
+  const view = withSanctionNote(withHeldServing(pad.view, held, pad.display), pad.display);
+  // The scorer tapped under a toss sheet another scorer's rally made moot: nothing was sent, and the line says why until
+  // this phone records its next point.
+  if (lostToss === null || lostToss !== pad.display.scoreEvents || pad.view.card !== null)
+    return view;
+  const text: PadText<VolleyballPadKey> = { key: 'scoring.volleyball.tossLost' };
+  return { ...view, lastTap: { text, undo: view.lastTap?.undo ?? false } };
 }
 
 function withSanctionNote(
@@ -236,17 +250,20 @@ function useActions(parts: Parts): VolleyballPadActions {
  * asks (ruling 180: once, as a sheet on the first tap), remembering which half was tapped. A match that is not on the
  * pad (a card stands over it) goes to the tap, which the match refuses in words.
  */
-function useHalf({ pad, taps, sheets }: Parts) {
+function useHalf({ pad, taps, sheets, held }: Parts) {
   const { tapHalf } = taps;
-  const asks = pad !== null && asksToss(pad);
+  const asks = pad !== null && asksToss(pad, held.side === null);
   const toss = sheets.toss;
   return useCallback((side: PadSide) => (asks ? toss(side) : tapHalf(side)), [asks, toss, tapHalf]);
 }
 
-/** Whether a first tap asks who serves: nobody can say and no rally stands (a held answer only ever stands mid-set), and no card is over the pad. */
-function asksToss(pad: PadFacts): boolean {
+/**
+ * Whether a first tap asks who serves: nobody can say, no rally stands, no answer is held (a rally the match refused
+ * leaves it held for the next tap) and no card is over the pad.
+ */
+function asksToss(pad: PadFacts, nothingHeld: boolean): boolean {
   const { display, view } = pad;
-  return display.anchorNeeded && display.phase !== 'live' && view.card === null;
+  return nothingHeld && display.anchorNeeded && display.phase !== 'live' && view.card === null;
 }
 
 /** Start match is a tap carrying the side picked to serve first (ruling 179), through the bounce memory. */

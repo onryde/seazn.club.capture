@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PadOutcome } from '@/domain/scoring/padLine';
 import type {
   PadHistoryGroup,
@@ -134,6 +134,9 @@ export function useVolleyballSheets(
   refuseScore: () => void,
 ) {
   const [sheet, setSheet] = useState<Sheet>(null);
+  // The set's score events when a toss the scorer was answering turned out to be answered by another scorer's rally.
+  const [lostToss, setLostToss] = useState<number | null>(null);
+  const latest = useLatest(snapshot);
   const cancel = useCallback(() => setSheet(null), []);
   const { peopleSheet } = pad;
   const open = useCallback(
@@ -152,9 +155,13 @@ export function useVolleyballSheets(
   const dismiss = useCallback(() => {
     if (!justShown()) cancel();
   }, [justShown, cancel]);
-  const choose = useChoose(sheet, setSheet, snapshot, record, justShown, pad);
+  const choose = useChoose({ sheet, setSheet, setLostToss, latest, record, justShown, pad });
   // No pad to put a sheet over, the question over it, or nothing left for it to do: no sheet stays open behind it.
-  if (sheet !== null && staleSheet(sheet, snapshot)) setSheet(null);
+  if (sheet !== null && staleSheet(sheet, snapshot)) {
+    if (sheet.kind === 'toss' && snapshot !== null && !snapshot.display.anchorNeeded)
+      setLostToss(snapshot.display.scoreEvents);
+    setSheet(null);
+  }
   const saveScore = useSaveScore(pad, record, refuseScore, cancel, justShown);
   // Discard asks again before it deletes: quiet in the bounce window of the question appearing (`justShown`).
   const askDiscard = useCallback(() => {
@@ -164,20 +171,34 @@ export function useVolleyballSheets(
     () => ({ tool, details, history, choose, cancel, dismiss, saveScore, askDiscard }),
     [tool, details, history, choose, cancel, dismiss, saveScore, askDiscard],
   );
-  return { open: sheet !== null, cancel, actions, view, justShown, toss };
+  return { open: sheet !== null, cancel, actions, view, justShown, toss, lostToss };
 }
 
+/** The snapshot as the last render drew it, for a press that reaches a closure drawn before it. */
+function useLatest(snapshot: VolleyballSheetSnapshot | null) {
+  const latest = useRef(snapshot);
+  useEffect(() => {
+    latest.current = snapshot;
+  });
+  return latest;
+}
+
+type ChooseParts = {
+  readonly sheet: Sheet;
+  readonly setSheet: SetSheet;
+  readonly setLostToss: (scoreEvents: number) => void;
+  readonly latest: { readonly current: VolleyballSheetSnapshot | null };
+  readonly record: Recording;
+  readonly justShown: () => boolean;
+  readonly pad: VolleyballSheetDriver;
+};
+
 /** A choice on the sheet open. */
-function useChoose(
-  sheet: Sheet,
-  setSheet: SetSheet,
-  snapshot: VolleyballSheetSnapshot | null,
-  record: Recording,
-  justShown: () => boolean,
-  pad: VolleyballSheetDriver,
-) {
+function useChoose(parts: ChooseParts) {
+  const { sheet, setSheet, setLostToss, latest, record, justShown, pad } = parts;
   return useCallback(
     (id: string) => {
+      const snapshot = latest.current;
       if (sheet === null || snapshot === null || justShown()) return;
       const { display, people } = snapshot;
       switch (sheet.kind) {
@@ -192,6 +213,12 @@ function useChoose(
         case 'serving':
           return chooseServing(id, setSheet, record, (side) => pad.serving(side), 'serving');
         case 'toss':
+          // Answered elsewhere while the sheet was drawn: the question is moot and so is the rally under it, which
+          // the scorer tapped at a score that no longer stands. Nothing is sent; the pad says why.
+          if (!display.anchorNeeded) {
+            setSheet(null);
+            return setLostToss(display.scoreEvents);
+          }
           return chooseServing(
             id,
             setSheet,
@@ -201,7 +228,7 @@ function useChoose(
           );
       }
     },
-    [sheet, setSheet, snapshot, record, justShown, pad],
+    [sheet, setSheet, setLostToss, latest, record, justShown, pad],
   );
 }
 

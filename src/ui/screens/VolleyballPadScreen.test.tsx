@@ -205,6 +205,35 @@ describe.each(['en', 'fr', 'nl'] as const)('layout A, indoor, in %s', (lang) => 
     expect(lastTap()).toBe(fill(words['scoring.volleyball.done.penalty'], { side: 'Falcons' }));
   });
 
+  // Review M3/M5: an expulsion's note starts with the level's word, and the sentence says it in the language.
+  it('an expulsion’s last-tap line names the level, then the organiser’s part', async () => {
+    const app = await started(VOLLEYBALL_INDOOR_SEED, lang);
+    await tap(app, words['scoring.volleyball.tool.more']);
+    await tap(app, fill(words['scoring.volleyball.more.sanction'], { side: 'Falcons' }));
+    await tap(app, words['scoring.sanction.expulsion']);
+    await tap(app, 'F. Adams');
+    expect(lastTap()).toBe(
+      fill(words['scoring.volleyball.done.fieldSix'], {
+        level: words['scoring.sanction.expulsion'],
+        team: 'Falcons',
+      }),
+    );
+    expect(lastTap()?.startsWith(words['scoring.sanction.expulsion'])).toBe(true);
+  });
+
+  // Review I1 (ruling 178): indoors the counts share the bottom row with "Tap"; they are not a line of their own.
+  it('the counts sit in the bottom row beside Tap', async () => {
+    await started(VOLLEYBALL_INDOOR_SEED, lang);
+    // Its parent is the bottom row (which holds Tap), not the half itself.
+    const row = within(half('first')).getByTestId('half-counts').parentElement as HTMLElement;
+    expect(row).not.toBe(half('first'));
+    expect(within(row).queryByText(words['scoring.pad.tap'])).not.toBeNull();
+    // "Tap" holds its width and the counts give way first (jsdom reads the declared styles, not the layout).
+    const tapWord = within(row).getByText(words['scoring.pad.tap']);
+    expect(getComputedStyle(tapWord).flexShrink).toBe('0');
+    expect(getComputedStyle(within(row).getByTestId('half-counts')).flexShrink).toBe('1');
+  });
+
   it('Timeout opens a two-choice side sheet', async () => {
     const app = await started(VOLLEYBALL_INDOOR_SEED, lang);
     await tap(app, words['scoring.volleyball.tool.timeout']);
@@ -214,31 +243,39 @@ describe.each(['en', 'fr', 'nl'] as const)('layout A, indoor, in %s', (lang) => 
   });
 });
 
-describe('the deciding set’s toss, on the screen', () => {
-  it('the first tap at set 5 0-0 asks Who serves first in set 5?, and the answer’s side serves, shown on its plate', async () => {
-    const app = await launchApp({
-      scoringSeed: VOLLEYBALL_DECIDING_SEED,
-      kvSeed: inMatch(VOLLEYBALL_DECIDING_SEED),
+describe.each(['en', 'fr', 'nl'] as const)(
+  'the deciding set’s toss, on the screen, in %s',
+  (lang) => {
+    const words = DICTIONARIES[lang];
+
+    it('the first tap at set 5 0-0 asks Who serves first in set 5?, and the answer’s side serves, shown on its plate', async () => {
+      const app = await launchApp({
+        scoringSeed: VOLLEYBALL_DECIDING_SEED,
+        kvSeed: inMatch(VOLLEYBALL_DECIDING_SEED),
+        deviceLanguages: [lang],
+      });
+      await flush(200);
+      await rally(app, 'second');
+      const sheet = screen.getByTestId('step-sheet');
+      expect(
+        within(sheet).getByText(fill(words['scoring.volleyball.sheet.serving'], { set: 5 }), {
+          normalizer: (text) => text,
+        }),
+      ).toBeTruthy();
+      expect(buttons(sheet)).toEqual(['Falcons', 'Herons', words['scoring.sheet.cancel']]);
+      await tap(app, 'Falcons');
+      expect(score('second')).toBe('1');
+      // The tapped rally was the second side's, served by the side picked; the winner serves next (side-out).
+      expect(within(half('second')).queryByTestId('serving')).not.toBeNull();
+      expect(within(half('first')).queryByTestId('serving')).toBeNull();
+      const events = await app.scoring.events(LINK, VOLLEYBALL_DECIDING_SEED.fixtureId, 0);
+      expect(Array.isArray(events) ? events.at(-1) : null).toMatchObject({
+        type: 'volleyball.rally',
+        payload: { wonBy: AWAY_ENTRANT, serving: HOME_ENTRANT },
+      });
     });
-    await flush(200);
-    await rally(app, 'second');
-    const sheet = screen.getByTestId('step-sheet');
-    expect(
-      within(sheet).getByText(fill(en['scoring.volleyball.sheet.serving'], { set: 5 })),
-    ).toBeTruthy();
-    expect(buttons(sheet)).toEqual(['Falcons', 'Herons', en['scoring.sheet.cancel']]);
-    await tap(app, 'Falcons');
-    expect(score('second')).toBe('1');
-    // The tapped rally was the second side's, served by the side picked; the winner serves next (side-out).
-    expect(within(half('second')).queryByTestId('serving')).not.toBeNull();
-    expect(within(half('first')).queryByTestId('serving')).toBeNull();
-    const events = await app.scoring.events(LINK, VOLLEYBALL_DECIDING_SEED.fixtureId, 0);
-    expect(Array.isArray(events) ? events.at(-1) : null).toMatchObject({
-      type: 'volleyball.rally',
-      payload: { wonBy: AWAY_ENTRANT, serving: HOME_ENTRANT },
-    });
-  });
-});
+  },
+);
 
 describe('Sub, indoors only', () => {
   it('Sub asks the side, who comes off, who comes on, and the foot counts it', async () => {
@@ -289,16 +326,28 @@ describe('Sub, indoors only', () => {
   });
 });
 
-describe('the counts line takes its own room out of the half', () => {
+describe('the counts line takes its own room out of the half: beach only (ruling 178)', () => {
   const size = (side: 'first' | 'second') =>
     getComputedStyle(within(half(side)).getByTestId('score')).fontSize;
 
-  it('a half exactly as tall as the large score needs steps the score down once the foot line is under it', async () => {
-    await started();
+  it('beach: a half exactly as tall as the large score needs steps the score down once the counts line is under it', async () => {
+    await started(beachSeed({ fixtureId: 'screen-beach-room' }));
     const needs = halfNeeds('scoreLarge');
     layOut(half('first'), { width: 300, height: needs });
     expect(size('first')).toBe(`${typeScale.score.fontSize}px`);
     layOut(half('first'), { width: 300, height: needs + typeScale.control.lineHeight });
+    expect(size('first')).toBe(`${typeScale.scoreLarge.fontSize}px`);
+  });
+
+  it('beach: the counts are a line of their own, not in the bottom row beside Tap', async () => {
+    await started(beachSeed({ fixtureId: 'screen-beach-line' }));
+    // Its parent is the half itself: a line of its own above the bottom row.
+    expect(within(half('first')).getByTestId('half-counts').parentElement).toBe(half('first'));
+  });
+
+  it('indoor: the large score needs no more height for its counts', async () => {
+    await started();
+    layOut(half('first'), { width: 300, height: halfNeeds('scoreLarge') });
     expect(size('first')).toBe(`${typeScale.scoreLarge.fontSize}px`);
   });
 });

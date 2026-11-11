@@ -49,6 +49,9 @@ export const ScoreHalf = memo(function ScoreHalf({ half, flash, onTap }: ScoreHa
   const [height, measure] = useHeight();
   const sub = half.sub === null ? null : words(half.sub);
   const foot = half.foot == null ? null : words(half.foot.text);
+  // The counts sit in the bottom row's slot, or on a line of their own when the slot holds something else.
+  const inSlot = half.foot?.place === 'slot';
+  const caution = half.foot?.caution === true;
   const said = half.marks.said.map(words);
   return (
     <Pressable
@@ -64,14 +67,19 @@ export const ScoreHalf = memo(function ScoreHalf({ half, flash, onTap }: ScoreHa
       <TapFlash cue={flash} />
       <HalfHead half={half} />
       <View style={styles.middle}>
-        <Text testID="score" variant={scoreRole(height === null ? null : height - footRoom(foot))}>
+        <Text
+          testID="score"
+          variant={scoreRole(height === null ? null : height - footRoom(inSlot ? null : foot))}
+        >
           {half.value}
         </Text>
       </View>
-      {foot === null ? null : <HalfCounts text={foot} caution={half.foot?.caution === true} />}
+      {foot === null || inSlot ? null : <HalfCounts text={foot} caution={caution} />}
       <HalfFoot
         scores={half.periods?.scores ?? NO_SCORES}
         sub={sub}
+        counts={inSlot ? foot : null}
+        caution={caution}
         hint={half.tappable ? words(half.action ?? TAP) : null}
       />
     </Pressable>
@@ -90,9 +98,12 @@ const footRoom = (foot: string | null): number =>
 const HalfCounts = memo(function HalfCounts({
   text,
   caution,
+  slot = false,
 }: {
   readonly text: string;
   readonly caution: boolean;
+  /** In the bottom row beside the hint, where it gives way before the boxes and the hint do. */
+  readonly slot?: boolean;
 }) {
   return (
     <Text
@@ -100,12 +111,17 @@ const HalfCounts = memo(function HalfCounts({
       variant="control"
       numberOfLines={1}
       aria-hidden
-      style={caution ? styles.countsCaution : styles.counts}
+      style={countsStyle(caution, slot)}
     >
       {text}
     </Text>
   );
 });
+
+const countsStyle = (caution: boolean, slot: boolean) => {
+  if (slot) return caution ? styles.countsSlotCaution : styles.countsSlot;
+  return caution ? styles.countsCaution : styles.counts;
+};
 
 /** The half's height as laid out, which sets the score's size (`scoreRole`); null until it is measured. */
 function useHeight(): readonly [number | null, (event: LayoutChangeEvent) => void] {
@@ -194,17 +210,22 @@ const HalfMarks = memo(function HalfMarks({
 const HalfFoot = memo(function HalfFoot({
   scores,
   sub,
+  counts,
+  caution,
   hint,
 }: {
   readonly scores: readonly PadPeriodScore<MessageKey>[];
   readonly sub: string | null;
+  /** The side's counts, when they sit in this row (`PadFoot.place`): after the boxes, cut before the hint is. */
+  readonly counts: string | null;
+  readonly caution: boolean;
   readonly hint: string | null;
 }) {
   const boxed = scores.length > 0;
   return (
     <View style={styles.foot}>
       {boxed ? <PeriodBoxes scores={scores} /> : null}
-      {boxed && sub !== null ? (
+      {boxed && (sub !== null || counts !== null) ? (
         <Text variant="control" aria-hidden style={styles.kept}>
           {SEPARATOR}
         </Text>
@@ -214,8 +235,14 @@ const HalfFoot = memo(function HalfFoot({
           {sub}
         </Text>
       )}
+      {counts === null ? null : <HalfCounts text={counts} caution={caution} slot />}
       {hint === null ? null : (
-        <Text variant="metricUnit" numberOfLines={1} aria-hidden style={styles.hint}>
+        <Text
+          variant="metricUnit"
+          numberOfLines={1}
+          aria-hidden
+          style={counts === null ? styles.hint : styles.hintKept}
+        >
           {hint}
         </Text>
       )}
@@ -343,6 +370,10 @@ const styles = StyleSheet.create({
   // A disqualification's mark: the sanction tools' caution (never red: red means ON AIR, AGENTS §5).
   mark: { color: colour.caution },
   counts: { color: colour.ink2 },
+  // In the bottom row the counts give way first (an ellipsis) and "Tap" holds its place at the right.
+  countsSlot: { color: colour.ink2, flexShrink: 1, minWidth: 0 },
+  countsSlotCaution: { color: colour.caution, flexShrink: 1, minWidth: 0 },
+  hintKept: { flexShrink: 0, marginLeft: 'auto', textAlign: 'right' },
   countsCaution: { color: colour.caution },
   plate: { paddingHorizontal: space.sm, paddingVertical: space.xs, backgroundColor: colour.lime },
   plateWord: { color: plateInk },

@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  backSub,
-  chooseSub,
-  startSub,
-  subSheet,
-  type SubStep,
-} from '@/domain/scoring/volleyballSub';
+import { chooseSub, startSub, subSheet, type SubStep } from '@/domain/scoring/volleyballSub';
 import { volleyballPeopleOf, type VolleyballPeople } from '@/domain/scoring/volleyballPeople';
 import { INDOOR } from '../../../test/volleyballLedger';
 import { displayOf } from './volleyballPad.testkit';
@@ -83,14 +77,6 @@ describe('volleyballSub: off, then on, then the sub', () => {
     expect(chooseSub(on, 'a1', people)).toEqual({ kind: 'step', step: on });
     // a double press: the move from the same step with the same choice is the same move
     expect(chooseSub(off, 'h2', people)).toEqual(chooseSub(off, 'h2', people));
-  });
-
-  it('Back goes from on to off, and out of the sheet from off', () => {
-    expect(backSub({ step: 'on', side: 'second', off: 'a3' })).toEqual({
-      step: 'off',
-      side: 'second',
-    });
-    expect(backSub({ step: 'off', side: 'second' })).toBeNull();
   });
 
   it('the away side’s people are its own (the other seat)', () => {

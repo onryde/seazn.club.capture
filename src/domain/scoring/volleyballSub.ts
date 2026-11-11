@@ -49,11 +49,6 @@ export function chooseSub(step: SubStep, choice: string, people: VolleyballPeopl
   }
 }
 
-/** Back: from On to Off; from Off, out of the sheet (null). */
-export function backSub(step: SubStep): SubStep | null {
-  return step.step === 'on' ? { step: 'off', side: step.side } : null;
-}
-
 /** One step as a sheet asks it: the title, what is already chosen (the side, then who comes off), and the choices. */
 export function subSheet(
   step: SubStep,

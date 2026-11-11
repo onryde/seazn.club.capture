@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PadView } from '@/domain/scoring/padView';
 import type { BootstrapSide } from '@/domain/scoring/wire';
+import { scoringHubOf } from '@/hooks/scoringHub';
 import { useVolleyballMatch } from '@/hooks/useVolleyballMatch';
 import type { FakeMatchSeed } from '@/services/fakeScoringPort';
 import {
@@ -189,12 +190,15 @@ describe('the deciding set toss (ruling 180)', () => {
     fakes.realtime.ping();
     await flush();
     expect(pad(view).sheet).toBeNull();
+    // The scorer is told why nothing of theirs was recorded, until their next point.
+    expect(pad(view).view.lastTap?.text).toEqual({ key: 'scoring.volleyball.tossLost' });
     fakes.scoring.goOffline(true);
     act_(view, (actions) => actions.tapHalf('second'));
     await flush();
     expect(queuedOf(fakes, VOLLEYBALL_DECIDING_SEED, 'volleyball.rally')).toEqual([
       { wonBy: AWAY_ENTRANT },
     ]);
+    expect(pad(view).view.lastTap?.text).not.toMatchObject({ key: 'scoring.volleyball.tossLost' });
   });
 
   it('an answer pressed after the question was answered elsewhere never reaches the wire', async () => {
@@ -206,13 +210,13 @@ describe('the deciding set toss (ruling 180)', () => {
     fakes.realtime.ping();
     await flush();
     fakes.scoring.goOffline(true);
-    // The press reaches the old closure, which still thinks the question stands: the rally is the scorer's tap and goes,
-    // but its answer is tied to the score it was made at, and the domain drops it (`servingAt`): no serving on the wire.
+    // The press reaches the old closure, which still thinks the question stands: the rally under it was tapped at a score
+    // that no longer stands, so it is not sent (controller ruling, review I3), and the line says another scorer's point
+    // got there first.
     act(() => stale.choose('first'));
     await flush();
-    expect(queuedOf(fakes, VOLLEYBALL_DECIDING_SEED, 'volleyball.rally')).toEqual([
-      { wonBy: AWAY_ENTRANT },
-    ]);
+    expect(queued(fakes, VOLLEYBALL_DECIDING_SEED)).toEqual([]);
+    expect(pad(view).view.lastTap?.text).toEqual({ key: 'scoring.volleyball.tossLost' });
   });
 
   it('a match another scorer started with no server named asks at once on the first tap, as set 1', async () => {
@@ -242,6 +246,73 @@ describe('the deciding set toss (ruling 180)', () => {
     });
     await flush();
     expect(queuedOf(fakes, VOLLEYBALL_DECIDING_SEED, 'volleyball.rally')).toHaveLength(1);
+  });
+});
+
+// Review I2: Undo of the rally that carried the toss takes the answer with it, so the next tap asks again.
+describe('Undo of the rally that carried the deciding set toss', () => {
+  it('offline (the void is queued): the next tap opens the toss sheet again', async () => {
+    const { fakes, view } = await opened(VOLLEYBALL_DECIDING_SEED);
+    fakes.scoring.goOffline(true);
+    act_(view, (actions) => actions.tapHalf('second'));
+    await wait(300);
+    await choose(view, 'first');
+    await wait(1_000);
+    act_(view, (actions) => actions.undo());
+    await flush();
+    await wait(1_000);
+    expect(queued(fakes, VOLLEYBALL_DECIDING_SEED).map((tap) => tap.type)).toContain('core.void');
+    act_(view, (actions) => actions.tapHalf('first'));
+    await wait(300);
+    expect(pad(view).sheet?.kind).toBe('toss');
+  });
+
+  it('online (the void is taken): the score is back to 0-0 and the next tap asks again', async () => {
+    const { view } = await opened(VOLLEYBALL_DECIDING_SEED);
+    act_(view, (actions) => actions.tapHalf('second'));
+    await wait(300);
+    await choose(view, 'first');
+    await flush();
+    await wait(1_000);
+    act_(view, (actions) => actions.undo());
+    await flush();
+    await wait(1_000);
+    await flush();
+    expect(pad(view).view.halves.map((half) => half.value)).toEqual(['0', '0']);
+    act_(view, (actions) => actions.tapHalf('first'));
+    await wait(300);
+    expect(pad(view).sheet?.kind).toBe('toss');
+  });
+});
+
+// Review M1: a rally the match refuses leaves the answer held; the next tap at the same 0-0 does not ask again.
+describe('a refused toss rally', () => {
+  it('keeps the answer held, and the next tap carries it without asking', async () => {
+    const { fakes, view } = await opened(VOLLEYBALL_DECIDING_SEED);
+    const { runner } = scoringHubOf(fakes.ports).focus(VOLLEYBALL_DECIDING_SEED.fixtureId);
+    const real = runner.dispatch.bind(runner);
+    let refused = false;
+    vi.spyOn(runner, 'dispatch').mockImplementation((event) => {
+      if (event.kind === 'tap' && !refused) {
+        refused = true;
+        return { ok: false, refusal: 'notNow' };
+      }
+      return real(event);
+    });
+    fakes.scoring.goOffline(true);
+    act_(view, (actions) => actions.tapHalf('second'));
+    await wait(300);
+    await choose(view, 'first');
+    expect(refused).toBe(true);
+    expect(queued(fakes, VOLLEYBALL_DECIDING_SEED)).toEqual([]);
+    expect(pad(view).view.lastTap?.text).toMatchObject({ key: 'scoring.volleyball.held' });
+    await wait(1_000);
+    act_(view, (actions) => actions.tapHalf('second'));
+    await flush();
+    expect(pad(view).sheet).toBeNull();
+    expect(queuedOf(fakes, VOLLEYBALL_DECIDING_SEED, 'volleyball.rally')).toEqual([
+      { wonBy: AWAY_ENTRANT, serving: HOME_ENTRANT },
+    ]);
   });
 });
 
@@ -505,7 +576,7 @@ describe('Sanction in More (rulings 174, 185, 187)', () => {
     await choose(view, `${AWAY_ENTRANT}-p2`);
     expect(pad(view).view.lastTap?.text).toEqual({
       key: 'scoring.volleyball.done.fieldSix',
-      vars: { team: 'Herons' },
+      vars: { level: { key: 'scoring.sanction.expulsion' }, team: 'Herons' },
     });
   });
 

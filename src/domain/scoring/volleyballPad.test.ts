@@ -41,6 +41,7 @@ describe('volleyballPad: the foot (ruling 175)', () => {
         key: 'scoring.volleyball.foot.indoor',
         vars: { timeouts: 1, timeoutCap: 2, subs: 4, subCap: 6 },
       },
+      place: 'slot',
       caution: false,
     });
     expect(second(view).foot?.text).toEqual({
@@ -92,6 +93,7 @@ describe('volleyballPad: the foot (ruling 175)', () => {
     const live = [start(), rally({ wonBy: 'H', serving: 'H', server: 'h1' })];
     expect(first(padOf(live, { bootstrap: BEACH })).foot).toEqual({
       text: { key: 'scoring.volleyball.foot.beach', vars: { timeouts: 0, timeoutCap: 1 } },
+      place: 'line',
       caution: false,
     });
     expect(first(padOf([...live, timeout('H')], { bootstrap: BEACH })).foot?.caution).toBe(true);

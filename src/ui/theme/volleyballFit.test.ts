@@ -50,6 +50,7 @@ const said = (dictionary: Dictionary, key: string) => {
   expect(text, key).not.toBe('');
   return text;
 };
+const DISQ = (dictionary: Dictionary) => said(dictionary, 'scoring.sanction.disqualification');
 const fill = (text: string, vars: Readonly<Record<string, string>>) =>
   Object.entries(vars).reduce((out, [name, value]) => out.replace(`{${name}}`, value), text);
 const words = (text: string) => text.split(' ');
@@ -207,13 +208,16 @@ describe('volleyball: History’s rows and the last-tap line at 320 and 360 in f
     return Object.keys(dictionary)
       .filter(
         (key) =>
-          key.startsWith(`${VB}.last.`) || key.startsWith(`${VB}.undone.`) || key === `${VB}.held`,
+          key.startsWith(`${VB}.last.`) ||
+          key.startsWith(`${VB}.undone.`) ||
+          key === `${VB}.held` ||
+          key === `${VB}.tossLost`,
       )
       .map((key) => ({ key, text: fill(said(dictionary, key), vars) }));
   };
 
-  it('reads the last-tap vocabulary (anti-vacuity): eleven last, five undone and the held answer', () => {
-    for (const [, dictionary] of LANGUAGES) expect(sentences(dictionary)).toHaveLength(17);
+  it('reads the last-tap vocabulary (anti-vacuity): eleven last, five undone, the held answer and the lost toss', () => {
+    for (const [, dictionary] of LANGUAGES) expect(sentences(dictionary)).toHaveLength(18);
   });
 
   it.each(LANGUAGES)(
@@ -301,8 +305,8 @@ describe('volleyball: the sheets at 320 and 360 in four languages', () => {
     (_lang, dictionary: Dictionary) => {
       const lines = [
         fill(said(dictionary, `${VB}.done.penalty`), { side: SIDES[3] }),
-        fill(said(dictionary, `${VB}.done.fieldSix`), { team: SIDES[3] }),
-        fill(said(dictionary, `${VB}.done.fieldTwo`), { team: SIDES[3] }),
+        fill(said(dictionary, `${VB}.done.fieldSix`), { level: DISQ(dictionary), team: SIDES[3] }),
+        fill(said(dictionary, `${VB}.done.fieldTwo`), { level: DISQ(dictionary), team: SIDES[3] }),
       ];
       for (const text of lines)
         for (const width of WIDTHS) {
@@ -325,7 +329,7 @@ describe('volleyball: every word it has is measured here (the sweep)', () => {
     /^foot\./,
     /^last\./,
     /^undone\./,
-    /^held$/,
+    /^(held|tossLost)$/,
     /^setHeading$/,
     /^sheet\./,
     /^more\.sanction$/,
@@ -366,23 +370,83 @@ describe('volleyball: every word it has is measured here (the sweep)', () => {
   });
 });
 
-// Task 11: the counts line (`PadHalf.foot`) is a line of its own in the half, so the score is sized from the half less that
-// line (`ScoreHalf`). The halves' height is the screen less the pad's fixed parts, written out from `padFit.test.ts`'s
-// arithmetic for the standard layout: 32 (the safe area above) + 48 (the top bar) + the strip + 54 (the last-tap line, three
-// lines) + 48 (the tool row) + five 8 dp gaps, shared by two halves. Whether text stays inside on a phone is the device's.
-describe('volleyball: the score keeps its room with the counts line in the half', () => {
+// Review I1 (ruling 178): the indoor counts sit in the bottom row beside "Tap", so the score keeps the room it would have
+// without them; the beach's sit on a line of their own (the row's slot holds the server's name) and the score gives that
+// line up. The halves' height is ARITHMETIC, written out from `padFit.test.ts`'s numbers for the standard layout (not
+// measured and not imported: that file's helper is not exported): 32 (the safe area above) + 48 (the top bar) + the strip
+// + 54 (the last-tap line, three lines) + 48 (the tool row) + five 8 dp gaps, shared by two halves. Whether text stays
+// inside on a phone is the device's.
+describe('volleyball: the score keeps its room with the counts (arithmetic)', () => {
   const FIXED = 32 + 48 + layout.padStripLines * typeScale.metricUnit.lineHeight + 54 + 48 + 5 * 8;
-  const halfAt = (height: number) => (height - FIXED) / 2 - typeScale.control.lineHeight;
+  const halfAt = (height: number) => (height - FIXED) / 2;
+  const beachHalfAt = (height: number) => halfAt(height) - typeScale.control.lineHeight;
 
-  it('leaves the owner’s phone, 360 × 724, the score at 96 (the large 128 needs 226 and the half leaves 225)', () => {
-    expect(halfAt(724)).toBe(225);
-    expect(scoreRole(halfAt(724))).toBe('score');
-    expect(halfAt(724)).toBeGreaterThanOrEqual(halfNeeds('score'));
+  it('indoor, 360 × 724: the counts take no room from the score, so it is the large 128 (it needs 226)', () => {
+    expect(halfAt(724)).toBe(243);
+    expect(scoreRole(halfAt(724))).toBe('scoreLarge');
+    expect(halfAt(724)).toBeGreaterThanOrEqual(halfNeeds('scoreLarge'));
   });
 
-  it('holds the compact score whole at 320 × 640, with 21 dp to spare', () => {
-    expect(halfAt(640)).toBe(183);
-    expect(scoreRole(halfAt(640))).toBe('scoreCompact');
-    expect(halfAt(640) - halfNeeds('scoreCompact')).toBe(21);
+  it('indoor, 320 × 640: the score at 96 with 7 dp to spare, and the compact is not needed', () => {
+    expect(halfAt(640)).toBe(201);
+    expect(scoreRole(halfAt(640))).toBe('score');
+    expect(halfAt(640) - halfNeeds('score')).toBe(7);
+  });
+
+  it('beach, 360 × 724: the counts line costs one control line, and the score is the 96', () => {
+    expect(beachHalfAt(724)).toBe(225);
+    expect(scoreRole(beachHalfAt(724))).toBe('score');
+  });
+
+  it('beach, 320 × 640: the compact score holds whole, with 21 dp to spare', () => {
+    expect(beachHalfAt(640)).toBe(183);
+    expect(scoreRole(beachHalfAt(640))).toBe('scoreCompact');
+    expect(beachHalfAt(640) - halfNeeds('scoreCompact')).toBe(21);
+  });
+});
+
+// Review I1: how the indoor counts share the bottom row with the finished sets' boxes and "Tap". The row is the half's
+// inner width; the boxes (26 dp each, `padPeriodBox`, a gap between), a dot and its gap, a gap and "Tap" hold their
+// width, and the counts take what is left and are cut with an ellipsis beyond it. The widest counts (2 of 2 timeouts, 6
+// of 6 subs) are measured. THE SLOT DOES NOT HOLD THE FULL COUNTS WITH MANY SETS FINISHED: the table below is what fits
+// today, pinned so a change to the copy or the row shows up; the scorer still reads the half's name (a screen reader hears
+// the whole counts) and the device check reads the cut.
+describe('volleyball: the indoor counts in the bottom row beside Tap (ruling 178)', () => {
+  const widestCounts = (dictionary: Dictionary) =>
+    fill(said(dictionary, `${VB}.foot.indoor`), {
+      timeouts: '2',
+      timeoutCap: '2',
+      subs: '6',
+      subCap: '6',
+    });
+  const roomFor = (dictionary: Dictionary, width: number, sets: number) => {
+    const boxes = sets === 0 ? 0 : sets * layout.padPeriodBox + (sets - 1) * space.xs;
+    const dot = sets === 0 ? 0 : controlWidth('·') + space.sm;
+    return (
+      halfInner(width) - boxes - dot - space.sm - unitWidth(said(dictionary, 'scoring.pad.tap'))
+    );
+  };
+  const holds = (dictionary: Dictionary, width: number) =>
+    [0, 1, 2, 3, 4].filter(
+      (sets) => controlWidth(widestCounts(dictionary)) <= roomFor(dictionary, width, sets),
+    );
+  /** The finished sets the full counts fit beside, per language and width: a deciding set has four. */
+  const MOST_SETS = { en: [3, 2], es: [2, 1], fr: [1, 0], nl: [2, 1] } as const;
+
+  it.each(LANGUAGES)(
+    '%s: the widest counts fit beside the boxes and Tap up to the pinned number of finished sets, and are cut beyond',
+    (lang, dictionary: Dictionary) => {
+      const [at360, at320] = MOST_SETS[lang];
+      expect(Math.max(...holds(dictionary, 360)), `${lang} @360`).toBe(at360);
+      expect(Math.max(...holds(dictionary, 320)), `${lang} @320`).toBe(at320);
+    },
+  );
+
+  it('is cut in the deciding set (four finished) at both widths in every language (anti-vacuity: it fits with none)', () => {
+    for (const [lang, dictionary] of LANGUAGES)
+      for (const width of WIDTHS) {
+        expect(holds(dictionary, width), `${lang} @${width}`).toContain(0);
+        expect(holds(dictionary, width), `${lang} @${width}`).not.toContain(4);
+      }
   });
 });

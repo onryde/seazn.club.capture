@@ -105,9 +105,14 @@ export type PadHalf<K extends string> = {
   readonly tappable: boolean;
 };
 
-/** The counts at a half's foot: the words, and whether any count is at the number it is counted against. */
+/**
+ * The counts at a half's foot: the words, whether any count is at the number it is counted against, and where they sit:
+ * in the bottom row's own slot beside the hint (`slot`: the row's line after the boxes is free), or on a line of their
+ * own above it (`line`: the slot holds something else, such as a server's name).
+ */
 export type PadFoot<K extends string> = {
   readonly text: PadText<K>;
+  readonly place: 'slot' | 'line';
   readonly caution: boolean;
 };
 

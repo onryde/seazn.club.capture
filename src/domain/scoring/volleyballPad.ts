@@ -149,13 +149,19 @@ function foot(display: VolleyballDisplay, side: PadSide): PadFoot<VolleyballPadK
   const timeouts = { timeouts: mine.timeouts, timeoutCap: caps.timeouts };
   const caution = mine.timeouts >= caps.timeouts || (caps.subs > 0 && mine.subs >= caps.subs);
   if (display.beach) {
-    return { text: { key: 'scoring.volleyball.foot.beach', vars: timeouts }, caution };
+    // The beach half's bottom-left slot holds the server's name: the counts take a line of their own.
+    return {
+      text: { key: 'scoring.volleyball.foot.beach', vars: timeouts },
+      place: 'line',
+      caution,
+    };
   }
   return {
     text: {
       key: 'scoring.volleyball.foot.indoor',
       vars: { ...timeouts, subs: mine.subs, subCap: caps.subs },
     },
+    place: 'slot',
     caution,
   };
 }
