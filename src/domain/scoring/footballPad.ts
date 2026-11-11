@@ -38,7 +38,9 @@ export function footballPad(
     tally: { shown: '', said: tallySaid(halves) },
     details: { context: display.context, rules: footballRuleRows(display.cfg) },
     start: startOf(display),
-    strip: [{ slot: 'note', text: noteOf(display) }],
+    // No strip (owner ruling 146): the clock bar's period line says Extra time, Penalties and the break, so a fact line
+    // above the clock would only be an empty band, and the clock sits directly under the header.
+    strip: [],
     lastTap: lastTapOf(display),
     sync,
     tools: toolsOf(display),
@@ -143,16 +145,6 @@ function startOf(display: FootballDisplay): PadStart<FootballPadKey> | null {
       { side: 'second', label: display.sides.second.name },
     ],
   };
-}
-
-/** The strip's one note: Extra time, Penalties or Not started; nothing in normal time or once decided. */
-function noteOf(display: FootballDisplay): Text | null {
-  if (display.phase === 'notStarted') return { key: 'scoring.football.note.notStarted' };
-  if (display.phase === 'shootout') return { key: 'scoring.football.note.penalties' };
-  if (display.phase === 'play' && display.enginePhase.startsWith('ET_')) {
-    return { key: 'scoring.football.note.extraTime' };
-  }
-  return null;
 }
 
 function lastTapOf(display: FootballDisplay): PadLastTap<FootballPadKey> | null {

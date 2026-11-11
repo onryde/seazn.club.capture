@@ -515,9 +515,9 @@ describe('the marks’ row (ruling b)', () => {
 });
 
 /**
- * The pad's height, portrait (rulings 130, 132, 144 and 145). Around the board sits the frame, 230 dp: the screen's padding
- * (2 × 16), the top bar (48), the strip (16), the last-tap line (three lines of 18, 54), the tool row (48) and four gaps of
- * 8. In the board: the clock hero over two columns. A column is its padding (2 × 8), the head, the Goal square's room, the
+ * The pad's height, portrait (rulings 130, 132, 144 and 145). Around the board sits the frame, 206 dp: the screen's padding
+ * (2 × 16), the top bar (48), the last-tap line (three lines of 18, 54), the tool row (48) and three gaps of 8: football has
+ * no strip (owner ruling 146), so the clock sits directly under the top bar. In the board: the clock hero over two columns. A column is its padding (2 × 8), the head, the Goal square's room, the
  * row of three small squares (a third of the text width a side, never under 48), the note line (16, reserved) and a gap
  * before each of the three under the head.
  *
@@ -528,7 +528,6 @@ describe('the marks’ row (ruling b)', () => {
  * its height when that is less, and is centred.
  */
 describe('the pad’s height, portrait', () => {
-  const STRIP = layout.padStripLines * typeScale.metricUnit.lineHeight;
   const LINE = layout.padLineLines * typeScale.control.lineHeight;
   const TOOLS = Math.max(
     layout.touch,
@@ -536,7 +535,7 @@ describe('the pad’s height, portrait', () => {
       2 * layout.iconBorder +
       layout.padToolLines * typeScale.actionSecondary.lineHeight,
   );
-  const AROUND = 2 * space.md + layout.touch + STRIP + LINE + TOOLS + 4 * space.sm;
+  const AROUND = 2 * space.md + layout.touch + LINE + TOOLS + 3 * space.sm;
   const NAME = typeScale.matchName.lineHeight;
   const MARKS = typeScale.periodScore.lineHeight;
   const PERIOD = typeScale.diagSection.lineHeight;
@@ -576,34 +575,34 @@ describe('the pad’s height, portrait', () => {
     return { compact, column, room, side, board, hero: heroOf(tier), fixed: fixedOf(tier, width) };
   }
 
-  it('reserves 230 dp around the board', () => {
-    expect(AROUND).toBe(230);
+  it('reserves 206 dp around the board: 24 less than with the strip', () => {
+    expect(AROUND).toBe(206);
   });
 
-  it('the full tier: a 164 hero over a 288 column, 452 dp of board, full from a 682 window', () => {
+  it('the full tier: a 164 hero over a 288 column, 452 dp of board, full from a 658 window', () => {
     expect(NOTE).toBe(NOTE_HEIGHT);
     expect([heroOf(FULL), fixedOf(FULL, 0) + FULL.goal, FULL_BOARD]).toEqual([164, 288, 452]);
     expect(BOARD_FULL_HEIGHT).toBe(FULL_BOARD);
-    expect(laidOut(360, 682).compact).toBe(false);
-    expect(laidOut(360, 681).compact).toBe(true);
+    expect(laidOut(360, 658).compact).toBe(false);
+    expect(laidOut(360, 657).compact).toBe(true);
   });
 
-  it('compact: a 108 hero over a 190 column of a 48 square, the 48 row and the note line: it holds from a 528 window, not under', () => {
+  it('compact: a 108 hero over a 190 column of a 48 square, the 48 row and the note line: it holds from a 504 window, not under', () => {
     expect([heroOf(COMPACT), fixedOf(COMPACT, 0) + COMPACT.goal]).toEqual([108, 190]);
-    expect(laidOut(320, 528).room).toBe(layout.touch);
-    expect(laidOut(320, 527).room).toBeLessThan(layout.touch);
+    expect(laidOut(320, 504).room).toBe(layout.touch);
+    expect(laidOut(320, 503).room).toBeLessThan(layout.touch);
   });
 
   // The five phones of the brief; 412 × 870 is the owner's NE2211 (1080 × 2412 at 480 dp is 412 wide, about 870 left after
   // the system bars) and 412 × 915 the whole screen. Each: the tier, the Goal room and the squares' sides, no scroll, every
   // control at least a touch target.
   it.each([
-    [360, 560, true, 80, 80, 44],
-    [320, 560, true, 80, 80, 37.3],
-    [320, 640, true, 160, 120, 37.3],
-    [360, 724, false, 142, 140, 44],
-    [412, 870, false, 283.3, 166, 52.7],
-    [412, 915, false, 328.3, 166, 52.7],
+    [360, 560, true, 104, 104, 44],
+    [320, 560, true, 104, 104, 37.3],
+    [320, 640, true, 184, 120, 37.3],
+    [360, 724, false, 166, 140, 44],
+    [412, 870, false, 307.3, 166, 52.7],
+    [412, 915, false, 352.3, 166, 52.7],
   ] as const)(
     'a %i × %i window: compact %s, the Goal room %f, the Goal square %i dp, the three small squares %f dp wide, the pad inside the window',
     (width, height, compact, room, side, small) => {
@@ -621,10 +620,11 @@ describe('the pad’s height, portrait', () => {
     },
   );
 
-  // The screen's own rule, not a copy: the board's height is the window less the 230 around it.
-  it('the real boardTier: compact at 527 and 681, full at 682', () => {
+  // The screen's own rule, not a copy: the board's height is the window less the 206 around it.
+  it('the real boardTier: compact at 503 and 657, full at 658', () => {
     const tierAt = (window: number) => boardTier(window - AROUND);
-    expect([527, 560, 640, 681, 682, 724].map(tierAt)).toEqual([
+    expect([503, 504, 560, 640, 657, 658, 724].map(tierAt)).toEqual([
+      'compact',
       'compact',
       'compact',
       'compact',

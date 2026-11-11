@@ -229,9 +229,7 @@ async function playKnockout(app: LaunchedApp, words: Words): Promise<void> {
   expect(within(clockBar()).getByText('90:00')).toBeTruthy();
   await press(app, w('scoring.football.clock.start'), clockBar());
   expect(within(clockBar()).getByText(plain(w('scoring.football.period.ET_H1')))).toBeTruthy();
-  expect(plain(screen.getByTestId('strip-note').textContent ?? '')).toBe(
-    plain(w('scoring.football.note.extraTime')),
-  );
+  expect(screen.queryByTestId('pad-strip')).toBeNull();
   await endPeriod(app, w('scoring.football.end.ET_HT'));
   await press(app, w('scoring.football.clock.start'), clockBar());
   expect(within(clockBar()).getByText(plain(w('scoring.football.period.ET_H2')))).toBeTruthy();

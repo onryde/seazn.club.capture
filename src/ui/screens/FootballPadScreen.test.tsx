@@ -360,6 +360,23 @@ describe('the squares (ruling 144)', () => {
   });
 });
 
+// Owner ruling 146: no empty band between the header and the clock.
+describe('the clock under the header (ruling 146)', () => {
+  it('has no strip above the clock; the clock is the first thing under the header', async () => {
+    await open(LIVE);
+    expect(screen.queryByTestId('pad-strip')).toBeNull();
+    expect(screen.queryByTestId('strip-note')).toBeNull();
+    // The header's tally is an empty, zero-width text for football and sits in the header row, not above the clock.
+    expect(screen.getByTestId('tally').textContent).toBe('');
+    const pad = screen.getByTestId('pad-content');
+    const [header, body] = [...pad.children];
+    expect(within(header as HTMLElement).getByRole('button', { name: 'Home' })).toBeTruthy();
+    expect(within(header as HTMLElement).queryByTestId('football-board')).toBeNull();
+    expect((body as HTMLElement).contains(screen.getByTestId('football-board'))).toBe(true);
+    expect(screen.getByTestId('football-board').firstElementChild).toBe(clockBar());
+  });
+});
+
 describe('Yellow and Red (ruling 136)', () => {
   /** The home side's number 4 already on a yellow, after kick-off. */
   const BOOKED = footballSeed({ events: asSeed(YELLOWED_HOME_4) });

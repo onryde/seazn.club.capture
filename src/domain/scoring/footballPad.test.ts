@@ -102,7 +102,7 @@ describe('footballPad: the halves (design §6.2)', () => {
   });
 });
 
-describe('footballPad: before the start, the strip (design §6.7)', () => {
+describe('footballPad: before the start, and no strip (design §6.7, ruling 146)', () => {
   it('asks to start with no toss before the match starts, and reads Not started', () => {
     const pad = padOf([]);
     expect(pad.start).toEqual({
@@ -113,25 +113,16 @@ describe('footballPad: before the start, the strip (design §6.7)', () => {
         { side: 'second', label: 'Away FC' },
       ],
     });
-    expect(pad.strip).toEqual([
-      { slot: 'note', text: { key: 'scoring.football.note.notStarted' } },
-    ]);
+    expect(pad.strip).toEqual([]);
   });
 
   it('has no Start screen once the match has started', () => {
     expect(padOf([start()]).start).toBeNull();
   });
 
-  it('leaves the note empty in normal time, and says Extra time and Penalties', () => {
-    const note = (specs: Parameters<typeof displayOf>[0]) => padOf(specs).strip;
-    expect(note(GOAL_AT_41)).toEqual([{ slot: 'note', text: null }]);
-    expect(note(LEVEL_AFTER_ET.slice(0, -1))).toEqual([
-      { slot: 'note', text: { key: 'scoring.football.note.extraTime' } },
-    ]);
-    expect(note(LEVEL_AFTER_ET)).toEqual([
-      { slot: 'note', text: { key: 'scoring.football.note.penalties' } },
-    ]);
-    expect(note(KICKS_4_1)).toEqual([{ slot: 'note', text: null }]);
+  it('has no strip in any phase: normal time, extra time, the shootout and decided', () => {
+    for (const specs of [GOAL_AT_41, LEVEL_AFTER_ET.slice(0, -1), LEVEL_AFTER_ET, KICKS_4_1])
+      expect(padOf(specs).strip).toEqual([]);
   });
 
   it('carries the match and its rules into Match details', () => {
