@@ -160,7 +160,7 @@ describe('volleyball: the strip at 320 and 360 in four languages', () => {
 });
 
 describe('volleyball: a half’s foot at 320 and 360 in four languages', () => {
-  // "T/O 2 of 2 · Subs 6 of 6" at its widest (both counts at FIVB's number), one line (the foot keeps its words whole).
+  // "T/O 2/2 · Subs 6/6" at its widest (both counts at FIVB's number), one line (the foot keeps its words whole).
   // The finished sets' boxes and the hint share the row in a real match: how they share it is the screen's (Task 11), and
   // this pins what the foot needs alone.
   const widest = (dictionary: Dictionary) =>
@@ -405,48 +405,47 @@ describe('volleyball: the score keeps its room with the counts (arithmetic)', ()
   });
 });
 
-// Review I1: how the indoor counts share the bottom row with the finished sets' boxes and "Tap". The row is the half's
-// inner width; the boxes (26 dp each, `padPeriodBox`, a gap between), a dot and its gap, a gap and "Tap" hold their
-// width, and the counts take what is left and are cut with an ellipsis beyond it. The widest counts (2 of 2 timeouts, 6
-// of 6 subs) are measured. THE SLOT DOES NOT HOLD THE FULL COUNTS WITH MANY SETS FINISHED: the table below is what fits
-// today, pinned so a change to the copy or the row shows up; the scorer still reads the half's name (a screen reader hears
-// the whole counts) and the device check reads the cut.
-describe('volleyball: the indoor counts in the bottom row beside Tap (ruling 178)', () => {
-  const widestCounts = (dictionary: Dictionary) =>
-    fill(said(dictionary, `${VB}.foot.indoor`), {
-      timeouts: '2',
-      timeoutCap: '2',
-      subs: '6',
-      subCap: '6',
-    });
+// Review I1, round 2 (ruling: the slot's counts are never cut): the counts share the bottom row with the finished sets'
+// boxes and "Tap". The row is the half's inner width; the boxes (26 dp each, `padPeriodBox`, a gap between), a gap, the
+// counts, a gap and "Tap" (no dot: the dot is for a server's name). With fewer than three finished sets the counts are
+// labelled ("T/O 2/2 · Subs 6/6"); from three they are numbers alone ("2/2 · 6/6"), because the labelled words cannot
+// fit beside three boxes and the widest hint ("Touchez") at 320 dp in every language. The widest counts (2/2, 6/6) are
+// measured beside 0 to 4 finished sets: they fit in every language at both widths, with no ellipsis.
+describe('volleyball: the indoor counts in the bottom row beside Tap are never cut (ruling 178)', () => {
+  const widest = { timeouts: '2', timeoutCap: '2', subs: '6', subCap: '6' };
+  const SHORT_FROM = 3;
+  const shown = (dictionary: Dictionary, sets: number) =>
+    fill(said(dictionary, `${VB}.foot.${sets >= SHORT_FROM ? 'indoorShort' : 'indoor'}`), widest);
   const roomFor = (dictionary: Dictionary, width: number, sets: number) => {
     const boxes = sets === 0 ? 0 : sets * layout.padPeriodBox + (sets - 1) * space.xs;
-    const dot = sets === 0 ? 0 : controlWidth('·') + space.sm;
-    return (
-      halfInner(width) - boxes - dot - space.sm - unitWidth(said(dictionary, 'scoring.pad.tap'))
-    );
+    return halfInner(width) - boxes - 2 * space.sm - unitWidth(said(dictionary, 'scoring.pad.tap'));
   };
-  const holds = (dictionary: Dictionary, width: number) =>
-    [0, 1, 2, 3, 4].filter(
-      (sets) => controlWidth(widestCounts(dictionary)) <= roomFor(dictionary, width, sets),
-    );
-  /** The finished sets the full counts fit beside, per language and width: a deciding set has four. */
-  const MOST_SETS = { en: [3, 2], es: [2, 1], fr: [1, 0], nl: [2, 1] } as const;
 
   it.each(LANGUAGES)(
-    '%s: the widest counts fit beside the boxes and Tap up to the pinned number of finished sets, and are cut beyond',
+    '%s: the counts fit beside 0 to 4 finished sets and Tap at 320 and 360, labelled to two sets and numbers after',
     (lang, dictionary: Dictionary) => {
-      const [at360, at320] = MOST_SETS[lang];
-      expect(Math.max(...holds(dictionary, 360)), `${lang} @360`).toBe(at360);
-      expect(Math.max(...holds(dictionary, 320)), `${lang} @320`).toBe(at320);
+      for (const width of WIDTHS)
+        for (const sets of [0, 1, 2, 3, 4])
+          expect(
+            controlWidth(shown(dictionary, sets)),
+            `${lang} @${width} with ${sets} sets`,
+          ).toBeLessThanOrEqual(roomFor(dictionary, width, sets));
     },
   );
 
-  it('is cut in the deciding set (four finished) at both widths in every language (anti-vacuity: it fits with none)', () => {
-    for (const [lang, dictionary] of LANGUAGES)
-      for (const width of WIDTHS) {
-        expect(holds(dictionary, width), `${lang} @${width}`).toContain(0);
-        expect(holds(dictionary, width), `${lang} @${width}`).not.toContain(4);
-      }
+  // Anti-vacuity: the switch is needed. The labelled counts would be cut beside four boxes at 320 in every language,
+  // and the numbers alone fit beside four.
+  it('needs the switch: labelled counts would be cut beside four sets at 320, in every language', () => {
+    for (const [lang, dictionary] of LANGUAGES) {
+      const labelled = fill(said(dictionary, `${VB}.foot.indoor`), widest);
+      expect(controlWidth(labelled), lang).toBeGreaterThan(roomFor(dictionary, 320, 4));
+    }
+  });
+
+  it('labelled counts do fit beside two sets at 320 (so the switch is no earlier than it must be)', () => {
+    for (const [lang, dictionary] of LANGUAGES) {
+      const labelled = fill(said(dictionary, `${VB}.foot.indoor`), widest);
+      expect(controlWidth(labelled), lang).toBeLessThanOrEqual(roomFor(dictionary, 320, 2));
+    }
   });
 });

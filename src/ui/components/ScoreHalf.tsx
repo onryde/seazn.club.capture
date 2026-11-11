@@ -49,6 +49,7 @@ export const ScoreHalf = memo(function ScoreHalf({ half, flash, onTap }: ScoreHa
   const [height, measure] = useHeight();
   const sub = half.sub === null ? null : words(half.sub);
   const foot = half.foot == null ? null : words(half.foot.text);
+  const spokenFoot = half.foot == null ? null : words(half.foot.said);
   // The counts sit in the bottom row's slot, or on a line of their own when the slot holds something else.
   const inSlot = half.foot?.place === 'slot';
   const caution = half.foot?.caution === true;
@@ -57,7 +58,7 @@ export const ScoreHalf = memo(function ScoreHalf({ half, flash, onTap }: ScoreHa
     <Pressable
       testID={`half-${half.side}`}
       accessibilityRole="button"
-      accessibilityLabel={halfName(half, words, sub, said, foot)}
+      accessibilityLabel={halfName(half, words, sub, said, spokenFoot)}
       accessibilityHint={words(half.hint)}
       disabled={!half.tappable}
       onPress={tap}
@@ -225,7 +226,7 @@ const HalfFoot = memo(function HalfFoot({
   return (
     <View style={styles.foot}>
       {boxed ? <PeriodBoxes scores={scores} /> : null}
-      {boxed && (sub !== null || counts !== null) ? (
+      {boxed && sub !== null ? (
         <Text variant="control" aria-hidden style={styles.kept}>
           {SEPARATOR}
         </Text>

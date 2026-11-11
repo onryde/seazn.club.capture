@@ -142,6 +142,15 @@ function serverPerson(display: VolleyballDisplay): Text | null {
  * refuses the next one, it shows it (ruling 175). None before the start, once the match is decided, or in a match that
  * records no timeouts.
  */
+/**
+ * With this many sets finished the bottom row holds this many boxes beside "Tap", and the labelled counts no longer fit
+ * the slot at 320 dp in every language (volleyballFit.test.ts): the counts drop their labels ("2/2 · 6/6", timeouts then
+ * subs, as the tool row's order) and the half's name still speaks them in full.
+ */
+const SHORT_FOOT_FROM = 3;
+const LABELLED_FOOT = 'scoring.volleyball.foot.indoor';
+const SHORT_FOOT = 'scoring.volleyball.foot.indoorShort';
+
 function foot(display: VolleyballDisplay, side: PadSide): PadFoot<VolleyballPadKey> | null {
   if (!takesTaps(display) || !display.records.timeouts) return null;
   const { counts, caps } = display;
@@ -152,15 +161,15 @@ function foot(display: VolleyballDisplay, side: PadSide): PadFoot<VolleyballPadK
     // The beach half's bottom-left slot holds the server's name: the counts take a line of their own.
     return {
       text: { key: 'scoring.volleyball.foot.beach', vars: timeouts },
+      said: { key: 'scoring.volleyball.foot.beachSaid', vars: timeouts },
       place: 'line',
       caution,
     };
   }
+  const vars = { ...timeouts, subs: mine.subs, subCap: caps.subs };
   return {
-    text: {
-      key: 'scoring.volleyball.foot.indoor',
-      vars: { ...timeouts, subs: mine.subs, subCap: caps.subs },
-    },
+    text: { key: display.finished.length >= SHORT_FOOT_FROM ? SHORT_FOOT : LABELLED_FOOT, vars },
+    said: { key: 'scoring.volleyball.foot.indoorSaid', vars },
     place: 'slot',
     caution,
   };

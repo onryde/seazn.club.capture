@@ -157,7 +157,14 @@ describe.each(['en', 'fr', 'nl'] as const)('layout A, indoor, in %s', (lang) => 
     });
     expect([counts('first'), counts('second')]).toEqual([foot, foot]);
     // A screen reader hears the counts in the half's name (the line itself is hidden from it).
-    expect(half('first').getAttribute('aria-label')).toContain(foot);
+    const spoken = fill(words['scoring.volleyball.foot.indoorSaid'], {
+      timeouts: 0,
+      timeoutCap: 2,
+      subs: 0,
+      subCap: 6,
+    });
+    expect(half('first').getAttribute('aria-label')).toContain(spoken);
+    expect(half('first').getAttribute('aria-label')).not.toContain(foot);
   });
 
   it('a timeout counts on the side’s foot, and at the FIVB number the foot turns caution', async () => {
@@ -321,7 +328,7 @@ describe('Sub, indoors only', () => {
     await tap(app, en['scoring.volleyball.sheet.sub']);
     await tap(app, 'Falcons');
     expect(screen.queryByTestId('step-sheet')).toBeNull();
-    expect(counts('first')).toContain('1 of 6');
+    expect(counts('first')).toContain('1/6');
     expect(AWAY_ENTRANT).toBe('ent-away');
   });
 });

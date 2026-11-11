@@ -41,6 +41,10 @@ describe('volleyballPad: the foot (ruling 175)', () => {
         key: 'scoring.volleyball.foot.indoor',
         vars: { timeouts: 1, timeoutCap: 2, subs: 4, subCap: 6 },
       },
+      said: {
+        key: 'scoring.volleyball.foot.indoorSaid',
+        vars: { timeouts: 1, timeoutCap: 2, subs: 4, subCap: 6 },
+      },
       place: 'slot',
       caution: false,
     });
@@ -48,6 +52,21 @@ describe('volleyballPad: the foot (ruling 175)', () => {
       key: 'scoring.volleyball.foot.indoor',
       vars: { timeouts: 1, timeoutCap: 2, subs: 0, subCap: 6 },
     });
+  });
+
+  // The slot beside Tap holds only so many boxes and the labelled words (volleyballFit.test.ts): from three finished sets the
+  // counts are numbers alone, and the spoken words stay in full.
+  it('drops its labels from the third finished set on, and still speaks them in full', () => {
+    const two = padOf([...LIVE, ...wonSet('H').slice(1), ...wonSet('A', 'A')]);
+    expect(first(two).foot?.text).toMatchObject({ key: 'scoring.volleyball.foot.indoor' });
+    const three = padOf([
+      ...LIVE,
+      ...wonSet('H').slice(1),
+      ...wonSet('A', 'A'),
+      ...wonSet('H', 'H'),
+    ]);
+    expect(first(three).foot?.text).toMatchObject({ key: 'scoring.volleyball.foot.indoorShort' });
+    expect(first(three).foot?.said).toMatchObject({ key: 'scoring.volleyball.foot.indoorSaid' });
   });
 
   it('has no foot where the match records no timeouts (an empty input)', () => {
@@ -93,6 +112,7 @@ describe('volleyballPad: the foot (ruling 175)', () => {
     const live = [start(), rally({ wonBy: 'H', serving: 'H', server: 'h1' })];
     expect(first(padOf(live, { bootstrap: BEACH })).foot).toEqual({
       text: { key: 'scoring.volleyball.foot.beach', vars: { timeouts: 0, timeoutCap: 1 } },
+      said: { key: 'scoring.volleyball.foot.beachSaid', vars: { timeouts: 0, timeoutCap: 1 } },
       place: 'line',
       caution: false,
     });
@@ -372,6 +392,7 @@ describe('volleyballPad: every word it names is a dictionary key', () => {
           half.serving?.shown,
           half.serving?.said,
           half.foot?.text,
+          half.foot?.said,
           ...half.marks.said,
           ...(half.periods?.said ?? []),
         ]),

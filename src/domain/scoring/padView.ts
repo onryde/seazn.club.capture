@@ -112,6 +112,8 @@ export type PadHalf<K extends string> = {
  */
 export type PadFoot<K extends string> = {
   readonly text: PadText<K>;
+  /** The same counts in full words, for a screen reader: the drawn text abbreviates. */
+  readonly said: PadText<K>;
   readonly place: 'slot' | 'line';
   readonly caution: boolean;
 };
