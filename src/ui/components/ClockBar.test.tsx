@@ -5,7 +5,7 @@ import en from '@/i18n/en.json';
 import type { MessageKey } from '@/i18n/messages';
 import nl from '@/i18n/nl.json';
 import { ClockBar } from '@/ui/components/ClockBar';
-import { colour, layout, space } from '@/ui/theme/tokens';
+import { colour, layout, radius, space } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
 import { declaredStyle } from '../../../test/declaredStyle';
 import { edgeOf, fillOf } from '../../../test/pressState';
@@ -96,14 +96,17 @@ describe('ClockBar', () => {
     expect(period.textTransform).toBe('uppercase');
   });
 
-  it('while stopped the digits dim to ink3 and an orange PAUSED tag sits beside the period, never red', () => {
+  it('while stopped the digits go grey-white (ink2, the mockup’s .clk.pz, not lilac) and an orange PAUSED tag of the mockup’s 12 dp sits beside the period, never red', () => {
     renderBar(viewOf('resume'));
-    expect(getComputedStyle(screen.getByText('34:12')).color).toBe(edgeOf(colour.ink3));
+    expect(getComputedStyle(screen.getByText('34:12')).color).toBe(edgeOf(colour.ink2));
+    expect(getComputedStyle(screen.getByText('34:12')).color).not.toBe(edgeOf(colour.ink3));
     const tag = screen.getByTestId('clock-paused');
     const word = within(tag).getByText(en['scoring.football.clock.paused']);
     expect(getComputedStyle(word).color).toBe(edgeOf(colour.caution));
     expect(getComputedStyle(word).color).not.toBe(edgeOf(colour.live));
     expect(getComputedStyle(tag).borderColor).toBe(edgeOf(colour.caution));
+    expect(getComputedStyle(word).fontSize).toBe(`${typeScale.pausedTag.fontSize}px`);
+    expect(declaredStyle(tag, 'padding-left')).toBe(`${layout.pausedTagPadX}px`);
     expect(screen.getByText(H1)).toBeTruthy();
   });
 
@@ -155,8 +158,11 @@ describe('ClockBar, the panel and the grown digits', () => {
   it('has a thin lime hairline on the panel’s bottom edge', () => {
     renderBar(viewOf('pause'));
     const face = screen.getByTestId('clock-face');
-    expect(getComputedStyle(face).borderBottomColor).toBe(edgeOf(colour.lime));
-    expect(declaredStyle(face, 'border-bottom-width')).toBe(`${layout.iconBorder}px`);
+    // 2 dp at 50% lime on a rounded panel, as the mockup's `border-bottom: 2px solid rgba(154,230,0,.5)`.
+    expect(getComputedStyle(face).borderBottomColor).toBe(edgeOf(colour.limeHalf));
+    expect(declaredStyle(face, 'border-bottom-width')).toBe(`${layout.clockHairline}px`);
+    expect(layout.clockHairline).toBe(2);
+    expect(getComputedStyle(face).borderBottomLeftRadius).toBe(`${radius.card}px`);
   });
 
   it('sets the digits at the size it is given, with its line, and keeps clockHero’s with none', () => {
@@ -182,7 +188,7 @@ describe('ClockBar, the panel and the grown digits', () => {
 // The compact board's bar (fix-round 2 ruling R1): the time a step down (`tallyCompact`), the period's one line under it,
 // the plate under both.
 describe('ClockBar, compact', () => {
-  it('sets the time a step down, the period under it on one line cut with an ellipsis, in a 48 dp face with 4 dp of padding a side, a 57 dp panel with its hairline', () => {
+  it('sets the time a step down, the period under it on one line cut with an ellipsis, in a 48 dp face with 4 dp of padding a side, a 58 dp panel with its 2 dp hairline', () => {
     renderBar(viewOf('pause'), 'en', true);
     const face = screen.getByLabelText(`${said('34:12')}, ${H1}`);
     expect(within(face).getByText(H1)).toBeTruthy();
@@ -190,7 +196,7 @@ describe('ClockBar, compact', () => {
       `${typeScale.tallyCompact.fontSize}px`,
     );
     expect(declaredStyle(face, 'min-height')).toBe(
-      `${layout.touch + 2 * space.xs + layout.iconBorder}px`,
+      `${layout.touch + 2 * space.xs + layout.clockHairline}px`,
     );
     const style = getComputedStyle(screen.getByText(H1));
     expect([style.whiteSpace, style.textOverflow]).toEqual(['nowrap', 'ellipsis']);

@@ -19,6 +19,11 @@ type ToolRowProps = {
   readonly onTool: (id: string) => void;
   /** The pad's own row is `tool-row`; another row of the same buttons (the update banner's) names itself. */
   readonly testID?: string;
+  /**
+   * Standard tools' words in full cream (`ink`), as the football mockup draws them (owner ruling 152), not the shared
+   * `ink2` of `actionSecondary`. Default no: other sports keep `ink2`.
+   */
+  readonly brightInk?: boolean;
 };
 
 /**
@@ -28,11 +33,16 @@ type ToolRowProps = {
  * now: one the pad stops offering is not in the list and its cell goes (badminton's Set score, after a game's first
  * rally), while one offered but not usable now (`enabled` false) keeps its place, disabled.
  */
-export const ToolRow = memo(function ToolRow({ tools, onTool, testID = 'tool-row' }: ToolRowProps) {
+export const ToolRow = memo(function ToolRow({
+  tools,
+  onTool,
+  testID = 'tool-row',
+  brightInk = false,
+}: ToolRowProps) {
   return (
     <View testID={testID} style={styles.row}>
       {tools.map((tool) => (
-        <ToolButton key={tool.id} tool={tool} onTool={onTool} />
+        <ToolButton key={tool.id} tool={tool} onTool={onTool} brightInk={brightInk} />
       ))}
     </View>
   );
@@ -41,9 +51,11 @@ export const ToolRow = memo(function ToolRow({ tools, onTool, testID = 'tool-row
 const ToolButton = memo(function ToolButton({
   tool,
   onTool,
+  brightInk,
 }: {
   readonly tool: PadTool<MessageKey>;
   readonly onTool: (id: string) => void;
+  readonly brightInk: boolean;
 }) {
   const words = usePadText();
   const press = useCallback(() => onTool(tool.id), [onTool, tool.id]);
@@ -61,7 +73,7 @@ const ToolButton = memo(function ToolButton({
       <Text
         variant="actionSecondary"
         numberOfLines={layout.padToolLines}
-        style={tool.enabled ? LABEL[tool.kind] : styles.labelOff}
+        style={tool.enabled ? labelOf(tool.kind, brightInk) : styles.labelOff}
       >
         {label}
       </Text>
@@ -96,6 +108,7 @@ const styles = StyleSheet.create({
   labelPrimary: { color: plateInk },
   labelDestructive: { color: colour.caution },
   labelOff: { color: colour.ink3 },
+  labelBright: { color: colour.ink },
 });
 
 /** Module-level so render allocates no function. Pressed: the plate dims, an outline fills, as Button and GhostButton. */
@@ -119,3 +132,7 @@ const LABEL: Readonly<Record<PadToolKind, StyleProp<TextStyle>>> = {
   standard: undefined,
   destructive: styles.labelDestructive,
 };
+
+/** A standard tool's word is `ink2` by its role; bright, it is `ink`. The other kinds keep their own. */
+const labelOf = (kind: PadToolKind, bright: boolean): StyleProp<TextStyle> =>
+  bright && kind === 'standard' ? styles.labelBright : LABEL[kind];

@@ -220,6 +220,9 @@ const GoalSquare = memo(function GoalSquare({ action, value, tier, onAction }: G
     const { width, height } = event.nativeEvent.layout;
     setRoom({ width: Math.round(width), height: Math.round(height) });
   }, []);
+  // The room is as tall as it is wide and gives way (flexShrink) when the column is held shorter than that, so a column
+  // hugs its square and the spare height sits outside the card (owner ruling 152); its height follows its width only.
+  const roomStyle = useMemo(() => [GOAL_ROOM[tier], { height: room.width }], [tier, room.width]);
   const side = goalSide(room);
   const size = goalNumeralSize(tier, side);
   const fit = useMemo(() => ({ fontSize: size, lineHeight: Math.round(size * 1.06) }), [size]);
@@ -234,7 +237,7 @@ const GoalSquare = memo(function GoalSquare({ action, value, tier, onAction }: G
     [off, box],
   );
   return (
-    <View testID="goal-room" onLayout={measured} style={GOAL_ROOM[tier]}>
+    <View testID="goal-room" onLayout={measured} style={roomStyle}>
       <Pressable
         testID="goal-square"
         accessibilityRole="button"
@@ -256,7 +259,7 @@ const GoalSquare = memo(function GoalSquare({ action, value, tier, onAction }: G
         </Text>
         <Text
           aria-hidden
-          variant="diagSection"
+          variant="goalWord"
           numberOfLines={1}
           style={off ? styles.labelOff : styles.labelPrimary}
         >
@@ -268,8 +271,8 @@ const GoalSquare = memo(function GoalSquare({ action, value, tier, onAction }: G
 });
 
 /**
- * Yellow, Red or Sub: one of three equal squares on `surface2`, its mark (a card's swatch, or the two arrows) over its word
- * (small caps, shrunk to `cardLabelFloor`). A disabled one greys.
+ * Yellow, Red or Sub: one of three equal squares outlined on the column's surface, its mark (a card's swatch, or the two arrows) over its word
+ * (small caps, shrunk to `cardLabelFloor`). A disabled one is dimmed whole.
  */
 const SmallSquare = memo(function SmallSquare({ action, onAction }: ColumnButtonProps) {
   const press = useCallback(() => onAction(action.id), [onAction, action.id]);
@@ -282,15 +285,13 @@ const SmallSquare = memo(function SmallSquare({ action, onAction }: ColumnButton
       onPress={press}
       style={off ? smallOff : smallOn}
     >
-      <View style={off ? styles.markOff : null}>
-        <SquareMark mark={action.mark} />
-      </View>
+      <SquareMark mark={action.mark} />
       <Text
         variant="diagSection"
         numberOfLines={1}
         adjustsFontSizeToFit
         minimumFontScale={layout.cardLabelFloor}
-        style={off ? styles.smallLabelOff : styles.smallLabel}
+        style={styles.smallLabel}
       >
         {action.label}
       </Text>
@@ -356,8 +357,9 @@ const ColumnButton = memo(function ColumnButton({ action, onAction }: ColumnButt
 });
 
 const styles = StyleSheet.create({
+  // The card hugs its content (owner ruling 152): it does not grow into spare height, it gives way when the board is short.
   column: {
-    flex: 1,
+    flexShrink: 1,
     minWidth: 0,
     padding: space.sm,
     borderRadius: radius.card,
@@ -390,7 +392,13 @@ const styles = StyleSheet.create({
   count: { color: colour.ink2 },
   // The Goal square's room takes what the column's other rows leave, at least the tier's least (`goalHeight`); the square
   // is as wide as the column or as tall as the room, centred (ruling 144), its side set from the measured room.
-  goalRoom: { flex: 1, minWidth: 0, alignItems: 'center', justifyContent: 'center' },
+  goalRoom: {
+    flexGrow: 0,
+    flexShrink: 1,
+    minWidth: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   goalRoomFull: { minHeight: goalHeight('full') },
   goalRoomCompact: { minHeight: goalHeight('compact') },
   square: {
@@ -415,9 +423,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: layout.padSubGap,
     borderRadius: radius.card,
-    backgroundColor: colour.surface2,
+    // Outlined as the mockup's `.pb.outl`, on the column's own surface (owner ruling 152).
+    borderWidth: layout.iconBorder,
+    borderColor: colour.ink3,
   },
-  markOff: { opacity: layout.disabledMark },
+  // A disabled square is the whole square dimmed (the mockup's `.pb.dim`), by the token.
+  smallDim: { opacity: layout.disabledMark },
   swatch: {
     width: layout.padSquareSwatchWidth,
     height: layout.padSquareSwatchHeight,
@@ -428,12 +439,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     letterSpacing: layout.padSquareLabelSpacing,
     color: colour.ink,
-  },
-  smallLabelOff: {
-    alignSelf: 'stretch',
-    textAlign: 'center',
-    letterSpacing: layout.padSquareLabelSpacing,
-    color: colour.ink3,
   },
   noteRoom: { height: NOTE_HEIGHT, justifyContent: 'center' },
   subGlyph: { gap: layout.padSubGap },
@@ -509,6 +514,6 @@ const dismissalCard = [styles.card, styles.dismissal];
 const cautionSwatch = [styles.swatch, styles.caution];
 const dismissalSwatch = [styles.swatch, styles.dismissal];
 const smallOn = pressable(styles.small, styles.pressedOther);
-const smallOff: StyleProp<ViewStyle> = styles.small;
+const smallOff: StyleProp<ViewStyle> = [styles.small, styles.smallDim];
 const otherButton = pressable(styles.button, styles.pressedOther);
 const otherOff: StyleProp<ViewStyle> = styles.button;

@@ -189,7 +189,7 @@ describe('the clock bar', () => {
       ),
     ).toBeTruthy();
     expect(getComputedStyle(within(clockBar()).getByText(/^\d+:\d\d$/)).color).toBe(
-      edgeOf(colour.ink3),
+      edgeOf(colour.ink2),
     );
     await press(app, en['scoring.football.clock.resume'], clockBar());
     expect(plate('pause')).toBeTruthy();
@@ -360,6 +360,18 @@ describe('the squares (ruling 144)', () => {
   });
 });
 
+// Owner ruling 152: FULL TIME and MORE are in bright ink (`ink`) as in the mockup, not the shared tool row's `ink2`.
+describe('the tools in bright ink (ruling 152)', () => {
+  it('draws the standard tools’ words in full cream on the football pad', async () => {
+    await open(LIVE);
+    const tools = within(screen.getByTestId('tool-row'));
+    for (const word of [en['scoring.football.tool.more'], en['scoring.football.end.HT']]) {
+      const button = tools.getByRole('button', { name: word });
+      expect(getComputedStyle(within(button).getByText(word)).color).toBe(edgeOf(colour.ink));
+    }
+  });
+});
+
 // Owner ruling 146: no empty band between the header and the clock.
 describe('the clock under the header (ruling 146)', () => {
   it('has no strip above the clock; the clock is the first thing under the header', async () => {
@@ -455,8 +467,8 @@ describe('Yellow and Red (ruling 136)', () => {
 });
 
 // The controller's fix-round 2 ruling (R1), redone for the clock hero (ruling 130): the board's own height picks its tier.
-// The full tier needs the hero's 179 dp (a 115 panel, 8, the 48 plate, 8) over a column of 292 (2 × 8 and the 4 colour bar, an 84 head, a 100
-// Goal room, 3 × 8, the 48 row of squares and the 16 note line): 471. Below it the clock and both columns go compact, at once
+// The full tier needs the hero's 180 dp (a 116 panel, 8, the 48 plate, 8) over a column of 292 (2 × 8 and the 4 colour bar, an 84 head, a 100
+// Goal room, 3 × 8, the 48 row of squares and the 16 note line): 472. Below it the clock and both columns go compact, at once
 // (footballFit.test.ts holds the heights).
 describe('a short phone (ruling R1)', () => {
   const H1 = en['scoring.football.period.H1'];
@@ -465,17 +477,17 @@ describe('a short phone (ruling R1)', () => {
   const FULL = `${typeScale.clockHero.fontSize}px`;
   const COMPACT = `${typeScale.tallyCompact.fontSize}px`;
 
-  it('at 471 dp of board the pad is full; at 470 the clock and the columns go compact', async () => {
+  it('at 472 dp of board the pad is full; at 471 the clock and the columns go compact', async () => {
     await open(STARTED);
     // Before the phone lays the board out, it is full.
     expect(linesAllowed(name())).toBe(2);
     expect(timeSize()).toBe(FULL);
     expect(within(clockBar()).getByText(H1)).toBeTruthy();
     const board = screen.getByTestId('football-board');
-    layOut(board, { width: 328, height: 471 });
+    layOut(board, { width: 328, height: 472 });
     expect(timeSize()).toBe(FULL);
     expect(linesAllowed(name())).toBe(2);
-    layOut(board, { width: 328, height: 470 });
+    layOut(board, { width: 328, height: 471 });
     expect(timeSize()).toBe(COMPACT);
     expect(linesAllowed(name())).toBe(1);
     expect(linesAllowed(within(column('first')).getByText('Riverside FC'))).toBe(1);
@@ -490,7 +502,7 @@ describe('a short phone (ruling R1)', () => {
     const board = screen.getByTestId('football-board');
     layOut(board, { width: 380, height: 664 });
     expect(timeSize()).toBe('106px');
-    layOut(board, { width: 328, height: 471 });
+    layOut(board, { width: 328, height: 472 });
     expect(timeSize()).toBe(FULL);
     layOut(board, { width: 380, height: 300 });
     expect(timeSize()).toBe(COMPACT);

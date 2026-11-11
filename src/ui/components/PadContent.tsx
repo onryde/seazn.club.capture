@@ -70,6 +70,8 @@ type PadContentProps = {
    * decided board), so nothing scrolls under a key and the header and the last-tap line stay fixed.
    */
   readonly scrolls?: boolean;
+  /** Standard tools' words in full cream (football's mockup, owner ruling 152); default no. */
+  readonly brightTools?: boolean;
 };
 
 /**
@@ -92,6 +94,7 @@ export const PadContent = memo(function PadContent({
   body,
   lineUndo = true,
   scrolls = false,
+  brightTools = false,
 }: PadContentProps) {
   const { view, line, cardNote, flash, toss, actions } = model;
   const known = matchKnown(view.card);
@@ -121,6 +124,7 @@ export const PadContent = memo(function PadContent({
         cardNote={cardNote}
         actions={actions}
         lineUndo={lineUndo}
+        brightTools={brightTools}
       />
     </View>
   );
@@ -342,12 +346,14 @@ const PadControls = memo(function PadControls({
   cardNote,
   actions,
   lineUndo,
+  brightTools,
 }: {
   readonly view: PadView<MessageKey>;
   readonly line: PadLineWords;
   readonly cardNote: MessageKey | null;
   readonly actions: PadContentActions;
   readonly lineUndo: boolean;
+  readonly brightTools: boolean;
 }) {
   const { t } = useT();
   const { card } = view;
@@ -365,7 +371,7 @@ const PadControls = memo(function PadControls({
   return (
     <>
       <PadLine view={view} line={line} undo={lineUndo} onUndo={actions.undo} />
-      <ToolRow tools={view.tools} onTool={actions.tool} />
+      <ToolRow tools={view.tools} onTool={actions.tool} brightInk={brightTools} />
     </>
   );
 });

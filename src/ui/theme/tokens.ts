@@ -47,6 +47,8 @@ export const colour = {
 
   /** --sport-led. Tailwind lime-400 in sRGB, NOT the v3 --mk-lime hex. */
   lime: '#9ae600',
+  /** The LED at 50% (the football clock panel's bottom hairline, owner ruling 152). */
+  limeHalf: '#9ae60080',
   /** --mk-live. Red is on-air here, which is why errors below are not red. */
   live: '#ef4444',
   /** --mk-orange: the night-legible caution. --sport-caution is the daylight one. */
@@ -371,7 +373,13 @@ const base = {
    * The word under the mark in a small square: Barlow's 0.6 letterspacing is 4.8 dp over "Amarilla"; at 0.2 it holds in a
    * 37.3 dp square at 320 dp at the label floor (footballFit.test.ts).
    */
-  padSquareLabelSpacing: 0.2,
+  padSquareLabelSpacing: 0,
+  /**
+   * The clock panel's bottom edge (owner ruling 152, the mockup's `border-bottom: 2px solid rgba(154,230,0,.5)`): 2 dp of
+   * `colour.limeHalf`, following the panel's rounded corners. The PAUSED tag's side padding (`.ptag`: 0 6px).
+   */
+  clockHairline: 2,
+  pausedTagPadX: 6,
   /** A disabled small square's mark (a swatch or Sub's arrows), dimmed (the label goes to `ink3`). */
   disabledMark: 0.4,
   /**

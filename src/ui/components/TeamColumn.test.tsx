@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { TeamColumn, type TeamAction, type TeamColumnView } from '@/ui/components/TeamColumn';
 import { goalHeight, NOTE_HEIGHT } from '@/ui/theme/columnBoard';
 import { layOut } from '../../../test/layOut';
-import { colour, layout, space } from '@/ui/theme/tokens';
+import { colour, layout, radius, space } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
 import { declaredStyle } from '../../../test/declaredStyle';
 import { linesAllowed } from '../../../test/linesAllowed';
@@ -78,7 +78,7 @@ describe('TeamColumn', () => {
 
   // A note is too long for a small square (fr "Plus de remplacement" is 127.7 dp, the square 37): it sits on the one line
   // under the three, and the square keeps its short word, greyed, with the note in its accessible name (ruling 144).
-  it('draws a disabled Sub greyed, with its note on the line under the squares', () => {
+  it('draws a disabled Sub dimmed whole, with its note on the line under the squares', () => {
     const { onAction } = renderColumn({
       ...VIEW,
       actions: [GOAL, YELLOW, RED, { ...SUB, enabled: false, note: 'No team sheet' }],
@@ -89,7 +89,7 @@ describe('TeamColumn', () => {
     expect(within(screen.getByTestId('column-note-room')).getByText('No team sheet')).toBeTruthy();
     act(() => fireEvent.click(sub));
     expect(onAction).not.toHaveBeenCalled();
-    expect(getComputedStyle(within(sub).getByText('Sub')).color).toBe(edgeOf(colour.ink3));
+    expect(declaredStyle(sub, 'opacity')).toBe(`${layout.disabledMark}`);
   });
 
   it('draws the disabled note once for a screen reader: the line is hidden, the name has it', () => {
@@ -101,13 +101,13 @@ describe('TeamColumn', () => {
     expect(button('Sub, No team sheet')).toBeTruthy();
   });
 
-  it('dims a disabled square’s mark by the token', () => {
+  it('dims only the disabled square, by the token: an enabled one is whole', () => {
     renderColumn({
       ...VIEW,
       actions: [GOAL, YELLOW, RED, { ...SUB, enabled: false, note: 'No team sheet' }],
     });
-    const mark = within(button('Sub, No team sheet')).getByTestId('sub-glyph').parentElement!;
-    expect(declaredStyle(mark, 'opacity')).toBe(`${layout.disabledMark}`);
+    expect(declaredStyle(button('Sub, No team sheet'), 'opacity')).toBe(`${layout.disabledMark}`);
+    expect(declaredStyle(button('Yellow'), 'opacity')).not.toBe(`${layout.disabledMark}`);
   });
 
   // jsdom has no font padding, so nothing renders the difference: this guards the declaration (device-only effect, the
@@ -199,7 +199,7 @@ describe('TeamColumn', () => {
   // Ruling 144: Yellow, Red and Sub are one row of three equal squares, each as tall as it is wide (aspect ratio 1), never
   // under a touch target (ruling 145: under about 160 dp the 48 dp height beats the shape); jsdom has no layout, so the
   // styles are read; the sides at each phone are footballFit.test.ts's.
-  it('puts Yellow, Red and Sub in one row of three squares on surface2, a mark over each word', () => {
+  it('puts Yellow, Red and Sub in one row of three outlined squares on the column’s own surface, a mark over each word', () => {
     renderColumn(VIEW);
     const row = screen.getByTestId('column-cards');
     expect(
@@ -210,7 +210,11 @@ describe('TeamColumn', () => {
     expect(declaredStyle(row, 'flex-direction')).toBe('row');
     expect(declaredStyle(row, 'gap')).toBe(`${space.xs}px`);
     for (const name of ['Yellow', 'Red', 'Sub']) {
-      expect(getComputedStyle(button(name)).backgroundColor).toBe(fillOf(colour.surface2));
+      // Outlined as the mockup's buttons: the hairline in ink3, 12 dp round, and no grey fill.
+      expect(getComputedStyle(button(name)).borderTopColor).toBe(edgeOf(colour.ink3));
+      expect(declaredStyle(button(name), 'border-top-width')).toBe(`${layout.iconBorder}px`);
+      expect(getComputedStyle(button(name)).borderTopLeftRadius).toBe(`${radius.card}px`);
+      expect(getComputedStyle(button(name)).backgroundColor).not.toBe(fillOf(colour.surface2));
       expect(declaredStyle(button(name), 'flex-grow')).toBe('1');
       expect(declaredStyle(button(name), 'aspect-ratio')).toBe('1 / 1');
       expect(declaredStyle(button(name), 'min-height')).toBe(`${layout.touch}px`);
@@ -233,11 +237,18 @@ describe('TeamColumn', () => {
     expect(declaredStyle(heads[1]![0]!, 'border-right-width')).toBe(`${layout.padSubHead}px`);
   });
 
-  it('the Goal square’s room takes the height the column leaves, at least its own least', () => {
+  // Owner ruling 152: the card hugs its content. The room does not grow into spare height (it is as tall as it is wide,
+  // from its measured width) and gives way when the column is held short; so does the card.
+  it('the Goal square’s room is as tall as it is wide, never grows, gives way, and the card does not grow', () => {
     renderColumn(VIEW);
     const room = screen.getByTestId('goal-room');
-    expect(declaredStyle(room, 'flex-grow')).toBe('1');
+    expect(declaredStyle(room, 'flex-grow')).toBe('0');
+    expect(declaredStyle(room, 'flex-shrink')).toBe('1');
     expect(declaredStyle(room, 'min-height')).toBe(`${goalHeight('full')}px`);
+    layOut(room, { width: 140, height: 140 });
+    expect(declaredStyle(room, 'height')).toBe('140px');
+    expect(declaredStyle(screen.getByTestId('team-column'), 'flex-grow')).not.toBe('1');
+    expect(declaredStyle(screen.getByTestId('team-column'), 'flex-shrink')).toBe('1');
   });
 
   // Ruling 144: the square is as wide as the room, or as tall when the room is shorter, and centred in it.

@@ -120,6 +120,27 @@ export const typeScale = {
     color: colour.ink2,
   },
   /**
+   * The football mockup's `.pb` word (owner ruling 152): Barlow Condensed 600 at 18, caps, 0.08em apart (1.44 dp). The
+   * Goal square's word under its numeral.
+   */
+  goalWord: {
+    fontFamily: font.displaySemibold,
+    fontSize: 18,
+    lineHeight: 18,
+    letterSpacing: 1.44,
+    textTransform: 'uppercase',
+    color: colour.ink2,
+  },
+  /** The mockup's `.ptag`: the PAUSED tag's word, Barlow Condensed 600 at 12, caps, 0.1em apart (1.2 dp). */
+  pausedTag: {
+    fontFamily: font.displaySemibold,
+    fontSize: 12,
+    lineHeight: 14,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    color: colour.caution,
+  },
+  /**
    * Board "Settings": a Diagnostics section's name in its 84 dp column. Barlow Condensed
    * 600, caps and letterspaced like `actionSecondary`, at 14 so the longest name in the
    * four languages ("Verbinding") fits the column.

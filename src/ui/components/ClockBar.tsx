@@ -73,14 +73,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: radius.card,
     backgroundColor: colour.surface,
-    // The mock's lime hairline on the panel's bottom edge (owner ruling 147).
-    borderBottomWidth: layout.iconBorder,
-    borderBottomColor: colour.lime,
+    // The mock's hairline: 2 dp of lime at 50% on the panel's bottom edge, following its rounded corners (rulings 147, 152).
+    borderBottomWidth: layout.clockHairline,
+    borderBottomColor: colour.limeHalf,
   },
   faceFull: { minHeight: faceHeight('full'), paddingVertical: TIER_FACES.full.gap },
   faceCompact: { minHeight: faceHeight('compact'), paddingVertical: TIER_FACES.compact.gap },
   time: { alignSelf: 'stretch', textAlign: 'center' },
-  timePaused: { alignSelf: 'stretch', textAlign: 'center', color: colour.ink3 },
+  // A stopped clock's digits are grey-white, the mockup's `.clk.pz` (`ink2`), not lilac (owner ruling 152).
+  timePaused: { alignSelf: 'stretch', textAlign: 'center', color: colour.ink2 },
   periodRow: {
     height: PERIOD_HEIGHT,
     flexDirection: 'row',
@@ -91,12 +92,11 @@ const styles = StyleSheet.create({
   period: { flexShrink: 1, color: colour.ink3 },
   pausedTag: {
     flexShrink: 0,
-    paddingHorizontal: space.xs,
+    paddingHorizontal: layout.pausedTagPadX,
     borderWidth: layout.iconBorder,
     borderColor: colour.caution,
     borderRadius: radius.card,
   },
-  pausedWord: { color: colour.caution },
   plate: {
     minHeight: layout.touch,
     flexDirection: 'row',
@@ -203,7 +203,7 @@ function PeriodRow({
       )}
       {paused === null ? null : (
         <View testID="clock-paused" style={styles.pausedTag}>
-          <Text variant="diagSection" numberOfLines={1} style={styles.pausedWord}>
+          <Text variant="pausedTag" numberOfLines={1}>
             {paused}
           </Text>
         </View>

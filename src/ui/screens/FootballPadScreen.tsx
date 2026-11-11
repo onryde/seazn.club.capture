@@ -60,7 +60,7 @@ export function FootballPadScreen({ model }: { readonly model: FootballPadModel 
   return (
     <View style={styles.screen}>
       {holdsScreen(view.card) ? <KeepScreenOn /> : null}
-      <PadContent model={model} covered={sheet !== null} body={body} />
+      <PadContent model={model} covered={sheet !== null} body={body} brightTools />
       <PadSheet sheet={sheet} display={display} readingNow={readingNow} actions={actions} />
     </View>
   );
@@ -387,8 +387,10 @@ function useCorrectWords(): ClockCorrectWords {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colour.ground },
   board: { flex: 1, gap: space.sm },
-  columns: { flex: 1, flexDirection: 'row', gap: space.sm },
-  side: { flex: 1, gap: space.xs },
+  // The cards hug their content: spare height sits under them, on the ground, not inside them (owner ruling 152); a short
+  // board holds them to its height (`maxHeight`) and their Goal squares give way.
+  columns: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
+  side: { flex: 1, minWidth: 0, maxHeight: '100%', gap: space.xs },
   // A tag shares the marks' one line: it gives way to the cards' counts and ends in an ellipsis (ruling b).
   bin: { flexShrink: 1, color: colour.ink2 },
   binOver: { flexShrink: 1, color: colour.ink },

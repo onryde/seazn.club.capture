@@ -42,6 +42,14 @@ const capsWidth = (role: 'actionSecondary' | 'diagSection') => (text: string) =>
   typeScale[role].letterSpacing * [...text].length;
 /** `actionSecondary`: a column button's word, Start and Pause, a tool's label. */
 const actionWidth = capsWidth('actionSecondary');
+/** `pausedTag`: the PAUSED tag's word, Barlow Condensed 600 at 12, 1.2 apart (ruling 152). */
+const pausedWidth = (text: string) =>
+  barlow600.width(text.toUpperCase(), typeScale.pausedTag.fontSize) +
+  typeScale.pausedTag.letterSpacing * [...text].length;
+/** `goalWord`: the Goal and Scored words under the numeral, Barlow Condensed 600 at 18, 1.44 apart (ruling 152). */
+const goalWordWidth = (text: string) =>
+  barlow600.width(text.toUpperCase(), typeScale.goalWord.fontSize) +
+  typeScale.goalWord.letterSpacing * [...text].length;
 /** `diagSection`: the period under the clock. */
 const periodWidth = capsWidth('diagSection');
 /** `matchName`: Barlow Condensed 600 at 26, as typed. A team's name on its column. */
@@ -89,6 +97,8 @@ const buttonText = (width: number) => teamText(width) - 2 * space.sm;
 const squareText = (width: number) => teamText(width) - 2 * space.xs;
 /** The three small squares' side: a third of the column's text less the two gaps (space.xs) between them (ruling 144). */
 const smallText = (width: number) => (teamText(width) - 2 * space.xs) / 3;
+/** What a word has inside a small square: its side less the outline's two edges (owner ruling 152). */
+const smallWordRoom = (width: number) => smallText(width) - 2 * layout.iconBorder;
 /** The word under a mark in a small square: `diagSection` caps at the squares' own letterspacing. */
 const squareWordWidth = (text: string) =>
   barlow600.width(text.toUpperCase(), typeScale.diagSection.fontSize) +
@@ -286,7 +296,10 @@ describe('the clock hero at 320 and 360 in four languages (ruling 130)', () => {
         /^scoring\.football\.(period|break)\./.test(key),
       );
       expect(keys.length).toBeGreaterThanOrEqual(13);
-      const tag = periodWidth(said(dictionary, 'scoring.football.clock.paused')) + 2 * space.xs + 2;
+      const tag =
+        pausedWidth(said(dictionary, 'scoring.football.clock.paused')) +
+        2 * layout.pausedTagPadX +
+        2 * layout.iconBorder;
       for (const key of keys)
         for (const width of WIDTHS)
           expect(
@@ -315,7 +328,7 @@ describe('the column buttons at 320 and 360 in four languages', () => {
       for (const word of ['goal', 'scored'])
         for (const width of WIDTHS) {
           const label = said(dictionary, `scoring.football.column.${word}`);
-          expect(periodWidth(label), `${label} @${width}`).toBeLessThanOrEqual(squareText(width));
+          expect(goalWordWidth(label), `${label} @${width}`).toBeLessThanOrEqual(squareText(width));
         }
     },
   );
@@ -330,19 +343,19 @@ describe('the column buttons at 320 and 360 in four languages', () => {
         for (const width of WIDTHS) {
           const label = said(dictionary, `scoring.football.column.${word}`);
           expect(
-            Math.min(1, smallText(width) / squareWordWidth(label)),
+            Math.min(1, smallWordRoom(width) / squareWordWidth(label)),
             `${label} @${width}`,
           ).toBeGreaterThanOrEqual(layout.cardLabelFloor);
         }
     },
   );
 
-  it('the room a word has: 38.7 dp at 320 and 45.3 at 360; Amarilla, the widest, needs 0.78 and 0.92 (the margin over the 0.75 floor is a hair: the 320 dp shot judges it)', () => {
-    expect(layout.padSquareLabelSpacing).toBe(0.2);
+  it('the room a word has: 38.7 dp at 320 and 45.3 at 360; Amarilla, the widest, needs 0.77 and 0.90 inside the outline (the margin over the 0.75 floor is a hair: the 320 dp shot judges it)', () => {
+    expect(layout.padSquareLabelSpacing).toBe(0);
     const widest = squareWordWidth('Amarilla');
-    expect(widest.toFixed(1)).toBe('49.5');
-    expect((smallText(320) / widest).toFixed(2)).toBe('0.78');
-    expect((smallText(360) / widest).toFixed(2)).toBe('0.92');
+    expect(widest.toFixed(1)).toBe('47.9');
+    expect((smallWordRoom(320) / widest).toFixed(2)).toBe('0.77');
+    expect((smallWordRoom(360) / widest).toFixed(2)).toBe('0.90');
   });
 
   // A note is too long for a square, even in two lines (a word of fr "Plus de remplacement" is wider than the square), so
@@ -451,7 +464,7 @@ const scoreWidth = (text: string, role: 'scoreCompact' | 'tallyCompact') =>
 const widestWord = (word: 'goal' | 'scored') =>
   Math.max(
     ...LANGUAGES.map(([, dictionary]) =>
-      periodWidth(said(dictionary, `scoring.football.column.${word}`)),
+      goalWordWidth(said(dictionary, `scoring.football.column.${word}`)),
     ),
   );
 const widestSquareWord = Math.max(widestWord('goal'), widestWord('scored'));
@@ -497,11 +510,11 @@ describe('a team’s numeral in the Goal square (ruling f)', () => {
       }
   });
 
-  it('compact: the numeral over its word fits the square’s height, from the 48 dp least up', () => {
-    for (const side of [48, 80, 100, 120, 140, 166]) {
+  it('compact: the numeral over its word fits the square’s height, from the 80 dp the phones of 560 dp get (the 48 dp least only occurs in windows under 518, where the 18 dp word needs 50)', () => {
+    for (const side of [80, 100, 120, 140, 166]) {
       const size = goalNumeralSize('compact', side);
       const line = Math.round(size * 1.06);
-      expect(line + typeScale.diagSection.lineHeight, `side ${side}`).toBeLessThanOrEqual(side);
+      expect(line + typeScale.goalWord.lineHeight, `side ${side}`).toBeLessThanOrEqual(side);
     }
   });
 });
@@ -559,7 +572,7 @@ describe('the pad’s height, portrait', () => {
 
   type Tier = { face: number; gap: number; head: number; goal: number };
   const FULL: Tier = {
-    face: typeScale.clockHero.lineHeight + PERIOD + 2 * space.sm + layout.iconBorder,
+    face: typeScale.clockHero.lineHeight + PERIOD + 2 * space.sm + layout.clockHairline,
     gap: space.sm,
     head: layout.padNameLines * NAME + space.sm + MARKS,
     goal: typeScale.scoreCompact.lineHeight + PERIOD + 2 * space.sm,
@@ -568,7 +581,7 @@ describe('the pad’s height, portrait', () => {
     face:
       Math.max(layout.touch, typeScale.tallyCompact.lineHeight + PERIOD) +
       2 * space.xs +
-      layout.iconBorder,
+      layout.clockHairline,
     gap: space.xs,
     head: NAME + space.xs + MARKS,
     goal: layout.touch,
@@ -626,30 +639,30 @@ describe('the pad’s height, portrait', () => {
     expect(AROUND).toBe(206);
   });
 
-  it('the full tier: a 179 hero over a 292 column, 471 dp of board, full from a 677 window', () => {
+  it('the full tier: a 180 hero over a 292 column, 472 dp of board, full from a 678 window', () => {
     expect(NOTE).toBe(NOTE_HEIGHT);
-    expect([heroOf(FULL), fixedOf(FULL, 0) + FULL.goal, FULL_BOARD]).toEqual([179, 292, 471]);
+    expect([heroOf(FULL), fixedOf(FULL, 0) + FULL.goal, FULL_BOARD]).toEqual([180, 292, 472]);
     expect(BOARD_FULL_HEIGHT).toBe(FULL_BOARD);
-    expect(laidOut(360, 677).compact).toBe(false);
-    expect(laidOut(360, 676).compact).toBe(true);
+    expect(laidOut(360, 678).compact).toBe(false);
+    expect(laidOut(360, 677).compact).toBe(true);
   });
 
-  it('compact: a 117 hero over a 194 column of a 48 square, the 48 row and the note line: it holds from a 517 window, not under', () => {
-    expect([heroOf(COMPACT), fixedOf(COMPACT, 0) + COMPACT.goal]).toEqual([117, 194]);
-    expect(laidOut(320, 517).room).toBe(layout.touch);
-    expect(laidOut(320, 516).room).toBeLessThan(layout.touch);
+  it('compact: a 118 hero over a 194 column of a 48 square, the 48 row and the note line: it holds from a 518 window, not under', () => {
+    expect([heroOf(COMPACT), fixedOf(COMPACT, 0) + COMPACT.goal]).toEqual([118, 194]);
+    expect(laidOut(320, 518).room).toBe(layout.touch);
+    expect(laidOut(320, 517).room).toBeLessThan(layout.touch);
   });
 
   // The five phones of the brief; 412 × 870 is the owner's NE2211 (1080 × 2412 at 480 dp is 412 wide, about 870 left after
   // the system bars) and 412 × 915 the whole screen. Each: the tier, the Goal room and the squares' sides, no scroll, every
   // control at least a touch target.
   it.each([
-    [360, 560, true, 91, 91, 45.3, 80],
-    [320, 560, true, 91, 91, 38.7, 80],
-    [320, 640, true, 171, 124, 38.7, 80],
-    [360, 724, false, 145, 144, 45.3, 82],
-    [412, 870, false, 261, 170, 54, 106],
-    [412, 915, false, 306, 170, 54, 106],
+    [360, 560, true, 90, 90, 45.3, 80],
+    [320, 560, true, 90, 90, 38.7, 80],
+    [320, 640, true, 170, 124, 38.7, 80],
+    [360, 724, false, 145, 144, 45.3, 81],
+    [412, 870, false, 260, 170, 54, 106],
+    [412, 915, false, 305, 170, 54, 106],
   ] as const)(
     'a %i × %i window: compact %s, the Goal room %f, the Goal square %i dp, the three small squares %f dp wide, the clock %i dp, the pad inside the window',
     (width, height, compact, room, side, small, size) => {
@@ -672,9 +685,9 @@ describe('the pad’s height, portrait', () => {
   );
 
   // The screen's own rule, not a copy: the board's height is the window less the 206 around it.
-  it('the real boardTier: compact at 516 and 676, full at 677', () => {
+  it('the real boardTier: compact at 517 and 677, full at 678', () => {
     const tierAt = (window: number) => boardTier(window - AROUND);
-    expect([516, 517, 560, 640, 676, 677, 724].map(tierAt)).toEqual([
+    expect([517, 518, 560, 640, 677, 678, 724].map(tierAt)).toEqual([
       'compact',
       'compact',
       'compact',
