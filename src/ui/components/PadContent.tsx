@@ -72,6 +72,8 @@ type PadContentProps = {
   readonly scrolls?: boolean;
   /** Standard tools' words in full cream (football's mockup, owner ruling 152); default no. */
   readonly brightTools?: boolean;
+  /** The id of the one tool that is a 3 s hold, not a tap (football's End of period, owner ruling 160); default none. */
+  readonly holdTool?: string;
 };
 
 /**
@@ -95,6 +97,7 @@ export const PadContent = memo(function PadContent({
   lineUndo = true,
   scrolls = false,
   brightTools = false,
+  holdTool,
 }: PadContentProps) {
   const { view, line, cardNote, flash, toss, actions } = model;
   const known = matchKnown(view.card);
@@ -125,6 +128,7 @@ export const PadContent = memo(function PadContent({
         actions={actions}
         lineUndo={lineUndo}
         brightTools={brightTools}
+        holdTool={holdTool}
       />
     </View>
   );
@@ -347,6 +351,7 @@ const PadControls = memo(function PadControls({
   actions,
   lineUndo,
   brightTools,
+  holdTool,
 }: {
   readonly view: PadView<MessageKey>;
   readonly line: PadLineWords;
@@ -354,6 +359,7 @@ const PadControls = memo(function PadControls({
   readonly actions: PadContentActions;
   readonly lineUndo: boolean;
   readonly brightTools: boolean;
+  readonly holdTool: string | undefined;
 }) {
   const { t } = useT();
   const { card } = view;
@@ -371,7 +377,12 @@ const PadControls = memo(function PadControls({
   return (
     <>
       <PadLine view={view} line={line} undo={lineUndo} onUndo={actions.undo} />
-      <ToolRow tools={view.tools} onTool={actions.tool} brightInk={brightTools} />
+      <ToolRow
+        tools={view.tools}
+        onTool={actions.tool}
+        brightInk={brightTools}
+        holdTool={holdTool}
+      />
     </>
   );
 });

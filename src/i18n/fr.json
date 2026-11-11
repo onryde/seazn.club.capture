@@ -988,6 +988,8 @@
   "scoring.football.rules.none": "Non",
   "scoring.football.start.ask": "Équipes prêtes\u00a0?",
   "scoring.football.tool.more": "Plus",
+  "scoring.football.hold.name": "Maintenez\u00a0: {label}",
+  "scoring.football.hold.hint": "Maintenir 3 s",
   "scoring.football.tallySaid": "Score\u00a0: {first} {firstGoals}, {second} {secondGoals}",
   "scoring.football.hint": "Saisissez avec les boutons sous le score"
 }

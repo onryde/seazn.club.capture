@@ -26,6 +26,8 @@ import {
   YELLOWED_HOME_4,
   ALL_HOME_SENT_OFF,
 } from '../../../test/footballPadFixtures';
+import { HOLD_MS } from '@/hooks/useHold';
+import { pressIn, pressOut } from '../../../test/press';
 import { screenIsHeld, type HoldLog } from '../../../test/heldScreen';
 import { declaredStyle } from '../../../test/declaredStyle';
 import { edgeOf, fillOf } from '../../../test/pressState';
@@ -112,6 +114,14 @@ async function press(app: LaunchedApp, name: string, within_: HTMLElement = docu
 }
 
 const column = (side: 'first' | 'second') => screen.getByTestId(`column-${side}`);
+/** End of period's screen-reader name: held, not tapped (owner ruling 160). */
+const heldName = (word: string) => fill(en['scoring.football.hold.name'], { label: word });
+const periodButton = (word: string) =>
+  within(screen.getByTestId('tool-row')).getByRole('button', { name: heldName(word) });
+const periodEvents = async (app: LaunchedApp, seed: FakeMatchSeed) => {
+  const events = await app.scoring.events(LINK, seed.fixtureId, 0);
+  return (Array.isArray(events) ? events : []).filter((event) => event.type === 'football.period');
+};
 const clockBar = () => screen.getByTestId('clock-bar');
 const lastTap = () => screen.getByTestId('last-tap-sentence').textContent;
 const value = (side: 'first' | 'second') =>
@@ -366,7 +376,9 @@ describe('the tools in bright ink (ruling 152)', () => {
     await open(LIVE);
     const tools = within(screen.getByTestId('tool-row'));
     for (const word of [en['scoring.football.tool.more'], en['scoring.football.end.HT']]) {
-      const button = tools.getByRole('button', { name: word });
+      const button = tools.getByRole('button', {
+        name: word === en['scoring.football.end.HT'] ? heldName(word) : word,
+      });
       expect(getComputedStyle(within(button).getByText(word)).color).toBe(edgeOf(colour.ink));
     }
   });
@@ -701,5 +713,65 @@ describe('the screen kept on', () => {
     await flush(2_000);
     expect(screen.getByTestId('pad-card').textContent).toContain(en['scoring.card.viewOnly.title']);
     expect(screenIsHeld(holds)).toBe(false);
+  });
+});
+
+// Owner ruling 160 (2026-11-11): "half time and full time, we need to hold for 3 seconds to confirm otherwise it just
+// ending straightaway". The fill's motion and the press feel are the device's; here, what is sent and when.
+describe('End of period is a 3 s hold (ruling 160)', () => {
+  const NO_STAMP = footballSeed({ events: asSeed(KICK_OFF) });
+
+  it('a tap sends nothing, and a release a millisecond early sends nothing', async () => {
+    const app = await open(NO_STAMP);
+    const button = periodButton(en['scoring.football.end.HT']);
+    act(() => fireEvent.click(button));
+    await flush(400);
+    pressIn(button);
+    await flush(HOLD_MS - 1);
+    pressOut(button);
+    await flush(HOLD_MS);
+    expect(await periodEvents(app, NO_STAMP)).toEqual([]);
+  });
+
+  it('a hold of HOLD_MS sends exactly one end of period, and a press mid-hold does not send a second', async () => {
+    const app = await open(NO_STAMP);
+    const button = periodButton(en['scoring.football.end.HT']);
+    pressIn(button);
+    await flush(1000);
+    pressIn(button);
+    await flush(HOLD_MS);
+    expect(await periodEvents(app, NO_STAMP)).toHaveLength(1);
+  });
+
+  it('after it, the tool is off while it re-arms, so a hold begun at once sends nothing more', async () => {
+    const app = await open(NO_STAMP);
+    pressIn(periodButton(en['scoring.football.end.HT']));
+    await flush(HOLD_MS);
+    expect(await periodEvents(app, NO_STAMP)).toHaveLength(1);
+    const next = within(screen.getByTestId('tool-row')).getByRole('button', {
+      name: /Hold for/,
+    });
+    pressIn(next);
+    await flush(HOLD_MS + 500);
+    expect(await periodEvents(app, NO_STAMP)).toHaveLength(1);
+  });
+
+  it('says so on the plate: the label and a hold line, named "Hold for …", More staying a tap', async () => {
+    await open(NO_STAMP);
+    const button = periodButton(en['scoring.football.end.HT']);
+    expect(within(button).getByText(en['scoring.football.end.HT'])).toBeTruthy();
+    expect(within(button).getByText(en['scoring.football.hold.hint'])).toBeTruthy();
+    const more = within(screen.getByTestId('tool-row')).getByRole('button', {
+      name: en['scoring.football.tool.more'],
+    });
+    expect(within(more).queryByText(en['scoring.football.hold.hint'])).toBeNull();
+  });
+
+  it.each([
+    ['H1', 'HT', []],
+    ['H2', 'FT', [period('HT', at('H1', 2700)), clock(true, at('H2', 0))]],
+  ] as const)('in %s the held plate reads %s', async (_phase, marker, before) => {
+    await open(footballSeed({ events: asSeed([...KICK_OFF, ...before]) }));
+    expect(periodButton(en[`scoring.football.end.${marker}`])).toBeTruthy();
   });
 });

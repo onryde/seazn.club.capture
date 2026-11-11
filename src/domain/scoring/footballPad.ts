@@ -169,11 +169,13 @@ const MORE: Tool = {
  * is null there) and anything stands after the start (never tied to the clock, so a match scored without it can still
  * end a period); then More. Before kick-off and in the shootout, More alone.
  */
+export const PERIOD_TOOL = 'period';
+
 function toolsOf(display: FootballDisplay): readonly Tool[] {
   const { marker } = display;
   if (marker === null || !display.kickedOff) return [MORE];
   const period: Tool = {
-    id: 'period',
+    id: PERIOD_TOOL,
     label: { key: `scoring.football.end.${marker}` },
     detail: null,
     kind: 'standard',

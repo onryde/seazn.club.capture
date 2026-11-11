@@ -472,7 +472,12 @@ Three rules travel with these tokens:
   `viewer.check {state}` and `viewer.firstFrame {ms}` (plan decision PD6, the
   controller's). The cell is a plain `Pressable`, not `Button`, whose 200 dp
   minimum does not fit the 110 dp cell (plan decision PD1, the controller's).
-  Go live and Stop are the only holds left.
+  Go live and Stop are the only holds on Live Stream. A third is football's End
+  of period in Remote Scoring (Half-time, Full time and the end of each
+  extra-time period; owner ruling 160, 2026-11-11: "half time and full time, we
+  need to hold for 3 seconds to confirm otherwise it just ending
+  straightaway"): the same 3 s under the same fill (`useHold`, `HoldFill`),
+  its plate saying "Hold 3 s", and no other sport's tool is held.
 - Go Live enables only when _paired and ready_: camera running, the mic
   available (a silent room is ready; design follow-up §4), network reachable,
   phone held sideways, as native judges it. The pre-flight is the safety, for

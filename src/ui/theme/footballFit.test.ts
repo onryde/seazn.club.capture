@@ -405,6 +405,14 @@ describe('the tool row at 320 and 360 in four languages', () => {
   );
 });
 
+describe('the held tool’s hold line at 320 and 360 in four languages (ruling 160)', () => {
+  it.each(LANGUAGES)('%s: "Hold 3 s" takes one line of the tool’s text', (_lang, dictionary) => {
+    const hint = said(dictionary, 'scoring.football.hold.hint');
+    for (const width of WIDTHS)
+      expect(linesOf(hint, toolText(width), noteWidth), `${hint} @${width}`).toBe(1);
+  });
+});
+
 describe('the sheets’ rows at 320 and 360 in four languages (design §6.3)', () => {
   const PLAYERS = [...LONG_NAMES, 'Northampton Town Reserve'].map((name) => `#99 ${name}`);
 

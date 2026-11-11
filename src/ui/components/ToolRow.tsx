@@ -9,8 +9,11 @@ import {
   type ViewStyle,
 } from 'react-native';
 import type { PadTool, PadToolKind } from '@/domain/scoring/padView';
+import { useHold } from '@/hooks/useHold';
+import { useT } from '@/hooks/useLanguage';
 import { usePadText } from '@/hooks/usePadText';
 import type { MessageKey } from '@/i18n/messages';
+import { HoldFill } from '@/ui/components/HoldFill';
 import { Text } from '@/ui/components/Text';
 import { colour, layout, plateInk, pressedOpacity, radius, space } from '@/ui/theme/tokens';
 
@@ -24,6 +27,11 @@ type ToolRowProps = {
    * `ink2` of `actionSecondary`. Default no: other sports keep `ink2`.
    */
   readonly brightInk?: boolean;
+  /**
+   * The id of one tool that is held, not tapped: a 3 s hold under the progress fill, as Go live and Stop (football's
+   * End of period, owner ruling 160). Default none: other sports' tools are taps.
+   */
+  readonly holdTool?: string;
 };
 
 /**
@@ -38,12 +46,17 @@ export const ToolRow = memo(function ToolRow({
   onTool,
   testID = 'tool-row',
   brightInk = false,
+  holdTool,
 }: ToolRowProps) {
   return (
     <View testID={testID} style={styles.row}>
-      {tools.map((tool) => (
-        <ToolButton key={tool.id} tool={tool} onTool={onTool} brightInk={brightInk} />
-      ))}
+      {tools.map((tool) =>
+        tool.id === holdTool ? (
+          <HeldToolButton key={tool.id} tool={tool} onTool={onTool} brightInk={brightInk} />
+        ) : (
+          <ToolButton key={tool.id} tool={tool} onTool={onTool} brightInk={brightInk} />
+        ),
+      )}
     </View>
   );
 });
@@ -86,7 +99,51 @@ const ToolButton = memo(function ToolButton({
   );
 });
 
+/**
+ * A tool that must be held (ruling 160): the same cell, a 3 s hold under the fill, its second line saying so. Letting go
+ * early, the app leaving the foreground or the tool going disabled abandons it with nothing sent (`useHold`).
+ */
+const HeldToolButton = memo(function HeldToolButton({
+  tool,
+  onTool,
+  brightInk,
+}: {
+  readonly tool: PadTool<MessageKey>;
+  readonly onTool: (id: string) => void;
+  readonly brightInk: boolean;
+}) {
+  const words = usePadText();
+  const { t } = useT();
+  const press = useCallback(() => onTool(tool.id), [onTool, tool.id]);
+  const hold = useHold(press, tool.enabled);
+  const label = words(tool.label);
+  const spoken = tool.said === undefined ? label : words(tool.said);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={t('scoring.football.hold.name', { label: spoken })}
+      disabled={!tool.enabled}
+      onPressIn={hold.pressIn}
+      onPressOut={hold.pressOut}
+      style={tool.enabled ? HELD[tool.kind] : HELD_OFF}
+    >
+      <HoldFill holding={hold.holding} tone="stop" />
+      <Text
+        variant="actionSecondary"
+        numberOfLines={layout.padToolLines}
+        style={tool.enabled ? labelOf(tool.kind, brightInk) : styles.labelOff}
+      >
+        {label}
+      </Text>
+      <Text variant="metricUnit" numberOfLines={1}>
+        {t('scoring.football.hold.hint')}
+      </Text>
+    </Pressable>
+  );
+});
+
 const styles = StyleSheet.create({
+  held: { overflow: 'hidden' },
   row: { flexDirection: 'row', gap: space.sm },
   cell: {
     flex: 1,
@@ -126,6 +183,16 @@ const CELL: Readonly<
 };
 
 const OFF: StyleProp<ViewStyle> = [styles.cell, styles.off];
+
+/** The held tool's cells: the same, clipping the fill to the rounded corners. */
+const HELD: Readonly<
+  Record<PadToolKind, (state: PressableStateCallbackType) => StyleProp<ViewStyle>>
+> = {
+  primary: pressable([styles.cell, styles.primary, styles.held], styles.pressedPlate),
+  standard: pressable([styles.cell, styles.standard, styles.held], styles.pressedOutline),
+  destructive: pressable([styles.cell, styles.destructive, styles.held], styles.pressedOutline),
+};
+const HELD_OFF: StyleProp<ViewStyle> = [styles.cell, styles.off, styles.held];
 
 const LABEL: Readonly<Record<PadToolKind, StyleProp<TextStyle>>> = {
   primary: styles.labelPrimary,

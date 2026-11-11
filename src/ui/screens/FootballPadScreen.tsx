@@ -10,6 +10,7 @@ import {
   type BoardBin,
   type BoardColumn,
 } from '@/domain/scoring/footballBoard';
+import { PERIOD_TOOL } from '@/domain/scoring/footballPad';
 import type { FootballDisplay, FootballPadKey } from '@/domain/scoring/footballTypes';
 import { holdsScreen, type PadHalf, type PadStateCard } from '@/domain/scoring/padView';
 import { useClockTick } from '@/hooks/useClockTick';
@@ -60,7 +61,13 @@ export function FootballPadScreen({ model }: { readonly model: FootballPadModel 
   return (
     <View style={styles.screen}>
       {holdsScreen(view.card) ? <KeepScreenOn /> : null}
-      <PadContent model={model} covered={sheet !== null} body={body} brightTools />
+      <PadContent
+        model={model}
+        covered={sheet !== null}
+        body={body}
+        brightTools
+        holdTool={PERIOD_TOOL}
+      />
       <PadSheet sheet={sheet} display={display} readingNow={readingNow} actions={actions} />
     </View>
   );
