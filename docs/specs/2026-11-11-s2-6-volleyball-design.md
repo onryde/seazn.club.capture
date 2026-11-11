@@ -1,6 +1,6 @@
 # S2-6 — Remote Scoring, volleyball: design
 
-Status: **draft for the owner's approval, 2026-11-11.** The owner chose volleyball as the next sport ("Volleyball",
+Status: **approved by the owner, 2026-11-11** ("approve"). The owner chose volleyball as the next sport ("Volleyball",
 2026-11-11) and skipped the brainstorm's questions ("yes", 2026-11-11). Every ruling below is therefore
 _the controller's_, applying the recommendation the controller would give as product owner (the owner's
 standing instruction of 2026-11-08, `sdd-no-checkin-apply-recs`), and is open to the owner's correction
