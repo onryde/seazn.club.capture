@@ -9,17 +9,17 @@ import type { Bootstrap, BootstrapSide } from '@/domain/scoring/wire';
  * players first and then the officials. Anyone on the sheet is offered whether or not the scorer thinks they are on court:
  * the phone does not track who has come on (ruling 182).
  */
-export type VolleyballPerson = {
+export type VolleyballSheetPerson = {
   readonly personId: string;
   readonly name: string;
   readonly official: boolean;
 };
 
-export type VolleyballPeople = Readonly<Record<PadSide, readonly VolleyballPerson[]>>;
+export type VolleyballPeople = Readonly<Record<PadSide, readonly VolleyballSheetPerson[]>>;
 
 const NOBODY: VolleyballPeople = { first: [], second: [] };
 
-function peopleOfSide(seat: BootstrapSide): readonly VolleyballPerson[] {
+function peopleOfSide(seat: BootstrapSide): readonly VolleyballSheetPerson[] {
   return seat.lineup.flatMap((row) => {
     const member = seat.members.find((one) => one.personId === row.personId);
     if (member === undefined) return [];
@@ -42,10 +42,13 @@ export function volleyballPeopleOf(bootstrap: Bootstrap): VolleyballPeople {
 }
 
 /** Players first, then officials, each in the sheet's order. */
-export const playersFirst = (people: readonly VolleyballPerson[]): readonly VolleyballPerson[] => [
+export const playersFirst = (
+  people: readonly VolleyballSheetPerson[],
+): readonly VolleyballSheetPerson[] => [
   ...people.filter((one) => !one.official),
   ...people.filter((one) => one.official),
 ];
 
-export const playersOf = (people: readonly VolleyballPerson[]): readonly VolleyballPerson[] =>
-  people.filter((one) => !one.official);
+export const playersOf = (
+  people: readonly VolleyballSheetPerson[],
+): readonly VolleyballSheetPerson[] => people.filter((one) => !one.official);

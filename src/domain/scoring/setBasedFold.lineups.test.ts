@@ -10,7 +10,7 @@ import {
   rally as badmintonRally,
   start as badmintonStart,
 } from '../../../test/badmintonLedger';
-import { DOUBLES, ledgerOf, rally, start } from '../../../test/tableTennisLedger';
+import { DOUBLES, DOUBLES_NO_ORDER, ledgerOf, rally, start } from '../../../test/tableTennisLedger';
 
 // S2-6 Task 4's declared shared change: `SetBasedKit.lineupsOf`, optional, defaulting to `lineupOf`. Badminton and table
 // tennis give none, so each keeps folding with the lineup it always did (the pins below, written from the doubles
@@ -54,6 +54,27 @@ describe('SetBasedKit.lineupsOf', () => {
     expect([result.display.server, result.display.serverPerson]).toEqual(['first', 'A. Sharma']);
   });
 
+  it('table tennis names the away pair’s first named player when the away side serves first, and nobody with no pair order', () => {
+    const awayServes = foldTableTennis({
+      ...input,
+      ledger: ledgerOf([start(), rally({ wonBy: 'A', serving: 'A' })]),
+    });
+    if (awayServes.kind !== 'folded') throw new Error('did not fold');
+    expect([awayServes.display.server, awayServes.display.serverPerson]).toEqual([
+      'second',
+      'L. Chen',
+    ]);
+    const unordered = foldTableTennis({
+      ...input,
+      bootstrap: DOUBLES_NO_ORDER,
+      ledger: ledgerOf([start(), rally({ wonBy: 'H', serving: 'H' })]),
+    });
+    if (unordered.kind !== 'folded') throw new Error('did not fold');
+    expect(unordered.display.serverPerson).toBeNull();
+  });
+
+  // Badminton's display carries no person-level fact, so nothing it shows depends on the lineup (a mutant that hands the
+  // engine empty lineups survives every badminton test, this one included): this pins only that the fold is unchanged.
   it('badminton, which gives none, still folds its doubles match as it did', () => {
     const result = foldBadminton({
       bootstrap: BADMINTON_DOUBLES,

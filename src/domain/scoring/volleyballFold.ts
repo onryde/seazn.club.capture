@@ -55,17 +55,31 @@ import type {
 
 const R = volleyballPadRules;
 
-const KIT: SetBasedKit<VolleyballDone> = {
+/** The deciding set's number (`bestOf`), read from the match's own config; 0 (no set) when the engine cannot read one. */
+function decidingSetOf(cfg: unknown): number {
+  try {
+    return R.bestOf(cfg);
+  } catch {
+    return 0;
+  }
+}
+
+const kitFor = (cfg: unknown): SetBasedKit<VolleyballDone> => ({
+  ...KIT,
+  doneOf: (envelope, facts, names, startServer) =>
+    doneOf(envelope, facts, names, startServer, decidingSetOf(cfg)),
+});
+
+const KIT: Omit<SetBasedKit<VolleyballDone>, 'doneOf'> = {
   module: volleyball,
   rally: 'volleyball.rally',
   summary: 'volleyball.set.summary',
   lineupsOf: volleyballLineupOf,
   mayAppend,
-  doneOf,
 };
 
 export function foldVolleyball(input: SportFoldInput): SportFold<VolleyballTypes> {
-  const folding = foldSetBased(KIT, input);
+  const folding = foldSetBased(kitFor(input.bootstrap.cfg), input);
   if (typeof folding === 'string') return { kind: 'unfoldable', reason: folding };
   const display = displayOf(folding);
   const rows = ledgerRows(

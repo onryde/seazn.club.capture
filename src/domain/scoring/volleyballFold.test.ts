@@ -212,6 +212,8 @@ describe('foldVolleyball: the serve (FIVB 12.2.2, 7.1)', () => {
   });
 });
 
+const rallies24 = (): Spec[] => Array.from({ length: 24 }, () => rally({ wonBy: 'H' }));
+
 describe('foldVolleyball: timeouts, per set (ruling 175)', () => {
   const live = [start(), rally({ wonBy: 'H', serving: 'H' })];
 
@@ -244,6 +246,17 @@ describe('foldVolleyball: timeouts, per set (ruling 175)', () => {
     const timeoutSeq = upTo.length + 1;
     expect(display([...upTo, timeout('A')]).counts.second.timeouts).toBe(1);
     expect(display([...upTo, timeout('A'), voiding(timeoutSeq)]).counts.second.timeouts).toBe(0);
+  });
+
+  it('Undo of the set-closing rally takes the timeout recorded between sets back into the earlier set (M4)', () => {
+    // seq: start 1, rally 2, set-1 timeout 3, rallies 4..27 (27 closes set 1 at 25), between-sets timeout 28.
+    const setOne = [start(), rally({ wonBy: 'H', serving: 'H' }), timeout('A'), ...rallies24()];
+    const closing = setOne.length;
+    const closed = [...setOne, timeout('A')];
+    const before = display(closed);
+    expect([before.set, before.counts.second.timeouts]).toEqual([2, 1]);
+    const after = display([...closed, voiding(closing)]);
+    expect([after.set, after.counts.second.timeouts]).toEqual([1, 2]);
   });
 
   it('a timeout still waiting in the queue counts (the phone is offline)', () => {

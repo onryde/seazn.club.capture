@@ -4,6 +4,7 @@ import { foldVolleyball } from '@/domain/scoring/volleyballFold';
 import type { VolleyballPadKey } from '@/domain/scoring/volleyballTypes';
 import type { Bootstrap } from '@/domain/scoring/wire';
 import {
+  BEACH,
   INDOOR,
   judgedLedgerOf,
   queuedOf,
@@ -111,6 +112,43 @@ describe('volleyball History: a row for each event', () => {
         },
       },
     ]);
+  });
+
+  // I2 (batch B review): a rally carrying `serving` is the toss only as the deciding set's first point.
+  const plainPoint = (side: string) => ({ key: 'scoring.volleyball.last.rally', vars: { side } });
+
+  it('a set-2 opener carrying serving (the web’s 0–0 anchor) is a plain point, not a toss', () => {
+    const groups = historyOf([start(), wholeSet(25, 20), rally({ wonBy: 'A', serving: 'H' })]);
+    expect(groups[0]?.rows.map((r) => r.said)).toEqual([plainPoint('Herons')]);
+  });
+
+  it('a mid-set anchor in set 2 (a score given so far, then a rally naming the server) is a plain point', () => {
+    const groups = historyOf([
+      start(),
+      wholeSet(25, 20),
+      summary(5, 3),
+      rally({ wonBy: 'H', serving: 'A' }),
+    ]);
+    expect(groups[0]?.rows[0]?.said).toEqual(plainPoint('Falcons'));
+  });
+
+  it('a mid-set anchor in the deciding set is a plain point; its opener is the toss', () => {
+    const four = [start(), wholeSet(25, 20), wholeSet(20, 25), wholeSet(25, 20), wholeSet(20, 25)];
+    const mid = historyOf([...four, summary(4, 2), rally({ wonBy: 'H', serving: 'A' })]);
+    expect(mid[0]?.rows[0]?.said).toEqual(plainPoint('Falcons'));
+    const opener = historyOf([...four, rally({ wonBy: 'H', serving: 'A' })]);
+    expect(opener[0]?.rows[0]?.said).toEqual({
+      key: 'scoring.volleyball.last.toss',
+      vars: { point: plainPoint('Falcons'), serving: 'Herons' },
+    });
+  });
+
+  it('beach’s deciding set is its third: the toss is the third set’s first point', () => {
+    const toss = historyOf(
+      [start(), wholeSet(21, 15), wholeSet(15, 21), rally({ wonBy: 'A', serving: 'H' })],
+      BEACH,
+    );
+    expect(toss[0]?.rows[0]?.said).toMatchObject({ key: 'scoring.volleyball.last.toss' });
   });
 
   it('keeps an undone point in its place, marked undone', () => {

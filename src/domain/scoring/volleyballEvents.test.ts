@@ -207,10 +207,11 @@ describe('volleyballEventFor: the server (rulings 173, 188, 189)', () => {
   it('beach with a declared pair order sends the engine’s server, the person by id', () => {
     const shown = beachLive();
     expect(shown.serverPersonId).toBe('h1');
-    expect(eventFor(rallyTap('second'), shown, BEACH)?.payload).toEqual({
-      wonBy: AWAY,
-      server: 'h1',
-    });
+    const event = eventFor(rallyTap('second'), shown, BEACH);
+    expect(event?.payload).toEqual({ wonBy: AWAY, server: 'h1' });
+    // the name is the engine's belief at this count: the rally records it (I1, batch B review)
+    expect(event?.base).toBe(shown.scoreEvents);
+    expect(shown.scoreEvents).toBe(1);
   });
 
   it('beach names no server before the engine does: Start’s pick is not the engine’s belief', () => {
@@ -369,6 +370,57 @@ describe('volleyballPayloadForSend: a stamp is valid at its own count only', () 
     expect(volleyballPayloadForSend(stamped(2), ledger(3), false)).toEqual(once);
     expect(volleyballPayloadForSend({ ...stamped(2), payload: once }, ledger(3), false)).toEqual(
       once,
+    );
+  });
+});
+
+describe('volleyballPayloadForSend: a beach server is valid at its own count only (I1)', () => {
+  const beachQueued = () => {
+    const shown = displayOf([start(), rally({ wonBy: 'H', serving: 'H', server: 'h1' })], BEACH);
+    const event = eventFor(rallyTap('second'), shown, BEACH);
+    return {
+      ...queuedOf('q9', { type: 'volleyball.rally', payload: event?.payload }),
+      base: event?.base,
+    };
+  };
+  const at = (rallies: number): LedgerEvent[] =>
+    ledgerOf([
+      start(),
+      rally({ wonBy: 'H', serving: 'H', server: 'h1' }),
+      ...Array.from({ length: rallies }, () => rally({ wonBy: 'A' })),
+    ]);
+
+  it('keeps the server while nothing moved', () => {
+    expect(volleyballPayloadForSend(beachQueued(), at(0), false)).toEqual({
+      wonBy: AWAY,
+      server: 'h1',
+    });
+  });
+
+  it('drops the server when a co-scorer’s rally landed between the tap and the send', () => {
+    expect(volleyballPayloadForSend(beachQueued(), at(1), false)).toEqual({ wonBy: AWAY });
+  });
+
+  it('keeps it once the ledger holds the tap’s own copy', () => {
+    expect(volleyballPayloadForSend(beachQueued(), at(1), true)).toEqual({
+      wonBy: AWAY,
+      server: 'h1',
+    });
+  });
+
+  it('a queue file with no base is left alone', () => {
+    const old = { ...beachQueued(), base: undefined };
+    expect(volleyballPayloadForSend(old, at(1), false)).toEqual({ wonBy: AWAY, server: 'h1' });
+  });
+
+  it('two sends over one ledger give one payload, and the dropped one stays dropped', () => {
+    const once = volleyballPayloadForSend(beachQueued(), at(1), false);
+    expect(volleyballPayloadForSend({ ...beachQueued(), payload: once }, at(1), false)).toEqual(
+      once,
+    );
+    const kept = volleyballPayloadForSend(beachQueued(), at(0), false);
+    expect(volleyballPayloadForSend({ ...beachQueued(), payload: kept }, at(0), false)).toEqual(
+      kept,
     );
   });
 });

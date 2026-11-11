@@ -20,9 +20,6 @@ import type {
 export const isSanctionLevel = (level: unknown): level is VolleyballSanctionLevel =>
   typeof level === 'string' && volleyballPadRules.sanctionLevels.includes(level);
 
-/** The first set: its first rally carries Start's pick, which the start's own row says already. */
-const FIRST_SET = 1;
-
 /**
  * What an event did, or null for one the pad has no words for. `startServer` is the start's first server when the
  * ledger or this phone's pick says it.
@@ -32,13 +29,14 @@ export function doneOf(
   facts: EventFacts,
   names: SetBasedNames,
   startServer: PadSide | null,
+  decidingSet: number,
 ): VolleyballDone | null {
   const { payload } = envelope;
   switch (envelope.type) {
     case 'core.start':
       return { kind: 'start', server: startServer };
     case 'volleyball.rally':
-      return rallyDone(names, payload, facts);
+      return rallyDone(names, payload, facts, decidingSet);
     case 'volleyball.timeout': {
       const side = sideOfEntrant(names, field(payload, 'by'));
       return side === null ? null : { kind: 'timeout', side };
@@ -54,16 +52,22 @@ export function doneOf(
   }
 }
 
-/** A point; one that carried a serve answer in a set after the first is the deciding set's toss (ruling 183). */
+/**
+ * A point. The deciding set's FIRST point, when it carries a serve answer, is the toss (ruling 183): the score before it
+ * was 0-0 in the deciding set (the game's points after it are one). A `serving` anywhere else (a mid-set anchor from the
+ * Whose serve? tool or the web's anchor tile, the web's 0-0 opener of an earlier set) is a plain point.
+ */
 function rallyDone(
   names: SetBasedNames,
   payload: unknown,
   facts: EventFacts,
+  decidingSet: number,
 ): VolleyballDone | null {
   const side = sideOfEntrant(names, field(payload, 'wonBy'));
   if (side === null) return null;
   const serving = sideOfEntrant(names, field(payload, 'serving'));
-  const toss = facts.game > FIRST_SET ? serving : null;
+  const opener = facts.after.first + facts.after.second === 1;
+  const toss = facts.game === decidingSet && opener ? serving : null;
   return { kind: 'rally', side, won: facts.won, set: facts.game, toss };
 }
 

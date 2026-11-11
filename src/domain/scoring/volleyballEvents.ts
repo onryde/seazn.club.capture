@@ -68,7 +68,9 @@ const answered = (tap: RallyTap, display: Display): PadSide | null =>
  * A rally won by `tap.side`: `wonBy`, and `serving` (the side that served) only when the scorer said so: the held answer
  * (`tap.serving`), else this phone's Start pick while it is the server shown. The engine's own belief is never stamped
  * (its drift check would check itself). A stamp is valid only at the score it was made at, so a rally that names one
- * carries `base`, the display's count of score events, for its first send to judge whether the score has moved. `server`
+ * carries `base`, the display's count of score events, for its first send to judge whether the score has moved; so does a
+ * rally naming a `server`, which is the engine's belief at that score (a co-scorer's side-out landing first moves the serve to
+ * the other pair, and the name would then credit the wrong player). `server`
  * is beach's alone, and only the one the engine names from the declared pair order (rulings 173, 188), so indoor never
  * sends it and a deciding-set rally answered by the toss carries none (ruling 189). Never `scorer` (ruling 172).
  */
@@ -84,7 +86,7 @@ function rallyEvent(
     ...(serving === null ? {} : { serving: seats[serving].entrantId }),
     ...(server === null ? {} : { server }),
   };
-  return serving === null
+  return serving === null && server === null
     ? { type: RALLY, payload }
     : { type: RALLY, payload, base: display.scoreEvents };
 }
@@ -145,7 +147,7 @@ export function volleyballPayloadForSend(
   ledger: readonly LedgerEvent[],
   copied: boolean,
 ): unknown {
-  return payloadForFirstSend(
+  const sent = payloadForFirstSend(
     queued,
     () =>
       queued.base === undefined
@@ -153,6 +155,28 @@ export function volleyballPayloadForSend(
         : scoreEventsIn(ledger) !== queued.base,
     copied,
   );
+  return serverStale(queued, sent, ledger, copied) ? withoutServer(sent) : sent;
+}
+
+/**
+ * A beach `server` was the engine's belief at the count the tap was made at (`base`): once the count has moved (a co-scorer's
+ * rally landed first) the name may credit the wrong player, so it is dropped at a first send, as `serving` is. A tap whose
+ * copy the ledger holds keeps what it was sent with, and one with no `base` (never made with a server) is left alone.
+ */
+function serverStale(
+  queued: QueuedEvent,
+  sent: unknown,
+  ledger: readonly LedgerEvent[],
+  copied: boolean,
+): boolean {
+  if (copied || queued.base === undefined) return false;
+  return isRecord(sent) && 'server' in sent && scoreEventsIn(ledger) !== queued.base;
+}
+
+function withoutServer(payload: unknown): unknown {
+  if (!isRecord(payload)) return payload;
+  const { server: _dropped, ...rest } = payload;
+  return rest;
 }
 
 const namesServing = ({ payload }: LedgerEvent) => isRecord(payload) && 'serving' in payload;
