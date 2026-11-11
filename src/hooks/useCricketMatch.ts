@@ -30,7 +30,12 @@ import {
   type CricketSheetSnapshot,
   type CricketSheetView,
 } from '@/hooks/useCricketSheets';
-import { useAskActions, useClosedByDeadLink, useStartActions } from '@/hooks/usePadMatchParts';
+import {
+  useAskActions,
+  useClosedByDeadLink,
+  usePeopleSheet,
+  useStartActions,
+} from '@/hooks/usePadMatchParts';
 import { useSettle, useTaps, type PadTapDriver } from '@/hooks/usePadTaps';
 import type { Ports } from '@/hooks/usePorts';
 import { useLinks, useScoringMatch, useSender, type MatchSender } from '@/hooks/useScoringMatch';
@@ -136,7 +141,7 @@ function useCricketPad(
   const settle = useSettle(sender.say);
   const driver = useCricketDriver(sender);
   const taps = useTaps(driver, settle, sender.say, ignoreFlash);
-  const sheets = useSheets(taps, pad, sender);
+  const sheets = useSheets(taps, pad, sender, runner);
   const setup = useCricketSetup(pad, sender, taps);
   useDropStalePicks(pad, sender.setPicks);
   const actions = useActions({ sender, runner, pad, taps, sheets, setup, setCardNote });
@@ -208,7 +213,12 @@ function modelOf(
 }
 
 /** The sheets over the pad, closed at once when the link dies, since the bad-link card then shows (round 8 hardening). */
-function useSheets(taps: ReturnType<typeof useTaps>, pad: PadFacts | null, sender: Sender) {
+function useSheets(
+  taps: ReturnType<typeof useTaps>,
+  pad: PadFacts | null,
+  sender: Sender,
+  runner: ScoringRunner | null,
+) {
   const snapshot = useMemo<CricketSheetSnapshot | null>(
     () =>
       pad === null
@@ -229,7 +239,8 @@ function useSheets(taps: ReturnType<typeof useTaps>, pad: PadFacts | null, sende
     },
     [pad, setPicks],
   );
-  const send = useMemo(() => ({ tap, pick }), [tap, pick]);
+  const peopleSheet = usePeopleSheet(runner);
+  const send = useMemo(() => ({ tap, pick, peopleSheet }), [tap, pick, peopleSheet]);
   const sheets = useCricketSheets(snapshot, taps, send);
   useClosedByDeadLink(pad?.view, sheets.open, sheets.cancel);
   return sheets;

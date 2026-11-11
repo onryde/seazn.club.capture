@@ -190,6 +190,8 @@ export type MatchEvent<S extends SportTypes = SportTypes> =
   /** A ping, a poll, a channel joined, a return to the foreground: read the ledger. */
   | { readonly kind: 'read' }
   | { readonly kind: 'foreground' }
+  /** A sheet that lists the match's people opened: the bootstrap again, paced (S2-6 ruling 181). */
+  | { readonly kind: 'peopleSheet' }
   | { readonly kind: 'background' }
   | { readonly kind: 'tick' }
   /** The queue save numbered `n` landed. */

@@ -104,6 +104,8 @@ export type SheetTaps = {
 export type SheetSender = {
   readonly tap: (made: CricketTap) => PadOutcome;
   readonly pick: (made: CricketPick) => void;
+  /** A sheet that lists people opened (Players, Out, More): the match reads its team sheets again. */
+  readonly peopleSheet: () => void;
 };
 
 /**
@@ -174,8 +176,9 @@ function useClosing({ snapshot, justShown, taps, setSheet }: ChooseParts) {
  * window of a sheet that has just appeared (`justShown`), where a double tap's second touch lands on the standing sheet's
  * More (Batch 4 review I3).
  */
-function useOpening({ snapshot, justShown, taps, setSheet }: ChooseParts) {
+function useOpening({ snapshot, justShown, taps, send, setSheet }: ChooseParts) {
   const { secondTouch } = taps;
+  const { peopleSheet } = send;
   const details = useCallback(() => setSheet(DETAILS), [setSheet]);
   const history = useCallback(() => setSheet(HISTORY), [setSheet]);
   const openFlow = useCallback(
@@ -188,8 +191,14 @@ function useOpening({ snapshot, justShown, taps, setSheet }: ChooseParts) {
     (extra: SheetExtra) => openFlow({ kind: 'extras', extra }),
     [openFlow],
   );
-  const openOut = useCallback(() => openFlow(outFlow()), [openFlow]);
-  const openMore = useCallback(() => openFlow(moreFlow()), [openFlow]);
+  const openOut = useCallback(() => {
+    peopleSheet();
+    openFlow(outFlow());
+  }, [peopleSheet, openFlow]);
+  const openMore = useCallback(() => {
+    peopleSheet();
+    openFlow(moreFlow());
+  }, [peopleSheet, openFlow]);
   return useMemo(
     () => ({ details, history, openExtras, openOut, openMore }),
     [details, history, openExtras, openOut, openMore],
@@ -220,8 +229,10 @@ function usePlayersActions({
 }: Omit<ChooseParts, 'sheet'>) {
   const { secondTouch, choose } = taps;
   const openPlayers = useCallback(() => {
-    if (snapshot !== null && !justShown() && !secondTouch()) setSheet(PLAYERS);
-  }, [snapshot, justShown, secondTouch, setSheet]);
+    if (snapshot === null || justShown() || secondTouch()) return;
+    send.peopleSheet();
+    setSheet(PLAYERS);
+  }, [snapshot, justShown, secondTouch, send, setSheet]);
   const playersTab = useCallback(
     (tab: PlayersTab) => setSheet({ kind: 'players', tab }),
     [setSheet],

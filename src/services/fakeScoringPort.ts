@@ -1,4 +1,5 @@
 import {
+  EngineError,
   foldMatchWithStoppage,
   outcomeOf,
   type EventEnvelope,
@@ -182,6 +183,12 @@ export type FakeServerControls = {
    * not touched.
    */
   carryForward(on: boolean): void;
+  /**
+   * The organiser saved a side's team sheet on the web after the pad opened: the next bootstrap answers `side`, and the
+   * engine judges later taps with its lineup. The ledger is not touched, so an event naming a person the new side
+   * dropped is still judged.
+   */
+  setSide(which: 'home' | 'away', side: BootstrapSide): void;
   /** The next call, of any kind, is the door's 429 and waits this long; the call after it is answered as before. */
   rateLimit(retryAfterMs: number): void;
 };
@@ -204,7 +211,10 @@ type Server = {
   readonly seed: FakeMatchSeed;
   readonly sportKey: FakeSportKey;
   readonly sport: FakeSport;
-  readonly lineups: LineupPair;
+  /** The sides as the bootstrap answers them now: the seed's until `setSide` changes one. */
+  sides: FakeMatchSeed['sides'];
+  /** The lineups the engine judges with, always built from `sides`. */
+  lineups: LineupPair;
   readonly ledger: LedgerEvent[];
   /** Idempotency key → the event it wrote. */
   readonly keys: Map<string, { readonly seq: number; readonly eventId: string }>;
@@ -244,6 +254,7 @@ export function createFakeScoringPort(
     seed,
     sportKey,
     sport,
+    sides: seed.sides,
     lineups: sport.lineupsOf(seed.sides),
     ledger: [],
     keys: new Map(),
@@ -324,6 +335,10 @@ function controls(server: Server): FakeServerControls {
     },
     carryForward: (on) => {
       server.carried = on;
+    },
+    setSide: (which, side) => {
+      server.sides = { ...server.sides, [which]: side };
+      server.lineups = server.sport.lineupsOf(server.sides);
     },
     rateLimit: (retryAfterMs) => {
       server.limitMs = retryAfterMs;
@@ -460,7 +475,7 @@ function bootstrapOf(server: Server): Bootstrap {
     epochRequired: server.epochRequired,
     ...screenOf(server),
     context: seed.context,
-    sides: seed.sides,
+    sides: server.sides,
     lastSeq: tip,
     status: statusOf(server),
   };
@@ -491,13 +506,20 @@ function statusOf(server: Server): string {
  */
 const decided = (server: Server): boolean => {
   const { module } = server.sport;
-  const folded = foldMatchWithStoppage(
-    module,
-    server.cfg,
-    server.lineups,
-    server.ledger.map((event) => envelopeOf(server.seed.fixtureId, event)),
-  );
-  return outcomeOf(module, folded) !== null;
+  try {
+    const folded = foldMatchWithStoppage(
+      module,
+      server.cfg,
+      server.lineups,
+      server.ledger.map((event) => envelopeOf(server.seed.fixtureId, event)),
+    );
+    return outcomeOf(module, folded) !== null;
+  } catch (error) {
+    // A ledger the sheet saved since no longer fits (`setSide` dropped a person it names) decides nothing: a status
+    // read must not fail for it. Anything but the engine's own refusal is a bug and is thrown.
+    if (EngineError.is(error)) return false;
+    throw error;
+  }
 };
 
 // ---------------------------------------------------------------------------------------------------------------
