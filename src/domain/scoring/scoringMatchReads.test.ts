@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { deadOf } from '@/domain/scoring/scoringMatchState';
 import { step, wakeAt } from '@/domain/scoring/scoringMatch';
 import { viewOf } from '@/domain/scoring/scoringMatchView';
-import { PHONE_LINK, SINGLES, queuedOf, rally, start } from '../../../test/badmintonLedger';
+import { PHONE_LINK, SINGLES, rally, start } from '../../../test/badmintonLedger';
 import { AT, NOW, kinds, opened, queueOf, ready } from '../../../test/scoringMatchFixtures';
 
 // When the bootstrap is read again (plan S2-1 Task 9 review, items 1 and 9): the ledger cannot say a match was
@@ -222,75 +222,5 @@ describe('the bootstrap again, for the people lists', () => {
     const state = ready({ queue: queueOf({ dead: 'finalized' }) }, PLAYING);
     expect(kinds(step(state, { kind: 'foreground' }, NOW + PACE).effects)).toEqual([]);
     expect(kinds(step(state, { kind: 'peopleSheet' }, NOW + PACE).effects)).toEqual([]);
-  });
-});
-
-// A re-read that drops a person the match already names (S2-6 Task 3): the engine refuses a ledger naming someone who is
-// not on a sheet, so the pad would turn into an unfoldable card for a lineup saved after the first tap. The held row
-// stays for a person the ledger or a queued tap names; a person nothing names goes with the new sheet.
-describe('a bootstrap re-read that drops a person the match names', () => {
-  const DROPPING = {
-    ...SINGLES,
-    sides: {
-      home: { ...SINGLES.sides.home!, lineup: [], members: [] },
-      away: SINGLES.sides.away,
-    },
-  };
-  const named = (id: string) => ({
-    type: 'badminton.rally',
-    payload: { wonBy: 'ent-home', server: id },
-  });
-  const homeRows = (state: ReturnType<typeof ready>) =>
-    state.bootstrap?.sides.home?.lineup.map((row) => row.personId);
-  const homeMembers = (state: ReturnType<typeof ready>) =>
-    state.bootstrap?.sides.home?.members.map((member) => member.personId);
-
-  it('keeps the held row and member of a person the ledger names, and drops one nothing names', () => {
-    const held = SINGLES.sides.home!.lineup[0]!.personId;
-    const state = ready({}, [start(), named(held)]);
-    const read = step(state, { kind: 'bootstrapRead', bootstrap: DROPPING }, NOW);
-    expect(homeRows(read.state)).toEqual([held]);
-    expect(homeMembers(read.state)).toEqual([held]);
-    const quiet = step(
-      ready({}, [start(), rally('H')]),
-      { kind: 'bootstrapRead', bootstrap: DROPPING },
-      NOW,
-    );
-    expect(homeRows(quiet.state)).toEqual([]);
-    expect(homeMembers(quiet.state)).toEqual([]);
-  });
-
-  it('keeps one a queued tap names', () => {
-    const held = SINGLES.sides.home!.lineup[0]!.personId;
-    const tapped = { ...queuedOf('k1', named(held)) };
-    const state = ready({ queue: queueOf({ pending: [tapped] }) }, [start()]);
-    const read = step(state, { kind: 'bootstrapRead', bootstrap: DROPPING }, NOW);
-    expect(homeRows(read.state)).toEqual([held]);
-  });
-
-  it('carries nothing over to a side that is another entrant now', () => {
-    const held = SINGLES.sides.home!.lineup[0]!.personId;
-    const state = ready({}, [start(), named(held)]);
-    const reseated = {
-      ...DROPPING,
-      sides: { ...DROPPING.sides, home: { ...DROPPING.sides.home, entrantId: 'ent-other' } },
-    };
-    const read = step(state, { kind: 'bootstrapRead', bootstrap: reseated }, NOW);
-    expect(homeRows(read.state)).toEqual([]);
-  });
-
-  it('adds nothing when the new sheet keeps everyone, and nothing on the first read', () => {
-    const first = step(
-      { ...ready({}, [start()]), bootstrap: null },
-      { kind: 'bootstrapRead', bootstrap: SINGLES },
-      NOW,
-    );
-    expect(first.state.bootstrap).toEqual(SINGLES);
-    const same = step(
-      ready({}, [start(), named(SINGLES.sides.home!.lineup[0]!.personId)]),
-      { kind: 'bootstrapRead', bootstrap: SINGLES },
-      NOW,
-    );
-    expect(same.state.bootstrap?.sides.home).toEqual(SINGLES.sides.home);
   });
 });

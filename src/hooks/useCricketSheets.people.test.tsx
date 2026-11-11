@@ -88,3 +88,20 @@ describe('a cricket sheet that lists people', () => {
     expect(read).not.toHaveBeenCalled();
   });
 });
+
+describe('a press that opens nothing asks nothing', () => {
+  it('Out and More on the heels of a recorded ball are the second touch: no sheet, no read', async () => {
+    const { fakes, view } = await opened();
+    await wait(15_000);
+    act(() => pad(view).actions.openExtras('wide'));
+    await wait(1_000);
+    const read = vi.spyOn(fakes.scoring, 'bootstrap');
+    await wait(15_000);
+    act(() => pad(view).actions.choose('ran.1'));
+    act(() => pad(view).actions.openOut());
+    act(() => pad(view).actions.openMore());
+    await flush();
+    expect(pad(view).sheet).toBeNull();
+    expect(read).not.toHaveBeenCalled();
+  });
+});

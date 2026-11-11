@@ -1,5 +1,4 @@
 import {
-  EngineError,
   foldMatchWithStoppage,
   outcomeOf,
   type EventEnvelope,
@@ -227,6 +226,11 @@ type Server = {
   offline: boolean;
   dropNext: boolean;
   finalized: boolean;
+  /**
+   * Whether the match is decided, as the status column holds it: set when an event is written, by the lineups then, and
+   * never recomputed by a read (the web reads the column; `setSide` after the fact does not move it).
+   */
+  decidedStatus: boolean;
   forbidden: string | null;
   carried: boolean;
   limitMs: number | null;
@@ -266,6 +270,7 @@ export function createFakeScoringPort(
     offline: false,
     dropNext: false,
     finalized: false,
+    decidedStatus: false,
     forbidden: null,
     carried: false,
     limitMs: null,
@@ -433,6 +438,7 @@ function write(
   const code = engineRefusal(server, [...server.ledger, event]);
   if (code !== null) return { refused: code };
   server.ledger.push(event);
+  server.decidedStatus = foldDecided(server);
   if (key !== undefined) server.keys.set(key, { seq, eventId: event.id });
   return event;
 }
@@ -496,7 +502,7 @@ function statusOf(server: Server): string {
   const has = (type: string) =>
     server.ledger.some((event) => event.type === type && !voided.has(event.id));
   if (has('core.forfeit')) return 'forfeited';
-  if (decided(server)) return 'decided';
+  if (server.decidedStatus) return 'decided';
   return has('core.start') ? 'in_play' : 'scheduled';
 }
 
@@ -504,22 +510,15 @@ function statusOf(server: Server): string {
  * The match is decided: the engine's effective outcome (`outcomeOf`, the one reader of a fold's outcome) is not null, so an
  * organiser's settle over a level game, which the module's own state never sees, counts as the web counts it.
  */
-const decided = (server: Server): boolean => {
+const foldDecided = (server: Server): boolean => {
   const { module } = server.sport;
-  try {
-    const folded = foldMatchWithStoppage(
-      module,
-      server.cfg,
-      server.lineups,
-      server.ledger.map((event) => envelopeOf(server.seed.fixtureId, event)),
-    );
-    return outcomeOf(module, folded) !== null;
-  } catch (error) {
-    // A ledger the sheet saved since no longer fits (`setSide` dropped a person it names) decides nothing: a status
-    // read must not fail for it. Anything but the engine's own refusal is a bug and is thrown.
-    if (EngineError.is(error)) return false;
-    throw error;
-  }
+  const folded = foldMatchWithStoppage(
+    module,
+    server.cfg,
+    server.lineups,
+    server.ledger.map((event) => envelopeOf(server.seed.fixtureId, event)),
+  );
+  return outcomeOf(module, folded) !== null;
 };
 
 // ---------------------------------------------------------------------------------------------------------------

@@ -5,13 +5,7 @@ import {
   onReadFailed,
   onRules,
 } from '@/domain/scoring/sync';
-import type {
-  Bootstrap,
-  BootstrapSide,
-  LedgerEvent,
-  ReadFailure,
-  Rules,
-} from '@/domain/scoring/wire';
+import type { Bootstrap, LedgerEvent, ReadFailure, Rules } from '@/domain/scoring/wire';
 import type { SportTypes } from '@/domain/scoring/scoringSport';
 import { withSync } from '@/domain/scoring/scoringMatchAnswers';
 import { noteForeign } from '@/domain/scoring/scoringMatchAsk';
@@ -143,10 +137,9 @@ export function onBootstrapRead<S extends SportTypes>(
   if (held !== null && read.lastSeq < held.lastSeq) return part(state);
   const status = onBootstrapStatus(state.sync, read.status);
   const newer = held === null || read.rulesVersion >= held.rulesVersion;
-  const rules: Bootstrap = newer
+  const bootstrap: Bootstrap = newer
     ? read
     : { ...read, cfg: held.cfg, rulesVersion: held.rulesVersion };
-  const bootstrap = held === null ? rules : keepingNamed(rules, held, namedBy(state));
   const sync =
     read.rulesVersion > status.state.rulesVersion
       ? onRules(status.state, { rulesVersion: read.rulesVersion })
@@ -158,39 +151,6 @@ export function onBootstrapRead<S extends SportTypes>(
     bootOffline: false,
   };
   return withSync(next, { state: sync, effects: status.effects });
-}
-
-/** Everything the ledger and the queued taps say, as text: what a person's id is looked for in. */
-const namedBy = <S extends SportTypes>(state: MatchState<S>): string =>
-  JSON.stringify([
-    state.sync.ledger.map((event) => event.payload),
-    state.sync.queue.pending.map((tap) => tap.payload),
-  ]);
-
-/**
- * A re-read that drops a person the match already names: the engine refuses a ledger naming someone who is not on a
- * sheet, so the new sheet would turn the pad into an unfoldable card for a lineup saved after the first tap (S2-6 ruling
- * 181). Such a person keeps the row and the member the held bootstrap had; everyone the new sheet drops that nothing
- * names goes with it. Generic: a person is "named" by their id appearing in a payload, whatever the sport calls the field.
- */
-function keepingNamed(next: Bootstrap, held: Bootstrap, said: string): Bootstrap {
-  const side = (now: BootstrapSide | null, was: BootstrapSide | null): BootstrapSide | null => {
-    if (now === null || was === null || was.entrantId !== now.entrantId) return now;
-    const kept = (id: string) => said.includes(JSON.stringify(id));
-    const gone = (id: string) => !now.lineup.some((row) => row.personId === id);
-    const lineup = was.lineup.filter((row) => gone(row.personId) && kept(row.personId));
-    const members = was.members.filter(
-      (member) => !now.members.some((m) => m.personId === member.personId) && kept(member.personId),
-    );
-    return lineup.length === 0 && members.length === 0
-      ? now
-      : { ...now, lineup: [...now.lineup, ...lineup], members: [...now.members, ...members] };
-  };
-  const { home, away } = next.sides;
-  return {
-    ...next,
-    sides: { home: side(home, held.sides.home), away: side(away, held.sides.away) },
-  };
 }
 
 /** A read that did not come to its data: sync's word on it, and what it says of the link even with nothing queued. */

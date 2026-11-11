@@ -34,7 +34,7 @@ import type { Arm } from '@/hooks/usePadTaps';
 /** What a sheet's last step asks the match to do, and what it came to at once. */
 export type FootballSheetDriver = {
   /** A step sheet opened, which lists people: the match reads its team sheets again (`usePeopleSheet`). */
-  peopleSheet(): void;
+  readonly peopleSheet: () => void;
   readonly tap: (made: FootballTap) => PadOutcome;
   /** Correct's Set: the clock set to `elapsed`, running or stopped as it is. */
   readonly correct: (elapsed: number) => PadOutcome;

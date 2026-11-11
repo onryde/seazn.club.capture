@@ -111,9 +111,8 @@ describe('a football sheet that lists people', () => {
     expect(read).not.toHaveBeenCalled();
   });
 
-  it('a goal by a player the new sheet dropped still folds, and History names the scorer', async () => {
+  it('a re-read that drops a player the ledger names shows the unfoldable card: the server would refuse every tap', async () => {
     const scorer = `${HOME_ENTRANT}-p9`;
-    const idle = `${HOME_ENTRANT}-p8`;
     const goal: FakeSeedEvent = {
       type: 'football.goal',
       payload: { by: HOME_ENTRANT, scorer, at: { period: 'H1', elapsed: 20 } },
@@ -124,26 +123,15 @@ describe('a football sheet that lists people', () => {
     const view = renderHook(() => useFootballMatch(seed.fixtureId), { wrapper: wrapperFor(fakes) });
     await flush();
     await wait(1_000);
+    expect(view.result.current.kind).toBe('pad');
     const { home } = seed.sides;
     fakes.scoring.setSide('home', {
       ...home,
-      lineup: home.lineup.filter((row) => row.personId !== scorer && row.personId !== idle),
+      lineup: home.lineup.filter((row) => row.personId !== scorer),
     });
     await wait(15_000);
     act(() => pad(view).actions.column('goal.first'));
     await flush();
-    // The new sheet is in force (a player it dropped and no event names is gone), and the scorer it dropped is still
-    // listed, since the ledger names them.
-    expect(optionIds(view)).not.toContain(`p.${idle}`);
-    expect(optionIds(view)).toContain(`p.${scorer}`);
-    expect(optionIds(view)).toContain(`p.${HOME_ENTRANT}-p1`);
-    act(() => pad(view).actions.cancel());
-    await wait(300);
-    act(() => pad(view).actions.history());
-    const { sheet } = pad(view);
-    if (sheet?.kind !== 'history') throw new Error('History did not open');
-    const rows = sheet.groups.flatMap((group) => group.rows);
-    expect(rows).toHaveLength(3);
-    expect(JSON.stringify(rows[0]?.said)).toContain('Ito');
+    expect(view.result.current).toMatchObject({ kind: 'unfoldable', reason: 'ledger' });
   });
 });

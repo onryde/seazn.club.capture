@@ -4,6 +4,7 @@ import type { MatchEvent } from '@/domain/scoring/scoringMatchState';
 import { viewOf } from '@/domain/scoring/scoringMatchView';
 import type { BootstrapSide } from '@/domain/scoring/wire';
 import { createScoringRunner, type ScoringRunner } from '@/hooks/scoringRunner';
+import { footballSeed, HOME_ENTRANT } from '@/services/fakeFootballPad';
 import { SINGLES_SEED } from '@/services/fakeScoringPort';
 import { saveScoringLink } from '@/services/scoringLinkStore';
 import { FAKE_SCORING_SECRET } from '../../test/fakeScoringLinkPort';
@@ -103,15 +104,48 @@ describe('a lineup changed on the web', () => {
     expect(homeNames(runner)).toEqual(['A. Sharma', 'N. Newcomer']);
   });
 
-  it('a ledger naming a person the new sheet dropped still folds', async () => {
-    const { fakes, runner } = await rig();
-    runner.dispatch(tap(START, 'k1'));
-    runner.dispatch(tap(RALLY, 'k2'));
+  it('a ledger naming a person the new sheet dropped shows the unfoldable card, and a tap then sends nothing', async () => {
+    // Football: the engine checks a goal's scorer against the sheet even when it folds tolerantly, and the web folds every
+    // append with the sheet as it stands, so the server would refuse the tap too. The card is the honest answer.
+    const scorer = `${HOME_ENTRANT}-p9`;
+    const seed = footballSeed({
+      events: [
+        { type: 'core.start', payload: {} },
+        { type: 'football.clock', payload: { running: true, at: { period: 'H1', elapsed: 0 } } },
+        {
+          type: 'football.goal',
+          payload: { by: HOME_ENTRANT, scorer, at: { period: 'H1', elapsed: 20 } },
+        },
+      ],
+    });
+    const fakes = createFakePorts({ clock: timerClock, scoringSeed: seed });
+    await saveScoringLink(fakes.kv, seed.fixtureId, LINK, 'stg.seazn.club', 'football');
+    const runner = createScoringRunner(fakes.ports, { fixtureId: seed.fixtureId, mode: 'focused' });
+    await runner.start();
     await flush();
-    fakes.scoring.setSide('home', { ...withNewPlayer, members: [], lineup: [] });
-    await back(fakes, PACE);
     expect(viewOf(held(runner)).kind).toBe('pad');
-    expect(await ledgerTypes(fakes)).toEqual(['core.start', 'badminton.rally']);
+    const { home } = seed.sides;
+    fakes.scoring.setSide('home', {
+      ...home,
+      lineup: home.lineup.filter((row) => row.personId !== scorer),
+    });
+    await back(fakes, PACE);
+    expect(viewOf(held(runner))).toMatchObject({ kind: 'unfoldable', reason: 'ledger' });
+    const outcome = runner.dispatch({
+      kind: 'tap',
+      tap: { kind: 'clock', running: false, elapsed: 30 },
+      key: 'k1',
+      at: AT,
+    });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(outcome).toMatchObject({ ok: false });
+    expect(pendingKeys(runner)).toEqual([]);
+    const events = await fakes.scoring.events(LINK, seed.fixtureId, 0);
+    expect(Array.isArray(events) ? events.map((e) => e.type) : []).toEqual([
+      'core.start',
+      'football.clock',
+      'football.goal',
+    ]);
   });
 });
 

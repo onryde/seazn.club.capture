@@ -182,8 +182,10 @@ function useOpening({ snapshot, justShown, taps, send, setSheet }: ChooseParts) 
   const details = useCallback(() => setSheet(DETAILS), [setSheet]);
   const history = useCallback(() => setSheet(HISTORY), [setSheet]);
   const openFlow = useCallback(
-    (flow: CricketFlow) => {
-      if (snapshot !== null && !justShown() && !secondTouch()) setSheet({ kind: 'flow', flow });
+    (flow: CricketFlow, opened?: () => void) => {
+      if (snapshot === null || justShown() || secondTouch()) return;
+      opened?.();
+      setSheet({ kind: 'flow', flow });
     },
     [snapshot, justShown, secondTouch, setSheet],
   );
@@ -191,14 +193,8 @@ function useOpening({ snapshot, justShown, taps, send, setSheet }: ChooseParts) 
     (extra: SheetExtra) => openFlow({ kind: 'extras', extra }),
     [openFlow],
   );
-  const openOut = useCallback(() => {
-    peopleSheet();
-    openFlow(outFlow());
-  }, [peopleSheet, openFlow]);
-  const openMore = useCallback(() => {
-    peopleSheet();
-    openFlow(moreFlow());
-  }, [peopleSheet, openFlow]);
+  const openOut = useCallback(() => openFlow(outFlow(), peopleSheet), [openFlow, peopleSheet]);
+  const openMore = useCallback(() => openFlow(moreFlow(), peopleSheet), [openFlow, peopleSheet]);
   return useMemo(
     () => ({ details, history, openExtras, openOut, openMore }),
     [details, history, openExtras, openOut, openMore],

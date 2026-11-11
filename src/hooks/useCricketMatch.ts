@@ -142,7 +142,8 @@ function useCricketPad(
   const driver = useCricketDriver(sender);
   const taps = useTaps(driver, settle, sender.say, ignoreFlash);
   const sheets = useSheets(taps, pad, sender, runner);
-  const setup = useCricketSetup(pad, sender, taps);
+  const peopleSheet = usePeopleSheet(runner);
+  const setup = useCricketSetup(pad, sender, taps, peopleSheet);
   useDropStalePicks(pad, sender.setPicks);
   const actions = useActions({ sender, runner, pad, taps, sheets, setup, setCardNote });
   useBackCloses(sheets.open, sheets.cancel);

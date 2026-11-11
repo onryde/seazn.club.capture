@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BREAK_STAGES, cricketBreakCard, type CricketBreakCard } from '@/domain/scoring/cricketPad';
 import { withPick, type CreasePair, type CricketPick } from '@/domain/scoring/cricketPicks';
 import {
@@ -82,11 +82,26 @@ const SETUP_STAGES: ReadonlySet<CricketStage> = new Set<CricketStage>([
 type Held = { readonly winner: PadSide | null; readonly back: boolean };
 const NOTHING_HELD: Held = { winner: null, back: false };
 
-export function useCricketSetup(pad: Facts | null, sender: Sender, taps: SetupTaps) {
+export function useCricketSetup(
+  pad: Facts | null,
+  sender: Sender,
+  taps: SetupTaps,
+  peopleSheet: () => void,
+) {
   const held = useHeld(pad?.display.stage ?? null);
   const model = useMemo(() => modelOf(pad, held.now), [pad, held.now]);
+  useAskPeople(model?.step ?? null, peopleSheet);
   const actions = useSetupActions(pad, sender, taps, held);
   return { model, actions };
+}
+
+/** The batting order and the first bowler list people: each asks the match to read its team sheets when it appears (S2-6). */
+const PEOPLE_STEPS: ReadonlySet<CricketSetupStep> = new Set<CricketSetupStep>(['order', 'bowler']);
+
+function useAskPeople(step: CricketSetupStep | null, peopleSheet: () => void): void {
+  useEffect(() => {
+    if (step !== null && PEOPLE_STEPS.has(step)) peopleSheet();
+  }, [step, peopleSheet]);
 }
 
 /**
