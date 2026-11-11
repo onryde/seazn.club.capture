@@ -412,6 +412,21 @@ const cellHeight = (lines: number) =>
     lines * typeScale.actionSecondary.lineHeight + 2 * space.xs + 2 * layout.iconBorder,
   );
 
+// Owner, 2026-11-11: the board sits 5 dp up into the pad's gap under the top bar (`layout.footballBoardLift`), so the gap
+// is 8 - 5 = 3 and the board is 5 dp taller; the clock's growth (ruling 150) takes it, then whatever is left sits below
+// the cards. The columns' own sums are unchanged.
+describe('the board 5 dp higher (owner, 2026-11-11)', () => {
+  it('the gap under the top bar is 3 dp and the board gains the 5', () => {
+    expect(layout.footballBoardLift).toBe(5);
+    expect(space.sm - layout.footballBoardLift).toBe(3);
+    const board = { width: 412, height: 600 };
+    const before = clockHeroSize(board);
+    const after = clockHeroSize({ width: 412, height: board.height + layout.footballBoardLift });
+    expect(after).toBeGreaterThanOrEqual(before);
+    expect(after - before).toBeLessThanOrEqual(Math.ceil(layout.footballBoardLift / 1.06) + 1);
+  });
+});
+
 describe('the End of period cell’s height at 320 and 360 (ruling 160)', () => {
   it('is 48 dp with two lines and 67 with three, from the tokens', () => {
     expect(typeScale.actionSecondary.lineHeight).toBe(19);

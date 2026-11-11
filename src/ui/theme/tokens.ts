@@ -380,6 +380,12 @@ const base = {
    */
   padSquareLabelInset: 3,
   /**
+   * How far football's board sits up into the pad's gap under the top bar (owner, 2026-11-11: "move up 5 px top from
+   * timer"): the gap is `space.sm` (8) and becomes 3, the 5 dp joining the board's own height, so the clock hero takes it
+   * or, past its cap, it ends below the cards (ruling 150). Football only: the other pads keep the 8.
+   */
+  footballBoardLift: 5,
+  /**
    * The clock panel's bottom edge (owner ruling 152, the mockup's `border-bottom: 2px solid rgba(154,230,0,.5)`): 2 dp of
    * `colour.limeHalf`, following the panel's rounded corners. The PAUSED tag's side padding (`.ptag`: 0 6px).
    */

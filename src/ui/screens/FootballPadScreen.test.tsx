@@ -395,6 +395,18 @@ describe('the tools in bright ink (ruling 152)', () => {
   });
 });
 
+// Owner, 2026-11-11: "move up 5 px top from timer": the clock panel sits 5 dp higher, the pad's 8 dp gap under the top bar
+// is 3 for football; the 5 goes to the board's height. The Yoga result is the device's.
+describe('the clock panel 5 dp higher', () => {
+  it('the board’s margin is minus 5 and the pad’s gap under the top bar is still 8', async () => {
+    await open(LIVE);
+    expect(layout.footballBoardLift).toBe(5);
+    expect(declaredStyle(screen.getByTestId('football-board'), 'margin-top')).toBe('-5px');
+    expect(declaredStyle(screen.getByTestId('pad-content'), 'gap')).toBe(`${space.sm}px`);
+    expect(space.sm - layout.footballBoardLift).toBe(3);
+  });
+});
+
 // Owner ruling 146: no empty band between the header and the clock.
 describe('the clock under the header (ruling 146)', () => {
   it('has no strip above the clock; the clock is the first thing under the header', async () => {

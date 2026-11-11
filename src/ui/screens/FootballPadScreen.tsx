@@ -33,7 +33,7 @@ import {
 import { TeamColumn, type TeamAction, type TeamColumnView } from '@/ui/components/TeamColumn';
 import { Text } from '@/ui/components/Text';
 import { boardTier, clockHeroSize } from '@/ui/theme/columnBoard';
-import { colour, space } from '@/ui/theme/tokens';
+import { colour, layout, space } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
 
 /**
@@ -397,7 +397,8 @@ function useCorrectWords(): ClockCorrectWords {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colour.ground },
-  board: { flex: 1, gap: space.sm },
+  // Up into the pad's gap under the top bar by `footballBoardLift`, so the clock panel sits that much higher.
+  board: { flex: 1, gap: space.sm, marginTop: -layout.footballBoardLift },
   // The cards hug their content: spare height sits under them, on the ground, not inside them (owner ruling 152); a short
   // board holds them to its height (`maxHeight`) and their Goal squares give way.
   columns: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },

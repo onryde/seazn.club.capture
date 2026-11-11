@@ -195,6 +195,62 @@ describe('the Start screen and the clock', () => {
     expect(footballClockBar(pad(view).display, pad(view).readingNow()).time).toBe('0:30');
   });
 
+  // Owner 2026-11-11: while the clock is paused Goal, Yellow, Red and Sub stay enabled and each event is stamped at the
+  // paused reading (28:53 is the 29th minute), not at the phone's later time.
+  async function pausedAt2853() {
+    const rig = await opened();
+    await wait(1_732_000);
+    press(rig.view, (actions) => actions.clock());
+    await flush();
+    const paused = pad(rig.view).readingNow();
+    expect(paused).toBe(1733);
+    await wait(120_000);
+    expect(pad(rig.view).readingNow()).toBe(1733);
+    return rig;
+  }
+
+  it('paused at 28:53, Goal is enabled and the goal is stamped at 1733 s, the 29th minute in History', async () => {
+    const { fakes, view } = await pausedAt2853();
+    const goalOn = footballBoard(pad(view).display, pad(view).view.card).columns[0].actions[0]!;
+    expect(goalOn.enabled).toBe(true);
+    await column(view, 'goal.first');
+    await pick(view, 'dontKnow');
+    await wait(1_000);
+    expect((await lastEvent(fakes))?.payload).toMatchObject({
+      at: { period: 'H1', elapsed: 1733 },
+    });
+    expect(pad(view).display.lastTap).toMatchObject({ kind: 'goal', at: { elapsed: 1733 } });
+    press(view, (actions) => actions.history());
+    const { sheet } = pad(view);
+    if (sheet?.kind !== 'history') throw new Error('History did not open');
+    const goalRow = sheet.groups.flatMap((group) => group.rows)[0]!;
+    expect(JSON.stringify(goalRow.said)).toContain("29'");
+  });
+
+  it('paused at 28:53, Yellow, Red and Sub are enabled too', async () => {
+    const { view } = await pausedAt2853();
+    const actions = footballBoard(pad(view).display, pad(view).view.card).columns[0].actions;
+    expect(actions.map((action) => [action.id, action.enabled])).toEqual([
+      ['goal.first', true],
+      ['yellow.first', true],
+      ['red.first', true],
+      ['sub.first', true],
+    ]);
+  });
+
+  it('paused at 28:53, a Sub is stamped at 1733 s and joins no window: nothing came before it', async () => {
+    const { fakes, view } = await pausedAt2853();
+    await column(view, 'sub.first');
+    await pick(view, P(home(7)));
+    await pick(view, P(home(14)));
+    expect((await lastEvent(fakes))?.payload).toEqual({
+      by: HOME_ENTRANT,
+      off: home(7),
+      on: home(14),
+      at: { period: 'H1', elapsed: 1733 },
+    });
+  });
+
   // The controller's ruling 1: the console's clock event is another device's (its link is not this phone's), recorded
   // at the server's time, which runs 5 minutes ahead of this phone's.
   it('a phone 5 minutes slow reads the console’s minute', async () => {
