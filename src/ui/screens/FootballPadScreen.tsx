@@ -111,6 +111,8 @@ type SideColumnsProps = BoardProps & {
 
 /** The two teams' columns side by side, home on the left, and in the shootout each one's kicks under it. */
 function SideColumns({ board, halves, display, readingNow, compact, actions }: SideColumnsProps) {
+  // The note line's room stands only when a note does, on either side: no empty line under the squares, the cards equal.
+  const reserveNote = board.columns.some((column) => column.actions.some((a) => a.note !== null));
   return (
     <View style={styles.columns}>
       {board.columns.map((column, at) => (
@@ -122,6 +124,7 @@ function SideColumns({ board, halves, display, readingNow, compact, actions }: S
           display={display}
           readingNow={readingNow}
           compact={compact}
+          reserveNote={reserveNote}
           onAction={actions.column}
         />
       ))}
@@ -180,16 +183,17 @@ type SideColumnProps = {
   readonly display: FootballDisplay;
   readonly readingNow: () => number;
   readonly compact: boolean;
+  readonly reserveNote: boolean;
   readonly onAction: (id: string) => void;
 };
 
 /** A team's column in the operator's words, and in the shootout its kicks under it. */
 const SideColumn = memo(function SideColumn(props: SideColumnProps) {
-  const { column, kicks, compact, onAction } = props;
+  const { column, kicks, compact, reserveNote, onAction } = props;
   const view = useColumnView(props);
   return (
     <View testID={`column-${column.side}`} style={styles.side}>
-      <TeamColumn view={view} onAction={onAction} compact={compact} />
+      <TeamColumn view={view} onAction={onAction} compact={compact} reserveNote={reserveNote} />
       {kicks === null ? null : <KickRow kicks={kicks} />}
     </View>
   );

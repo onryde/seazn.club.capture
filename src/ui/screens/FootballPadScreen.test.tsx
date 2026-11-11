@@ -334,9 +334,14 @@ describe('the squares (ruling 144)', () => {
     expect(within(noteRoom('second')).getByText(note)).toBeTruthy();
   });
 
-  it('a team with a team sheet has an empty note line, so the squares sit as high as the other team’s', async () => {
+  it('with no note on either team there is no note line: the card ends under its buttons, both alike', async () => {
     await open(LIVE);
-    expect(noteRoom('first').textContent).toBe('');
+    for (const side of ['first', 'second'] as const)
+      expect(within(column(side)).queryByTestId('column-note-room')).toBeNull();
+  });
+
+  it('a note on one team keeps the line on both, so the cards are as tall and the squares sit alike', async () => {
+    await open(footballSeed({ sheet: 'none', events: asSeed(KICK_OFF) }));
     expect(declaredStyle(noteRoom('first'), 'height')).toBe(
       declaredStyle(noteRoom('second'), 'height'),
     );

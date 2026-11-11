@@ -61,6 +61,11 @@ type TeamColumnProps = {
   readonly onAction: (id: string) => void;
   /** A compact board's column (`columnBoard.ts`): the name on one line, the Goal square a row. */
   readonly compact?: boolean;
+  /**
+   * Whether the note line's room stands under the squares when this column has no note (default yes). The screen says no
+   * when neither column has one, so the card ends under its buttons, not a line past them; both cards then agree.
+   */
+  readonly reserveNote?: boolean;
 };
 
 /**
@@ -78,7 +83,12 @@ type TeamColumnProps = {
  * never cut (f), and scales with the square it is in (138). Compact (R1) sets the name on one line, so a short phone
  * keeps a touch target per button. footballFit.test.ts holds the numbers.
  */
-export const TeamColumn = memo(function TeamColumn({ view, onAction, compact }: TeamColumnProps) {
+export const TeamColumn = memo(function TeamColumn({
+  view,
+  onAction,
+  compact,
+  reserveNote = true,
+}: TeamColumnProps) {
   const tier: BoardTier = compact === true ? 'compact' : 'full';
   const squares = view.actions.filter((action) => action.mark !== null);
   const note = squares.find((action) => action.note !== null)?.note ?? null;
@@ -103,21 +113,23 @@ export const TeamColumn = memo(function TeamColumn({ view, onAction, compact }: 
               <SmallSquare key={square.id} action={square} onAction={onAction} />
             ))}
           </View>
-          <View testID="column-note-room" style={styles.noteRoom}>
-            {note === null ? null : (
-              <Text
-                testID="column-note"
-                aria-hidden
-                variant="metricUnit"
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={layout.noteFloor}
-                style={styles.note}
-              >
-                {note}
-              </Text>
-            )}
-          </View>
+          {note === null && !reserveNote ? null : (
+            <View testID="column-note-room" style={styles.noteRoom}>
+              {note === null ? null : (
+                <Text
+                  testID="column-note"
+                  aria-hidden
+                  variant="metricUnit"
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={layout.noteFloor}
+                  style={styles.note}
+                >
+                  {note}
+                </Text>
+              )}
+            </View>
+          )}
         </>
       )}
       {view.actions.map((action) =>

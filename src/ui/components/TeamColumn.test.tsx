@@ -41,10 +41,10 @@ const VIEW: TeamColumnView = {
   actions: [GOAL, YELLOW, RED, SUB],
 };
 
-function renderColumn(view: TeamColumnView, compact?: boolean) {
+function renderColumn(view: TeamColumnView, compact?: boolean, reserveNote?: boolean) {
   const onAction = vi.fn();
   const rendered = renderWithPorts(
-    <TeamColumn view={view} onAction={onAction} compact={compact} />,
+    <TeamColumn view={view} onAction={onAction} compact={compact} reserveNote={reserveNote} />,
   );
   return { onAction, rendered };
 }
@@ -123,6 +123,11 @@ describe('TeamColumn', () => {
     const room = screen.getByTestId('column-note-room');
     expect(declaredStyle(room, 'height')).toBe(`${NOTE_HEIGHT}px`);
     expect(screen.queryByTestId('column-note')).toBeNull();
+  });
+
+  it('draws no note line at all when told none is reserved and the column has no note', () => {
+    renderColumn(VIEW, undefined, false);
+    expect(screen.queryByTestId('column-note-room')).toBeNull();
   });
 
   it('a second tap on Sub is a second call: the column debounces nothing, the screen’s sheet does', () => {
