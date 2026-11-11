@@ -121,21 +121,34 @@ function useFootballPad(
 /**
  * The pad with Sub asked again as the clock runs (ruling 154): a sub pressed within 120 s of the stoppage joins it, and
  * one pressed later opens a window of its own (`footballSubsNow`). The answer is read when the pad is drawn, and once
- * more when the stoppage closes on a running clock, so Sub turns off on time with no tick of its own (AGENTS §8).
+ * more when the stoppage closes on a running clock, so Sub turns off on time with no tick of its own (AGENTS §8). The
+ * wait is armed again when the server offset moves the reading, and one that finds the stoppage already closed redraws
+ * at once (review M2). A return to the foreground needs nothing of its own: the match's foreground step draws the pad
+ * again, and Sub is asked at the reading then. The reading is in whole seconds, so the timer fires up to 1 s late.
  */
 function useSubsNow(folded: PadFacts | null, clock: FootballClockRead): PadFacts | null {
+  const { serverClock } = usePorts();
   const [, redraw] = useState(0);
   const display = folded?.display ?? null;
   const stoppage = display?.clock.stoppage ?? null;
   const running = display?.clock.anchor?.running === true;
-  useEffect(() => {
-    if (!running) return;
-    const left = stoppageClosesIn(stoppage, clock.readingNow());
-    if (left === null) return;
-    const timer = setTimeout(() => redraw((n) => n + 1), left * 1000);
-    return () => clearTimeout(timer);
-  }, [stoppage, running, clock]);
   const joining = display !== null && subJoinsNow(display, clock.stampNow());
+  useEffect(() => {
+    if (!running || !joining) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const arm = () => {
+      clearTimeout(timer);
+      const left = stoppageClosesIn(stoppage, clock.readingNow());
+      if (left === null) redraw((n) => n + 1);
+      else timer = setTimeout(() => redraw((n) => n + 1), left * 1000);
+    };
+    arm();
+    const off = serverClock.subscribe(arm);
+    return () => {
+      clearTimeout(timer);
+      off();
+    };
+  }, [stoppage, running, joining, clock, serverClock]);
   return useMemo(() => {
     if (folded === null) return null;
     const now = footballSubsJoining(folded.display, joining);

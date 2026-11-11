@@ -680,6 +680,71 @@ describe('the columns’ sheets (design §6.3)', () => {
     expect(pad(view).display.subsLeft.first).toBe(true);
   });
 
+  // Ruling 154 with one window, spent by a home sub at 0:30: a sub within 120 s of it joins it (Sub on), later not.
+  const subAt30: FakeSeedEvent = {
+    type: 'football.sub',
+    payload: { by: HOME_ENTRANT, off: home(2), on: home(12), at: { period: 'H1', elapsed: 30 } },
+  };
+  const ONE_WINDOW = (concussionSubs?: number) =>
+    footballSeed({
+      cfg: {
+        maxSubs: 5,
+        subWindows: 1,
+        ...(concussionSubs === undefined ? {} : { concussionSubs }),
+      },
+      events: [START, KICK_OFF, subAt30],
+    });
+  const subOn = (view: Match) =>
+    footballBoard(pad(view).display, pad(view).view.card).columns[0].actions[3]!.enabled;
+
+  // Review I1: the kind step judges Normal sub at the reading Sub was pressed at, so a sheet held open past the stoppage's
+  // close still records the sub that joined it.
+  it('windows spent: Sub pressed inside the 120 s, its sheet held open 2 min, Normal sub still records at 0:30', async () => {
+    const seed = ONE_WINDOW(1);
+    const { fakes, view } = await opened({ seed });
+    await wait(60_000);
+    expect(subOn(view)).toBe(true);
+    await column(view, 'sub.first');
+    await pick(view, P(home(7)));
+    await pick(view, P(home(14)));
+    await wait(120_000);
+    expect(pad(view).display.subsLeft.first).toBe(false);
+    expect(stepOf(view)).toEqual({
+      title: 'scoring.football.sheet.whichSub',
+      ids: ['normalSub', 'concussionSub'],
+    });
+    const { sheet } = pad(view);
+    expect(sheet?.kind === 'step' && sheet.sheet.options[0]?.disabled).not.toBe(true);
+    await pick(view, 'normalSub');
+    await wait(2_000);
+    expect(await lastEvent(fakes, seed)).toMatchObject({
+      type: 'football.sub',
+      payload: { off: home(7), on: home(14), at: { period: 'H1', elapsed: 30 } },
+    });
+  });
+
+  // Review M2: the 120 s redraw is armed again when the server offset moves, so a reading that jumped past the stoppage's
+  // close turns Sub off then, not when the old timer fires. A return to the foreground draws the pad again on its own (the
+  // match's foreground step), and Sub is asked at the reading then.
+  it('an offset that moves the reading past the stoppage’s close turns Sub off at once', async () => {
+    const { fakes, view } = await opened({ seed: ONE_WINDOW() });
+    expect(subOn(view)).toBe(true);
+    act(() => fakes.serverClock.setOffset(200_000));
+    await flush();
+    expect(subOn(view)).toBe(false);
+  });
+
+  it('back from the background past the stoppage’s close, Sub is off at once', async () => {
+    const { fakes, view } = await opened({ seed: ONE_WINDOW() });
+    expect(subOn(view)).toBe(true);
+    act(() => fakes.foreground.leave());
+    // Asleep: time moves on, and no timer of the app's runs.
+    vi.setSystemTime(Date.now() + 200_000);
+    act(() => fakes.foreground.fire());
+    await flush();
+    expect(subOn(view)).toBe(false);
+  });
+
   it('without concussionSubs, Sub records at the player on, with no third step', async () => {
     const { fakes, view } = await opened();
     await column(view, 'sub.first');

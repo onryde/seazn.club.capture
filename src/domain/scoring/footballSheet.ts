@@ -1,6 +1,11 @@
 import type { GameTime } from '@seazn/engine/core';
 import { footballPadRules } from '@seazn/engine/pad';
-import { footballMoreItems, parseFootballAction } from '@/domain/scoring/footballBoard';
+import {
+  footballMoreItems,
+  footballSubsJoining,
+  parseFootballAction,
+  subJoinsNow,
+} from '@/domain/scoring/footballBoard';
 import { footballOptions } from '@/domain/scoring/footballEngine';
 import {
   otherSide,
@@ -458,7 +463,7 @@ function subStep(current: Flow<'sub'>, display: FootballDisplay): FootballStepSh
       options: playerOptions(team.onPitch),
     };
   }
-  if (current.step === 'kind') return subKindStep(current.side, display);
+  if (current.step === 'kind') return subKindStep(current, display);
   return {
     title: sheetText('whoComesOn', { player: labelOf(team, current.off) ?? team.name }),
     body: null,
@@ -468,9 +473,13 @@ function subStep(current: Flow<'sub'>, display: FootballDisplay): FootballStepSh
 
 /**
  * Normal sub or Concussion sub (ruling 155). Each is disabled with its reason when the team has none of it left: an
- * ordinary sub "No subs left" (the cap or the windows), the concussion exemption "None left".
+ * ordinary sub "No subs left" (the cap or the windows), the concussion exemption "None left". An ordinary sub is judged
+ * at the flow's own stamp, the reading when Sub was pressed, never the clock now: one pressed inside a stoppage's 120 s
+ * joins it however long the sheet stays open (ruling 154, review I1).
  */
-function subKindStep(side: PadSide, display: FootballDisplay): FootballStepSheet {
+function subKindStep(current: Flow<'sub'>, display: FootballDisplay): FootballStepSheet {
+  const { side } = current;
+  const normalLeft = footballSubsJoining(display, subJoinsNow(display, current.stamp)).subsLeft;
   const offered = (
     key: 'normalSub' | 'concussionSub',
     left: boolean,
@@ -480,7 +489,7 @@ function subKindStep(side: PadSide, display: FootballDisplay): FootballStepSheet
     title: sheetText('whichSub', teamOf(display, side)),
     body: null,
     options: [
-      offered('normalSub', display.subsLeft[side], { key: 'scoring.football.column.noSubs' }),
+      offered('normalSub', normalLeft[side], { key: 'scoring.football.column.noSubs' }),
       offered('concussionSub', display.concussionLeft[side], sheetText('noneLeft')),
     ],
   };

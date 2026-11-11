@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { footballSubsNow } from '@/domain/scoring/footballBoard';
 import { foldFootball } from '@/domain/scoring/footballFold';
 import {
   footballChoose,
@@ -381,6 +382,36 @@ describe('Sub, the kicks and More (design §6.3–§6.5)', () => {
       kind: 'tap',
       tap: { concussion: true },
     });
+  });
+
+  // Review I1: Normal sub is judged at the flow's own stamp (the reading when Sub was pressed), never the clock now. A sub
+  // pressed inside the 120 s joins the stoppage and stays recordable however long the sheet stays open.
+  it('windows spent: a sub pressed inside the 120 s keeps Normal sub on after the stoppage closes', () => {
+    const oneWindow = withCfg(MATCH, { ...KO_11, maxSubs: 5, subWindows: 1, concussionSubs: 1 });
+    const stoppage = displayOf(
+      [...KICK_OFF, sub({ by: 'H', off: 'H-p2', on: 'H-p12', at: at('H1', 600) })],
+      oneWindow,
+    );
+    const late = footballSubsNow(stoppage, at('H1', 730));
+    expect(late.subsLeft.first).toBe(false);
+    const pressedAt = (reading: number) => {
+      let move = footballOpen('sub.first', late, at('H1', reading));
+      for (const choice of [H(7), H(14)]) move = footballChoose(flowOf(move), choice, late, null);
+      return flowOf(move);
+    };
+    const inside = pressedAt(700);
+    expect(footballStep(inside, late).options[0]).toEqual({
+      id: 'normalSub',
+      label: { key: 'scoring.football.sheet.normalSub' },
+      tone: 'standard',
+    });
+    expect(footballChoose(inside, 'normalSub', late, null)).toEqual({
+      kind: 'tap',
+      tap: { kind: 'sub', side: 'first', off: 'H-p7', on: 'H-p14', stamp: at('H1', 700) },
+    });
+    const outside = pressedAt(721);
+    expect(footballStep(outside, late).options[0]).toMatchObject({ disabled: true });
+    expect(footballChoose(outside, 'normalSub', late, null)).toEqual({ kind: 'stay' });
   });
 
   it('a kick asks who kicked, the team’s players on the pitch and Don’t know', () => {
