@@ -83,6 +83,16 @@ function mayAppend(
 // The display
 // ---------------------------------------------------------------------------------------------------------------
 
+/**
+ * An indoor side is its team's name, as the organiser typed it: the bootstrap's members are the whole roster, and the
+ * generic reading (`namesOf`: a side's names are its members') would read a squad as "A / B / C / D / E / F / G".
+ * Beach keeps the pair's two players.
+ */
+const teamSides = (seats: SetBasedMatch['seats']): VolleyballDisplay['sides'] => ({
+  first: { players: [seats.first.name] },
+  second: { players: [seats.second.name] },
+});
+
 function displayOf(folding: SetBasedFolding<VolleyballDone>): VolleyballDisplay {
   const { match, stream, folded } = folding;
   const { state } = folded;
@@ -90,7 +100,7 @@ function displayOf(folding: SetBasedFolding<VolleyballDone>): VolleyballDisplay 
   const beach = isBeach(match.engine.cfg);
   const serve = serveOf(match, folding, beach);
   return {
-    sides: match.names.sides,
+    sides: beach ? match.names.sides : teamSides(match.seats),
     context: match.context,
     points: board.points,
     finished: board.finished,

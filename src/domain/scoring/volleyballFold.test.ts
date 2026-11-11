@@ -80,8 +80,8 @@ describe('foldVolleyball: before the start', () => {
     const result = folded([]);
     expect(result.display).toEqual({
       sides: {
-        first: { players: expect.any(Array) },
-        second: { players: expect.any(Array) },
+        first: { players: ['Falcons'] },
+        second: { players: ['Herons'] },
       },
       context: {
         competition: 'Spring League 2026',
@@ -309,6 +309,14 @@ describe('foldVolleyball: the beach server, from the pair order (ruling 173, 188
       'h1',
       'Sand / Surf h1',
     ]);
+  });
+
+  it('a beach side is its pair’s two players; an indoor side is its team, never the roster', () => {
+    expect(display([], { bootstrap: BEACH }).sides).toEqual({
+      first: { players: ['Sand / Surf h1', 'Sand / Surf h2'] },
+      second: { players: ['Dune / Tide a1', 'Dune / Tide a2'] },
+    });
+    expect(display([]).sides.first.players).toEqual(['Falcons']);
   });
 
   it('indoor names the serving side only, even when its sheet carries a pair order', () => {
