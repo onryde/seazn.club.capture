@@ -989,7 +989,6 @@
   "scoring.football.start.ask": "Teams ready?",
   "scoring.football.tool.more": "More",
   "scoring.football.hold.name": "Hold for {label}",
-  "scoring.football.hold.hint": "Hold 3 s",
   "scoring.football.tallySaid": "Score: {first} {firstGoals}, {second} {secondGoals}",
   "scoring.football.hint": "Record with the buttons under the score"
 }

@@ -100,7 +100,7 @@ const ToolButton = memo(function ToolButton({
 });
 
 /**
- * A tool that must be held (ruling 160): the same cell, a 3 s hold under the fill, its second line saying so. Letting go
+ * A tool that must be held (ruling 160): the same cell, a 3 s hold under the fill, said in its screen-reader name ("Hold for ..."); no line of its own, so the cell keeps its height in every phase. Letting go
  * early, the app leaving the foreground or the tool going disabled abandons it with nothing sent (`useHold`).
  */
 const HeldToolButton = memo(function HeldToolButton({
@@ -134,9 +134,6 @@ const HeldToolButton = memo(function HeldToolButton({
         style={tool.enabled ? labelOf(tool.kind, brightInk) : styles.labelOff}
       >
         {label}
-      </Text>
-      <Text variant="metricUnit" numberOfLines={1}>
-        {t('scoring.football.hold.hint')}
       </Text>
     </Pressable>
   );

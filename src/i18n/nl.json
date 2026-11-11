@@ -989,7 +989,6 @@
   "scoring.football.start.ask": "Teams klaar?",
   "scoring.football.tool.more": "Meer",
   "scoring.football.hold.name": "Houd ingedrukt: {label}",
-  "scoring.football.hold.hint": "Houd 3 s vast",
   "scoring.football.tallySaid": "Stand: {first} {firstGoals}, {second} {secondGoals}",
   "scoring.football.hint": "Leg vast met de knoppen onder de stand"
 }

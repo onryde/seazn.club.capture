@@ -989,7 +989,6 @@
   "scoring.football.start.ask": "¿Equipos listos?",
   "scoring.football.tool.more": "Más",
   "scoring.football.hold.name": "Mantén pulsado: {label}",
-  "scoring.football.hold.hint": "Mantén 3 s",
   "scoring.football.tallySaid": "Marcador: {first} {firstGoals}, {second} {secondGoals}",
   "scoring.football.hint": "Registra con los botones bajo el marcador"
 }

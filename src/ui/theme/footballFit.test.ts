@@ -416,11 +416,31 @@ describe('the tool row at 320 and 360 in four languages', () => {
   );
 });
 
-describe('the held tool’s hold line at 320 and 360 in four languages (ruling 160)', () => {
-  it.each(LANGUAGES)('%s: "Hold 3 s" takes one line of the tool’s text', (_lang, dictionary) => {
-    const hint = said(dictionary, 'scoring.football.hold.hint');
-    for (const width of WIDTHS)
-      expect(linesOf(hint, toolText(width), noteWidth), `${hint} @${width}`).toBe(1);
+// Ruling 160's hold cue is the fill and the screen-reader name, not a line: the End of period cell is one height in every
+// phase (H1, H2, ET1, ET2) and language. A cell is its lines (19 each, `actionSecondary`) plus the cell's padding (space.xs
+// a side) and outline (1 a side), never under a touch target (48): two lines is 48, a third would be 67.
+const PHASE_KEYS = ['HT', 'FT', 'ET_HT', 'ET_FT'] as const;
+const cellHeight = (lines: number) =>
+  Math.max(
+    layout.touch,
+    lines * typeScale.actionSecondary.lineHeight + 2 * space.xs + 2 * layout.iconBorder,
+  );
+
+describe('the End of period cell’s height at 320 and 360 (ruling 160)', () => {
+  it('is 48 dp with two lines and 67 with three, from the tokens', () => {
+    expect(typeScale.actionSecondary.lineHeight).toBe(19);
+    expect(cellHeight(1)).toBe(48);
+    expect(cellHeight(2)).toBe(48);
+    expect(cellHeight(3)).toBe(67);
+  });
+
+  it.each(LANGUAGES)('%s: the cell is 48 dp in every phase', (_lang, dictionary: Dictionary) => {
+    for (const marker of PHASE_KEYS)
+      for (const width of WIDTHS) {
+        const label = said(dictionary, `scoring.football.end.${marker}`);
+        const lines = linesOf(label, toolText(width), actionWidth);
+        expect(cellHeight(lines), `${label} @${width}`).toBe(48);
+      }
   });
 });
 

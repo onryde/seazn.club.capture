@@ -347,6 +347,12 @@ describe('the squares (ruling 144)', () => {
     );
   });
 
+  it('in the shootout a team with no team sheet still has no note line, so the kick row sits where it does with one', async () => {
+    await open(footballSeed({ sheet: 'none', cfg: KO_11, events: asSeed(KICKS_4_3) }));
+    for (const side of ['first', 'second'] as const)
+      expect(within(column(side)).queryByTestId('column-note-room')).toBeNull();
+  });
+
   it('two taps on Sub open one player list, not two', async () => {
     const app = await open(LIVE);
     const sub = () =>
@@ -761,15 +767,16 @@ describe('End of period is a 3 s hold (ruling 160)', () => {
     expect(await periodEvents(app, NO_STAMP)).toHaveLength(1);
   });
 
-  it('says so on the plate: the label and a hold line, named "Hold for …", More staying a tap', async () => {
+  it('keeps its word and has no line of its own: the cell is as it was, More staying a tap', async () => {
     await open(NO_STAMP);
     const button = periodButton(en['scoring.football.end.HT']);
     expect(within(button).getByText(en['scoring.football.end.HT'])).toBeTruthy();
-    expect(within(button).getByText(en['scoring.football.hold.hint'])).toBeTruthy();
-    const more = within(screen.getByTestId('tool-row')).getByRole('button', {
-      name: en['scoring.football.tool.more'],
-    });
-    expect(within(more).queryByText(en['scoring.football.hold.hint'])).toBeNull();
+    expect(within(button).getAllByText(/./)).toHaveLength(1);
+    expect(
+      within(screen.getByTestId('tool-row')).getByRole('button', {
+        name: en['scoring.football.tool.more'],
+      }),
+    ).toBeTruthy();
   });
 
   it.each([

@@ -124,6 +124,5 @@ describe('ToolRow with a held tool', () => {
     renderWithPorts(<ToolRow tools={[period]} onTool={onTool} />);
     act(() => fireEvent.click(screen.getByRole('button', { name: en['scoring.football.end.HT'] })));
     expect(onTool).toHaveBeenCalledExactlyOnceWith('period');
-    expect(screen.queryByText(en['scoring.football.hold.hint'])).toBeNull();
   });
 });
