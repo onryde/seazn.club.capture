@@ -163,6 +163,12 @@ async function home(app: LaunchedApp): Promise<void> {
  * A knockout tie played through in the phone's language, from Start match: a goal, a card and a sub, the halves, extra
  * time and the kicks; Undo reopens the decision; Home's card reads the result. Every word from `words`, names as typed.
  */
+/**
+ * A whole knockout tie: four period ends each held for HOLD_MS (owner ruling 160) plus the kicks, under fake timers. Every flushed
+ * second re-renders the pad, so it runs ~14 s of CPU on a loaded runner, over the ui project's 15 s default.
+ */
+const KNOCKOUT_TIMEOUT_MS = 45_000;
+
 async function playKnockout(app: LaunchedApp, words: Words): Promise<void> {
   const w = (key: string): string => {
     const text = words[key];
@@ -325,9 +331,13 @@ describe('a football match from the scan to the shootout', () => {
     expect((await ledger(app, KNOCKOUT)).map((event) => event.type)).toEqual(['core.start']);
   });
 
-  it('plays a knockout tie through: a goal, a card and a sub, the halves, extra time and the kicks; Undo reopens the decision', async () => {
-    await playKnockout(await scanned(KNOCKOUT), en);
-  });
+  it(
+    'plays a knockout tie through: a goal, a card and a sub, the halves, extra time and the kicks; Undo reopens the decision',
+    async () => {
+      await playKnockout(await scanned(KNOCKOUT), en);
+    },
+    KNOCKOUT_TIMEOUT_MS,
+  );
 
   it('5–5 after extra time, decided on the fourth round: Home’s card reads 5–5 (4–1)', async () => {
     const seed = footballSeed({
@@ -411,5 +421,6 @@ describe('the pad in the phone’s language', () => {
     async (language, words: Words) => {
       await playKnockout(await opened(KNOCKOUT, [language]), words);
     },
+    KNOCKOUT_TIMEOUT_MS,
   );
 });
