@@ -3,6 +3,7 @@ import { Text } from 'react-native';
 import { describe, expect, it, vi } from 'vitest';
 import { TeamColumn, type TeamAction, type TeamColumnView } from '@/ui/components/TeamColumn';
 import { goalHeight } from '@/ui/theme/columnBoard';
+import { layOut } from '../../../test/layOut';
 import { colour, layout } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
 import { declaredStyle } from '../../../test/declaredStyle';
@@ -257,5 +258,44 @@ describe('TeamColumn', () => {
       `${typeScale.scoreCompact.fontSize}px`,
     );
     expect(declaredStyle(button('Goal, Riverside FC, 2'), 'flex-direction')).not.toBe('row');
+  });
+
+  // Controller ruling 138: a compact square's numeral scales from its measured height, 0.4375 of it (56 dp at 128), never
+  // under tallyCompact's 30 (what 48 dp holds beside the word) nor over the full tier's 64; a full square stays at 64.
+  it.each([
+    [48, 30],
+    [128, 56],
+    [201, 64],
+  ] as const)('a compact square %i dp tall sets its numeral at %i dp', (height, size) => {
+    renderColumn(VIEW, true);
+    layOut(button('Goal, Riverside FC, 2'), { width: 112, height });
+    expect(getComputedStyle(screen.getByTestId('column-value')).fontSize).toBe(`${size}px`);
+  });
+
+  it('a full square stays at the full numeral, whatever it measures', () => {
+    renderColumn(VIEW);
+    layOut(button('Goal, Riverside FC, 2'), { width: 112, height: 100 });
+    expect(getComputedStyle(screen.getByTestId('column-value')).fontSize).toBe(
+      `${typeScale.scoreCompact.fontSize}px`,
+    );
+  });
+
+  it('the numeral follows a square that shrinks again', () => {
+    renderColumn(VIEW, true);
+    const square = button('Goal, Riverside FC, 2');
+    layOut(square, { width: 112, height: 128 });
+    layOut(square, { width: 112, height: 48 });
+    expect(getComputedStyle(screen.getByTestId('column-value')).fontSize).toBe('30px');
+  });
+
+  it('the accessible name carries the sport’s words and then a disabled note', () => {
+    renderColumn({
+      ...VIEW,
+      actions: [
+        GOAL,
+        { ...SUB, said: 'Substitution, Riverside FC', enabled: false, note: 'No subs left' },
+      ],
+    });
+    expect(button('Substitution, Riverside FC, No subs left')).toBeTruthy();
   });
 });

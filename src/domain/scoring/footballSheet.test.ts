@@ -264,16 +264,26 @@ describe('Yellow and Red (design §6.3)', () => {
       expect(footballChoose(yellow, id, LIVE, STAMP)).toEqual({ kind: 'stay' });
   });
 
-  // The fourth question, an empty input: everyone is sent off or none is bookable, so the list is empty and the step
-  // still draws (the screen's empty state), and nothing records.
-  it('an empty bookable list is an empty step, and a choice on it does nothing', () => {
+  // The fourth question, an empty input: everyone is sent off, so nobody is bookable. The step says so in one heading line
+  // (the controller's ruling 139), which takes no press, and nothing records.
+  it('an empty bookable list is one line saying no one can be booked, and a choice on it does nothing', () => {
     const empty = {
       ...LIVE,
       sides: { ...LIVE.sides, first: { ...LIVE.sides.first, cardable: [] } },
     };
-    const yellow = flowOf(footballOpen('yellow.first', empty, STAMP));
-    expect(footballStep(yellow, empty).options).toEqual([]);
-    expect(footballChoose(yellow, H(1), empty, STAMP)).toEqual({ kind: 'stay' });
+    for (const button of ['yellow.first', 'red.first']) {
+      const step = flowOf(footballOpen(button, empty, STAMP));
+      expect(footballStep(step, empty).options).toEqual([
+        {
+          id: 'heading.none',
+          label: { key: 'scoring.football.sheet.noOneToBook' },
+          tone: 'standard',
+          kind: 'heading',
+        },
+      ]);
+      expect(footballChoose(step, 'heading.none', empty, STAMP)).toEqual({ kind: 'stay' });
+      expect(footballChoose(step, H(1), empty, STAMP)).toEqual({ kind: 'stay' });
+    }
   });
 });
 

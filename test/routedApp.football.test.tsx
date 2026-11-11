@@ -181,7 +181,11 @@ async function playKnockout(app: LaunchedApp, words: Words): Promise<void> {
   expect([value('first'), value('second')]).toEqual(['1', '0']);
 
   // Yellow → the player → the reason (the button names the colour: no colour step).
-  await press(app, w('scoring.football.column.yellow'), column('second'));
+  await press(
+    app,
+    fill(w('scoring.football.column.yellowSaid'), { team: 'Northgate United' }),
+    column('second'),
+  );
   await press(app, '#5 N. Evans');
   await press(app, w('scoring.football.sheet.noReason'));
   expect(lastTap()).toBe(
@@ -194,7 +198,11 @@ async function playKnockout(app: LaunchedApp, words: Words): Promise<void> {
   );
 
   // Sub → who comes off → who comes on (the bench).
-  await press(app, w('scoring.football.column.sub'), column('first'));
+  await press(
+    app,
+    fill(w('scoring.football.column.subSaid'), { team: 'Riverside FC' }),
+    column('first'),
+  );
   await press(app, '#11 R. Kowalski');
   await press(app, '#14 R. Novak');
   expect(lastTap()).toBe(
@@ -346,7 +354,11 @@ describe('offline (design §7.3)', () => {
     await press(app, en['scoring.football.sheet.dontKnow']);
     later(app, 70);
     await flush(0);
-    await press(app, en['scoring.football.column.yellow'], column('second'));
+    await press(
+      app,
+      fill(en['scoring.football.column.yellowSaid'], { team: 'Northgate United' }),
+      column('second'),
+    );
     pressedAt.push(seconds);
     await press(app, '#5 N. Evans');
     await press(app, en['scoring.football.sheet.noReason']);

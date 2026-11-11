@@ -4,7 +4,7 @@ import es from '@/i18n/es.json';
 import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
 import { layout, space } from '@/ui/theme/tokens';
-import { BOARD_FULL_HEIGHT } from '@/ui/theme/columnBoard';
+import { BOARD_FULL_HEIGHT, boardTier, goalNumeralSize } from '@/ui/theme/columnBoard';
 import { maxFontScale, typeScale } from '@/ui/theme/type';
 import { loadFont } from '../../../test/fontMetrics';
 import { linesOf } from '../../../test/textFit';
@@ -580,4 +580,31 @@ describe('the pad’s height, portrait', () => {
       ).toBeLessThanOrEqual(teamText(width));
     },
   );
+
+  // The screen's own rule, not a copy: the board's height is the window less the 230 around it.
+  it('the real boardTier: compact at 559 and 560, compact at 713, full at 714', () => {
+    const tierAt = (window: number) => boardTier(window - AROUND);
+    expect([559, 560, 713, 714].map(tierAt)).toEqual(['compact', 'compact', 'compact', 'full']);
+  });
+
+  // Ruling 138: the numeral follows the square's measured height, 0.4375 of it, between 30 (what a 48 dp square holds
+  // beside its word) and the full tier's 64. The full tier is the full size at its own least square.
+  it('the numeral: 30 at 48, 56 at 128, 64 at the cap and in the full tier at its 100 dp square', () => {
+    expect(layout.goalNumeralRatio).toBe(0.4375);
+    expect(goalNumeralSize('compact', 48)).toBe(30);
+    expect(goalNumeralSize('compact', 128)).toBe(56);
+    expect(goalNumeralSize('compact', 201)).toBe(64);
+    expect(goalNumeralSize('full', FULL.goal)).toBe(64);
+    expect(FULL.goal).toBe(100);
+  });
+
+  // A bigger numeral beside the word shrinks to its room (scoreFloor); the widest goal count, two figures, at 128 dp.
+  it('at 128 dp the two-figure goal count, 56 dp, still needs at least the floor beside the widest Goal word', () => {
+    const size = goalNumeralSize('compact', 128);
+    for (const width of WIDTHS)
+      expect(
+        Math.min(1, compactNumeralRoom(width, widestWord('goal')) / digitsWidth('10', size)),
+        `@${width}`,
+      ).toBeGreaterThanOrEqual(layout.scoreFloor);
+  });
 });

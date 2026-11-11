@@ -51,6 +51,70 @@ export const ClockBar = memo(function ClockBar({ view, onAction, compact }: Cloc
   );
 });
 
+const styles = StyleSheet.create({
+  bar: { alignSelf: 'stretch' },
+  face: { alignItems: 'center', justifyContent: 'center' },
+  faceFull: { minHeight: faceHeight('full') },
+  faceCompact: { minHeight: faceHeight('compact') },
+  time: { alignSelf: 'stretch', textAlign: 'center' },
+  timePaused: { alignSelf: 'stretch', textAlign: 'center', color: colour.ink3 },
+  periodRow: {
+    height: PERIOD_HEIGHT,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: space.sm,
+  },
+  period: { flexShrink: 1, color: colour.ink3 },
+  pausedTag: {
+    flexShrink: 0,
+    paddingHorizontal: space.xs,
+    borderWidth: layout.iconBorder,
+    borderColor: colour.caution,
+    borderRadius: radius.card,
+  },
+  pausedWord: { color: colour.caution },
+  plate: {
+    minHeight: layout.touch,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: space.sm,
+    paddingHorizontal: space.sm,
+    borderRadius: radius.card,
+    backgroundColor: colour.lime,
+  },
+  plateFullGap: { marginTop: space.sm },
+  plateCompactGap: { marginTop: space.xs },
+  platePressed: { opacity: pressedOpacity.plate },
+  plateLabel: { color: plateInk },
+  glyph: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: layout.padGlyphGap,
+  },
+  glyphBar: {
+    width: layout.padGlyphBar,
+    height: layout.padGlyphHeight,
+    backgroundColor: plateInk,
+  },
+  // A play triangle: a box with no width whose left border is the point's body and whose top and bottom are clear.
+  triangle: {
+    width: 0,
+    height: 0,
+    borderTopWidth: layout.padGlyphHalf,
+    borderBottomWidth: layout.padGlyphHalf,
+    borderLeftWidth: layout.padGlyphLength,
+    borderTopColor: colour.clear,
+    borderBottomColor: colour.clear,
+    borderLeftColor: plateInk,
+  },
+});
+
+const faceFull = [styles.face, styles.faceFull];
+const faceCompact = [styles.face, styles.faceCompact];
+
 type ClockFaceProps = {
   readonly time: string;
   readonly said: string;
@@ -143,61 +207,6 @@ function PlateGlyph({ kind }: { readonly kind: 'pause' | 'resume' }) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  bar: { alignSelf: 'stretch' },
-  face: { alignItems: 'center', justifyContent: 'center' },
-  faceFull: { minHeight: faceHeight('full') },
-  faceCompact: { minHeight: faceHeight('compact') },
-  time: { alignSelf: 'stretch', textAlign: 'center' },
-  timePaused: { alignSelf: 'stretch', textAlign: 'center', color: colour.ink3 },
-  periodRow: {
-    height: PERIOD_HEIGHT,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: space.sm,
-  },
-  period: { flexShrink: 1, color: colour.ink3 },
-  pausedTag: {
-    flexShrink: 0,
-    paddingHorizontal: space.xs,
-    borderWidth: layout.iconBorder,
-    borderColor: colour.caution,
-    borderRadius: radius.card,
-  },
-  pausedWord: { color: colour.caution },
-  plate: {
-    minHeight: layout.touch,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: space.sm,
-    paddingHorizontal: space.sm,
-    borderRadius: radius.card,
-    backgroundColor: colour.lime,
-  },
-  plateFullGap: { marginTop: space.sm },
-  plateCompactGap: { marginTop: space.xs },
-  platePressed: { opacity: pressedOpacity.plate },
-  plateLabel: { color: plateInk },
-  glyph: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3 },
-  glyphBar: { width: 4, height: 14, backgroundColor: plateInk },
-  // A play triangle: a box with no width whose left border is the point's body and whose top and bottom are clear.
-  triangle: {
-    width: 0,
-    height: 0,
-    borderTopWidth: 7,
-    borderBottomWidth: 7,
-    borderLeftWidth: 12,
-    borderTopColor: colour.clear,
-    borderBottomColor: colour.clear,
-    borderLeftColor: plateInk,
-  },
-});
-
-const faceFull = [styles.face, styles.faceFull];
-const faceCompact = [styles.face, styles.faceCompact];
 
 /** Module-level so render allocates no function. */
 function pressable(rest: StyleProp<ViewStyle>, pressedStyle: StyleProp<ViewStyle>) {

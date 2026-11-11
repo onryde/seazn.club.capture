@@ -195,18 +195,31 @@ function useColumnView({ column, half, display, readingNow }: SideColumnProps): 
 /** The swatch of a card button: Yellow's caution, Red's dismissal (AGENTS §5: the pad's card icons, nothing else). */
 const SWATCH = { yellow: 'caution', red: 'dismissal' } as const;
 
-/** What a screen reader hears of the primary button: its word, the team and its score ("Goal, Home FC, 2"). */
-function primarySaid(
+/**
+ * What a screen reader hears of a button: the primary one says its word, the team and its score ("Goal, Home FC, 2");
+ * Yellow, Red and Sub name the team (controller ruling 140), the visible words unchanged.
+ */
+function saidOf(
   action: BoardAction,
   half: PadHalf<FootballPadKey>,
   words: (text: BoardAction['label']) => string,
 ): string | null {
-  if (!action.primary) return null;
-  const key =
-    parseFootballAction(action.id)?.action === 'scored'
-      ? 'scoring.football.column.scoredSaid'
-      : 'scoring.football.column.goalSaid';
-  return words({ key, vars: { team: half.label, value: half.value } });
+  const word = parseFootballAction(action.id)?.action;
+  const vars = { team: half.label, value: half.value };
+  switch (word) {
+    case 'goal':
+      return words({ key: 'scoring.football.column.goalSaid', vars });
+    case 'scored':
+      return words({ key: 'scoring.football.column.scoredSaid', vars });
+    case 'yellow':
+      return words({ key: 'scoring.football.column.yellowSaid', vars });
+    case 'red':
+      return words({ key: 'scoring.football.column.redSaid', vars });
+    case 'sub':
+      return words({ key: 'scoring.football.column.subSaid', vars });
+    default:
+      return null;
+  }
 }
 
 function teamAction(
@@ -218,7 +231,7 @@ function teamAction(
   return {
     id: action.id,
     label: words(action.label),
-    said: primarySaid(action, half, words),
+    said: saidOf(action, half, words),
     primary: action.primary,
     enabled: action.enabled,
     note: action.note === null ? null : words(action.note),

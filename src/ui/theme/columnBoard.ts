@@ -74,3 +74,15 @@ export const BOARD_FULL_HEIGHT = clockBarHeight('full') + columnHeight('full');
 /** The tier a board laid out `height` tall takes. */
 export const boardTier = (height: number): BoardTier =>
   height < BOARD_FULL_HEIGHT ? 'compact' : 'full';
+
+/**
+ * The Goal square's numeral size in dp, from the square's measured height (controller ruling 138): the full tier is
+ * always the full size (`scoreCompact`); compact scales it by `layout.goalNumeralRatio`, never under `tallyCompact`'s size
+ * (what a 48 dp square holds beside its word) and never over the full size. Layout-time only: no tick reads it.
+ */
+export function goalNumeralSize(tier: BoardTier, height: number): number {
+  const most = typeScale[TIER_FACES.full.numeral].fontSize;
+  if (tier === 'full') return most;
+  const least = typeScale[TIER_FACES.compact.numeral].fontSize;
+  return Math.min(most, Math.max(least, Math.round(height * layout.goalNumeralRatio)));
+}

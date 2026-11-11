@@ -94,3 +94,11 @@ export const YELLOWED_HOME_4: readonly Spec[] = [
   ...KICK_OFF,
   card({ by: 'H', color: 'yellow', person: 'ent-home-p4' }),
 ];
+
+/** Kick-off, then all sixteen of the home side's players shown a red (the fake's ids: `ent-home-p1` to `p16`). */
+export const ALL_HOME_SENT_OFF: readonly Spec[] = [
+  ...KICK_OFF,
+  ...Array.from({ length: 16 }, (_, i) =>
+    card({ by: 'H', color: 'red', person: `ent-home-p${i + 1}` }),
+  ),
+];

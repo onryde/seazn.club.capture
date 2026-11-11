@@ -66,6 +66,7 @@ type SheetWord =
   | 'red'
   | 'secondYellow'
   | 'bench'
+  | 'noOneToBook'
   | 'reason'
   | 'noReason'
   | 'whoComesOff'
@@ -395,12 +396,18 @@ function cardStep(current: Flow<'card'>, display: FootballDisplay): FootballStep
   };
 }
 
-/** The players on the pitch first, then everyone else bookable under a "Bench" heading. */
-/** `noting`: a Yellow's list says which players are already on a yellow, whose next one is a sending-off. */
+/**
+ * The players on the pitch first, then everyone else bookable under a "Bench" heading. `noting`: a Yellow's list says
+ * which players are already on a yellow, whose next one is a sending-off. Nobody bookable (everyone is sent off): one
+ * heading line says so, so the sheet is never an unexplained empty list (controller ruling 139).
+ */
 function bookingOptions(team: FootballSide, noting: boolean): FootballStepOption[] {
   const onPitch = new Set(team.onPitch.map((player) => player.personId));
   const first = team.cardable.filter((player) => onPitch.has(player.personId));
   const rest = team.cardable.filter((player) => !onPitch.has(player.personId));
+  if (team.cardable.length === 0) {
+    return [{ ...word('noOneToBook'), id: 'heading.none', kind: 'heading' }];
+  }
   const bench: FootballStepOption = { ...word('bench'), id: 'heading.bench', kind: 'heading' };
   const noted = (players: readonly FootballPlayer[]) =>
     playerOptions(players).map((option, at) =>
@@ -580,6 +587,8 @@ function chooseCard(current: Flow<'card'>, id: string, display: FootballDisplay)
   const team = display.sides[current.side];
   if (current.step === 'player') {
     const person = playerChosen(team.cardable, id);
+    // The heading lines (Bench, No one can be booked) take no press.
+    if (person === null) return STAY;
     // A yellow shown to a player already yellowed is the second one: a sending-off.
     const second = current.color === 'yellow' && person !== null && team.yellowed.includes(person);
     const color: FootballCardWord = second ? 'second_yellow' : current.color;

@@ -253,7 +253,7 @@ export type FootballPadKey =
   | `scoring.football.break.${FootballBreakWord}`
   | `scoring.football.end.${FootballMarker}`
   | `scoring.football.clock.${'start' | 'pause' | 'resume' | 'paused' | 'said'}`
-  | `scoring.football.column.${'goal' | 'yellow' | 'red' | 'sub' | 'scored' | 'missed' | 'noSubs' | 'noSheet' | 'goalSaid' | 'scoredSaid'}`
+  | `scoring.football.column.${'goal' | 'yellow' | 'red' | 'sub' | 'scored' | 'missed' | 'noSubs' | 'noSheet' | 'goalSaid' | 'scoredSaid' | 'yellowSaid' | 'redSaid' | 'subSaid'}`
   | `scoring.football.card.${FootballCardWord}`
   | `scoring.football.outcome.${FootballOutcomeWord}`
   | `scoring.football.more.${'penalty' | 'sinBin' | 'sinBinEnd' | 'shot' | 'correct' | 'details'}`

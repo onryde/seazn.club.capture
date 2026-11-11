@@ -1,5 +1,6 @@
-import { Fragment, memo, type ReactNode, useCallback } from 'react';
+import { Fragment, memo, type ReactNode, useCallback, useMemo, useState } from 'react';
 import {
+  type LayoutChangeEvent,
   type PressableStateCallbackType,
   Pressable,
   type StyleProp,
@@ -10,7 +11,13 @@ import {
 import type { PadBar } from '@/domain/scoring/padView';
 import { NameText } from '@/ui/components/NameText';
 import { Text } from '@/ui/components/Text';
-import { type BoardTier, goalHeight, MARKS_HEIGHT, TIER_FACES } from '@/ui/theme/columnBoard';
+import {
+  type BoardTier,
+  goalHeight,
+  goalNumeralSize,
+  MARKS_HEIGHT,
+  TIER_FACES,
+} from '@/ui/theme/columnBoard';
 import { colour, layout, plateInk, pressedOpacity, radius, space } from '@/ui/theme/tokens';
 import { type TypeRole, typeScale } from '@/ui/theme/type';
 
@@ -165,8 +172,11 @@ const CardCount = memo(function CardCount({
 
 type ColumnButtonProps = { readonly action: TeamAction; readonly onAction: (id: string) => void };
 
-const nameOf = (action: TeamAction): string =>
-  action.said ?? (action.note === null ? action.label : `${action.label}, ${action.note}`);
+/** What a screen reader hears: the sport's words if it gave them, else the label, then the note under it. */
+const nameOf = (action: TeamAction): string => {
+  const base = action.said ?? action.label;
+  return action.note === null ? base : `${base}, ${action.note}`;
+};
 
 type GoalSquareProps = ColumnButtonProps & {
   readonly value: string;
@@ -180,9 +190,16 @@ type GoalSquareProps = ColumnButtonProps & {
 const GoalSquare = memo(function GoalSquare({ action, value, tier, onAction }: GoalSquareProps) {
   const press = useCallback(() => onAction(action.id), [onAction, action.id]);
   const off = !action.enabled;
+  const [height, setHeight] = useState(goalHeight(tier));
+  const measured = useCallback((event: LayoutChangeEvent) => {
+    setHeight(Math.round(event.nativeEvent.layout.height));
+  }, []);
+  const size = goalNumeralSize(tier, height);
+  const fit = useMemo(() => ({ fontSize: size, lineHeight: Math.round(size * 1.06) }), [size]);
   return (
     <Pressable
       testID="goal-square"
+      onLayout={measured}
       accessibilityRole="button"
       accessibilityLabel={nameOf(action)}
       disabled={off}
@@ -196,7 +213,11 @@ const GoalSquare = memo(function GoalSquare({ action, value, tier, onAction }: G
         numberOfLines={1}
         adjustsFontSizeToFit
         minimumFontScale={layout.scoreFloor}
-        style={[styles.numeral, off ? styles.labelOff : styles.labelPrimary]}
+        style={[
+          styles.numeral,
+          tier === 'compact' ? fit : null,
+          off ? styles.labelOff : styles.labelPrimary,
+        ]}
       >
         {value}
       </Text>

@@ -357,6 +357,21 @@ const base = {
   /** The square swatch before Yellow's and Red's word (owner ruling 132): the card icon's colours, drawn as a square. */
   padSwatch: 8,
   /**
+   * The clock plate's Pause and Resume glyphs, drawn from boxes (owner ruling 130): Pause is two bars `padGlyphBar` wide and
+   * `padGlyphHeight` tall, `padGlyphGap` apart; Resume is a triangle `padGlyphLength` long and `2 * padGlyphHalf` tall.
+   */
+  padGlyphBar: 4,
+  padGlyphHeight: 14,
+  padGlyphGap: 3,
+  padGlyphLength: 12,
+  padGlyphHalf: 7,
+  /**
+   * The Goal square's numeral scales with the square's measured height (controller ruling 138): `goalNumeralRatio` of it,
+   * so a 128 dp square sets 56 dp, never over the full tier's `scoreCompact` size and never under `tallyCompact`'s, which
+   * is what a 48 dp square holds beside its word.
+   */
+  goalNumeralRatio: 0.4375,
+  /**
    * The stopwatch beside the cards, drawn at this size in its 24-unit box (the ring a little over half of it), and the
    * height of the marks' row: the card sits at its middle (padFit.test.ts).
    */
@@ -476,13 +491,6 @@ const base = {
   cricketRunKey: 64,
   cricketExtraKey: 48,
   cricketActionKey: 56,
-  /**
-   * A team column's buttons share its height by weight (S2-5 design §6.2, ruling 105; the owner's pick of option 2 in
-   * `pad-layout-c-v3.html`, "Goal shrunk to 3/4 of its size"): the primary button 0.75, each other one 0.5, so Goal, Card
-   * and Sub stand 3 : 2 : 2. Each is at least `touch` tall (footballFit.test.ts).
-   */
-  columnPrimary: 0.75,
-  columnAction: 0.5,
   /**
    * The least a team column's name with gaps shrinks to before its two-line ellipsis, so no word of it breaks at a letter
    * (the controller's fix-round ruling a): "Wolverhampton" (145.1 dp of `matchName`) needs 0.96 of it at 360 and 0.83 at

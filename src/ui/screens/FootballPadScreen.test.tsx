@@ -19,7 +19,13 @@ import {
   start,
   type Spec,
 } from '../../../test/footballLedger';
-import { KICK_OFF, KICKS_4_1, KICKS_4_3, YELLOWED_HOME_4 } from '../../../test/footballPadFixtures';
+import {
+  KICK_OFF,
+  KICKS_4_1,
+  KICKS_4_3,
+  YELLOWED_HOME_4,
+  ALL_HOME_SENT_OFF,
+} from '../../../test/footballPadFixtures';
 import { screenIsHeld, type HoldLog } from '../../../test/heldScreen';
 import { declaredStyle } from '../../../test/declaredStyle';
 import { edgeOf } from '../../../test/pressState';
@@ -110,6 +116,9 @@ const clockBar = () => screen.getByTestId('clock-bar');
 const lastTap = () => screen.getByTestId('last-tap-sentence').textContent;
 const value = (side: 'first' | 'second') =>
   within(column(side)).getByTestId('column-value').textContent;
+/** A button's screen-reader name, from the dictionary: the team in it (controller ruling 140). */
+const teamSaid = (word: 'yellowSaid' | 'redSaid' | 'subSaid', team: string) =>
+  fill(en[`scoring.football.column.${word}`], { team });
 const goalSaid = (team: string, score: string) =>
   fill(en['scoring.football.column.goalSaid'], { team, value: score });
 const buttonNames = (side: 'first' | 'second') =>
@@ -214,14 +223,25 @@ describe('the team columns', () => {
     expect(within(column('first')).getByText('Riverside FC')).toBeTruthy();
     expect(within(column('second')).getByText('Northgate United')).toBeTruthy();
     expect([value('first'), value('second')]).toEqual(['0', '0']);
+    // The names carry the team (ruling 140); the words drawn are unchanged.
     expect(buttonNames('first')).toEqual([
       goalSaid('Riverside FC', '0'),
-      en['scoring.football.column.yellow'],
-      en['scoring.football.column.red'],
-      en['scoring.football.column.sub'],
+      teamSaid('yellowSaid', 'Riverside FC'),
+      teamSaid('redSaid', 'Riverside FC'),
+      teamSaid('subSaid', 'Riverside FC'),
     ]);
     expect(buttonNames('second')).toEqual([
       goalSaid('Northgate United', '0'),
+      teamSaid('yellowSaid', 'Northgate United'),
+      teamSaid('redSaid', 'Northgate United'),
+      teamSaid('subSaid', 'Northgate United'),
+    ]);
+    expect(
+      within(column('first'))
+        .getAllByRole('button')
+        .slice(1)
+        .map((button) => button.textContent),
+    ).toEqual([
       en['scoring.football.column.yellow'],
       en['scoring.football.column.red'],
       en['scoring.football.column.sub'],
@@ -278,7 +298,7 @@ describe('Yellow and Red (ruling 136)', () => {
 
   it('Yellow opens the player list at once, with no colour step, titled for the colour and the team', async () => {
     const app = await open(LIVE);
-    await press(app, en['scoring.football.column.yellow'], column('first'));
+    await press(app, teamSaid('yellowSaid', 'Riverside FC'), column('first'));
     const sheet = screen.getByTestId('step-sheet');
     expect(
       within(sheet).getByText(fill(en['scoring.football.sheet.yellow'], { team: 'Riverside FC' })),
@@ -290,7 +310,7 @@ describe('Yellow and Red (ruling 136)', () => {
 
   it('a player on a yellow stays in the list with “2nd yellow · sent off”, and choosing him records a second yellow', async () => {
     const app = await open(BOOKED);
-    await press(app, en['scoring.football.column.yellow'], column('first'));
+    await press(app, teamSaid('yellowSaid', 'Riverside FC'), column('first'));
     const sheet = screen.getByTestId('step-sheet');
     expect(within(sheet).getAllByText(en['scoring.football.sheet.secondYellow'])).toHaveLength(1);
     later(app);
@@ -302,7 +322,7 @@ describe('Yellow and Red (ruling 136)', () => {
 
   it('Red names the colour in the title, with no 2nd yellow note', async () => {
     const app = await open(BOOKED);
-    await press(app, en['scoring.football.column.red'], column('second'));
+    await press(app, teamSaid('redSaid', 'Northgate United'), column('second'));
     const sheet = screen.getByTestId('step-sheet');
     expect(
       within(sheet).getByText(fill(en['scoring.football.sheet.red'], { team: 'Northgate United' })),
@@ -310,11 +330,22 @@ describe('Yellow and Red (ruling 136)', () => {
     expect(within(sheet).queryByText(en['scoring.football.sheet.secondYellow'])).toBeNull();
   });
 
+  // Ruling 139: nobody left to book is said in one line, not an unexplained empty sheet.
+  it('with everyone sent off, Yellow opens a sheet that says no one can be booked', async () => {
+    const app = await open(footballSeed({ events: asSeed(ALL_HOME_SENT_OFF) }));
+    await press(app, teamSaid('yellowSaid', 'Riverside FC'), column('first'));
+    const sheet = screen.getByTestId('step-sheet');
+    expect(within(sheet).getByText(en['scoring.football.sheet.noOneToBook'])).toBeTruthy();
+    expect(within(sheet).queryAllByRole('button')).toHaveLength(1);
+    await press(app, en['scoring.sheet.cancel']);
+    expect(screen.queryByTestId('step-sheet')).toBeNull();
+  });
+
   it('a double tap on Yellow opens one sheet, and Cancel closes it with nothing recorded', async () => {
     const app = await open(LIVE);
     later(app);
     const yellow = within(column('first')).getByRole('button', {
-      name: en['scoring.football.column.yellow'],
+      name: teamSaid('yellowSaid', 'Riverside FC'),
     });
     act(() => fireEvent.click(yellow));
     act(() => fireEvent.click(yellow));
@@ -415,7 +446,6 @@ describe('the clock’s Adjust clock, the sheets and a sin-bin', () => {
     await pass(app, 3000);
     await openAdjust(app);
     const sheet = screen.getByTestId('clock-correct-sheet');
-    expect(within(sheet).getByText(en['scoring.football.correct.title'])).toBeTruthy();
     expect(within(sheet).getByText(en['scoring.football.correct.title'])).toBeTruthy();
     expect(
       within(sheet).getByRole('button', { name: en['scoring.football.correct.set'] }),
