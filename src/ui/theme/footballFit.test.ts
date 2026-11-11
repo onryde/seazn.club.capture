@@ -46,7 +46,7 @@ const actionWidth = capsWidth('actionSecondary');
 const pausedWidth = (text: string) =>
   barlow600.width(text.toUpperCase(), typeScale.pausedTag.fontSize) +
   typeScale.pausedTag.letterSpacing * [...text].length;
-/** `goalWord`: the Goal and Scored words under the numeral, Barlow Condensed 600 at 18, 1.44 apart (ruling 152). */
+/** `goalWord`: the Goal and Scored words under the numeral, Barlow Condensed 600 at 18, 2.52 apart (0.14em, ruling 152). */
 const goalWordWidth = (text: string) =>
   barlow600.width(text.toUpperCase(), typeScale.goalWord.fontSize) +
   typeScale.goalWord.letterSpacing * [...text].length;

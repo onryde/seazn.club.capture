@@ -120,14 +120,14 @@ export const typeScale = {
     color: colour.ink2,
   },
   /**
-   * The football mockup's `.pb` word (owner ruling 152): Barlow Condensed 600 at 18, caps, 0.08em apart (1.44 dp). The
+   * The football mockup's `.pb` word (owner ruling 152): Barlow Condensed 600 at 18, caps, 0.14em apart (2.52 dp, the mockup's `.a2cols .gw`). The
    * Goal square's word under its numeral.
    */
   goalWord: {
     fontFamily: font.displaySemibold,
     fontSize: 18,
     lineHeight: 18,
-    letterSpacing: 1.44,
+    letterSpacing: 2.52,
     textTransform: 'uppercase',
     color: colour.ink2,
   },
