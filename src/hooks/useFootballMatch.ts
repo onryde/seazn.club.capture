@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { footballSubsJoining, subJoinsNow } from '@/domain/scoring/footballBoard';
+import { stoppageClosesIn } from '@/domain/scoring/footballClock';
 import { NO_RESYNC, resyncStep } from '@/domain/scoring/footballResync';
 import { footballSport } from '@/domain/scoring/footballSport';
 import type {
@@ -93,12 +95,13 @@ const NOT_NOW: PadOutcome = refusing('notNow');
 function useFootballPad(
   ports: Ports,
   runner: ScoringRunner | null,
-  pad: PadFacts | null,
+  folded: PadFacts | null,
 ): FootballPadModel | null {
   const sender = useSender<FootballTypes>(ports, runner);
   const [cardNote, setCardNote] = useState<MessageKey | null>(null);
+  const clock = useFootballClock(folded?.display ?? null);
+  const pad = useSubsNow(folded, clock);
   const display = pad?.display ?? null;
-  const clock = useFootballClock(display);
   const settle = useSettle(sender.say);
   const driver = useFootballDriver(sender);
   const taps = useTaps(driver, settle, sender.say, ignoreFlash);
@@ -113,6 +116,31 @@ function useFootballPad(
     () => modelOf(pad, sheets.view, cardNote, clock, actions, armed),
     [pad, sheets.view, cardNote, clock, actions, armed],
   );
+}
+
+/**
+ * The pad with Sub asked again as the clock runs (ruling 154): a sub pressed within 120 s of the stoppage joins it, and
+ * one pressed later opens a window of its own (`footballSubsNow`). The answer is read when the pad is drawn, and once
+ * more when the stoppage closes on a running clock, so Sub turns off on time with no tick of its own (AGENTS §8).
+ */
+function useSubsNow(folded: PadFacts | null, clock: FootballClockRead): PadFacts | null {
+  const [, redraw] = useState(0);
+  const display = folded?.display ?? null;
+  const stoppage = display?.clock.stoppage ?? null;
+  const running = display?.clock.anchor?.running === true;
+  useEffect(() => {
+    if (!running) return;
+    const left = stoppageClosesIn(stoppage, clock.readingNow());
+    if (left === null) return;
+    const timer = setTimeout(() => redraw((n) => n + 1), left * 1000);
+    return () => clearTimeout(timer);
+  }, [stoppage, running, clock]);
+  const joining = display !== null && subJoinsNow(display, clock.stampNow());
+  return useMemo(() => {
+    if (folded === null) return null;
+    const now = footballSubsJoining(folded.display, joining);
+    return now === folded.display ? folded : { ...folded, display: now };
+  }, [folded, joining]);
 }
 
 /** What the screen is drawn from, or none while the match is loading. */

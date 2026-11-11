@@ -406,6 +406,51 @@ describe('foldFootball: cards and substitutions', () => {
     });
   });
 
+  // Ruling 154: whether a team may substitute is asked with the stamp the sub would get. At the stoppage (the newest
+  // stamped event is a sub) a sub joins it; past it, a sub opens a window of its own.
+  it('subsLeftAt: a team with its three windows spent may join the stoppage but not open a fourth', () => {
+    const threeWindows = [
+      ...KICK_OFF,
+      sub({ by: 'H', off: H(8), on: H(14), at: at('H1', 600) }),
+      sub({ by: 'H', off: H(7), on: H(13), at: at('H1', 1200) }),
+      sub({ by: 'H', off: H(6), on: H(12), at: at('H1', 1500) }),
+    ];
+    const display = displayOf(threeWindows, withCfg(MATCH, CAPPED));
+    expect([display.clock.stoppage, display.subsLeftAt]).toEqual([
+      at('H1', 1500),
+      { joining: { first: true, second: true }, fresh: { first: false, second: true } },
+    ]);
+  });
+
+  it('subsLeftAt: with no stoppage both answers are a window of its own', () => {
+    const twoWindows = [
+      ...KICK_OFF,
+      sub({ by: 'H', off: H(8), on: H(14), at: at('H1', 600) }),
+      sub({ by: 'H', off: H(7), on: H(13), at: at('H1', 1200) }),
+      sub({ by: 'H', off: H(6), on: H(12), at: at('H1', 1500) }),
+      goal({ by: 'A', at: at('H1', 1600) }),
+    ];
+    const display = displayOf(twoWindows, withCfg(MATCH, CAPPED));
+    expect([display.clock.stoppage, display.subsLeftAt]).toEqual([
+      null,
+      { joining: { first: false, second: true }, fresh: { first: false, second: true } },
+    ]);
+  });
+
+  it('subsLeftAt: at half-time (no clock reading) a sub opens no window, so only the cap says no', () => {
+    const threeWindowsThenHT = [
+      ...KICK_OFF,
+      sub({ by: 'H', off: H(8), on: H(14), at: at('H1', 600) }),
+      sub({ by: 'H', off: H(7), on: H(13), at: at('H1', 1200) }),
+      sub({ by: 'H', off: H(6), on: H(12), at: at('H1', 1500) }),
+      period('HT', at('H1', 2700)),
+    ];
+    expect(displayOf(threeWindowsThenHT, withCfg(MATCH, CAPPED)).subsLeftAt.fresh).toEqual({
+      first: true,
+      second: true,
+    });
+  });
+
   it('subsLeft is false at maxSubs, with players still on the bench', () => {
     const threeSubs = [
       ...KICK_OFF,

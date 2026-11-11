@@ -171,14 +171,19 @@ export const YELLOWS = [
   { at: { minute: 116 }, side: 'first', person: 4 },
 ] as const;
 
-/** The substitutions, in the order made; subs at one stoppage share a minute. Rabiot → Fofana was a concussion substitution. */
+/**
+ * The substitutions, in the order made; subs at one stoppage share a minute. Rabiot → Fofana was a concussion
+ * substitution. Molina → Montiel (ESPN 90', Wikipedia 91') was made in the break before extra time, not in play (the
+ * controller's correction, 2026-11-11): `inBreak`, tapped after the 90+8 whistle and before extra time's Start, so it is
+ * unstamped and uses no window (Law 3). Its `at` names the whistle it followed.
+ */
 export const SUBS = [
   { at: { minute: 41 }, side: 'second', off: 11, on: 12 },
   { at: { minute: 41 }, side: 'second', off: 9, on: 26 },
   { at: { minute: 64 }, side: 'first', off: 11, on: 8 },
   { at: { minute: 71 }, side: 'second', off: 7, on: 20 },
   { at: { minute: 71 }, side: 'second', off: 22, on: 25 },
-  { at: { minute: 90, added: 1 }, side: 'first', off: 26, on: 4 },
+  { at: { minute: 90, added: 8 }, side: 'first', off: 26, on: 4, inBreak: true },
   { at: { minute: 96 }, side: 'second', off: 14, on: 13, concussion: true },
   { at: { minute: 102 }, side: 'first', off: 7, on: 5 },
   { at: { minute: 102 }, side: 'first', off: 9, on: 22 },

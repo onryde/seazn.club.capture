@@ -147,11 +147,25 @@ export type FootballDisplay = {
     readonly asOf: GameTime | null;
     /** The play phase whose ending marker stands with no clock event since (the clock bar's break word), or null. */
     readonly justEnded: string | null;
+    /**
+     * The stoppage a substitution made now may join (`subStoppageOf`, ruling 154): the newest stamped event's stamp when
+     * it is a substitution in the current phase, or null.
+     */
+    readonly stoppage: GameTime | null;
   };
   /** The period marker the engine takes now (End of period's), or null. */
   readonly marker: FootballMarker | null;
-  /** Whether each team may still substitute, in the engine's judgement (`maxSubs`, `subWindows`). */
+  /**
+   * Whether each team may still substitute, in the engine's judgement (`maxSubs`, `subWindows`), with the stamp a sub would
+   * get now (ruling 154). The fold says it as at the stoppage (`subsLeftAt.joining` while there is one); the pad's hook
+   * says it again as the clock runs past the stoppage (`footballSubsNow`).
+   */
   readonly subsLeft: Readonly<Record<PadSide, boolean>>;
+  /** The same question for a sub that joins `clock.stoppage` (`joining`) and for one that opens a window of its own (`fresh`). */
+  readonly subsLeftAt: {
+    readonly joining: Readonly<Record<PadSide, boolean>>;
+    readonly fresh: Readonly<Record<PadSide, boolean>>;
+  };
   readonly lastTap: FootballLastTap | null;
   /** This phone's Undo has something to take back. */
   readonly undoable: boolean;
@@ -194,7 +208,14 @@ export type FootballTap =
       readonly reason: string | null;
       readonly stamp: GameTime | null;
     }
-  | { readonly kind: 'sub'; readonly side: PadSide; readonly off: string; readonly on: string }
+  | {
+      readonly kind: 'sub';
+      readonly side: PadSide;
+      readonly off: string;
+      readonly on: string;
+      /** The reading when Sub was pressed: the sub joins the stoppage from it, or keeps it (`subStampFor`, ruling 154). */
+      readonly stamp: GameTime | null;
+    }
   | { readonly kind: 'period'; readonly stamp: GameTime | null }
   | {
       readonly kind: 'penaltyMiss';

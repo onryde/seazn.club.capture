@@ -4,7 +4,7 @@ import { footballPadRules } from '@seazn/engine/pad';
 import { football, type FootballState } from '@seazn/engine/sports/football';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { footballBoard, footballMoreItems } from '@/domain/scoring/footballBoard';
-import { matchTime, minuteText } from '@/domain/scoring/footballClock';
+import { matchTime, minuteText, subStampFor } from '@/domain/scoring/footballClock';
 import { footballCfg, footballRefusalOf } from '@/domain/scoring/footballEngine';
 import { footballResultLine } from '@/domain/scoring/footballPad';
 import type { FootballDisplay } from '@/domain/scoring/footballTypes';
@@ -290,10 +290,11 @@ const TIMELINE: readonly TimelineItem[] = [
   goal(2),
   goal(3),
   yellow(2),
-  sub(5),
   yellow(3),
   yellow(4, 10),
   { kind: 'end', at: PERIOD_ENDS.H2, second: 40 },
+  // Molina → Montiel, in the break before extra time: no reading, so no stamp and no window (Law 3).
+  sub(5),
   { kind: 'start' },
   sub(6),
   sub(7, 30),
@@ -339,18 +340,22 @@ async function observe(
   };
 }
 
-/** The engine's word on a sub the phone did not record, stamped as the phone stamps one (its fold's `asOf`). */
+/**
+ * The engine's word on a sub the phone did not record, stamped as the phone stamps one (`subStampFor`, ruling 154): the
+ * reading when Sub would have been pressed, joining the stoppage within 120 s of it.
+ */
 async function refusalOfSub(
   scorer: Scorer,
   side: PadSide,
   off: string,
   on: string,
+  reading: number,
 ): Promise<string | null> {
   const ledger = await scorer.ledger();
   const envelopes = ledger.map((event) => envelopeOf(SEED.fixtureId, event));
   const { clock, enginePhase } = scorer.pad.display;
-  const { asOf } = clock;
-  const at: GameTime | null = asOf !== null && asOf.period === enginePhase ? asOf : null;
+  const captured = clock.anchor === null ? null : { period: clock.anchor.period, elapsed: reading };
+  const at: GameTime | null = subStampFor(captured, enginePhase, clock.asOf, clock.stoppage);
   const candidate = {
     ...envelopes.at(-1)!,
     id: 'replay-candidate',
@@ -378,8 +383,10 @@ async function play(
   }
   const at =
     item.kind === 'goal' ? item.goal.at : item.kind === 'yellow' ? item.card.at : item.sub.at;
-  const expectedReading = elapsedAt(at, item.second);
-  await scorer.to(expectedReading);
+  const inBreak = item.kind === 'sub' && 'inBreak' in item.sub;
+  // In a break the clock has no reading: it reads 0 and a tap carries no stamp.
+  const expectedReading = inBreak ? 0 : elapsedAt(at, item.second);
+  if (!inBreak) await scorer.to(expectedReading);
   const reading = scorer.pad.readingNow();
   const before = (await scorer.ledger()).length;
   if (item.kind === 'goal') {
@@ -440,7 +447,13 @@ async function play(
     null,
   );
   if (observed.recorded !== null) return observed;
-  const refusal = await refusalOfSub(scorer, side, personOf(side, off), personOf(side, on));
+  const refusal = await refusalOfSub(
+    scorer,
+    side,
+    personOf(side, off),
+    personOf(side, on),
+    reading,
+  );
   return { ...observed, refusal };
 }
 
@@ -646,18 +659,16 @@ describe('the 2022 World Cup final, replayed through the phone', () => {
       expect(ends.map((row) => row.vars.at)).toEqual([" 45+7'", " 90+8'", " 105'", " 120+1'"]);
     });
 
-    it.fails(
-      'F-R1: every substitution the phone recorded reads its real minute (41, 64, 71, 90+1, 96, 102)',
-      async () => {
-        const rows = await historyRows('sub');
-        const recorded = SUBS.filter((s) =>
-          rows.some((row) => row.vars.off === `#${s.off}` && row.vars.on === `#${s.on}`),
-        );
-        expect(rows.map((row) => [row.vars.off, row.vars.on, row.vars.at])).toEqual(
-          recorded.map((s) => [`#${s.off}`, `#${s.on}`, ` ${said(s.at)}`]),
-        );
-      },
-    );
+    it('F-R1: every substitution the phone recorded reads its real minute (41, 64, 71, 96, 102), and the break’s none', async () => {
+      const rows = await historyRows('sub');
+      const recorded = SUBS.filter((s) =>
+        rows.some((row) => row.vars.off === `#${s.off}` && row.vars.on === `#${s.on}`),
+      );
+      expect(recorded.length).toBeGreaterThanOrEqual(9);
+      expect(rows.map((row) => [row.vars.off, row.vars.on, row.vars.at])).toEqual(
+        recorded.map((s) => [`#${s.off}`, `#${s.on}`, 'inBreak' in s ? '' : ` ${said(s.at)}`]),
+      );
+    });
   });
 
   describe('substitutions', () => {
@@ -722,17 +733,15 @@ describe('the 2022 World Cup final, replayed through the phone', () => {
       ]);
     });
 
-    it.fails(
-      'F-R3: 116 Mac Allister → Pezzella (Argentina’s 4th window, the extra-time window) is recorded',
-      async () => {
-        const seen = await observedOf(subLabel(SUBS[10]));
-        expect([seen.offered, seen.refusal, seen.recorded]).toEqual([
-          true,
-          null,
-          expect.objectContaining({ off: arg(20), on: arg(6) }),
-        ]);
-      },
-    );
+    // With Molina → Montiel in the break (no window), 116 is Argentina's third window and fifth sub: legal at 5/3.
+    it('116 Mac Allister → Pezzella (Argentina’s 3rd window, 5th sub) is recorded', async () => {
+      const seen = await observedOf(subLabel(SUBS[10]));
+      expect([seen.offered, seen.refusal, seen.recorded]).toEqual([
+        true,
+        null,
+        expect.objectContaining({ off: arg(20), on: arg(6) }),
+      ]);
+    });
 
     it.fails(
       'F-R3: 120+1 Koundé → Disasi (France’s 6th ordinary sub, the extra-time sub) is recorded',
@@ -755,46 +764,52 @@ describe('the 2022 World Cup final, replayed through the phone', () => {
       ]);
     });
 
-    it('the engine refuses the four it would not take, by these codes (pinned so a change is seen)', async () => {
-      const refused = await Promise.all(SUBS.slice(9).map((s) => observedOf(subLabel(s))));
+    it('the engine refuses the three it would not take, by these codes (pinned so a change is seen)', async () => {
+      const refused = await Promise.all(
+        [SUBS[9], SUBS[11], SUBS[12]].map((s) => observedOf(subLabel(s))),
+      );
       // Observed codes, pinned as evidence for F-R2 and F-R3; reality is the it.fails tests above. The board offered none of
-      // them: Sub read "No subs left" (`subsLeft` false) before each was due.
-      expect(refused.map((seen) => [seen.offered, seen.refusal])).toEqual([
-        [false, 'INVALID_EVENT'],
-        [false, 'SUB_WINDOW_EXCEEDED'],
-        [false, 'INVALID_EVENT'],
-        [false, 'SUB_WINDOW_EXCEEDED'],
+      // them: Sub read "No subs left" (`subsLeft` false) before each was due. Each is a sixth sub (the kernel's cap first).
+      expect(refused.map((seen) => [seen.label, seen.offered, seen.refusal])).toEqual([
+        [subLabel(SUBS[9]), false, 'INVALID_EVENT'],
+        [subLabel(SUBS[11]), false, 'INVALID_EVENT'],
+        [subLabel(SUBS[12]), false, 'INVALID_EVENT'],
       ]);
     });
 
-    it('up to 102 the engine counts the windows the match used: France 2 in normal time, Argentina 3', async () => {
+    it('up to 102 the engine counts the windows the match used: France 2 in normal time, Argentina 2 (64, 102)', async () => {
       const state = await engineState();
       const fraNormal = (state.squads.away.subWindows ?? []).filter((w) =>
         w.period.startsWith('H'),
       );
       expect(fraNormal).toHaveLength(2);
-      expect(state.squads.home.subWindows ?? []).toHaveLength(3);
+      const argTo102 = (state.squads.home.subWindows ?? []).filter((w) => w.period !== 'ET_H2');
+      expect(argTo102.map(minuteOf)).toEqual(["64'", "102'"]);
     });
 
     it.fails(
       'F-R2: the concussion substitution opens no window: France used 2 windows (41, 71) before 113',
       async () => {
         const state = await engineState();
-        expect(state.squads.away.subWindows ?? []).toHaveLength(2);
+        const before113 = (state.squads.away.subWindows ?? []).filter((w) => w.period !== 'ET_H2');
+        expect(before113.map(minuteOf)).toEqual(["41'", "71'"]);
       },
     );
 
-    it.fails(
-      'F-R1: each window sits at the minute it was used (France 41, 71; Argentina 64, 90+1, 102)',
-      async () => {
-        const state = await engineState();
-        const minutes = (windows: readonly GameTime[] | undefined) => (windows ?? []).map(minuteOf);
-        expect({
-          france: minutes(state.squads.away.subWindows).slice(0, 2),
-          argentina: minutes(state.squads.home.subWindows),
-        }).toEqual({ france: ["41'", "71'"], argentina: ["64'", "90+1'", "102'"] });
-      },
-    );
+    // Molina → Montiel at the break opens no window; Argentina's 120+1 (its 4th window, the extra-time one) is F-R3's.
+    it('F-R1: each window sits at the minute it was used (France 41, 71; Argentina 64, 102, 116)', async () => {
+      const state = await engineState();
+      const minutes = (windows: readonly GameTime[] | undefined) => (windows ?? []).map(minuteOf);
+      expect({
+        france: minutes(state.squads.away.subWindows).slice(0, 2),
+        argentina: minutes(state.squads.home.subWindows),
+      }).toEqual({ france: ["41'", "71'"], argentina: ["64'", "102'", "116'"] });
+    });
+
+    it('Molina → Montiel, in the break before extra time, is recorded unstamped', async () => {
+      const seen = await observedOf(subLabel(SUBS[5]));
+      expect(seen.recorded).toEqual({ by: ARG, off: arg(26), on: arg(4) });
+    });
   });
 
   describe('cards', () => {
@@ -877,10 +892,11 @@ describe('the 2022 World Cup final, replayed through the phone', () => {
   });
 });
 
-// F-R1, proved on its own: a sub is stamped with the fold's `asOf` (the newest stamp), not the clock, so two subs by one
-// team half an hour apart with nothing stamped between them share a stamp, and the engine counts ONE window.
+// F-R1, proved on its own: a sub was stamped with the fold's `asOf` (the newest stamp), not the clock, so two subs by one
+// team half an hour apart with nothing stamped between them shared a stamp, and the engine counted ONE window. Since
+// ruling 154 each takes its own reading: two windows.
 describe('two subs 30 minutes apart, nothing between them', () => {
-  it.fails('F-R1: are two windows, at 10 and 40', async () => {
+  it('F-R1: are two windows, at 10 and 40', async () => {
     vi.setSystemTime(new Date(KICK_OFF_MS - 60_000));
     const scorer = await opened();
     scorer.press((actions) => actions.start());
@@ -900,5 +916,43 @@ describe('two subs 30 minutes apart, nothing between them', () => {
     ) as FootballState;
     expect(ledger.filter((event) => event.type === 'football.sub')).toHaveLength(2);
     expect((state.squads.home.subWindows ?? []).map(minuteOf)).toEqual(["10'", "40'"]);
+  });
+});
+
+// Ruling 154 at the board: Sub is asked with the stamp a sub would get NOW. A team with its three windows spent may still
+// join the stoppage it made for 120 s; past that, Sub reads "No subs left" with nothing else tapped (the pad redraws when
+// the stoppage closes on a running clock), where before it stayed on until someone stamped an event (F-R1).
+describe('a team with its windows spent, after its last sub', () => {
+  it('Sub stays on for 120 s past the stoppage, then is off with nothing else tapped', async () => {
+    vi.setSystemTime(new Date(KICK_OFF_MS - 60_000));
+    const scorer = await opened();
+    scorer.press((actions) => actions.start());
+    await flush();
+    await scorer.startClock();
+    const pairs = [
+      [26, 4],
+      [11, 8],
+      [7, 5],
+    ] as const;
+    for (const [i, [off, on]] of pairs.entries()) {
+      await scorer.to(elapsedAt({ minute: 10 * (i + 1) }));
+      await scorer.tapThrough('sub.first', [{ id: `p.${arg(off)}` }, { id: `p.${arg(on)}` }]);
+    }
+    const ledger = await scorer.ledger();
+    expect(ledger.filter((event) => event.type === 'football.sub')).toHaveLength(3);
+    // Sub was pressed for the third at 29:30, its stamp: the stoppage is open to 31:30 on the clock and closed at 31:31.
+    await scorer.to(elapsedAt({ minute: 31 }, 15));
+    expect([scorer.buttonOf('first', 'sub')?.enabled, scorer.pad.display.subsLeft.first]).toEqual([
+      true,
+      true,
+    ]);
+    await scorer.to(elapsedAt({ minute: 32 }, 40));
+    expect([scorer.buttonOf('first', 'sub')?.enabled, scorer.pad.display.subsLeft.first]).toEqual([
+      false,
+      false,
+    ]);
+    // The other team has used no window: its Sub stays on.
+    expect(scorer.buttonOf('second', 'sub')?.enabled).toBe(true);
+    scorer.view.unmount();
   });
 });

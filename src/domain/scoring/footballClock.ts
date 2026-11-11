@@ -370,32 +370,101 @@ export function stampFor(
   return { period: phase, elapsed: Math.max(captured.elapsed, floor) };
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// A substitution's stamp (the controller's ruling 154)
+// ---------------------------------------------------------------------------------------------------------------
+
 /**
- * A substitution's stamp, as the web stamps it: the fold's `asOf` while it is in the current phase, else none. Subs at
- * one stoppage share a stamp, and so count as one window (§7.3).
+ * How long after a substitution's stamp another substitution still joins its stoppage, in seconds of match time: 120.
+ * Measured from the shared stamp, never from the sub before, so a chain of subs cannot creep (ruling 154).
  */
-export function subStamp(phase: string, asOf: GameTime | null): GameTime | null {
-  return asOf !== null && asOf.period === phase ? asOf : null;
+export const SUB_STOPPAGE_SECONDS = 120;
+
+/** The events that are a substitution, whoever sent them: the pad's own, and the engine's lineup changes. */
+const SUB_TYPES: ReadonlySet<string> = new Set([
+  'football.sub',
+  'core.lineup.substitution',
+  'core.lineup.replacement',
+]);
+
+/** Whether `type` is a substitution of any kind (a concussion replacement included). */
+export const isSubType = (type: string): boolean => SUB_TYPES.has(type);
+
+/**
+ * The stoppage a substitution made now may join (ruling 154): the newest stamped event of `events` (the standing ones,
+ * in stream order), when it is itself a substitution, either team's, stamped in `phase`. Null otherwise: a goal, a card
+ * or a clock event since the last sub, or a sub in another period, ends the stoppage.
+ */
+export function subStoppageOf(
+  events: readonly { readonly type: string; readonly payload: unknown }[],
+  phase: string,
+): GameTime | null {
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    const event = events[i]!;
+    const stamp = gameTimeOf(event.payload);
+    if (stamp === null) continue;
+    return isSubType(event.type) && stamp.period === phase ? stamp : null;
+  }
+  return null;
+}
+
+/** Whether a substitution stamped `own` joins `stoppage`: in its period, no more than 120 s past its stamp. */
+export function joinsStoppage(stoppage: GameTime | null, own: GameTime | null): boolean {
+  return (
+    stoppage !== null &&
+    own !== null &&
+    own.period === stoppage.period &&
+    own.elapsed - stoppage.elapsed <= SUB_STOPPAGE_SECONDS
+  );
+}
+
+/**
+ * A substitution's stamp (ruling 154): the stoppage's own stamp when it joins one (`joinsStoppage`), so the engine counts
+ * one window for the subs made at it; otherwise its own reading, as any tap is stamped (`stampFor`). None with no reading,
+ * or during a break: a sub there opens no window (Law 3).
+ */
+export function subStampFor(
+  captured: GameTime | null,
+  phase: string,
+  asOf: GameTime | null,
+  stoppage: GameTime | null,
+): GameTime | null {
+  const own = stampFor(captured, phase, asOf);
+  return joinsStoppage(stoppage, own) ? stoppage : own;
+}
+
+/**
+ * The whole seconds from the clock's reading `elapsed` until a substitution no longer joins `stoppage`, or null when it
+ * no longer does: what the pad waits before it asks again whether a team may substitute.
+ */
+export function stoppageClosesIn(stoppage: GameTime | null, elapsed: number): number | null {
+  if (stoppage === null) return null;
+  const left = stoppage.elapsed + SUB_STOPPAGE_SECONDS + 1 - elapsed;
+  return left > 0 ? left : null;
 }
 
 /**
  * A tap the ledger does not hold yet, stamped again against the fold it will meet (§7.3, ruling 3): `floor` is the
  * newest stamp standing before it, `phase` the fold's phase there. A stamp in a period the phase has left is dropped
- * rather than move a goal into the next half; a substitution takes its window's stamp (`subStamp`); any other stamp in
- * the floor's period below it is raised to it, never lowered. A payload with no stamp, or one naming a period no football
- * cfg has, is left as it is.
+ * rather than move a goal into the next half; a substitution joins the `stoppage` it would join now (`subStampFor`,
+ * ruling 154), or keeps its own stamp; any other stamp in the floor's period below it is raised to it, never lowered. A
+ * payload with no stamp, or one naming a period no football cfg has, is left as it is.
  */
 export function restamp(
   type: string,
   payload: unknown,
   floor: GameTime | null,
   phase: string,
+  stoppage: GameTime | null = null,
 ): unknown {
   const at = gameTimeOf(payload);
   if (at === null || rankOf(at.period) < 0) return payload;
   if (rankOf(at.period) < rankOf(phase)) return withStamp(payload, null);
   if (at.period !== phase || floor === null) return payload;
-  if (type === 'football.sub') return withStamp(payload, subStamp(phase, floor));
+  if (isSubType(type)) {
+    const stamp = subStampFor(at, phase, floor, stoppage);
+    return sameStamp(stamp, at) ? payload : withStamp(payload, stamp);
+  }
   return floor.period === phase && at.elapsed < floor.elapsed ? withStamp(payload, floor) : payload;
 }
 
@@ -433,6 +502,9 @@ export function overtaken(
 
 /** The record's line for a withdrawn clock tap: the period it was tapped in, and nothing of the tap or its screen. */
 export const WITHDRAWN_EVENT = 'scoring.football.clockTapWithdrawn';
+
+const sameStamp = (a: GameTime | null, b: GameTime): boolean =>
+  a !== null && a.period === b.period && a.elapsed === b.elapsed;
 
 /** The payload with `at` set to `stamp`, or with no `at` at all (the engine's schemas are strict: absent, never null). */
 function withStamp(payload: unknown, stamp: GameTime | null): unknown {

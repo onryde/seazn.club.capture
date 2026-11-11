@@ -19,6 +19,7 @@ import {
   queuedOf,
   sinBin,
   start,
+  sub,
   voiding,
   withCfg,
   type Spec,
@@ -113,11 +114,11 @@ describe('footballEventFor: each tap (design §8)', () => {
     ],
     [
       'Sub',
-      { kind: 'sub', side: 'first', off: 'H-p8', on: 'H-p14' },
+      { kind: 'sub', side: 'first', off: 'H-p8', on: 'H-p14', stamp: STAMP },
       AT_600,
       {
         type: 'football.sub',
-        payload: { by: 'ent-home', off: 'H-p8', on: 'H-p14', at: at('H1', 600) },
+        payload: { by: 'ent-home', off: 'H-p8', on: 'H-p14', at: STAMP },
       },
     ],
     [
@@ -300,29 +301,79 @@ describe('footballEventFor: stamps (design §7.3)', () => {
     });
   });
 
-  it('two subs at one asOf share a stamp', () => {
-    const ctx = ctxOf(AT_600);
-    const first = footballEventFor({ kind: 'sub', side: 'first', off: 'H-p8', on: 'H-p14' }, ctx);
-    const second = footballEventFor({ kind: 'sub', side: 'first', off: 'H-p7', on: 'H-p13' }, ctx);
-    expect([first?.payload, second?.payload]).toEqual([
-      { by: 'ent-home', off: 'H-p8', on: 'H-p14', at: at('H1', 600) },
-      { by: 'ent-home', off: 'H-p7', on: 'H-p13', at: at('H1', 600) },
-    ]);
+  // Ruling 154: a sub joins the stoppage when the newest stamped event in the period is a sub and its own reading is no
+  // more than 120 s past that sub's stamp; it then takes that exact stamp. Otherwise it takes its own reading.
+  const SUB_AT_600: readonly Spec[] = [
+    ...KICK_OFF,
+    sub({ by: 'H', off: 'H-p8', on: 'H-p14', at: at('H1', 600) }),
+  ];
+  const subTap = (stamp: ReturnType<typeof at> | null, side: 'first' | 'second' = 'first') =>
+    ({
+      kind: 'sub',
+      side,
+      off: side === 'first' ? 'H-p7' : 'A-p7',
+      on: side === 'first' ? 'H-p13' : 'A-p13',
+      stamp,
+    }) as const;
+
+  it('a sub with nothing stamped since the last goal takes its own reading, not the goal’s stamp (F-R1)', () => {
+    expect(eventOf(subTap(at('H1', 1800)), AT_600)?.payload).toEqual({
+      by: 'ent-home',
+      off: 'H-p7',
+      on: 'H-p13',
+      at: at('H1', 1800),
+    });
   });
 
-  it('a sub with asOf in an earlier period is unstamped', () => {
-    expect(
-      eventOf({ kind: 'sub', side: 'first', off: 'H-p8', on: 'H-p14' }, AFTER_HT)?.payload,
-    ).toEqual({
+  it('a sub 120 s after a sub joins its stoppage, taking its stamp; 121 s after, its own reading', () => {
+    expect(eventOf(subTap(at('H1', 720)), SUB_AT_600)?.payload).toMatchObject({
+      at: at('H1', 600),
+    });
+    expect(eventOf(subTap(at('H1', 721)), SUB_AT_600)?.payload).toMatchObject({
+      at: at('H1', 721),
+    });
+  });
+
+  it('the other team’s sub at the stoppage is joined too', () => {
+    expect(eventOf(subTap(at('H1', 650), 'second'), SUB_AT_600)?.payload).toEqual({
+      by: 'ent-away',
+      off: 'A-p7',
+      on: 'A-p13',
+      at: at('H1', 600),
+    });
+  });
+
+  it('a goal or a card after the sub ends the stoppage: the next sub takes its own reading', () => {
+    const goalBetween = [...SUB_AT_600, goal({ by: 'A', at: at('H1', 630) })];
+    expect(eventOf(subTap(at('H1', 650)), goalBetween)?.payload).toMatchObject({
+      at: at('H1', 650),
+    });
+    const cardBetween = [...SUB_AT_600, card({ by: 'A', color: 'yellow', at: at('H1', 630) })];
+    expect(eventOf(subTap(at('H1', 650)), cardBetween)?.payload).toMatchObject({
+      at: at('H1', 650),
+    });
+  });
+
+  it('a sub in a new period does not join the last period’s stoppage', () => {
+    const lastHalf = [...SUB_AT_600, period('HT', at('H1', 2700)), clock(true, at('H2', 0))];
+    expect(eventOf(subTap(at('H2', 30)), lastHalf)?.payload).toMatchObject({ at: at('H2', 30) });
+  });
+
+  it('a sub at half-time (no reading) is unstamped: no window', () => {
+    expect(eventOf(subTap(null), AFTER_HT)?.payload).toEqual({
       by: 'ent-home',
-      off: 'H-p8',
-      on: 'H-p14',
+      off: 'H-p7',
+      on: 'H-p13',
     });
   });
 
   it('null for a sub of a player not on the pitch, or one not offered on', () => {
-    expect(eventOf({ kind: 'sub', side: 'first', off: 'H-p14', on: 'H-p15' }, KICK_OFF)).toBeNull();
-    expect(eventOf({ kind: 'sub', side: 'first', off: 'H-p8', on: 'H-p7' }, KICK_OFF)).toBeNull();
+    expect(
+      eventOf({ kind: 'sub', side: 'first', off: 'H-p14', on: 'H-p15', stamp: null }, KICK_OFF),
+    ).toBeNull();
+    expect(
+      eventOf({ kind: 'sub', side: 'first', off: 'H-p8', on: 'H-p7', stamp: null }, KICK_OFF),
+    ).toBeNull();
   });
 
   it('End of period sends the legal marker', () => {
@@ -562,6 +613,37 @@ describe('footballPayloadForSend (design §7.2, §7.3; ruling 3)', () => {
     expect(footballPayloadForSend(tap, ledger, false, send())).toBe(tap.payload);
   });
 
+  // Ruling 154 at send: a sub queued offline is judged against the ledger as it stands when it goes.
+  it('a sub queued offline, sent after another phone’s sub landed within 120 s of it, joins that stoppage', () => {
+    const tap = queued(sub({ by: 'H', off: 'H-p7', on: 'H-p13', at: at('H1', 700) }));
+    const theirs = ledgerOf([
+      ...KICK_OFF,
+      sub({ by: 'A', off: 'A-p8', on: 'A-p14', at: at('H1', 640) }),
+    ]);
+    expect(footballPayloadForSend(tap, theirs, false, send())).toEqual({
+      by: 'ent-home',
+      off: 'H-p7',
+      on: 'H-p13',
+      at: at('H1', 640),
+    });
+  });
+
+  it('a sub queued offline keeps its own reading past the 120 s, or with a goal after the other sub', () => {
+    const tap = queued(sub({ by: 'H', off: 'H-p7', on: 'H-p13', at: at('H1', 800) }));
+    const theirs = ledgerOf([
+      ...KICK_OFF,
+      sub({ by: 'A', off: 'A-p8', on: 'A-p14', at: at('H1', 640) }),
+    ]);
+    expect(footballPayloadForSend(tap, theirs, false, send())).toBe(tap.payload);
+    const near = queued(sub({ by: 'H', off: 'H-p7', on: 'H-p13', at: at('H1', 700) }));
+    const goalAfter = ledgerOf([
+      ...KICK_OFF,
+      sub({ by: 'A', off: 'A-p8', on: 'A-p14', at: at('H1', 640) }),
+      goal({ by: 'A', at: at('H1', 660) }),
+    ]);
+    expect(footballPayloadForSend(near, goalAfter, false, send())).toBe(near.payload);
+  });
+
   it('with no bootstrap held, the period of the newest stamp stands for the phase', () => {
     const tap = queued(goal({ by: 'H', at: at('H1', 590) }));
     expect(footballPayloadForSend(tap, ledgerOf(AT_600), false, send(null))).toEqual({
@@ -644,7 +726,7 @@ describe('never minute, addedMinutes or core.forfeit', () => {
         { kind: 'card', side: 'first', person: null, color: 'red', reason: null, stamp: STAMP },
         KICK_OFF,
       ],
-      [{ kind: 'sub', side: 'first', off: 'H-p8', on: 'H-p14' }, AT_600],
+      [{ kind: 'sub', side: 'first', off: 'H-p8', on: 'H-p14', stamp: STAMP }, AT_600],
       [{ kind: 'period', stamp: STAMP }, KICK_OFF],
       [
         {

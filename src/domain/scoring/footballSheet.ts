@@ -125,6 +125,7 @@ export type FootballFlow =
   | {
       readonly kind: 'sub';
       readonly side: PadSide;
+      readonly stamp: Stamp;
       readonly step: 'off' | 'on';
       readonly off: string | null;
     }
@@ -200,7 +201,7 @@ export function footballOpen(id: string, display: FootballDisplay, stamp: Stamp)
         person: null,
       });
     case 'sub':
-      return sheet ? flow({ kind: 'sub', side, step: 'off', off: null }) : STAY;
+      return sheet ? flow({ kind: 'sub', side, stamp, step: 'off', off: null }) : STAY;
     case 'scored':
     case 'missed': {
       const scored = action === 'scored';
@@ -608,7 +609,8 @@ function chooseSub(current: Flow<'sub'>, id: string, display: FootballDisplay): 
     return off === null ? STAY : flow({ ...current, step: 'on', off });
   }
   const on = playerChosen(team.offeredOn, id);
-  return on === null ? STAY : tap({ kind: 'sub', side: current.side, off: current.off, on });
+  const { side, off, stamp } = current;
+  return on === null ? STAY : tap({ kind: 'sub', side, off, on, stamp });
 }
 
 const outcomeChosen = (id: string): string => id.slice('outcome.'.length);

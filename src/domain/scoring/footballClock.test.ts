@@ -17,7 +17,10 @@ import {
   restamp,
   resyncTap,
   stampFor,
-  subStamp,
+  stoppageClosesIn,
+  subStampFor,
+  subStoppageOf,
+  SUB_STOPPAGE_SECONDS,
   type AnchorEvent,
   type ClockAnchor,
 } from '@/domain/scoring/footballClock';
@@ -413,12 +416,6 @@ describe('stamping (design §7.3)', () => {
     expect(stampFor(at('H1', 2690), 'H2', at('H1', 2700))).toBeNull();
   });
 
-  it('subStamp is asOf in the same phase and null otherwise', () => {
-    expect(subStamp('H2', at('H2', 600))).toEqual(at('H2', 600));
-    expect(subStamp('H2', at('H1', 2700))).toBeNull();
-    expect(subStamp('H2', null)).toBeNull();
-  });
-
   it('newestStamp is the last stamp in stream order', () => {
     const events = [
       { type: 'football.goal', payload: { by: 'x', at: at('H1', 100) } },
@@ -429,6 +426,86 @@ describe('stamping (design §7.3)', () => {
     expect(newestStamp(events)).toEqual(at('H1', 300));
     expect(newestStamp([])).toBeNull();
     expect(newestStamp([{ type: 'football.goal', payload: { at: { period: 'H1' } } }])).toBeNull();
+  });
+});
+
+// The controller's ruling 154: a sub joins the stoppage when the newest stamped event in the period is itself a sub and the
+// sub's own reading is no more than 120 s past that event's stamp; it then takes that exact stamp (one window).
+describe('a substitution’s stamp (ruling 154)', () => {
+  const subAt = (stamp: { period: string; elapsed: number }, type = 'football.sub') => ({
+    type,
+    payload: { by: 'ent-home', off: 'H-p8', on: 'H-p14', at: stamp },
+  });
+  const goalAt = (stamp: { period: string; elapsed: number }) => ({
+    type: 'football.goal',
+    payload: { by: 'ent-away', at: stamp },
+  });
+
+  it('the stoppage is 120 s', () => {
+    expect(SUB_STOPPAGE_SECONDS).toBe(120);
+  });
+
+  it('120 s past the stoppage joins it, taking its exact stamp; 121 s does not, and takes its own reading', () => {
+    const stoppage = at('H2', 600);
+    expect(subStampFor(at('H2', 720), 'H2', stoppage, stoppage)).toEqual(at('H2', 600));
+    expect(subStampFor(at('H2', 721), 'H2', stoppage, stoppage)).toEqual(at('H2', 721));
+  });
+
+  it('the stoppage is the newest stamped event when it is a sub, of either team, a concussion replacement included', () => {
+    expect(subStoppageOf([goalAt(at('H1', 100)), subAt(at('H1', 600))], 'H1')).toEqual(
+      at('H1', 600),
+    );
+    const theirs = { ...subAt(at('H1', 600)), payload: { by: 'ent-away', at: at('H1', 600) } };
+    expect(subStoppageOf([theirs], 'H1')).toEqual(at('H1', 600));
+    expect(subStoppageOf([subAt(at('H1', 600), 'core.lineup.replacement')], 'H1')).toEqual(
+      at('H1', 600),
+    );
+    // An unstamped event after it (the start, a kick) is no stamped event: it does not end the stoppage.
+    expect(
+      subStoppageOf([subAt(at('H1', 600)), { type: 'core.start', payload: {} }], 'H1'),
+    ).toEqual(at('H1', 600));
+  });
+
+  it('a goal, a card or a clock event after the last sub ends the stoppage', () => {
+    expect(subStoppageOf([subAt(at('H1', 600)), goalAt(at('H1', 610))], 'H1')).toBeNull();
+    const card = {
+      type: 'football.card',
+      payload: { by: 'ent-home', color: 'yellow', at: at('H1', 610) },
+    };
+    expect(subStoppageOf([subAt(at('H1', 600)), card], 'H1')).toBeNull();
+    const pause = { type: 'football.clock', payload: { running: false, at: at('H1', 610) } };
+    expect(subStoppageOf([subAt(at('H1', 600)), pause], 'H1')).toBeNull();
+  });
+
+  it('a sub in another period than the phase is no stoppage, and nothing stamped is none', () => {
+    expect(subStoppageOf([subAt(at('H1', 2700))], 'H2')).toBeNull();
+    expect(subStoppageOf([], 'H1')).toBeNull();
+  });
+
+  it('a chain does not creep: the 120 s run from the shared stamp, not from the sub before', () => {
+    const stoppage = at('H1', 600);
+    // Two subs at 600 and 690 share 600; a third at 780 is 180 s past 600, so it takes its own reading.
+    expect(subStampFor(at('H1', 690), 'H1', stoppage, stoppage)).toEqual(stoppage);
+    expect(subStampFor(at('H1', 780), 'H1', stoppage, stoppage)).toEqual(at('H1', 780));
+  });
+
+  it('with no stoppage a sub takes its own reading, raised to the floor; with no reading or in a break, none', () => {
+    expect(subStampFor(at('H1', 900), 'H1', at('H1', 600), null)).toEqual(at('H1', 900));
+    expect(subStampFor(at('H1', 590), 'H1', at('H1', 600), null)).toEqual(at('H1', 600));
+    expect(subStampFor(null, 'H1', at('H1', 600), at('H1', 600))).toBeNull();
+    // At half-time the engine is in H2 and its clock has no anchor: the reading is none, and so is the stamp.
+    expect(subStampFor(null, 'H2', at('H1', 2700), null)).toBeNull();
+  });
+
+  it('a stoppage in another period than the reading is not joined', () => {
+    expect(subStampFor(at('H2', 30), 'H2', at('H1', 2700), at('H1', 2700))).toEqual(at('H2', 30));
+  });
+
+  it('the stoppage closes 121 s past its stamp: the seconds left from a reading, none once closed', () => {
+    expect(stoppageClosesIn(at('H1', 600), 600)).toBe(121);
+    expect(stoppageClosesIn(at('H1', 600), 720)).toBe(1);
+    expect(stoppageClosesIn(at('H1', 600), 721)).toBeNull();
+    expect(stoppageClosesIn(null, 600)).toBeNull();
   });
 });
 
@@ -467,7 +544,7 @@ describe('restamp (design §7.3, ruling 3)', () => {
     expect(restamp('football.sub', sub, at('H1', 2700), 'H1')).toBe(sub);
   });
 
-  it('sets a sub to the floor', () => {
+  it('a sub below the floor with no stoppage is raised to the floor, as any tap', () => {
     const sub = { by: 'ent-home', off: 'H-p8', on: 'H-p14', at: at('H2', 600) };
     expect(restamp('football.sub', sub, at('H2', 640), 'H2')).toEqual({
       ...sub,
@@ -475,10 +552,32 @@ describe('restamp (design §7.3, ruling 3)', () => {
     });
   });
 
-  it('drops a sub’s stamp when the floor is in another period', () => {
+  it('a sub keeps its own stamp when the floor is in an earlier period (ruling 154: no longer dropped)', () => {
     const sub = { by: 'ent-home', off: 'H-p8', on: 'H-p14', at: at('H2', 600) };
-    const { at: _dropped, ...unstamped } = sub;
-    expect(restamp('football.sub', sub, at('H1', 2700), 'H2')).toEqual(unstamped);
+    expect(restamp('football.sub', sub, at('H1', 2700), 'H2')).toBe(sub);
+  });
+
+  it('a sub queued offline joins another phone’s sub that landed first within 120 s, and not past it', () => {
+    const sub = { by: 'ent-home', off: 'H-p8', on: 'H-p14', at: at('H2', 700) };
+    const theirs = at('H2', 590);
+    expect(restamp('football.sub', sub, theirs, 'H2', theirs)).toEqual({ ...sub, at: theirs });
+    const late = { ...sub, at: at('H2', 711) };
+    expect(restamp('football.sub', late, theirs, 'H2', theirs)).toBe(late);
+  });
+
+  it('a concussion replacement follows the same rule', () => {
+    const replacement = {
+      side: 'ent-home',
+      off: 'H-p8',
+      on: { personId: 'H-p14', slot: 'bench', orderNo: 1 },
+      exemption: 'concussion',
+      at: at('H2', 650),
+    };
+    const stoppage = at('H2', 600);
+    expect(restamp('core.lineup.replacement', replacement, stoppage, 'H2', stoppage)).toEqual({
+      ...replacement,
+      at: stoppage,
+    });
   });
 
   it('leaves a payload with no at', () => {

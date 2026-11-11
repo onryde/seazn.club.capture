@@ -630,9 +630,12 @@ describe('the columns’ sheets (design §6.3)', () => {
     expect(pad(view).sheet).toBeNull();
   });
 
-  it('Sub → off → on queues one football.sub with asOf', async () => {
+  // Ruling 154: with nothing but the kick-off stamped, a sub takes the reading when Sub was pressed, not the newest stamp.
+  it('Sub → off → on queues one football.sub at the reading when Sub was pressed', async () => {
     const { fakes, view } = await opened();
     await wait(60_000);
+    const reading = pad(view).readingNow();
+    expect(reading).toBeGreaterThanOrEqual(60);
     await column(view, 'sub.first');
     await pick(view, P(home(7)));
     await pick(view, P(home(14)));
@@ -640,7 +643,7 @@ describe('the columns’ sheets (design §6.3)', () => {
       by: HOME_ENTRANT,
       off: home(7),
       on: home(14),
-      at: { period: 'H1', elapsed: 0 },
+      at: { period: 'H1', elapsed: reading },
     });
   });
 

@@ -5,7 +5,8 @@ import {
   overtaken,
   restamp,
   stampFor,
-  subStamp,
+  subStampFor,
+  subStoppageOf,
   WITHDRAWN_EVENT,
 } from '@/domain/scoring/footballClock';
 import { footballOptions } from '@/domain/scoring/footballEngine';
@@ -30,8 +31,8 @@ import type { LedgerEvent } from '@/domain/scoring/wire';
 /**
  * Football's taps as the events the server records (S2-5 design §7.3, §8; plan P Task 7). A tap names what the scorer
  * chose in the column it was made in; the event is made against the display the scorer saw: stamped with the reading the
- * button captured, in the fold's phase, never below the fold's `asOf` in that period (`stampFor`); a substitution with
- * the window's stamp (`subStamp`). A tap that names what the match does not have (a bench scorer, a second yellow with no
+ * button captured, in the fold's phase, never below the fold's `asOf` in that period (`stampFor`); a substitution joins the
+ * stoppage it was made at, or keeps its own reading (`subStampFor`, ruling 154). A tap that names what the match does not have (a bench scorer, a second yellow with no
  * first, a colour or a reason the engine does not list, a phase the event is not taken in) makes no event at all.
  *
  * Optional persons and reasons are left out of the payload, never sent as null: the engine's schemas are strict. The
@@ -164,7 +165,10 @@ function bookable(
   return color !== 'yellow' || !yellowed.includes(person);
 }
 
-/** A substitution: a player on the pitch off, one offered on on; stamped with the window's stamp (`subStamp`). */
+/**
+ * A substitution: a player on the pitch off, one offered on on; stamped with the stoppage's stamp when it joins one, else
+ * with the reading when Sub was pressed (`subStampFor`, ruling 154).
+ */
 function subEvent(tap: Tap<'sub'>, display: FootballDisplay): SportEvent | null {
   const team = display.sides[tap.side];
   const known = (players: readonly FootballPlayer[], id: string) =>
@@ -174,7 +178,7 @@ function subEvent(tap: Tap<'sub'>, display: FootballDisplay): SportEvent | null 
     by: team.entrantId,
     off: tap.off,
     on: tap.on,
-    at: subStamp(display.enginePhase, display.clock.asOf),
+    at: subStampFor(tap.stamp, display.enginePhase, display.clock.asOf, display.clock.stoppage),
   });
   return { type: 'football.sub', payload };
 }
@@ -274,7 +278,7 @@ function kickEvent(tap: Tap<'kick'>, display: FootballDisplay): SportEvent | nul
  * The payload a queued tap is sent with now (design §7.2, §7.3; ruling 3). A tap the ledger holds a copy of goes as it
  * first went (the server matches a resend by its key). Otherwise its stamp is judged against the ledger as it stands: in
  * the newest stamp's period and below it, raised to it; in a period the ledger's phase has left, dropped; a substitution
- * takes the window's stamp. Nothing is added for the time a tap waited in the queue (the controller's ruling,
+ * joins the stoppage the ledger now ends on, or keeps its own stamp (ruling 154). Nothing is added for the time a tap waited in the queue (the controller's ruling,
  * 2026-11-08): the payload is a function of the tap and the ledger alone, so two sends over one ledger send the same
  * payload and the runtime still knows the server's copy of a tap whose answer was lost.
  *
@@ -296,10 +300,11 @@ export function footballPayloadForSend(
   ) {
     return withdrawnOf(queued);
   }
-  const floor = newestStamp(standingOf(ledger));
+  const standing = standingOf(ledger);
+  const floor = newestStamp(standing);
   const folded = send.bootstrap === null ? null : footballLedgerPhase(send.bootstrap, ledger);
   const phase = folded ?? floor?.period ?? 'pre';
-  return restamp(queued.type, queued.payload, floor, phase);
+  return restamp(queued.type, queued.payload, floor, phase, subStoppageOf(standing, phase));
 }
 
 /** An overtaken clock tap's withdrawal: the record says the period it was tapped in (`overtaken` found one). */

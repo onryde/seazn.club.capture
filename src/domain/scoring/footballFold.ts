@@ -4,6 +4,7 @@ import {
   foldMatchWithStoppage,
   gameTimeOf,
   type EventEnvelope,
+  type GameTime,
 } from '@seazn/engine/core';
 import { footballPadRules } from '@seazn/engine/pad';
 import {
@@ -22,7 +23,7 @@ import {
   correctionsIn,
   restamp,
   stampBase,
-  subStamp,
+  subStoppageOf,
   type AnchorEvent,
   type ClockBase,
 } from '@/domain/scoring/footballClock';
@@ -244,8 +245,10 @@ function queuedOnto(
     stream.legal.push(tap.key);
     return;
   }
-  const floor = newestStamp(standing(envelopes));
-  const payload = restamp(tap.type, tap.payload, floor, phaseOf(match, envelopes));
+  const live = standing(envelopes);
+  const floor = newestStamp(live);
+  const phase = phaseOf(match, envelopes);
+  const payload = restamp(tap.type, tap.payload, floor, phase, subStoppageOf(live, phase));
   const envelope = queuedEnvelopeOf(
     match.engine.fixtureId,
     { ...tap, payload },
@@ -481,6 +484,8 @@ function displayOf(match: FootballMatch, input: SportFoldInput, read: Read): Foo
   const { stream, folded, recorded } = read;
   const { state } = folded;
   const sides = { first: sideOf(match, state, 'first'), second: sideOf(match, state, 'second') };
+  const clock = clockOf(read.anchors, stream, folded);
+  const subsLeftAt = subsLeftAtOf(state, sides, clock);
   return {
     phase: padPhaseOf(state.phase),
     enginePhase: state.phase,
@@ -489,9 +494,10 @@ function displayOf(match: FootballMatch, input: SportFoldInput, read: Read): Foo
     sides,
     goals: { first: state.goals.home, second: state.goals.away },
     shootout: shootoutOf(state),
-    clock: clockOf(read.anchors, stream, folded),
+    clock,
     marker: markerOf(state),
-    subsLeft: { first: subsLeftOf(state, sides.first), second: subsLeftOf(state, sides.second) },
+    subsLeft: clock.stoppage === null ? subsLeftAt.fresh : subsLeftAt.joining,
+    subsLeftAt,
     lastTap: lastTapOf(stream.envelopes, recorded, (did) => (did.kind === 'start' ? null : did)),
     undoable: undoableOf(input, stream),
     kickedOff: kickedOffOf(stream.envelopes),
@@ -585,17 +591,45 @@ function markerOf(state: FootballState): FootballMarker | null {
 const MARKERS: readonly FootballMarker[] = ['HT', 'FT', 'QT', '3QT', 'ET_HT', 'ET_FT'];
 
 /**
- * Whether a team may still substitute, in the engine's judgement (design §6.3: the builder reads the engine rather than
- * counting): one more change, the first on the pitch for the first offered on, stamped as the pad would stamp it
- * (`subStamp`, so a change at the last window's stoppage joins it), applied strictly. Only the cap's refusals say no:
- * the window cap (`SUB_WINDOW_EXCEEDED`) and the substitution cap (`sub-cap-reached`). Nobody to bring on is no too.
+ * Whether each team may still substitute, in the engine's judgement (design §6.3: the builder reads the engine rather than
+ * counting), asked twice (ruling 154): for a sub that joins the stoppage (stamped with its stamp) and for one that opens
+ * a window of its own (stamped after every stamp the ledger holds, or unstamped while the clock has no reading, as at a
+ * break). With no stoppage both are the second.
  */
-function subsLeftOf(state: FootballState, side: FootballSide): boolean {
+function subsLeftAtOf(
+  state: FootballState,
+  sides: Readonly<Record<PadSide, FootballSide>>,
+  clock: FootballDisplay['clock'],
+): FootballDisplay['subsLeftAt'] {
+  const fresh = freshSubStamp(state, clock);
+  const joining = clock.stoppage ?? fresh;
+  const asked = (stamp: GameTime | null) => ({
+    first: subsLeftOf(state, sides.first, stamp),
+    second: subsLeftOf(state, sides.second, stamp),
+  });
+  const freshLeft = asked(fresh);
+  return { fresh: freshLeft, joining: clock.stoppage === null ? freshLeft : asked(joining) };
+}
+
+/** A stamp no window holds yet: a second past the newest stamp in the phase, or none while the clock has no reading. */
+function freshSubStamp(state: FootballState, clock: FootballDisplay['clock']): GameTime | null {
+  if (clock.anchor === null) return null;
+  const { asOf } = clock;
+  const floor = asOf !== null && asOf.period === state.phase ? asOf.elapsed : 0;
+  return { period: state.phase, elapsed: floor + 1 };
+}
+
+/**
+ * Whether a team may make one more change stamped `stamp`: the first on the pitch for the first offered on, applied
+ * strictly. Only the cap's refusals say no: the window cap (`SUB_WINDOW_EXCEEDED`) and the substitution cap
+ * (`sub-cap-reached`). Nobody to bring on is no too.
+ */
+function subsLeftOf(state: FootballState, side: FootballSide, stamp: GameTime | null): boolean {
   const off = side.onPitch[0];
   const on = side.offeredOn[0];
   if (off === undefined || on === undefined) return false;
   try {
-    football.apply(state, candidateSub(state, side.entrantId, off.personId, on.personId), {
+    football.apply(state, candidateSub(side.entrantId, off.personId, on.personId, stamp), {
       strict: true,
     });
     return true;
@@ -607,9 +641,13 @@ function subsLeftOf(state: FootballState, side: FootballSide): boolean {
   }
 }
 
-/** The change `subsLeftOf` asks the engine about: stamped as the pad stamps a sub, after every event the ledger holds. */
-function candidateSub(state: FootballState, by: string, off: string, on: string): FootballEnvelope {
-  const stamp = subStamp(state.phase, state.asOf ?? null);
+/** The change `subsLeftOf` asks the engine about, after every event the ledger holds. */
+function candidateSub(
+  by: string,
+  off: string,
+  on: string,
+  stamp: GameTime | null,
+): FootballEnvelope {
   return {
     id: 'candidate-sub',
     fixtureId: 'candidate',
@@ -635,6 +673,7 @@ function clockOf(
     started: periodStarted(anchors, folded.state.phase),
     asOf: folded.state.asOf ?? null,
     justEnded: justEndedOf(stream.envelopes, voidedIn(stream.envelopes), folded.facts),
+    stoppage: subStoppageOf(standing(stream.envelopes), folded.state.phase),
   };
 }
 

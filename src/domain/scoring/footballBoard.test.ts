@@ -5,6 +5,7 @@ import {
   footballClockBar,
   footballCorrectTime,
   footballMoreItems,
+  footballSubsNow,
   footballTakesCorrect,
   parseFootballAction,
 } from '@/domain/scoring/footballBoard';
@@ -94,6 +95,30 @@ describe('footballBoard: the columns in play (design §6.2, §6.3)', () => {
       playColumn('first', true, 'noSubs'),
       playColumn('second', true),
     ]);
+  });
+
+  // Ruling 154: Sub is asked with the stamp a sub would get now. A team with its windows spent may still join the
+  // stoppage for 120 s; past it, Sub reads No subs left until someone stamps an event (F-R1).
+  it('footballSubsNow: Sub stays on for 120 s past the stoppage of a team with its windows spent, then reads No subs left', () => {
+    const threeWindows = [
+      ...KICK_OFF,
+      sub({ by: 'H', off: H(8), on: H(14), at: at('H1', 600) }),
+      sub({ by: 'H', off: H(7), on: H(13), at: at('H1', 1200) }),
+      sub({ by: 'H', off: H(6), on: H(12), at: at('H1', 1500) }),
+    ];
+    const display = displayOf(threeWindows, withCfg(MATCH, CAPPED));
+    const at1620 = footballSubsNow(display, at('H1', 1620));
+    expect(at1620).toBe(display);
+    expect(actionsOf(footballBoard(at1620, null))).toEqual([
+      playColumn('first', true),
+      playColumn('second', true),
+    ]);
+    const at1621 = footballSubsNow(display, at('H1', 1621));
+    expect(actionsOf(footballBoard(at1621, null))).toEqual([
+      playColumn('first', true, 'noSubs'),
+      playColumn('second', true),
+    ]);
+    expect(footballSubsNow(display, null).subsLeft).toEqual({ first: false, second: true });
   });
 
   it('under a resultRecorded card every action is disabled', () => {

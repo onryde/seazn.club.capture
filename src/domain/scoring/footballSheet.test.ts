@@ -288,7 +288,7 @@ describe('Yellow and Red (design §6.3)', () => {
 });
 
 describe('Sub, the kicks and More (design §6.3–§6.5)', () => {
-  it('Sub asks who comes off, then who comes on for him from the bench, and records one sub', () => {
+  it('Sub asks who comes off, then who comes on for him from the bench, and records one sub at the reading when Sub was pressed', () => {
     const on = flowOf(walk('sub.first', [H(7)]));
     expect(footballStep(on, LIVE).title).toEqual({
       key: 'scoring.football.sheet.whoComesOn',
@@ -297,7 +297,7 @@ describe('Sub, the kicks and More (design §6.3–§6.5)', () => {
     expect(ids(on)).toEqual([H(12), H(13), H(14), H(15), H(16)]);
     expect(walk('sub.first', [H(7), H(14)])).toEqual({
       kind: 'tap',
-      tap: { kind: 'sub', side: 'first', off: 'H-p7', on: 'H-p14' },
+      tap: { kind: 'sub', side: 'first', off: 'H-p7', on: 'H-p14', stamp: STAMP },
     });
   });
 

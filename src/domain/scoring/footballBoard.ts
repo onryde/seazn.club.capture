@@ -2,7 +2,13 @@ import type { GameTime } from '@seazn/engine/core';
 import { footballPadRules } from '@seazn/engine/pad';
 import type { FootballCfg } from '@seazn/engine/sports/football';
 import type { ClockBarAction, ClockBarView } from '@/domain/scoring/clockBarView';
-import { clockText, matchTime, PHASE_ORDER } from '@/domain/scoring/footballClock';
+import {
+  clockText,
+  joinsStoppage,
+  matchTime,
+  PHASE_ORDER,
+  stampFor,
+} from '@/domain/scoring/footballClock';
 import { periodWordOf } from '@/domain/scoring/footballHistory';
 import {
   playerLabel,
@@ -108,6 +114,30 @@ function playActions(
 function subNoteOf(display: FootballDisplay, side: PadSide): Text | null {
   if (!display.sides[side].sheet) return { key: 'scoring.football.column.noSheet' };
   return display.subsLeft[side] ? null : { key: 'scoring.football.column.noSubs' };
+}
+
+/**
+ * The display with `subsLeft` asked again with the stamp a sub pressed `now` would get (ruling 154): joining the stoppage
+ * while the reading is no more than 120 s past it, else a window of its own (`now` null: no reading, a sub unstamped).
+ * The display itself when nothing changes, so a memo over it holds.
+ */
+export function footballSubsNow(display: FootballDisplay, now: GameTime | null): FootballDisplay {
+  return footballSubsJoining(display, subJoinsNow(display, now));
+}
+
+/** Whether a sub pressed at the reading `now` joins the display's stoppage (`joinsStoppage`, ruling 154). */
+export function subJoinsNow(display: FootballDisplay, now: GameTime | null): boolean {
+  const { enginePhase, clock } = display;
+  return joinsStoppage(clock.stoppage, stampFor(now, enginePhase, clock.asOf));
+}
+
+/** The display with `subsLeft` as a sub that joins the stoppage (`joining`) or opens a window of its own would find it. */
+export function footballSubsJoining(display: FootballDisplay, joining: boolean): FootballDisplay {
+  const { subsLeftAt, subsLeft } = display;
+  const left = joining ? subsLeftAt.joining : subsLeftAt.fresh;
+  return left.first === subsLeft.first && left.second === subsLeft.second
+    ? display
+    : { ...display, subsLeft: left };
 }
 
 const kickActions = (side: PadSide, kicking: boolean): readonly BoardAction[] => [
