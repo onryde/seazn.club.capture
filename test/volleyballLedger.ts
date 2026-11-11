@@ -156,6 +156,31 @@ export const timeout = (by: Seat): Spec => ({
   payload: { by: entrant(by) },
 });
 
+export const sub = (
+  by: Seat,
+  more: { readonly off?: string; readonly on?: string } = {},
+): Spec => ({
+  type: 'volleyball.sub',
+  payload: { by: entrant(by), ...more },
+});
+
+export const sanction = (by: Seat, level: string, person?: string): Spec => ({
+  type: 'volleyball.sanction',
+  payload: { by: entrant(by), level, ...(person === undefined ? {} : { person }) },
+});
+
+/** Set score: a set's score so far (`partial`), as the pad writes it before a set's first point. */
+export const summary = (home: number, away: number): Spec => ({
+  type: 'volleyball.set.summary',
+  payload: { home, away, partial: true },
+});
+
+/** A set recorded whole: the score it ended with, no `partial`. */
+export const wholeSet = (home: number, away: number): Spec => ({
+  type: 'volleyball.set.summary',
+  payload: { home, away },
+});
+
 export const eventId = (seq: number): string => `ev-${seq}`;
 
 /** A void of the event at `seq`, as the web keeps it: the target in the payload and in `voids_event_id`. */
