@@ -17,15 +17,18 @@ import {
 } from '@/domain/scoring/setBasedBoard';
 import {
   foldSetBased,
+  voidedIn,
   voidsAgain,
   type SetBasedFolding,
   type SetBasedKit,
   type SetBasedMatch,
 } from '@/domain/scoring/setBasedFold';
+import { ledgerRows } from '@/domain/scoring/setBasedLedgerHistory';
 import { heaviestLevel } from '@/domain/scoring/setBasedPad';
 import { sideOfEntrant } from '@/domain/scoring/setBasedSides';
 import { isBeach, volleyballRefusalOf } from '@/domain/scoring/volleyballEngine';
 import { scoreEventsIn } from '@/domain/scoring/volleyballEvents';
+import { volleyballHistory } from '@/domain/scoring/volleyballHistory';
 import { volleyballLineupOf } from '@/domain/scoring/volleyballLineup';
 import { doneOf, isSanctionLevel } from '@/domain/scoring/volleyballLedgerHistory';
 import type {
@@ -65,8 +68,17 @@ export function foldVolleyball(input: SportFoldInput): SportFold<VolleyballTypes
   const folding = foldSetBased(KIT, input);
   if (typeof folding === 'string') return { kind: 'unfoldable', reason: folding };
   const display = displayOf(folding);
-  // History's words are Task 8's: until they land the fold says no rows.
-  return { kind: 'folded', display, legalQueued: folding.stream.legal, history: [] };
+  const rows = ledgerRows(
+    folding.stream.entries,
+    folding.recorded,
+    voidedIn(folding.stream.envelopes),
+  );
+  return {
+    kind: 'folded',
+    display,
+    legalQueued: folding.stream.legal,
+    history: volleyballHistory(rows, display.sides),
+  };
 }
 
 /** Whether the server would append `next` after `before`: the web's own refusals first, then the engine's. */
