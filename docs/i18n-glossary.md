@@ -788,6 +788,12 @@ wisselmoment(en)" (`rules.extraTimeSubsCapped`, as `rules.subsCapped`'s windows 
 (`rules.extraTimeSubsMax`); "+{count} window(s)" / "+{count} ventana(s)" / "+{count} fois" / "+{count}
 wisselmoment(en)" (`rules.extraTimeSubsWindows`). Drafts, not yet reviewed.
 
+Revision, 2026-11-11 (review M4, M5): two Match details labels were wider than the rules card's 112 dp label column and
+broke mid-word, so the copy changed and the column did not. fr `rules.subs` is "Changements" (was "Remplacements", 113.4
+dp), one word with `rules.extraTimeSubs` in the row under it; nl `rules.shootout` is "Strafschoppen" (was
+"Strafschoppenreeks", 142.8 dp). The fit test now holds every rules label, in all four languages, to 112 dp. Drafts, not
+yet reviewed.
+
 ## App settings (2026-11-02)
 
 The app's own Settings, from the gear in Home's top-right corner (owner, 2026-11-02: "we should have common setting in a top

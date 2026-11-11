@@ -75,7 +75,8 @@ function shootoutRows(cfg: FootballCfg): readonly Row[] {
  * what stops the scorer's Sub.
  */
 function subsValue(cfg: FootballCfg): Value {
-  const { maxSubs, subWindows } = cfg;
+  // The one reader of the caps (`effectiveSubCaps`), asked in regular time, so the card and the fold cannot disagree.
+  const { maxSubs, subWindows } = footballPadRules.effectiveSubCaps(cfg, 'H1');
   if (maxSubs !== undefined && subWindows !== undefined) {
     return {
       key: 'scoring.football.rules.subsCapped.other',

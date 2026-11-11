@@ -3,7 +3,10 @@ import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
 import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
+import { footballCfg, type FootballCfg } from '@/domain/scoring/footballEngine';
+import { footballRuleRows } from '@/domain/scoring/footballRules';
 import { layout, space } from '@/ui/theme/tokens';
+import { KO_11 } from '../../../test/footballLedger';
 import {
   BOARD_FULL_HEIGHT,
   boardTier,
@@ -818,12 +821,14 @@ describe('the pad’s height, portrait', () => {
 
 // Match details' rules table (`MatchCard`, in the sheet), as cricket's is measured (cricketFit.lines.test.ts): a label
 // column, the widest label's but at most `padRuleLabelMax`, then the value in what is left, both `body`, wrapping to two
-// lines at most. Every word must fit whole. Engine 7.0.0 added the Extra-time subs row (F-R3), the longest label. Only
-// its label is held here: two older labels already have a word past the 112 dp cap (fr "Remplacements" 113, nl
-// "Strafschoppenreeks" 143), routed to the device check and the copy owner rather than changed in this commit.
+// lines at most. Every word must fit whole. Every label is held to the cap's literal 112 dp (the shared column is not
+// changed): fr "Remplacements" (113.4) and nl "Strafschoppenreeks" (142.8) broke mid-word, so the copy is now fr
+// "Changements" and nl "Strafschoppen".
 describe('Match details’ rules, football', () => {
   const geist400 = loadFont('geist-400');
   const bodyOf = (text: string) => geist400.width(text, typeScale.body.fontSize);
+  const LABEL_COLUMN_CAP = 112;
+  const SHEET_WIDTHS = [320, 360] as const;
   const sheetColumn = (width: number) => width - 2 * space.md;
   const LABELS = ['format', 'extraTime', 'shootout', 'subs', 'extraTimeSubs', 'sinBin'];
   const values = (dictionary: Dictionary) =>
@@ -847,18 +852,33 @@ describe('Match details’ rules, football', () => {
       ),
     );
 
-  it.each(WIDTHS.flatMap((width) => LANGUAGES.map(([lang, d]) => [width, lang, d] as const)))(
-    '%i dp, %s: every label and value keeps its words whole in the card’s columns',
-    (width, _lang, dictionary) => {
-      const labels = LABELS.map((label) => said(dictionary, `scoring.football.rules.${label}`));
-      const labelColumn = Math.min(
-        Math.ceil(Math.max(...labels.map(bodyOf))),
-        layout.padRuleLabelMax,
-      );
+  it('the label column cap is 112 dp, and the labels swept are every label the rows draw', () => {
+    expect(layout.padRuleLabelMax).toBe(LABEL_COLUMN_CAP);
+    const everything = footballCfg({
+      ...KO_11,
+      maxSubs: 5,
+      subWindows: 3,
+      extraTimeSubs: { subs: 1, windows: 1 },
+    });
+    expect(everything).not.toBeNull();
+    const drawn = footballRuleRows(everything as FootballCfg).map(({ label }) =>
+      label.key.replace('scoring.football.rules.', ''),
+    );
+    expect(drawn).toEqual(['format', 'extraTime', 'shootout', 'subs', 'extraTimeSubs', 'sinBin']);
+    expect(LABELS).toEqual(drawn);
+  });
+
+  it.each(LANGUAGES.flatMap(([lang, d]) => SHEET_WIDTHS.map((width) => [lang, d, width] as const)))(
+    '%s at %i dp: every label fits the 112 dp column whole, and every value its room',
+    (_lang, dictionary, width) => {
+      for (const key of LABELS) {
+        const label = said(dictionary, `scoring.football.rules.${key}`);
+        expect(wordsFit(label, LABEL_COLUMN_CAP, bodyOf), `${key}: ${label}`).toBe(true);
+        expect(linesOf(label, LABEL_COLUMN_CAP, bodyOf), label).toBeLessThanOrEqual(2);
+      }
+      const labels = LABELS.map((key) => said(dictionary, `scoring.football.rules.${key}`));
+      const labelColumn = Math.min(Math.ceil(Math.max(...labels.map(bodyOf))), LABEL_COLUMN_CAP);
       const valueRoom = sheetColumn(width) - labelColumn - space.md;
-      const label = said(dictionary, 'scoring.football.rules.extraTimeSubs');
-      expect(wordsFit(label, labelColumn, bodyOf), label).toBe(true);
-      expect(linesOf(label, labelColumn, bodyOf), label).toBeLessThanOrEqual(2);
       for (const value of values(dictionary)) {
         expect(wordsFit(value, valueRoom, bodyOf), value).toBe(true);
         expect(linesOf(value, valueRoom, bodyOf), value).toBeLessThanOrEqual(2);

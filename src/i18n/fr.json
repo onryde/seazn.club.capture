@@ -975,7 +975,7 @@
   "scoring.football.rules.shootout": "Tirs au but",
   "scoring.football.rules.shootoutKicks.one": "{count} tir par équipe",
   "scoring.football.rules.shootoutKicks.other": "{count} tirs par équipe",
-  "scoring.football.rules.subs": "Remplacements",
+  "scoring.football.rules.subs": "Changements",
   "scoring.football.rules.subsRolling": "Libres",
   "scoring.football.rules.subsCapped.one": "Jusqu'à {subs} en {count} fois",
   "scoring.football.rules.subsCapped.other": "Jusqu'à {subs} en {count} fois",

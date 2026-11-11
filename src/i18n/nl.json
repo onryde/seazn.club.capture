@@ -972,7 +972,7 @@
   "scoring.football.rules.format": "Format",
   "scoring.football.rules.periods": "{count} × {minutes} min",
   "scoring.football.rules.extraTime": "Verlenging",
-  "scoring.football.rules.shootout": "Strafschoppenreeks",
+  "scoring.football.rules.shootout": "Strafschoppen",
   "scoring.football.rules.shootoutKicks.one": "{count} strafschop per team",
   "scoring.football.rules.shootoutKicks.other": "{count} strafschoppen per team",
   "scoring.football.rules.subs": "Wissels",
