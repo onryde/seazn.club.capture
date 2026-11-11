@@ -17,10 +17,13 @@ export type ServerClock = {
   /** How far the server's clock is ahead of this phone's, in ms (negative when behind): 0 until a sample. */
   offsetMs(): number;
   /**
-   * The same offset, or null until the first sample: whether a tap can be stamped on the server's clock at all (ruling
-   * 149). Once formed it stays formed for the life of the app; `dropSamples` keeps it.
+   * The offset only when it is fresh, else null: null before the first sample, and from `dropSamples` until the next
+   * sample (ruling 151). What a tap is stamped by and a server stamp's wait is read by (ruling 149): after a return the
+   * offset `offsetMs` keeps may be wrong by a wall-clock jump made while away, which a stamp would keep for good. The
+   * reading on the screen keeps using `offsetMs` in that window: it is right after a sleep, and a jump shows only until
+   * the first answer, never written anywhere.
    */
-  knownOffsetMs(): number | null;
+  freshOffsetMs(): number | null;
   /** One answer's sample of the offset. */
   sample(sampleMs: number): void;
   /**
@@ -40,14 +43,17 @@ export type ServerClock = {
 export function createServerClock(deps: { readonly logger: Logger }): ServerClock {
   let samples: readonly number[] = [];
   let offset: number | null = null;
+  /** Whether a sample has come since the last `dropSamples` (or ever). */
+  let fresh = false;
   const say = offsetSayer(deps.logger);
   const listeners = new Set<() => void>();
   return {
     offsetMs: () => offset ?? 0,
-    knownOffsetMs: () => offset,
+    freshOffsetMs: () => (fresh ? offset : null),
     sample: (sampleMs) => {
       // Only the newest samples count (`medianOffset`); the rest are dropped so a long match keeps five numbers.
       samples = [...samples, sampleMs].slice(-OFFSET_WINDOW);
+      fresh = true;
       // Never null: the list holds the sample just taken.
       const next = medianOffset(samples) ?? sampleMs;
       if (next === offset) return;
@@ -57,6 +63,7 @@ export function createServerClock(deps: { readonly logger: Logger }): ServerCloc
     },
     dropSamples: () => {
       samples = [];
+      fresh = false;
     },
     subscribe: (listener) => {
       listeners.add(listener);

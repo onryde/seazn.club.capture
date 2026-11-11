@@ -152,15 +152,16 @@ export type MatchSender<S extends SportTypes> = {
 
 /**
  * A tap's stamp, made now (ruling 149): on the server's clock, the steady clock (ruling 137) plus the offset the server
- * clock holds, marked `'server'`, once there is an offset; before the first answer (a cold start offline), on the
- * steady clock alone, with no mark. A server stamp is the clock every other time a tap meets is on (the ledger's
+ * clock holds, marked `'server'`, while that offset is fresh; before the first answer (a cold start offline), and after
+ * a return until the first answer since (ruling 151: the offset kept may be off by a jump made while away), on the
+ * rebased steady clock alone, with no mark. A server stamp is the clock every other time a tap meets is on (the ledger's
  * `recorded_at`, the match clock's reading), and the offset in force at the tap is the right one for it: a sleep leaves
  * the offset as it was, and a wall clock moved while away moves the steady clock and the offset by the same amount, so a
  * stamp made before it never needs to cross it.
  */
 export function tapStampNow(ports: Pick<Ports, 'steadyClock' | 'serverClock'>): TapStamp {
   const steadyMs = ports.steadyClock.nowMs();
-  const offsetMs = ports.serverClock.knownOffsetMs();
+  const offsetMs = ports.serverClock.freshOffsetMs();
   if (offsetMs === null) return { at: new Date(steadyMs).toISOString() };
   return { at: new Date(steadyMs + offsetMs).toISOString(), stampedOn: 'server' };
 }

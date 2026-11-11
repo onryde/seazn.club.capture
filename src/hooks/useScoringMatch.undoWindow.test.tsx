@@ -81,20 +81,33 @@ async function decidedByThisPhone(fakes: FakePorts): Promise<Match> {
  * A phone whose wall clock the test moves alone (`jump`), with the steady clock `createNativePorts` builds over it: the
  * clock every scoring time on the phone is read on (rulings 137, 149).
  */
-async function jumpingRig(): Promise<{ fakes: FakePorts; jump: (ms: number) => void }> {
+async function jumpingRig(): Promise<{
+  fakes: FakePorts;
+  jump: (ms: number) => void;
+  sleep: (ms: number) => void;
+}> {
   let skew = 0;
+  let asleep = 0;
   const wall = () => Date.now() + skew;
   const fakes = createFakePorts({ clock: () => new Date(wall()) });
   const steadyClock = createSteadyClock({
     wall,
-    mono: () => Date.now(),
+    mono: () => Date.now() - asleep,
     logger: fakes.ports.logger,
     foreground: fakes.foreground,
     serverClock: fakes.serverClock,
   });
   Object.assign(fakes.ports, { steadyClock });
   await saveScoringLink(fakes.kv, FIXTURE, LINK, 'stg.seazn.club', 'badminton');
-  return { fakes, jump: (ms) => (skew += ms) };
+  return {
+    fakes,
+    jump: (ms) => (skew += ms),
+    // Real time and the wall clock run on; the monotonic source stops (CLOCK_MONOTONIC in suspend).
+    sleep: (ms) => {
+      asleep += ms;
+      vi.setSystemTime(Date.now() + ms);
+    },
+  };
 }
 
 beforeEach(() => {
@@ -160,6 +173,21 @@ describe('the pad of a match this phone decided', () => {
     const match = await decidedByThisPhone(fakes);
     jump(-245_000);
     await wait(45_000);
+    act(() => void pad(match).actions.undo());
+    await flush();
+    expect(undoLeft(match)).toBeNull();
+  });
+
+  // Review M3: through the real steady clock's rebase at a return. Asleep a minute, the window comes back closed.
+  it('the phone asleep a minute while the window counts: back in front it is closed, and Undo is refused', async () => {
+    const { fakes, sleep } = await jumpingRig();
+    const match = await decidedByThisPhone(fakes);
+    expect(undoLeft(match)).toBe(44);
+    fakes.foreground.leave();
+    sleep(60_000);
+    act(() => fakes.foreground.fire());
+    await flush();
+    expect(undoLeft(match)).toBeNull();
     act(() => void pad(match).actions.undo());
     await flush();
     expect(undoLeft(match)).toBeNull();

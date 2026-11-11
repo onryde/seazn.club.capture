@@ -411,7 +411,7 @@ export function createFakeServerClock(): FakeServerClock {
   const listeners = new Set<() => void>();
   return {
     offsetMs: () => offset ?? 0,
-    knownOffsetMs: () => offset,
+    freshOffsetMs: () => offset,
     sample: () => {},
     dropSamples: () => {},
     subscribe: (listener) => {

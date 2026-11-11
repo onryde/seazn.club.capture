@@ -121,6 +121,8 @@ type Rig = {
   readonly serverClock: ServerClock;
   readonly jump: (ms: number) => void;
   readonly offline: (on: boolean) => void;
+  /** The phone asleep `ms`: real time and the wall clock run on, the monotonic source does not (CLOCK_MONOTONIC). */
+  readonly sleep: (ms: number) => void;
 };
 
 type PhoneOptions = {
@@ -136,6 +138,7 @@ type PhoneOptions = {
 async function phone(seed: FakeMatchSeed, options: PhoneOptions = {}): Promise<Rig> {
   let wallSkew = options.skew ?? 0;
   let down = options.offline ?? false;
+  let asleep = 0;
   const wall = () => Date.now() + wallSkew;
   const server = options.after?.server ?? createFakeScoringPort(seed, { stamp: () => Date.now() });
   const fakes = createFakePorts({
@@ -146,7 +149,7 @@ async function phone(seed: FakeMatchSeed, options: PhoneOptions = {}): Promise<R
   const serverClock = createServerClock({ logger });
   const steadyClock = createSteadyClock({
     wall,
-    mono: () => Date.now(),
+    mono: () => Date.now() - asleep,
     logger,
     foreground: fakes.foreground,
     serverClock,
@@ -166,6 +169,10 @@ async function phone(seed: FakeMatchSeed, options: PhoneOptions = {}): Promise<R
     serverClock,
     jump: (ms) => (wallSkew += ms),
     offline: (on) => (down = on),
+    sleep: (ms) => {
+      asleep += ms;
+      vi.setSystemTime(Date.now() + ms);
+    },
   };
 }
 
@@ -380,7 +387,7 @@ describe('F5 on build 1039: a jump made while away, through the real wiring', ()
   // offline and sent 20 s on. Read on the phone's own clock, the wait would be 5 minutes more.
   it('a phone 5 minutes fast, a Start queued offline and accepted later: one resync by the wait, on the server’s clock', async () => {
     const { pad, server, serverClock, offline } = await opened(STARTED, { skew: 300_000 });
-    expect(serverClock.knownOffsetMs()).toBeLessThanOrEqual(-299_000);
+    expect(serverClock.freshOffsetMs()).toBeLessThanOrEqual(-299_000);
     offline(true);
     act(() => pad().actions.clock());
     await flush();
@@ -396,5 +403,56 @@ describe('F5 on build 1039: a jump made while away, through the real wiring', ()
     expect(stamps[0]).toBe(0);
     expect(stamps[1]).toBeGreaterThanOrEqual(20);
     expect(stamps[1]).toBeLessThanOrEqual(36);
+  });
+
+  // Ruling 151 (review I1): after a return the old offset may be the jump's own error until the first fresh answer, so a
+  // tap made then is stamped on the phone's rebased steady clock, unmarked, and the resync waits for a fresh offset.
+  it('a jump while away, offline at the return, a Start at once, then online: the pad runs, one resync, as the console', async () => {
+    const { pad, fakes, server, serverClock, jump, offline } = await opened(STARTED);
+    fakes.foreground.leave();
+    jump(JUMP_MS);
+    offline(true);
+    await wait(5_000);
+    act(() => fakes.foreground.fire());
+    await flush();
+    act(() => pad().actions.clock());
+    await flush();
+    const queued = await fakes.ports.tapQueue.load(STARTED.fixtureId);
+    expect(queued?.pending[0]).not.toHaveProperty('stampedOn');
+    await wait(20_000);
+    expect(pad().readingNow()).toBe(20);
+    offline(false);
+    // The next poll (15 s) sends the Start; its answer forms the fresh offset.
+    await wait(15_000);
+    await flush();
+    await wait(5_000);
+    expect(serverClock.offsetMs()).toBe(-JUMP_MS + 500);
+    expect(pad().readingNow()).toBe(40);
+    const stamps = (await clockEvents(server, STARTED)).map((event) => stampOf(event.payload));
+    // The Start at 0, then one resync by its wait in the queue: the console reads the match time from it.
+    expect(stamps).toHaveLength(2);
+    expect(stamps[0]).toBe(0);
+    expect(stamps[1]).toBeGreaterThanOrEqual(20);
+    expect(stamps[1]).toBeLessThanOrEqual(36);
+  });
+
+  // Review M1: a sleep is the rebase with no wall jump. The offset stays, and the reading catches up the time slept.
+  it('the clock started by this phone, the phone asleep 10 minutes: the reading and a Pause’s stamp catch up', async () => {
+    const { pad, fakes, server, serverClock, sleep } = await opened(STARTED);
+    act(() => pad().actions.clock());
+    await flush();
+    await wait(30_000);
+    fakes.foreground.leave();
+    sleep(600_000);
+    act(() => fakes.foreground.fire());
+    await flush();
+    await wait(5_000);
+    expect(serverClock.offsetMs()).toBe(500);
+    expect(pad().readingNow()).toBe(635);
+    act(() => pad().actions.clock());
+    await flush();
+    await wait(1_000);
+    const [, pause] = await clockEvents(server, STARTED);
+    expect(stampOf(pause?.payload)).toBe(635);
   });
 });

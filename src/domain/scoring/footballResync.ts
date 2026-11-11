@@ -58,7 +58,8 @@ const PERIOD = 'football.period';
 
 /**
  * The watch over `state` at `now`: what it remembers now, and the resyncs it asks for. Each Start's wait is read on the
- * clock its own tap was stamped on (`nowOn`, ruling 149), never across the two.
+ * clock its own tap was stamped on (`nowOn`, ruling 149), never across the two; a server stamp's is read only on a fresh
+ * offset (ruling 151), and until there is one it and the Starts after it stay waiting.
  */
 export function resyncStep(memory: ResyncMemory, state: MatchState, now: StampNow): Stepped {
   const waiting = new Map(memory.waiting);
@@ -70,13 +71,15 @@ export function resyncStep(memory: ResyncMemory, state: MatchState, now: StampNo
   // In the order they were tapped, which is the order their events land in: the order they were first seen in the
   // queue, which only ever grows at its end. Never by their stamps, which may be on two clocks (ruling 149).
   for (const [key, start] of [...waiting]) {
+    const nowMs = nowOn(start.base, now);
+    // A server stamp's wait waits for a fresh offset (ruling 151); the Starts after it wait with it, in order.
+    if (nowMs === null) break;
     const landed = landingOf(state, key, start, claimed);
     if (landed === 'queued') continue;
     waiting.delete(key);
     decided.add(key);
     if (landed === null) continue;
     claimed.add(landed.id);
-    const nowMs = nowOn(start.base, now);
     if (!voided.has(landed.id) && needsResync(start, nowMs, laterStands(state, landed, key))) {
       taps.push(resyncTap(start, nowMs));
     }

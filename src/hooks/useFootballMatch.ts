@@ -185,7 +185,8 @@ function useResync(
   useEffect(() => {
     if (snapshot.kind !== 'ready') return;
     // Now on both clocks a Start's own tap may be stamped on (`tapStampNow`, ruling 149): each is read on its own.
-    const now = { deviceMs: steadyClock.nowMs(), offsetMs: serverClock.knownOffsetMs() };
+    // A server stamp's wait waits for a fresh offset (ruling 151), never a stale one or 0.
+    const now = { deviceMs: steadyClock.nowMs(), offsetMs: serverClock.freshOffsetMs() };
     const stepped = resyncStep(memory.current, snapshot.state, now);
     memory.current = stepped.memory;
     for (const made of stepped.taps) {

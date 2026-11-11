@@ -25,17 +25,20 @@ export const stampBase = (stamped: { readonly stampedOn?: 'server' }): ClockBase
   stamped.stampedOn === 'server' ? 'server' : 'device';
 
 /**
- * Now, on both clocks a stamp can be on: the phone's steady clock, and the server clock's offset from it, null until it
- * has one. A reader compares a stamp only with now on the stamp's own clock (`nowOn`).
+ * Now, on both clocks a stamp can be on: the phone's steady clock, and the server clock's offset from it, null while it
+ * has no fresh one (`freshOffsetMs`, ruling 151). A reader compares a stamp only with now on the stamp's own clock
+ * (`nowOn`).
  */
 export type StampNow = { readonly deviceMs: number; readonly offsetMs: number | null };
 
 /**
- * `now` on `base`'s clock. A server stamp read while no offset is known (a cold start whose first answer carried no
- * `Date`) reads the device's time: the best there is, and what every stamp was before ruling 149.
+ * `now` on `base`'s clock, or null: the server's clock is not known while there is no fresh offset (ruling 151), and a
+ * server stamp is then not compared with anything, never with 0 or a stale offset.
  */
-export const nowOn = (base: ClockBase, now: StampNow): number =>
-  base === 'server' ? now.deviceMs + (now.offsetMs ?? 0) : now.deviceMs;
+export const nowOn = (base: ClockBase, now: StampNow): number | null => {
+  if (base === 'device') return now.deviceMs;
+  return now.offsetMs === null ? null : now.deviceMs + now.offsetMs;
+};
 
 /** The clock as a clock event left it: the match time it set, whether it runs, and when it was set, on which clock. */
 export type ClockAnchor = {

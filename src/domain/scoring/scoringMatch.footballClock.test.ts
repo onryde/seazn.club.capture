@@ -965,4 +965,76 @@ describe('the clock a tap was stamped on (ruling 149)', () => {
       { kind: 'clock', running: true, elapsed: 120 },
     ]);
   });
+
+  // Review M2: Starts are decided in the order they were tapped, which is the queue's. Here an unmarked Start, a Pause,
+  // then a Start stamped on the server's clock of a phone 5 minutes fast: its stamp sorts before the first one's. Both
+  // Starts carry one payload, so each must claim its own event: decided by stamp, the second would claim the first's
+  // event (a Pause stands after it, no resync) and the first the second's (a resync from the wrong tap, by 120).
+  it('two Starts on two clocks are decided in queue order, never by their stamps', () => {
+    const PAUSE: FootballTap = { kind: 'clock', running: false, elapsed: 0 };
+    const sentAt = T + 120_000;
+    let made = landed(
+      readyOn([start()]),
+      { kind: 'tap', tap: KICK_START, key: 'k-1', at: iso(T) },
+      T,
+      sentAt,
+    );
+    const first = made.send!;
+    made = landed(
+      made.state,
+      { kind: 'tap', tap: PAUSE, key: 'k-2', at: iso(T + 1_000) },
+      T + 1_000,
+      sentAt,
+    );
+    made = landed(
+      made.state,
+      {
+        kind: 'tap',
+        tap: KICK_START,
+        key: 'k-3',
+        at: iso(T + 2_000 - OFFSET),
+        stampedOn: 'server',
+      },
+      T + 2_000,
+      sentAt,
+    );
+    const queued = made.state;
+    expect(queued.sync.queue.pending.map((tap) => tap.key)).toEqual(['k-1', 'k-2', 'k-3']);
+    let state = queued;
+    let sent = first;
+    for (const [seq, id] of [
+      [2, 'ev-own-2'],
+      [3, 'ev-own-3'],
+      [4, 'ev-own-4'],
+    ] as const) {
+      const answered = landed(
+        state,
+        { kind: 'answered', sent: sent.sent, answer: accepted(seq, id) },
+        sentAt,
+      );
+      state = answered.state;
+      if (answered.send !== undefined) sent = answered.send;
+    }
+    expect(state.sync.queue.pending).toEqual([]);
+    // The watch sees the queue full, then empty (a phone in the background publishes no state between): both Starts
+    // leave the queue at once, and the order they are decided in is the rule's alone.
+    expect(resyncsAt([queued, state], { deviceMs: sentAt, offsetMs: -OFFSET })).toEqual([
+      { kind: 'clock', running: true, elapsed: 118 },
+    ]);
+  });
+
+  // Ruling 151: no fresh offset (a return dropped the samples, and no answer has come since), no reading of a server
+  // stamp's wait, never at 0 or at a stale offset: the Start waits, and is decided once the offset is fresh.
+  it('a server-stamped Start out of the queue with no fresh offset waits, then resyncs by its wait once there is one', () => {
+    const { queued, done } = lateKickOff('server');
+    const stale = resyncStep(NO_RESYNC, queued, { deviceMs: T + JUMP + 120_000, offsetMs: null });
+    const waits = resyncStep(stale.memory, done, { deviceMs: T + JUMP + 120_000, offsetMs: null });
+    expect([...stale.taps, ...waits.taps]).toEqual([]);
+    expect([...waits.memory.waiting.keys()]).toEqual(['k-start']);
+    const fresh = resyncStep(waits.memory, done, { deviceMs: T + JUMP + 120_000, offsetMs: -JUMP });
+    expect(fresh.taps).toEqual([{ kind: 'clock', running: true, elapsed: 120 }]);
+    expect(
+      resyncStep(fresh.memory, done, { deviceMs: T + JUMP + 121_000, offsetMs: -JUMP }).taps,
+    ).toEqual([]);
+  });
 });

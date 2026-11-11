@@ -27,17 +27,21 @@ describe('createServerClock', () => {
     expect(offsetLines()).toEqual([]);
   });
 
-  // Ruling 149: whether a tap can be stamped on the server's clock at all. An offset of 0 is an offset.
-  it('knownOffsetMs is null before any sample, then the offset, 0 included, and dropping the samples keeps it', () => {
+  // Rulings 149 and 151: whether a tap can be stamped on the server's clock. An offset of 0 is an offset; one kept
+  // through a return is not fresh until the next sample, though the reading's `offsetMs` keeps it.
+  it('freshOffsetMs is null before any sample, the offset after one, 0 included, and null again from dropSamples to the next sample', () => {
     const { clock } = clockOver();
-    expect(clock.knownOffsetMs()).toBeNull();
+    expect(clock.freshOffsetMs()).toBeNull();
     clock.sample(0);
-    expect(clock.knownOffsetMs()).toBe(0);
+    expect(clock.freshOffsetMs()).toBe(0);
     clock.sample(-245_000);
     clock.sample(-245_000);
-    expect(clock.knownOffsetMs()).toBe(-245_000);
+    expect(clock.freshOffsetMs()).toBe(-245_000);
     clock.dropSamples();
-    expect(clock.knownOffsetMs()).toBe(-245_000);
+    expect(clock.freshOffsetMs()).toBeNull();
+    expect(clock.offsetMs()).toBe(-245_000);
+    clock.sample(-245_000);
+    expect(clock.freshOffsetMs()).toBe(-245_000);
   });
 
   it('offsetMs is the median of the newest five samples', () => {
