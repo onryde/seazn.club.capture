@@ -18,6 +18,7 @@ import {
   goalSide,
   MARKS_HEIGHT,
   NOTE_HEIGHT,
+  cardSwatchSize,
   smallLabelFit,
   TIER_FACES,
 } from '@/ui/theme/columnBoard';
@@ -284,23 +285,21 @@ const GoalSquare = memo(function GoalSquare({ action, value, tier, onAction }: G
 });
 
 /**
- * Yellow, Red or Sub: one of three equal squares outlined on the column's surface, its mark (a card's swatch, or the two arrows) over its word
- * (small caps, shrunk to `cardLabelFloor`). A disabled one is dimmed whole.
+ * Yellow, Red or Sub: one of three equal squares outlined on the column's surface. Yellow and Red are the card colour
+ * alone, a portrait card as large as the square holds (`cardSwatchSize`, owner ruling 163): no word, the screen-reader name
+ * says it. Sub is its two arrows over its word, whose size is computed from the square (`smallLabelFit`). A disabled one is
+ * dimmed whole.
  */
 const SmallSquare = memo(function SmallSquare({ action, onAction }: ColumnButtonProps) {
   const press = useCallback(() => onAction(action.id), [onAction, action.id]);
   const off = !action.enabled;
-  // The word's size is computed from the square as laid out, not left to the runtime's shrink, which did not run on the
-  // NE2211 (build 1060: "YELLO"); 0 until the first layout, then the token's size.
-  const [side, setSide] = useState(0);
+  // Sized from the square as laid out, not left to the runtime's shrink, which did not run on the NE2211 (build 1060:
+  // "YELLO"); 0 until the first layout.
+  const [room, setRoom] = useState({ width: 0, height: 0 });
   const measured = useCallback((event: LayoutChangeEvent) => {
-    setSide(Math.round(event.nativeEvent.layout.width * 10) / 10);
+    const { width, height } = event.nativeEvent.layout;
+    setRoom({ width: Math.round(width * 10) / 10, height: Math.round(height * 10) / 10 });
   }, []);
-  const fit = smallLabelFit(side, action.label);
-  const word = useMemo(
-    () => [styles.smallLabel, { fontSize: fit.fontSize, paddingHorizontal: fit.inset }],
-    [fit.fontSize, fit.inset],
-  );
   return (
     <Pressable
       accessibilityRole="button"
@@ -310,21 +309,56 @@ const SmallSquare = memo(function SmallSquare({ action, onAction }: ColumnButton
       onLayout={measured}
       style={off ? smallOff : smallOn}
     >
-      <SquareMark mark={action.mark} />
-      <Text variant="diagSection" numberOfLines={1} style={word}>
-        {action.label}
-      </Text>
+      {action.mark === 'sub' ? (
+        <SubMark label={action.label} side={room.width} />
+      ) : (
+        <CardSwatch mark={action.mark} room={room} />
+      )}
     </Pressable>
   );
 });
 
-/** A card's swatch, or Sub's two arrows drawn from boxes (react-native-svg does not load in the tests). */
-function SquareMark({ mark }: { readonly mark: TeamAction['mark'] }) {
-  if (mark === 'sub') return <SubGlyph />;
-  return (
-    <View testID="card-swatch" style={mark === 'dismissal' ? dismissalSwatch : cautionSwatch} />
+/** Yellow's or Red's card, in the pad's card colours (AGENTS section 5), sized from its square. */
+const CardSwatch = memo(function CardSwatch({
+  mark,
+  room,
+}: {
+  readonly mark: TeamAction['mark'];
+  readonly room: { readonly width: number; readonly height: number };
+}) {
+  const style = useMemo(
+    () => [
+      mark === 'dismissal' ? styles.dismissal : styles.caution,
+      styles.swatch,
+      cardSwatchSize(room),
+    ],
+    [mark, room],
   );
-}
+  return <View testID="card-swatch" style={style} />;
+});
+
+/** Sub: the two arrows over its word, the word sized from the square. */
+const SubMark = memo(function SubMark({
+  label,
+  side,
+}: {
+  readonly label: string;
+  readonly side: number;
+}) {
+  const fit = smallLabelFit(side, label);
+  const word = useMemo(
+    () => [styles.smallLabel, { fontSize: fit.fontSize, paddingHorizontal: fit.inset }],
+    [fit.fontSize, fit.inset],
+  );
+  return (
+    <>
+      <SubGlyph />
+      <Text variant="diagSection" numberOfLines={1} style={word}>
+        {label}
+      </Text>
+    </>
+  );
+});
 
 /** Sub's glyph: an arrow right over an arrow left, each a bar and a head made from a box with no width. */
 const SubGlyph = memo(function SubGlyph() {
@@ -448,11 +482,7 @@ const styles = StyleSheet.create({
   },
   // A disabled square is the whole square dimmed (the mockup's `.pb.dim`), by the token.
   smallDim: { opacity: layout.disabledMark },
-  swatch: {
-    width: layout.padSquareSwatchWidth,
-    height: layout.padSquareSwatchHeight,
-    borderRadius: layout.padCardRadius,
-  },
+  swatch: { borderRadius: layout.padCardRadius },
   smallLabel: {
     alignSelf: 'stretch',
     textAlign: 'center',
@@ -530,8 +560,6 @@ const GOAL_ROOM: Record<BoardTier, StyleProp<ViewStyle>> = {
 
 const cautionCard = [styles.card, styles.caution];
 const dismissalCard = [styles.card, styles.dismissal];
-const cautionSwatch = [styles.swatch, styles.caution];
-const dismissalSwatch = [styles.swatch, styles.dismissal];
 const smallOn = pressable(styles.small, styles.pressedOther);
 const smallOff: StyleProp<ViewStyle> = [styles.small, styles.smallDim];
 const otherButton = pressable(styles.button, styles.pressedOther);

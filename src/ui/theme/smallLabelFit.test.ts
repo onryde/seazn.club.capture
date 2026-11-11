@@ -14,10 +14,10 @@ import { loadFont } from '../../../test/fontMetrics';
 // test); on the device RED and SUB drew 7 to 9 % wider than those advances, which `DEVICE_ADVANCE` carries.
 const SIDE = { 320: 38.7, 360: 45.3, 412: 54 } as const;
 const WORDS = {
-  en: { yellow: 'Yellow', red: 'Red', sub: 'Sub' },
-  es: { yellow: 'Amar.', red: 'Roja', sub: 'Cambio' },
-  fr: { yellow: 'Jaune', red: 'Rouge', sub: 'Rempl.' },
-  nl: { yellow: 'Geel', red: 'Rood', sub: 'Wissel' },
+  en: { sub: 'Sub' },
+  es: { sub: 'Cambio' },
+  fr: { sub: 'Rempl.' },
+  nl: { sub: 'Wissel' },
 } as const;
 const BASE = typeScale.diagSection.fontSize;
 
@@ -29,23 +29,22 @@ describe('smallLabelFit', () => {
     expect(BASE).toBe(14);
   });
 
-  it('YELLOW at 412: 54 dp square, room 46, the word 39.9 x 1.1 = 43.9 fits at full size with its inset', () => {
-    expect(smallLabelFit(SIDE[412], 'Yellow')).toEqual({ fontSize: 14, inset: 3 });
+  // Owner ruling 163 took the Yellow and Red words off; Sub's remain, and Cambio (es, 36.5 dp) is the widest.
+  it('CAMBIO at 412: 54 dp square, room 46, the word 36.5 x 1.1 = 40.2 fits at full size with its inset', () => {
+    expect(smallLabelFit(SIDE[412], 'Cambio')).toEqual({ fontSize: 14, inset: 3 });
   });
 
-  it('YELLOW at 360 shrinks to 11 dp (room 37.3 of 43.9 is 0.85, 11.9 floored), inset kept', () => {
-    expect(smallLabelFit(SIDE[360], 'Yellow')).toEqual({ fontSize: 11, inset: 3 });
+  it('CAMBIO at 360 shrinks to 13 dp (room 37.3 of 40.2 is 0.93, 13.0 floored), inset kept', () => {
+    expect(smallLabelFit(SIDE[360], 'Cambio')).toEqual({ fontSize: 13, inset: 3 });
   });
 
-  it('YELLOW at 320 stops at the 0.75 floor (10.5 dp, floored to 10) and the inset takes what is left: 2.67 a side', () => {
-    const fit = smallLabelFit(SIDE[320], 'Yellow');
-    expect(fit.fontSize).toBe(10);
-    expect(fit.inset).toBeCloseTo(2.68, 1);
+  it('CAMBIO at 320 shrinks to 10 dp (room 30.7 of 40.2 is 0.76, 10.7 floored), inset kept', () => {
+    expect(smallLabelFit(SIDE[320], 'Cambio')).toEqual({ fontSize: 10, inset: 3 });
   });
 
   it('a word that fits is never grown, and an unmeasured square (width 0) keeps the token size', () => {
-    expect(smallLabelFit(SIDE[412], 'Red').fontSize).toBe(14);
-    expect(smallLabelFit(0, 'Yellow')).toEqual({ fontSize: 14, inset: 3 });
+    expect(smallLabelFit(SIDE[412], 'Sub').fontSize).toBe(14);
+    expect(smallLabelFit(0, 'Cambio')).toEqual({ fontSize: 14, inset: 3 });
   });
 
   it.each(Object.entries(WORDS))(
@@ -67,10 +66,10 @@ describe('smallLabelFit', () => {
     },
   );
 
-  it('the table is the font file’s measure, and holds every Yellow, Red and Sub word of the four dictionaries', () => {
+  it('the table is the font file’s measure, and holds every Sub word of the four dictionaries', () => {
     const font = loadFont('barlow-condensed-600');
     for (const dictionary of [en, es, fr, nl] as const)
-      for (const key of ['yellow', 'red', 'sub'] as const) {
+      for (const key of ['sub'] as const) {
         const word = (dictionary as Record<string, string>)[
           `scoring.football.column.${key}`
         ]!.toUpperCase();

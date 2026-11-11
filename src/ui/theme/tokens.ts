@@ -357,13 +357,10 @@ const base = {
   padCardHeight: 11,
   padCardRadius: 1,
   /**
-   * The mark in a small square (owner ruling 144): Yellow's and Red's swatch is a card, `padSquareSwatchWidth` by
-   * `padSquareSwatchHeight`, and Sub's glyph is two arrows drawn from boxes, one pointing right and one left, the height
-   * of the swatch: each a bar `padSubBar` long and `padSubThickness` thick with a head `padSubHead` long and
+   * The mark in a small square (owner ruling 144): Yellow's and Red's swatch is a card sized from its square
+   * (`cardSwatchSize`, ruling 163), and Sub's glyph is two arrows drawn from boxes, one pointing right and one left: each a bar `padSubBar` long and `padSubThickness` thick with a head `padSubHead` long and
    * `2 * padSubHalf` tall, `padSubGap` apart.
    */
-  padSquareSwatchWidth: 14,
-  padSquareSwatchHeight: 18,
   padSubBar: 9,
   padSubThickness: 2,
   padSubHead: 5,

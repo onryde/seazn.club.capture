@@ -27,8 +27,11 @@ const action = (id: string, label: string, extra: Partial<TeamAction> = {}): Tea
 });
 
 const GOAL = action('goal.first', 'Goal', { primary: true, said: 'Goal, Riverside FC, 2' });
-const YELLOW = action('yellow.first', 'Yellow', { mark: 'caution' });
-const RED = action('red.first', 'Red', { mark: 'dismissal' });
+// Owner ruling 163: Yellow and Red draw no word (the card colour alone); a screen reader hears the sport's words.
+const YELLOW_NAME = 'Yellow card, Riverside FC';
+const RED_NAME = 'Red card, Riverside FC';
+const YELLOW = action('yellow.first', 'Yellow', { mark: 'caution', said: YELLOW_NAME });
+const RED = action('red.first', 'Red', { mark: 'dismissal', said: RED_NAME });
 const SUB = action('sub.first', 'Sub', { mark: 'sub' });
 
 const VIEW: TeamColumnView = {
@@ -60,12 +63,12 @@ describe('TeamColumn', () => {
     expect(within(square).getByText('Goal')).toBeTruthy();
     expect(screen.getAllByRole('button').map((each) => each.getAttribute('aria-label'))).toEqual([
       'Goal, Riverside FC, 2',
-      'Yellow',
-      'Red',
+      YELLOW_NAME,
+      RED_NAME,
       'Sub',
     ]);
-    act(() => fireEvent.click(button('Yellow')));
-    act(() => fireEvent.click(button('Red')));
+    act(() => fireEvent.click(button(YELLOW_NAME)));
+    act(() => fireEvent.click(button(RED_NAME)));
     act(() => fireEvent.click(square));
     expect(onAction.mock.calls).toEqual([['yellow.first'], ['red.first'], ['goal.first']]);
   });
@@ -107,7 +110,7 @@ describe('TeamColumn', () => {
       actions: [GOAL, YELLOW, RED, { ...SUB, enabled: false, note: 'No team sheet' }],
     });
     expect(declaredStyle(button('Sub, No team sheet'), 'opacity')).toBe(`${layout.disabledMark}`);
-    expect(declaredStyle(button('Yellow'), 'opacity')).not.toBe(`${layout.disabledMark}`);
+    expect(declaredStyle(button(YELLOW_NAME), 'opacity')).not.toBe(`${layout.disabledMark}`);
   });
 
   // jsdom has no font padding, so nothing renders the difference: this guards the declaration (device-only effect, the
@@ -125,19 +128,44 @@ describe('TeamColumn', () => {
     expect(screen.queryByTestId('column-note')).toBeNull();
   });
 
-  // Build 1060: the runtime shrink did not run on the NE2211 and "YELLOW" read "YELLO". The size is now set from the
-  // measured square (smallLabelFit.test.ts holds the numbers); here, that the column applies it.
-  it('sets the small squares’ word from the measured square: full size and a 3 dp inset at 54, smaller at 38.7', () => {
-    renderColumn(VIEW);
-    const square = button('Yellow');
-    const word = () => within(square).getByText('Yellow');
+  // Build 1060: the runtime shrink did not run on the NE2211. Sub's word is sized from the measured square
+  // (smallLabelFit.test.ts holds the numbers); here, that the column applies it. Yellow and Red have no word.
+  it('sets Sub’s word from the measured square: full size and a 3 dp inset at 54, smaller at 38.7', () => {
+    renderColumn({ ...VIEW, actions: [GOAL, YELLOW, RED, { ...SUB, label: 'Cambio' }] });
+    const square = button('Cambio');
+    const word = () => within(square).getByText('Cambio');
     expect(declaredStyle(word(), 'font-size')).toBe('14px');
     layOut(square, { width: 54, height: 54 });
     expect(declaredStyle(word(), 'font-size')).toBe('14px');
     expect(declaredStyle(word(), 'padding-left')).toBe('3px');
     layOut(square, { width: 38.7, height: 48 });
     expect(declaredStyle(word(), 'font-size')).toBe('10px');
-    expect(declaredStyle(word(), 'padding-left')).not.toBe('0px');
+  });
+
+  // Owner ruling 163 (2026-11-11): "remove the word and keep colour only in yellow and red".
+  it('Yellow and Red are the card alone: no word in the square, a portrait 3:4 card sized from it', () => {
+    renderColumn(VIEW);
+    for (const name of [YELLOW_NAME, RED_NAME]) {
+      const square = button(name);
+      expect(square.textContent).toBe('');
+      expect(within(square).queryByText(/yellow|red/i)).toBeNull();
+      const card = () => within(square).getByTestId('card-swatch');
+      layOut(square, { width: 54, height: 54 });
+      expect([declaredStyle(card(), 'width'), declaredStyle(card(), 'height')]).toEqual([
+        '33px',
+        '44px',
+      ]);
+      layOut(square, { width: 45.3, height: 45.3 });
+      expect([declaredStyle(card(), 'width'), declaredStyle(card(), 'height')]).toEqual([
+        '27px',
+        '36px',
+      ]);
+      layOut(square, { width: 38.7, height: 48 });
+      expect([declaredStyle(card(), 'width'), declaredStyle(card(), 'height')]).toEqual([
+        '30px',
+        '40px',
+      ]);
+    }
   });
 
   it('draws no note line at all when told none is reserved and the column has no note', () => {
@@ -226,10 +254,10 @@ describe('TeamColumn', () => {
       within(row)
         .getAllByRole('button')
         .map((each) => each.textContent),
-    ).toEqual(['Yellow', 'Red', 'Sub']);
+    ).toEqual(['', '', 'Sub']);
     expect(declaredStyle(row, 'flex-direction')).toBe('row');
     expect(declaredStyle(row, 'gap')).toBe(`${space.xs}px`);
-    for (const name of ['Yellow', 'Red', 'Sub']) {
+    for (const name of [YELLOW_NAME, RED_NAME, 'Sub']) {
       // Outlined as the mockup's buttons: the hairline in ink3, 12 dp round, and no grey fill.
       expect(getComputedStyle(button(name)).borderTopColor).toBe(edgeOf(colour.ink3));
       expect(declaredStyle(button(name), 'border-top-width')).toBe(`${layout.iconBorder}px`);
@@ -241,11 +269,11 @@ describe('TeamColumn', () => {
     }
     const swatch = (name: string) =>
       getComputedStyle(within(button(name)).getByTestId('card-swatch')).backgroundColor;
-    expect(swatch('Yellow')).toBe(fillOf(colour.cardCaution));
-    expect(swatch('Red')).toBe(fillOf(colour.cardDismissal));
+    expect(swatch(YELLOW_NAME)).toBe(fillOf(colour.cardCaution));
+    expect(swatch(RED_NAME)).toBe(fillOf(colour.cardDismissal));
     expect(within(button('Sub')).queryByTestId('card-swatch')).toBeNull();
     expect(within(button('Sub')).getByTestId('sub-glyph')).toBeTruthy();
-    expect(within(button('Yellow')).queryByTestId('sub-glyph')).toBeNull();
+    expect(within(button(YELLOW_NAME)).queryByTestId('sub-glyph')).toBeNull();
   });
 
   it('Sub’s glyph is two arrows, one pointing each way, from boxes', () => {

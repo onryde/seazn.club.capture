@@ -251,11 +251,11 @@ describe('the team columns', () => {
         .getAllByRole('button')
         .slice(1)
         .map((button) => button.textContent),
-    ).toEqual([
-      en['scoring.football.column.yellow'],
-      en['scoring.football.column.red'],
-      en['scoring.football.column.sub'],
-    ]);
+    ).toEqual(['', '', en['scoring.football.column.sub']]);
+    // Owner ruling 163: Yellow and Red draw the card colour alone, no word; the names above are what a screen reader hears.
+    expect(within(column('first')).queryByText(en['scoring.football.column.yellow'])).toBeNull();
+    expect(within(column('first')).queryByText(en['scoring.football.column.red'])).toBeNull();
+    expect(within(column('first')).getAllByTestId('card-swatch')).toHaveLength(2);
     const square = within(column('first')).getByTestId('goal-square');
     expect(within(square).getByTestId('column-value').textContent).toBe('0');
     expect(within(square).getByText(en['scoring.football.column.goal'])).toBeTruthy();

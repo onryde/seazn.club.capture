@@ -12,6 +12,7 @@ import {
   clockHeroSize,
   goalSide,
   NOTE_HEIGHT,
+  cardSwatchSize,
 } from '@/ui/theme/columnBoard';
 import { maxFontScale, typeScale } from '@/ui/theme/type';
 import { loadFont } from '../../../test/fontMetrics';
@@ -97,15 +98,8 @@ const buttonText = (width: number) => teamText(width) - 2 * space.sm;
 const squareText = (width: number) => teamText(width) - 2 * space.xs;
 /** The three small squares' side: a third of the column's text less the two gaps (space.xs) between them (ruling 144). */
 const smallText = (width: number) => (teamText(width) - 2 * space.xs) / 3;
-/** What a word has inside a small square: its side less the outline's two edges (owner ruling 152). */
-const smallWordRoom = (width: number) =>
-  smallText(width) - 2 * layout.iconBorder - 2 * SMALL_LABEL_INSET;
-/** The label's own inset a side inside the square, so it never touches the outline (device, build 1048; `space.xs`). */
+/** The label's inset a side inside a small square (`layout.padSquareLabelInset`, owner build 1048). */
 const SMALL_LABEL_INSET = 3;
-/** The word under a mark in a small square: `diagSection` caps at the squares' own letterspacing. */
-const squareWordWidth = (text: string) =>
-  barlow600.width(text.toUpperCase(), typeScale.diagSection.fontSize) +
-  layout.padSquareLabelSpacing * [...text].length;
 /** A tool's text in a row of two (End of period and More): as padFit's `toolTextOf(2)`. */
 const toolText = (width: number) =>
   (column(width) - space.sm) / 2 - 2 * space.sm - 2 * layout.iconBorder;
@@ -339,20 +333,28 @@ describe('the column buttons at 320 and 360 in four languages', () => {
   // Ruling 144: three squares share the column's text, a third each less the gaps. The word's size is computed from the
   // square (`smallLabelFit`), tested with its literal widths in smallLabelFit.test.ts for every word, language and width.
 
-  it('the room a word has: a 38.7 dp square holds 30.7 at 320 and 45.3 holds 37.3 at 360 (literal widths) once the outline (1 a side) and the label’s inset (3 a side) are out; Yellow, the widest word, needs 0.77 and 0.93', () => {
+  // Owner ruling 163: Yellow and Red are the card alone. A portrait 3:4 card, as large as the square holds inside the outline
+  // (1 a side) and the inset (3 a side), on a 4 dp grid: the square is 38.7 wide and 48 tall at 320, 45.3 square at 360, 54 at
+  // 412 (literal sums, not the function's own).
+  it('the card in a small square is 30 by 40 at 320, 27 by 36 at 360 and 33 by 44 at 412', () => {
     expect(layout.padSquareLabelInset).toBe(SMALL_LABEL_INSET);
-    expect(layout.padSquareLabelSpacing).toBe(0);
-    expect(smallWordRoom(320).toFixed(1)).toBe('30.7');
-    expect(smallWordRoom(360).toFixed(1)).toBe('37.3');
-    const widest = squareWordWidth('Yellow');
-    expect(widest.toFixed(1)).toBe('39.9');
-    expect((smallWordRoom(320) / widest).toFixed(2)).toBe('0.77');
-    expect((smallWordRoom(360) / widest).toFixed(2)).toBe('0.93');
+    expect(cardSwatchSize({ width: 38.7, height: 48 })).toEqual({ width: 30, height: 40 });
+    expect(cardSwatchSize({ width: 45.3, height: 45.3 })).toEqual({ width: 27, height: 36 });
+    expect(cardSwatchSize({ width: 54, height: 54 })).toEqual({ width: 33, height: 44 });
+    expect(cardSwatchSize({ width: 0, height: 0 })).toEqual({ width: 27, height: 36 });
   });
 
-  it('Spanish Yellow is "Amar.", as French Sub is "Rempl.": "Amarilla" is 47.9 dp and would need 0.64 at 320, under the floor', () => {
-    expect(squareWordWidth('Amarilla')).toBeGreaterThan(smallWordRoom(320) / layout.cardLabelFloor);
-    expect(es['scoring.football.column.yellow']).toBe('Amar.');
+  it('every card fits its square inside the outline and the inset, and is 3:4', () => {
+    for (const [width, height] of [
+      [38.7, 48],
+      [45.3, 45.3],
+      [54, 54],
+    ] as const) {
+      const card = cardSwatchSize({ width, height });
+      expect(card.width * 4).toBe(card.height * 3);
+      expect(card.width).toBeLessThanOrEqual(width - 2 - 6);
+      expect(card.height).toBeLessThanOrEqual(height - 2 - 6);
+    }
   });
 
   // A note is too long for a square, even in two lines (a word of fr "Plus de remplacement" is wider than the square), so

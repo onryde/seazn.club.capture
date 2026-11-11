@@ -141,24 +141,33 @@ export const clockHeroLine = (size: number): number =>
   Math.floor((size * typeScale.clockHero.lineHeight) / typeScale.clockHero.fontSize + 1e-9);
 
 /**
- * Yellow, Red and Sub's words at `diagSection`'s size (14), upper case, no letterspacing: Barlow Condensed 600's advances,
+ * Sub's word in each language at `diagSection`'s size (14), upper case, no letterspacing: Barlow Condensed 600's advances,
  * written out so the layout needs no font reader (`smallLabelFit.test.ts` checks every one against the font file and that
- * the four dictionaries' words are all here).
+ * the four dictionaries' Sub words are all here).
  */
 export const SMALL_WORD_WIDTH: Readonly<Record<string, number>> = {
-  YELLOW: 39.9,
-  RED: 19.2,
   SUB: 19.2,
-  'AMAR.': 29.7,
-  ROJA: 25.6,
   CAMBIO: 36.5,
-  JAUNE: 32.5,
-  ROUGE: 32.2,
   'REMPL.': 35.2,
-  GEEL: 24.5,
-  ROOD: 26.1,
   WISSEL: 36.5,
 };
+
+/**
+ * Yellow's and Red's card (owner ruling 163, 2026-11-11: "remove the word and keep colour only"): portrait, 3:4, as large as
+ * the square holds inside its outline and `layout.padSquareLabelInset`, a whole number of dp on a 4 dp grid so its sides
+ * are whole (h = 4k, w = 3k), from the square as laid out (0 before: the least, a 36 by 27 card). Sized from the
+ * measurement like the Goal numeral (ruling 138).
+ */
+export function cardSwatchSize(square: { readonly width: number; readonly height: number }): {
+  readonly width: number;
+  readonly height: number;
+} {
+  if (square.width <= 0 || square.height <= 0) return { width: 27, height: 36 };
+  const pad = 2 * (layout.iconBorder + layout.padSquareLabelInset);
+  const room = Math.min(square.height - pad, ((square.width - pad) * 4) / 3);
+  const height = Math.max(4, Math.floor(room / 4) * 4);
+  return { width: (height * 3) / 4, height };
+}
 
 /**
  * What the NE2211 drew over those advances: RED and SUB 7 to 9 % wider (build 1060). Its runtime shrink (`adjustsFontSizeToFit`)
