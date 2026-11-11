@@ -48,7 +48,7 @@ export const CricketBoard = memo(function CricketBoard({
     <View
       testID="cricket-board"
       onLayout={measured}
-      style={tight ? styles.boardTight : styles.board}
+      style={done ? styles.boardDone : tight ? styles.boardTight : styles.board}
     >
       {view.result === null ? (
         <ScorePanel
@@ -488,6 +488,8 @@ const styles = StyleSheet.create({
   // The spare height, under the strip against the keys (T20 fix 12); shrinks to nothing when the board is taller than the
   // model thought, so any overflow clips the bottom and the score is never cut.
   spareEnd: { flexGrow: 1, flexShrink: 1 },
+  // A decided board has no keys under it: its natural height, in the pad's scroll (`PadContent`'s `scrolls`), not clipped.
+  boardDone: { gap: space.sm },
   boardTight: { flex: 1, gap: layout.boardGapTight, overflow: 'hidden' },
   // Every region keeps its height (`flexShrink: 0`): a board too short clips at its own bottom and never squeezes a row
   // (T19 fix 6, device: the crease rows measured 16 dp, not 25, and the bowler line was cut mid-glyph).

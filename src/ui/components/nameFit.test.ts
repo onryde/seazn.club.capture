@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isOneWord } from '@/ui/components/nameFit';
+import { breaksInsideWord, isOneWord, splitInTwo } from '@/ui/components/nameFit';
 
 // Whether a name has anywhere to break but inside a word (device finding, 2026-11-02: a long single-word name broke
 // mid-word on the serving pick, "TEest002ashokash" over "ok"). Android breaks a word that is wider than its line at the
@@ -32,5 +32,50 @@ describe('isOneWord', () => {
     ['a long first name and a short one', 'Konstantinopolitanisch Li'],
   ])('is not one word: %s', (_why, name) => {
     expect(isOneWord(name)).toBe(false);
+  });
+});
+
+// The controller's fix-round ruling (a): a team's name shrinks to fit before its two-line ellipsis, so no word breaks at
+// a letter. Android shrinks only past the line cap, so a word wider than the line breaks inside it on two lines; the
+// phone's own lines (`onTextLayout`) say when it did, and the name is then set on two lines at a gap, where the shrink
+// sees the word. Each case is the line texts Android hands back, written out by hand.
+describe('breaksInsideWord', () => {
+  it.each([
+    ['one line', ['Riverside FC']],
+    ['a break at a space, which the line keeps', ['Northgate ', 'United']],
+    ['a break at a line feed', ['Wolverhampton\n', 'Wanderers']],
+    ['a break after a hyphen', ['Saint-', 'Étienne']],
+    ['no lines at all', []],
+    ['the last line cut by its ellipsis, which is no break', ['Wanderers ', 'United Acad…']],
+  ])('no: %s', (_why, lines) => {
+    expect(breaksInsideWord(lines)).toBe(false);
+  });
+
+  it.each([
+    ['a word wider than the line, broken at a letter', ['Wolverhampto', 'n Wanderers']],
+    ['a break inside the second of three lines', ['Real ', 'Mönchengladba', 'ch']],
+  ])('yes: %s', (_why, lines) => {
+    expect(breaksInsideWord(lines)).toBe(true);
+  });
+});
+
+describe('splitInTwo', () => {
+  it.each([
+    ['two words, at the gap', 'Wolverhampton Wanderers', 'Wolverhampton\nWanderers'],
+    [
+      'three words, at the gap that leaves the longer line shortest',
+      'AFC Wolverhampton Wanderers',
+      'AFC Wolverhampton\nWanderers',
+    ],
+    ['a short word first', 'AFC Bournemouth', 'AFC\nBournemouth'],
+    [
+      'spaces around it are dropped, and a run of gaps is one',
+      '  Borussia   Mönchengladbach ',
+      'Borussia\nMönchengladbach',
+    ],
+    ['a no-break space is no gap: two words, not three', 'FC St.\u00a0Pauli', 'FC\nSt.\u00a0Pauli'],
+    ['one word stays as it is', 'Wolverhampton', 'Wolverhampton'],
+  ])('%s', (_why, name, split) => {
+    expect(splitInTwo(name)).toBe(split);
   });
 });

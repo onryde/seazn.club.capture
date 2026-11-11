@@ -1,3 +1,4 @@
+import { offsetSampleOf } from '@/domain/scoring/serverOffset';
 import { isBuildOrigin } from '@/services/seaznHosts';
 import {
   CODE_WORD,
@@ -54,6 +55,13 @@ type Deps = {
   /** Shortens every call, events too; it never lengthens one (`Math.min` with the call's own bound). */
   timeoutMs?: number;
   now?: () => number;
+  /**
+   * S2-5 design §7.2: each answer's sample of the server's clock (`offsetSampleOf`: its `Date` header against the
+   * request's midpoint on `now`), for the ports' server clock. Every call samples, whatever its status: each asks
+   * `no-store`, so no answer is a stored one with an old header (the web samples only its `/events` calls because its
+   * `/state` revalidates). An answer from elsewhere (a redirect) or one that came after the call gave up is no sample.
+   */
+  serverTime?: (sampleMs: number) => void;
 };
 
 type Op = 'bootstrap' | 'events' | 'rules' | 'append' | 'realtimeToken';
@@ -85,7 +93,9 @@ const CAP: Readonly<Record<Op, number>> = {
 
 export function createFetchScoringPort(deps: Deps): ScoringPort {
   const say = reporter(deps.logger);
-  const ask = (link: ScoringLink, op: Op, build: Build) => send(deps, link, op, build);
+  const serverTime = clockApart(deps);
+  const own: Deps = { ...deps, ...(serverTime === undefined ? {} : { serverTime }) };
+  const ask = (link: ScoringLink, op: Op, build: Build) => send(own, link, op, build);
   const get =
     (path: () => string): Build =>
     () => ({ method: 'GET', path: path() });
@@ -133,6 +143,27 @@ export function createFetchScoringPort(deps: Deps): ScoringPort {
 }
 
 /**
+ * The clock's feed, held apart from the answer (Batch A review, M3; the web's transport measures the same way): a feed
+ * that throws (a subscriber of the server clock, say) costs that one sample, never the answer, which would otherwise
+ * read `unexpected` and send an accepted tap to the retry path. The record says `scoring.clock.failed` once for the
+ * port, not once per answer.
+ */
+function clockApart(deps: Deps): ((sampleMs: number) => void) | undefined {
+  const feed = deps.serverTime;
+  if (feed === undefined) return undefined;
+  let said = false;
+  return (sampleMs) => {
+    try {
+      feed(sampleMs);
+    } catch {
+      if (said) return;
+      said = true;
+      deps.logger.warn('scoring.clock.failed');
+    }
+  };
+}
+
+/**
  * One request, bounded: its reply, or why there is none. Never rejects. The link's token is handed to the logger
  * first, before anything can fail, so no line this port or anything else writes can carry it (F15).
  */
@@ -158,9 +189,34 @@ async function exchange(
 ): Promise<Reply | Lost> {
   const request = build();
   const url = `${link.origin}${request.path}`;
-  let response: FetchResponse;
+  const now = deps.now ?? Date.now;
+  const sentAt = now();
+  const response = await fetched(deps, link, url, request, signal);
+  if (response === null) return { problem: 'network' };
+  // React Native's fetch (whatwg-fetch 3.6.20) ignores `redirect` and follows one: an answer from anywhere but the
+  // URL asked is a portal's or an edge's, so no answer.
+  if (response.url !== undefined && response.url !== '' && response.url !== url) {
+    return { problem: 'redirected' };
+  }
+  const sample = offsetSampleOf(response.headers.get('Date'), sentAt, now());
+  const body = await bodyOf(response, CAP[op]);
+  // A call past its deadline has already answered its caller offline: its late answer feeds no clock.
+  if (sample !== undefined && signal?.aborted !== true) deps.serverTime?.(sample);
+  if (body === TOO_LARGE_BODY) return { problem: 'too-large' };
+  const retryAfter = parseRetryAfter(response.headers.get('Retry-After'), now());
+  return { status: response.status, body, retryAfterMs: retryAfter * 1000 };
+}
+
+/** The platform's answer, or null for none: the fetch threw (no network, or the call's own abort). */
+async function fetched(
+  deps: Deps,
+  link: ScoringLink,
+  url: string,
+  request: Request,
+  signal?: AbortSignal,
+): Promise<FetchResponse | null> {
   try {
-    response = await deps.fetch(url, {
+    return await deps.fetch(url, {
       method: request.method,
       headers: headersFor(link, request),
       ...(request.body === undefined ? {} : { body: request.body }),
@@ -168,20 +224,8 @@ async function exchange(
       signal,
     });
   } catch {
-    return { problem: 'network' };
+    return null;
   }
-  // React Native's fetch (whatwg-fetch 3.6.20) ignores `redirect` and follows one: an answer from anywhere but the
-  // URL asked is a portal's or an edge's, so no answer.
-  if (response.url !== undefined && response.url !== '' && response.url !== url) {
-    return { problem: 'redirected' };
-  }
-  const body = await bodyOf(response, CAP[op]);
-  if (body === TOO_LARGE_BODY) return { problem: 'too-large' };
-  const retryAfter = parseRetryAfter(
-    response.headers.get('Retry-After'),
-    deps.now?.() ?? Date.now(),
-  );
-  return { status: response.status, body, retryAfterMs: retryAfter * 1000 };
 }
 
 function headersFor(link: ScoringLink, request: Request): Record<string, string> {

@@ -1,5 +1,7 @@
 import { act, fireEvent, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { HOLD_MS } from '@/hooks/useHold';
+import { pressIn, pressOut } from '../../../test/press';
 import type { PadTool } from '@/domain/scoring/padView';
 import en from '@/i18n/en.json';
 import type { MessageKey } from '@/i18n/messages';
@@ -74,5 +76,53 @@ describe('ToolRow', () => {
   it('draws nothing when there are no tools: a card is up', () => {
     renderWithPorts(<ToolRow tools={[]} onTool={vi.fn()} />);
     expect(screen.queryAllByRole('button')).toEqual([]);
+  });
+});
+
+// Owner ruling 160: one tool is held 3 s, not tapped; every other tool in the row stays a tap.
+describe('ToolRow with a held tool', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+  const period: PadTool<MessageKey> = {
+    id: 'period',
+    label: { key: 'scoring.football.end.HT' },
+    detail: null,
+    kind: 'standard',
+    enabled: true,
+  };
+  const heldName = `Hold for ${en['scoring.football.end.HT']}`;
+
+  it('sends nothing for a tap or an early release, and once for HOLD_MS', () => {
+    const onTool = vi.fn();
+    renderWithPorts(<ToolRow tools={[period]} onTool={onTool} holdTool="period" />);
+    const button = screen.getByRole('button', { name: heldName });
+    act(() => fireEvent.click(button));
+    pressIn(button);
+    act(() => vi.advanceTimersByTime(HOLD_MS - 1));
+    pressOut(button);
+    act(() => vi.advanceTimersByTime(HOLD_MS));
+    expect(onTool).not.toHaveBeenCalled();
+    pressIn(button);
+    act(() => vi.advanceTimersByTime(HOLD_MS));
+    expect(onTool).toHaveBeenCalledExactlyOnceWith('period');
+  });
+
+  it('abandons a hold in progress when the tool goes off, with nothing sent', () => {
+    const onTool = vi.fn();
+    const view = renderWithPorts(<ToolRow tools={[period]} onTool={onTool} holdTool="period" />);
+    pressIn(screen.getByRole('button', { name: heldName }));
+    act(() => vi.advanceTimersByTime(HOLD_MS - 1));
+    view.rerender(
+      <ToolRow tools={[{ ...period, enabled: false }]} onTool={onTool} holdTool="period" />,
+    );
+    act(() => vi.advanceTimersByTime(HOLD_MS));
+    expect(onTool).not.toHaveBeenCalled();
+  });
+
+  it('leaves every tool a tap when no tool is named, as badminton’s row is', () => {
+    const onTool = vi.fn();
+    renderWithPorts(<ToolRow tools={[period]} onTool={onTool} />);
+    act(() => fireEvent.click(screen.getByRole('button', { name: en['scoring.football.end.HT'] })));
+    expect(onTool).toHaveBeenCalledExactlyOnceWith('period');
   });
 });

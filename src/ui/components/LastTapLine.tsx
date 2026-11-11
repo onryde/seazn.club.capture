@@ -4,9 +4,9 @@ import type { PadLastTap } from '@/domain/scoring/padView';
 import { useT } from '@/hooks/useLanguage';
 import { usePadText } from '@/hooks/usePadText';
 import type { MessageKey } from '@/i18n/messages';
-import { GhostButton } from '@/ui/components/GhostButton';
 import { RefusalBanner } from '@/ui/components/RefusalBanner';
 import { Text } from '@/ui/components/Text';
+import { UndoButton } from '@/ui/components/UndoButton';
 import { layout, space } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
 
@@ -55,7 +55,7 @@ export const LastTapLine = memo(function LastTapLine({
         )}
       </View>
       {undoCell ? (
-        <GhostButton
+        <UndoButton
           label={t('scoring.pad.undo')}
           onPress={onUndo}
           disabled={lastTap?.undo !== true}

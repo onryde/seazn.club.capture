@@ -849,6 +849,15 @@ describe('BadmintonPadScreen: leaving, and the phone', () => {
     expect(pad.screen.calls).toEqual([]);
   });
 
+  // Owner ruling 152 made football's tool words bright; the shared row keeps `ink2` for every other pad.
+  it('keeps the standard tools’ words in ink2: only football asks for bright ink', () => {
+    renderPad();
+    const row = screen.getByTestId('tool-row');
+    const word = within(row).getByText(en['scoring.badminton.tool.setScore']);
+    expect(getComputedStyle(word).color).toBe(edgeOf(colour.ink2));
+    expect(getComputedStyle(word).color).not.toBe(edgeOf(colour.ink));
+  });
+
   it('keeps every tool and the sync words on a 320 dp phone: shared cells, clamped, never pushed off', () => {
     setWindowSize(320, 640);
     renderPad();

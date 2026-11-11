@@ -393,7 +393,10 @@ function joined(
   return { ledger, tip: answer.seq, gap: false, duplicate: false };
 }
 
-/** The server's `recorded_at` and `device_link_id` are not in its answer: the tap's time, and no link. */
+/**
+ * The server's `recorded_at` and `device_link_id` are not in its answer: the tap's time, on the clock the tap names
+ * (ruling 149), and no link.
+ */
 function ledgerEventOf(sent: QueuedEvent, answer: Accepted): LedgerEvent {
   return {
     id: answer.eventId,
@@ -403,6 +406,7 @@ function ledgerEventOf(sent: QueuedEvent, answer: Accepted): LedgerEvent {
     recordedAt: sent.createdAt,
     voids: voidTargetOf(sent.type, sent.payload),
     deviceLinkId: null,
+    ...(sent.stampedOn === undefined ? {} : { stampedOn: sent.stampedOn }),
   };
 }
 

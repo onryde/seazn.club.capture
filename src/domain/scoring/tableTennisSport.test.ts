@@ -168,13 +168,14 @@ describe('tableTennisSport: a tap', () => {
   });
 
   it('sends a rally’s serving only while no rally of the ledger already names one', () => {
+    const SEND = { bootstrap: null, ownEventIds: [] };
     const queued = queuedOf('k1', rally({ wonBy: 'H', serving: 'H' }));
-    expect(tableTennisSport.payloadForSend(queued, [], false)).toEqual({
+    expect(tableTennisSport.payloadForSend(queued, [], false, SEND)).toEqual({
       wonBy: HOME,
       serving: HOME,
     });
     const taken = ledgerOf([start(), rally({ wonBy: 'A', serving: 'H' })]);
-    expect(tableTennisSport.payloadForSend(queued, taken, false)).toEqual({ wonBy: HOME });
+    expect(tableTennisSport.payloadForSend(queued, taken, false, SEND)).toEqual({ wonBy: HOME });
   });
 });
 

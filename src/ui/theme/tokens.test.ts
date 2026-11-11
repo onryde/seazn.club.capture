@@ -52,11 +52,13 @@ describe('the card tokens: owner ruling 56 (2026-11-04)', () => {
       return !test && /\.tsx?$/.test(entry.name) && entry.name !== 'tokens.ts' ? [path] : [];
     });
 
-  // "Used only by the card icon": one component draws a card, and nothing else reaches for these two colours.
-  it('are used by the half’s card icon alone', () => {
+  // "Used only by the card icon": the pad's card drawings, and nothing else reaches for these two colours. A half draws
+  // them (ruling 56), and so does a team column (S2-5 design §6.2: the columns' marks are the pad's card drawings).
+  it('are used by the pad’s card icons alone: a half’s and a team column’s', () => {
     const users = sources(join(__dirname, '..', '..'))
       .filter((path) => /cardCaution|cardDismissal/.test(readFileSync(path, 'utf8')))
-      .map((path) => path.split('/').pop());
-    expect(users).toEqual(['ScoreHalf.tsx']);
+      .map((path) => path.split('/').pop())
+      .sort();
+    expect(users).toEqual(['ScoreHalf.tsx', 'TeamColumn.tsx']);
   });
 });

@@ -33,6 +33,7 @@ import { createProbeFlight } from '@/services/probeFlight';
 import { createRecordSendFlight } from '@/services/recordSendFlight';
 import type { RecordSendOutcome, RecordUploadPort } from '@/services/recordUploadPort';
 import { createScanFlight } from '@/services/scanFlight';
+import type { ServerClock } from '@/services/serverClock';
 import { createRingRecord, parseRecordLine, type SessionRecord } from '@/services/sessionRecord';
 import { createStreamSettingsStore } from '@/services/streamSettingsStore';
 import { createTapQueueStore, type TapQueueStore } from '@/services/tapQueueStore';
@@ -94,6 +95,11 @@ export type FakePorts = {
    * as the `scoring` override for a match of the test's own.
    */
   readonly scoring: FakeScoringPort;
+  /**
+   * S2-5: the server's clock less the phone's, 0 until `setOffset(ms)`; the fake scoring port feeds it nothing, and a
+   * `sample` does not move it (the real estimate's tests are `serverClock.test.ts`).
+   */
+  readonly serverClock: FakeServerClock;
   /**
    * S2: the real queue store over an in-memory folder (`queueFiles`: what was written, every call, `failNext`). A
    * test that reopens the app builds another store over the same `queueFiles`.
@@ -159,6 +165,10 @@ export function createFakePorts(overrides: FakePortsOverrides = {}): FakePorts {
     scoring: createFakeScoringPort(scoringSeed ?? SINGLES_SEED, {
       stamp: () => (portOverrides.clock ?? (() => now))().getTime(),
     }),
+    serverClock: createFakeServerClock(),
+    // Ruling 137: the steady clock reads the `clock` port (the override when a test gives one), so a test that moves the
+    // wall clock alone builds the real one (`createSteadyClock`) and passes it as `steadyClock`.
+    steadyClock: { nowMs: () => (portOverrides.clock ?? (() => now))().getTime() },
     tapQueue: createTapQueueStore({ files: queueFiles, logger }),
     queueFiles,
     realtime: createFakeRealtimePort(),
@@ -381,6 +391,39 @@ export function createFakePower(initial: PowerMode | null = 'unrestricted'): Fak
     },
     get opened() {
       return opened;
+    },
+  };
+}
+
+export type FakeServerClock = ServerClock & {
+  /** What every later `offsetMs()` answers; subscribers hear it when it changes. */
+  setOffset(ms: number): void;
+};
+
+/**
+ * S2-5: the server clock, its offset the test's to set (a phone five minutes slow is `setOffset(300_000)`). A `sample`
+ * is ignored: the estimate from samples is the real clock's (`createServerClock`).
+ */
+export function createFakeServerClock(): FakeServerClock {
+  // None until the test sets one, as the real clock has none until its first sample: taps are then stamped on the
+  // phone's own clock (ruling 149), as every test written before the ruling expects.
+  let offset: number | null = null;
+  const listeners = new Set<() => void>();
+  return {
+    offsetMs: () => offset ?? 0,
+    freshOffsetMs: () => offset,
+    sample: () => {},
+    dropSamples: () => {},
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    setOffset: (ms) => {
+      if (ms === offset) return;
+      offset = ms;
+      for (const listener of listeners) listener();
     },
   };
 }

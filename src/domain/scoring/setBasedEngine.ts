@@ -96,7 +96,8 @@ export function envelopeOf(fixtureId: string, event: LedgerEvent): EventEnvelope
 
 /**
  * A queued tap as the engine would meet it at `seq`: its id is the queue's key, marked so it can never be a server's
- * event id (those are UUIDs), and its time the phone's clock. Nothing reads either but the fold's own bookkeeping.
+ * event id (those are UUIDs), and its time the tap's stamp (on either clock, `QueuedEvent.stampedOn`). Nothing reads
+ * either but the fold's own bookkeeping: the engine folds no `recordedAt`.
  */
 export function queuedEnvelopeOf(fixtureId: string, tap: QueuedEvent, seq: number): EventEnvelope {
   const voids = voidTargetOf(tap.type, tap.payload);

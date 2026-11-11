@@ -109,6 +109,12 @@ export type LedgerEvent = {
   /** The event this one voids (the wire's `voids_event_id`), or null. */
   readonly voids: string | null;
   readonly deviceLinkId: string | null;
+  /**
+   * The phone's own, never the wire's: on the stand-in an accepted tap leaves in the ledger (`sync.ts`), its tap's mark
+   * (`QueuedEvent.stampedOn`, ruling 149), since its `recordedAt` is the tap's time. The server's events never carry it:
+   * their time is the server's.
+   */
+  readonly stampedOn?: 'server';
 };
 
 export type Rules = {

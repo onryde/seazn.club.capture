@@ -29,10 +29,11 @@ const VOID = 'core.void';
 const isVoid = (event: LedgerEvent): boolean => event.type === VOID || event.voids !== null;
 
 /**
- * The phone's clock may run behind the server's, and a tap is stamped by the phone while an event is stamped by the
- * server: an event recorded up to this long before the oldest queued tap still counts as made on top of it. Anything
- * older is history (a ledger cache lost with a kill brings all of it back), not another scorer scoring on the phone's
- * rallies. Two minutes (round 4, item 2; the controller's ruling, 2026-11-03).
+ * A tap stamped on the server's clock (`QueuedEvent.stampedOn`, ruling 149) is on the same clock as an event's
+ * `recorded_at`; one made before any offset was known, or written before the ruling, is on the phone's own, which may run
+ * behind the server's. Either way an event recorded up to this long before the oldest queued tap still counts as made
+ * on top of it. Anything older is history (a ledger cache lost with a kill brings all of it back), not another scorer
+ * scoring on the phone's rallies. Two minutes (round 4, item 2; the controller's ruling, 2026-11-03).
  */
 export const CLOCK_SKEW_MS = 2 * 60 * 1000;
 
@@ -52,7 +53,8 @@ const recordedSince = (event: LedgerEvent, floor: number): boolean =>
 /**
  * Of `events`, the ledger's copy of each queued tap whose fate is unknown (it was sent, or may have been, and no answer
  * came): by its type and its payload, in any key order, written by this phone's link (a co-scorer's identical rally is
- * theirs, and counts), recorded since the oldest tap was made, at the seq it was sent at plus one when it is the tap in
+ * theirs, and counts; an event with no link is the organiser's console's, never a copy, since the web stamps every
+ * device-link write with its link), recorded since the oldest tap was made, at the seq it was sent at plus one when it is the tap in
  * flight. Each tap has at most one copy and each event is the copy of at most one tap, the latest tap taking the latest
  * event (an older identical event is what the phone made before). An event whose id this phone already owns is nobody's
  * copy.
@@ -70,7 +72,7 @@ export function copiesOf(
   for (const tap of [...sync.queue.pending].reverse()) {
     if (!isUnresolved(sync, tap.key)) continue;
     const mine = (event: LedgerEvent): boolean =>
-      bootstrap === null || event.deviceLinkId === null || event.deviceLinkId === bootstrap.linkId;
+      bootstrap === null || event.deviceLinkId === bootstrap.linkId;
     const atSeq = (event: LedgerEvent): boolean =>
       sent?.key !== tap.key || event.seq === sent.expectedSeq + 1;
     const copy = latestFirst.find(

@@ -120,6 +120,27 @@ export const typeScale = {
     color: colour.ink2,
   },
   /**
+   * The football mockup's `.pb` word (owner ruling 152): Barlow Condensed 600 at 18, caps, 0.14em apart (2.52 dp, the mockup's `.a2cols .gw`). The
+   * Goal square's word under its numeral.
+   */
+  goalWord: {
+    fontFamily: font.displaySemibold,
+    fontSize: 18,
+    lineHeight: 18,
+    letterSpacing: 2.52,
+    textTransform: 'uppercase',
+    color: colour.ink2,
+  },
+  /** The mockup's `.ptag`: the PAUSED tag's word, Barlow Condensed 600 at 12, caps, 0.1em apart (1.2 dp). */
+  pausedTag: {
+    fontFamily: font.displaySemibold,
+    fontSize: 12,
+    lineHeight: 14,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    color: colour.caution,
+  },
+  /**
    * Board "Settings": a Diagnostics section's name in its 84 dp column. Barlow Condensed
    * 600, caps and letterspaced like `actionSecondary`, at 14 so the longest name in the
    * four languages ("Verbinding") fits the column.
@@ -270,6 +291,34 @@ export const typeScale = {
     color: colour.lime,
   },
   /**
+   * The tally a step down, for a compact board on a short phone (S2-5 fix round 2, the controller's ruling R1): the match
+   * clock's time over its period in one 48 dp row (32 + 16), and a team's score, so a column of three keeps its touch
+   * targets at a 556 dp window (`columnBoard.ts`, footballFit.test.ts). The same face, tabular, lime.
+   */
+  tallyCompact: {
+    fontFamily: font.displayBold,
+    fontSize: 30,
+    lineHeight: 32,
+    fontVariant: ['tabular-nums'],
+    color: colour.lime,
+  },
+  /**
+   * The football pad's match clock, the biggest thing on it (owner ruling 130, "Clock hero"): the LED lime in Barlow
+   * Condensed, tabular, at 80 on an 84 dp line. "120+15:00" is the widest reading and needs 0.86 of it in a 320 dp
+   * face, so it never grows with the phone's font scale (`maxFontScale`) and shrinks no further than `clockFloor`
+   * (footballFit.test.ts). A compact board takes `tallyCompact` instead.
+   */
+  clockHero: {
+    fontFamily: font.displayBold,
+    fontSize: 80,
+    // 1.025 of the size, and no Android font padding above the ascent: the padding made an empty band over the digits
+    // (owner ruling 146, build 1039). Barlow's digits have no descenders; device-only to judge.
+    lineHeight: 82,
+    includeFontPadding: false,
+    fontVariant: ['tabular-nums'],
+    color: colour.lime,
+  },
+  /**
    * The count in the pad's send badge (owner, 2026-11-02): the score's face, tabular so 9 to 10 does not jump, at 18 on
    * a 20 dp line. "99+" (25.8 dp) is the widest it draws (padFit.test.ts). Cream; the badge sets caution in trouble.
    */
@@ -297,7 +346,16 @@ export type TypeRole = keyof typeof typeScale;
  * minor 4 of round 2, 2026-11-02). Every other role follows the phone's scale, as the rest of the app does.
  * - `tally`: "1:0" never shrinks and has 72 dp at 320 beside Rules, History and the badge; at 1.15 it is 67.2 dp, where a 1.3
  *   scale would make it 76.1 and push the row out of the screen (`padFit.test.ts`).
+ * - `tallyCompact`: the tally's cap, so the compact board's time and scores grow no more than the full board's (the
+ *   final review's fix-now, 2026-11-08); the time still shrinks to its one line as the full one does (`clockFloor`).
+ * - `clockHero`: the football clock's 80 dp digits fill a 320 dp face at 0.86 for the widest reading; a larger font
+ *   scale would take it under `clockFloor`, and the time is read at a glance, not by its size setting.
  * - `syncCount`: the badge's slot is 56 dp and the widest count, "99+", is 55.8 in it, so it does not grow at all. The
  *   badge's words are the screen reader's and are not drawn, so nothing is lost to a larger setting.
  */
-export const maxFontScale: Partial<Record<TypeRole, number>> = { tally: 1.15, syncCount: 1 };
+export const maxFontScale: Partial<Record<TypeRole, number>> = {
+  tally: 1.15,
+  tallyCompact: 1.15,
+  clockHero: 1,
+  syncCount: 1,
+};

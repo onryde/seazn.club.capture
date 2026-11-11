@@ -7,6 +7,7 @@ import {
   type MatchQueue,
   type QueueDead,
   type QueuedEvent,
+  type TapReading,
 } from '@/domain/scoring/queue';
 import {
   bootstrapToWire,
@@ -529,15 +530,28 @@ function encodeQueue(queue: MatchQueue): string {
     fixtureId: queue.fixtureId,
     label: queue.label,
     pending: queue.pending.map(
-      ({ key, type, payload, rulesVersion, createdAt, attempts, voidsKey, base }): QueuedEvent => ({
+      ({
         key,
         type,
         payload,
         rulesVersion,
         createdAt,
+        stampedOn,
+        attempts,
+        voidsKey,
+        base,
+        reading,
+      }): QueuedEvent => ({
+        key,
+        type,
+        payload,
+        rulesVersion,
+        createdAt,
+        ...(stampedOn === undefined ? {} : { stampedOn }),
         attempts,
         ...(voidsKey === undefined ? {} : { voidsKey }),
         ...(base === undefined ? {} : { base }),
+        ...(reading === undefined ? {} : { reading }),
       }),
     ),
     ownEventIds: queue.ownEventIds,
@@ -591,18 +605,32 @@ function readTap(raw: unknown): QueuedEvent | undefined {
   if (rulesVersion === undefined || attempts === undefined) return undefined;
   // A score count that is not a whole number reads as absent: the tap is the scorer's, and is kept without it.
   const base = readWhole(raw.base, 0);
+  const reading = readReading(raw.reading);
   const tap: QueuedEvent = {
     key,
     type,
     payload: raw.payload,
     rulesVersion,
     createdAt,
+    ...stampedOnOf(raw),
     attempts,
     ...(base === undefined ? {} : { base }),
+    ...(reading === undefined ? {} : { reading }),
   };
   if (!('voidsKey' in raw)) return tap;
   const voidsKey = readText(raw.voidsKey);
   return voidsKey === undefined ? undefined : { ...tap, voidsKey };
+}
+
+/**
+ * A joined sub's own clock reading (`QueuedEvent.reading`): a period and whole seconds, or absent when garbled. The tap is
+ * the scorer's and is kept either way; without it the payload's stamp stands, as in a file written before it.
+ */
+function readReading(raw: unknown): TapReading | undefined {
+  if (!isRecord(raw)) return undefined;
+  const period = readText(raw.period);
+  const elapsed = readWhole(raw.elapsed, 0);
+  return period === undefined || elapsed === undefined ? undefined : { period, elapsed };
 }
 
 /** `null` is alive; a word is why not; anything else is garbled (`undefined`). */
@@ -625,7 +653,7 @@ function encodeLedger(fixtureId: string, events: readonly LedgerEvent[]): string
     v: FILE_VERSION,
     fixtureId,
     events: events.map(
-      ({ id, seq, type, payload, recordedAt, voids, deviceLinkId }): LedgerEvent => ({
+      ({ id, seq, type, payload, recordedAt, voids, deviceLinkId, stampedOn }): LedgerEvent => ({
         id,
         seq,
         type,
@@ -633,6 +661,7 @@ function encodeLedger(fixtureId: string, events: readonly LedgerEvent[]): string
         recordedAt,
         voids,
         deviceLinkId,
+        ...(stampedOn === undefined ? {} : { stampedOn }),
       }),
     ),
   });
@@ -665,8 +694,25 @@ function readLedgerEvent(raw: unknown): LedgerEvent | undefined {
   if (id === undefined || seq === undefined || type === undefined || recordedAt === undefined)
     return undefined;
   if (voids === undefined || deviceLinkId === undefined) return undefined;
-  return { id, seq, type, payload: raw.payload, recordedAt, voids, deviceLinkId };
+  return {
+    id,
+    seq,
+    type,
+    payload: raw.payload,
+    recordedAt,
+    voids,
+    deviceLinkId,
+    ...stampedOnOf(raw),
+  };
 }
+
+/**
+ * The clock a tap's time, or a stand-in's, is on (ruling 149): `'server'` is the one mark there is. No mark, or anything
+ * else, is this phone's own clock: what every file written before the ruling holds (v1.0.6 stamped on the wall clock),
+ * and the record is kept either way, since it is the scorer's.
+ */
+const stampedOnOf = (raw: Record<string, unknown>): { stampedOn?: 'server' } =>
+  raw.stampedOn === 'server' ? { stampedOn: 'server' } : {};
 
 /** `null` is none; a non-empty string is itself; anything else is garbled (`undefined`). */
 const readNullableText = (value: unknown): string | null | undefined =>

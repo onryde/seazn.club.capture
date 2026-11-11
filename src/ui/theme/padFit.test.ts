@@ -228,8 +228,15 @@ describe('the header fits on one row at 320 and 360 (owner ruling 20)', () => {
       expect(width).toBeLessThanOrEqual(layout.padSyncBox);
     });
 
+    // The compact tally (football's compact board) takes the tally's cap too (the final review's fix-now, 2026-11-08), and
+    // football's clock hero does not grow at all (footballFit.test.ts: 120+15:00 fills 0.86 of a 320 dp face at its size).
     it('caps no other role: everything else follows the phone’s scale, as the rest of the app does', () => {
-      expect(Object.keys(maxFontScale).sort()).toEqual(['syncCount', 'tally']);
+      expect(Object.keys(maxFontScale).sort()).toEqual([
+        'clockHero',
+        'syncCount',
+        'tally',
+        'tallyCompact',
+      ]);
     });
   });
 

@@ -159,5 +159,5 @@ OnePlus NE2211, Android 16, release build 996 (`1.0.5-996`, engine 4.0.0), stric
 Medians: badminton best-of-3 (76 events) 0.94 and 0.89 ms, table tennis best-of-5 (95) 1.00 and 0.77 ms, chess (2)
 0.02 ms, and a cricket T20 tied with a super over each way (314) 7.83 and 7.88 ms, worst 8.45 ms: under one 60 Hz frame.
 The table and the laptop figures are in `2026-11-10-s2-4-results.md` §"R4". The Batch 1 staging check (Step 8) is the
-S2-2/S2-3/S2-4 device runs recorded in their results docs. The phone now pins 6.0.2 (cricket epoch 4, CK-SO-4); the fold's
+S2-2/S2-3/S2-4 device runs recorded in their results docs. The phone now pins 6.0.3 (cricket epoch 4, CK-SO-4; 6.0.3 changes scheduling only); the fold's
 per-event path did not change since 4.0.0.

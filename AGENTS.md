@@ -294,7 +294,7 @@ Three rules travel with these tokens:
   own `--mk-live` already encodes. Nothing red is left for failures: a crash
   reads orange, so it can never be mistaken for a live indicator.
   The one exception is a drawing, not a status: the red card icon on a scoring
-  pad's half (`cardDismissal`, used by `ScoreHalf` alone), in a mode with no
+  pad's half (`cardDismissal`, used by `ScoreHalf` and `TeamColumn` alone), in a mode with no
   broadcast to be on air.
 - `--sport-led` aliases Tailwind's `lime-400` in sRGB (`#9ae600`), **not** the
   older `--mk-lime` hex (`#a3e635`). The web has a standing comment about this;
@@ -472,7 +472,12 @@ Three rules travel with these tokens:
   `viewer.check {state}` and `viewer.firstFrame {ms}` (plan decision PD6, the
   controller's). The cell is a plain `Pressable`, not `Button`, whose 200 dp
   minimum does not fit the 110 dp cell (plan decision PD1, the controller's).
-  Go live and Stop are the only holds left.
+  Go live and Stop are the only holds on Live Stream. A third is football's End
+  of period in Remote Scoring (Half-time, Full time and the end of each
+  extra-time period; owner ruling 160, 2026-11-11: "half time and full time, we
+  need to hold for 3 seconds to confirm otherwise it just ending
+  straightaway"): the same 3 s under the same fill (`useHold`, `HoldFill`),
+  its plate saying "Hold 3 s", and no other sport's tool is held.
 - Go Live enables only when _paired and ready_: camera running, the mic
   available (a silent room is ready; design follow-up §4), network reachable,
   phone held sideways, as native judges it. The pre-flight is the safety, for

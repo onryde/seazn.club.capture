@@ -1,8 +1,9 @@
-import { act, fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import en from '@/i18n/en.json';
-import { StepSheet } from '@/ui/components/StepSheet';
+import { StepSheet, type StepOption } from '@/ui/components/StepSheet';
 import { colour, layout, plateInk, pressedOpacity } from '@/ui/theme/tokens';
+import { declaredStyle } from '../../../test/declaredStyle';
 import { pressIn, pressOut } from '../../../test/press';
 import { edgeOf, fillOf, paintOf } from '../../../test/pressState';
 import { renderWithPorts } from '../../../test/renderWithPorts';
@@ -246,4 +247,83 @@ describe('StepSheet rows held (T19 M2)', () => {
       pressOut(row(name));
     },
   );
+});
+
+// The rows a sport's sheets need beyond a plain choice (S2-5 Task 10; owner ruling 85, every sport): a heading between
+// groups that takes no press, a toggle that says whether it is on, and a list longer than the sheet that scrolls while
+// the title and Cancel stay put. Every row that takes a tap has the lime border (ruling 85).
+describe('StepSheet: headings, toggles, a long list (S2-5; ruling 85)', () => {
+  function renderRows(rows: readonly StepOption[]) {
+    const onChoose = vi.fn();
+    const onCancel = vi.fn();
+    renderWithPorts(
+      <StepSheet
+        title={en['scoring.sanction.title']}
+        body={null}
+        options={rows}
+        cancelLabel={en['scoring.sheet.cancel']}
+        onChoose={onChoose}
+        onCancel={onCancel}
+      />,
+    );
+    return { onChoose, onCancel };
+  }
+
+  const player = (n: number): StepOption => ({
+    id: `p${n}`,
+    label: `#${n} Player ${n}`,
+    tone: 'standard',
+  });
+  const BENCH: StepOption = { id: 'bench', label: 'Bench', tone: 'standard', kind: 'heading' };
+
+  it('a heading row takes no press', () => {
+    const { onChoose } = renderRows([player(9), BENCH, player(12)]);
+    expect(screen.queryByRole('button', { name: 'Bench' })).toBeNull();
+    const heading = screen.getByRole('heading', { name: 'Bench' });
+    act(() => fireEvent.click(heading));
+    act(() => fireEvent.click(screen.getByText('Bench')));
+    expect(onChoose).not.toHaveBeenCalled();
+    expect(declaredStyle(heading, 'border-top-width')).not.toBe(`${layout.iconBorder}px`);
+    expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual([
+      '#9 Player 9',
+      '#12 Player 12',
+      en['scoring.sheet.cancel'],
+    ]);
+  });
+
+  it('a toggle reads checked to a screen reader, and hands its id back like any row', () => {
+    const toggle = (checked: boolean): StepOption => ({
+      id: 'penalty',
+      label: 'Penalty',
+      tone: 'standard',
+      kind: 'toggle',
+      checked,
+    });
+    const { onChoose } = renderRows([player(9), toggle(true)]);
+    const on = screen.getByRole('switch', { name: 'Penalty' });
+    expect(on.getAttribute('aria-checked')).toBe('true');
+    expect(getComputedStyle(on).borderTopColor).toBe(edgeOf(colour.lime));
+    act(() => fireEvent.click(on));
+    expect(onChoose).toHaveBeenCalledExactlyOnceWith('penalty');
+    renderRows([toggle(false)]);
+    expect(
+      screen.getAllByRole('switch', { name: 'Penalty' })[1]?.getAttribute('aria-checked'),
+    ).toBe('false');
+  });
+
+  it('sixteen rows scroll and Cancel stays on screen', () => {
+    const rows = Array.from({ length: 16 }, (_, at) => player(at + 1));
+    renderRows(rows);
+    const list = screen.getByTestId('step-options');
+    expect(declaredStyle(list, 'max-height')).toBe(`${layout.sheetListMax}px`);
+    expect(within(list).getAllByRole('button')).toHaveLength(16);
+    const cancel = screen.getByRole('button', { name: en['scoring.sheet.cancel'] });
+    expect(list.contains(cancel)).toBe(false);
+    expect(list.contains(screen.getByText(en['scoring.sanction.title']))).toBe(false);
+    expect(
+      within(screen.getByTestId('step-sheet')).getByRole('button', {
+        name: en['scoring.sheet.cancel'],
+      }),
+    ).toBe(cancel);
+  });
 });

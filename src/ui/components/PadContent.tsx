@@ -21,7 +21,7 @@ import { Button } from '@/ui/components/Button';
 import { DetailsCard } from '@/ui/components/DetailsCard';
 import { IconButton } from '@/ui/components/IconButton';
 import { LastTapLine } from '@/ui/components/LastTapLine';
-import { PadStateCard } from '@/ui/components/PadStateCard';
+import { PadStateCard, type TitledCard } from '@/ui/components/PadStateCard';
 import { PadStrip } from '@/ui/components/PadStrip';
 import { RefusalBanner } from '@/ui/components/RefusalBanner';
 import { ScoreHalf } from '@/ui/components/ScoreHalf';
@@ -54,6 +54,28 @@ export type PadContentModel = {
   readonly actions: PadContentActions;
 };
 
+type PadContentProps = {
+  readonly model: PadContentModel;
+  readonly covered: boolean;
+  /** A sport's own score area, in the halves' place (the controller's ruling 4, the interface cricket shares). */
+  readonly body?: ReactNode;
+  /**
+   * Whether the last-tap line carries the pad's Undo (default yes). A sport whose body has its own Undo key (cricket's
+   * Out, Undo, More row, ruling 79) says no, so the pad has one Undo, never two.
+   */
+  readonly lineUndo?: boolean;
+  /**
+   * Whether the card and the body scroll together when taller than the room (default no: the body is the flex region the
+   * sport's keys leave). A sport says yes only for a body with no keys under it and no flex height of its own (cricket's
+   * decided board), so nothing scrolls under a key and the header and the last-tap line stay fixed.
+   */
+  readonly scrolls?: boolean;
+  /** Standard tools' words in full cream (football's mockup, owner ruling 152); default no. */
+  readonly brightTools?: boolean;
+  /** The id of the one tool that is a 3 s hold, not a tap (football's End of period, owner ruling 160); default none. */
+  readonly holdTool?: string;
+};
+
 /**
  * The set-based sports' pad, portrait, layout A: the top bar (Home, the games tally, then Rules, History and the sync
  * status at the right end), the strip (the game of how many at the left, a sport's note at the right), the first side's
@@ -73,17 +95,10 @@ export const PadContent = memo(function PadContent({
   covered,
   body,
   lineUndo = true,
-}: {
-  readonly model: PadContentModel;
-  readonly covered: boolean;
-  /** What stands in the halves' place, for a sport with a board of its own; the halves without it. */
-  readonly body?: ReactNode;
-  /**
-   * Whether the last-tap line carries the pad's Undo (default yes). A sport whose body has its own Undo key (cricket's
-   * Out, Undo, More row, ruling 79) says no, so the pad has one Undo, never two.
-   */
-  readonly lineUndo?: boolean;
-}) {
+  scrolls = false,
+  brightTools = false,
+  holdTool,
+}: PadContentProps) {
   const { view, line, cardNote, flash, toss, actions } = model;
   const known = matchKnown(view.card);
   return (
@@ -96,7 +111,7 @@ export const PadContent = memo(function PadContent({
       <PadHeader sync={view.sync} tally={view.tally} known={known} actions={actions} />
       <PadStrip items={view.strip} />
       {view.start === null ? (
-        <PadBody view={view} flash={flash} onTap={actions.tapHalf} body={body} />
+        <PadBody view={view} flash={flash} onTap={actions.tapHalf} body={body} scrolls={scrolls} />
       ) : (
         <StartPanel
           start={view.start}
@@ -112,6 +127,8 @@ export const PadContent = memo(function PadContent({
         cardNote={cardNote}
         actions={actions}
         lineUndo={lineUndo}
+        brightTools={brightTools}
+        holdTool={holdTool}
       />
     </View>
   );
@@ -197,33 +214,36 @@ const MatchIcons = memo(function MatchIcons({ actions }: { readonly actions: Pad
  * The halves, under a card that goes with them; or a card in their place, scrolling when it is taller than the room.
  * Not started's card carries the match card between its title and its sentence (owner, 2026-11-01, option A).
  */
-const PadBody = memo(function PadBody({
-  view,
-  flash,
-  onTap,
-  body,
-}: {
+type PadBodyProps = {
   readonly view: PadView<MessageKey>;
   readonly flash: HalfFlash;
   readonly onTap: (side: PadSide) => void;
-  readonly body: ReactNode;
-}) {
+  readonly body: ReactNode | undefined;
+  readonly scrolls: boolean;
+};
+
+const PadBody = memo(function PadBody({ view, flash, onTap, body, scrolls }: PadBodyProps) {
   const card = view.card?.kind === 'updateNeeded' ? null : view.card;
   if (card !== null && cardPlacement(card) === 'instead') {
-    return (
-      <ScrollView testID="pad-card-scroll" style={styles.body}>
-        <PadStateCard card={card}>
-          {card.kind === 'notStarted' ? <DetailsCard details={view.details} /> : null}
-        </PadStateCard>
-      </ScrollView>
-    );
+    return <CardInstead card={card} details={view.details} />;
   }
-  return (
-    <View style={styles.body}>
+  const content = (
+    <>
       {card === null ? null : <PadStateCard card={card} />}
       {body === undefined ? <Halves view={view} flash={flash} onTap={onTap} /> : body}
-    </View>
+    </>
   );
+  if (scrolls)
+    return (
+      <ScrollView
+        testID="pad-body-scroll"
+        style={styles.body}
+        contentContainerStyle={styles.scrolled}
+      >
+        {content}
+      </ScrollView>
+    );
+  return <View style={styles.body}>{content}</View>;
 });
 
 /** The two halves, the first side's on top: a tap on one gives that side the rally, and a tap that counted flashes it. */
@@ -241,6 +261,23 @@ function Halves({
       <ScoreHalf half={view.halves[0]} flash={flashCue(flash, 'first')} onTap={onTap} />
       <ScoreHalf half={view.halves[1]} flash={flashCue(flash, 'second')} onTap={onTap} />
     </>
+  );
+}
+
+/** A card in the halves' place, scrolling when it is taller than the room; Not started's carries the match card. */
+function CardInstead({
+  card,
+  details,
+}: {
+  readonly card: TitledCard;
+  readonly details: PadMatchDetails<MessageKey>;
+}) {
+  return (
+    <ScrollView testID="pad-card-scroll" style={styles.body}>
+      <PadStateCard card={card}>
+        {card.kind === 'notStarted' ? <DetailsCard details={details} /> : null}
+      </PadStateCard>
+    </ScrollView>
   );
 }
 
@@ -313,12 +350,16 @@ const PadControls = memo(function PadControls({
   cardNote,
   actions,
   lineUndo,
+  brightTools,
+  holdTool,
 }: {
   readonly view: PadView<MessageKey>;
   readonly line: PadLineWords;
   readonly cardNote: MessageKey | null;
   readonly actions: PadContentActions;
   readonly lineUndo: boolean;
+  readonly brightTools: boolean;
+  readonly holdTool: string | undefined;
 }) {
   const { t } = useT();
   const { card } = view;
@@ -336,7 +377,12 @@ const PadControls = memo(function PadControls({
   return (
     <>
       <PadLine view={view} line={line} undo={lineUndo} onUndo={actions.undo} />
-      <ToolRow tools={view.tools} onTool={actions.tool} />
+      <ToolRow
+        tools={view.tools}
+        onTool={actions.tool}
+        brightInk={brightTools}
+        holdTool={holdTool}
+      />
     </>
   );
 });
@@ -379,4 +425,5 @@ const styles = StyleSheet.create({
   sync: { width: layout.padSyncBox, alignItems: 'flex-end' },
   body: { flex: 1, gap: space.sm },
   start: { gap: space.md, paddingBottom: space.md },
+  scrolled: { gap: space.sm, paddingBottom: space.md },
 });

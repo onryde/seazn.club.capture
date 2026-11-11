@@ -17,7 +17,16 @@ export type QueuedEvent = {
   readonly payload: unknown;
   /** The rules version the tap was made under (the pad's, when it was tapped). */
   readonly rulesVersion: number;
+  /** When the tap was made, on the clock `stampedOn` names. */
   readonly createdAt: string;
+  /**
+   * The clock `createdAt` is on (ruling 149). `'server'`: the server's, the steady clock plus the offset the server clock
+   * held at the tap, so it is the same clock as the ledger's `recorded_at` and a wall clock moved after the tap never
+   * moves it. Absent: this phone's own clock, for a tap made before any offset was known (a cold start offline, on the
+   * steady clock), and for every tap written before ruling 149 (v1.0.6: the wall clock; earlier S2-5 builds: the steady
+   * clock), which is what they are. A reader compares it only with a time on the same clock.
+   */
+  readonly stampedOn?: 'server';
   /**
    * How many sends of this tap were made without a definite answer: counted and saved when a send starts, kept on no
    * answer, back to 0 on an answer that says it was not stored. More than 0, the tap may be in the ledger already.
@@ -31,13 +40,24 @@ export type QueuedEvent = {
    */
   readonly voidsKey?: string;
   /**
-   * The score a tap's `serving` was made at: the number of standing score events (points and game scores) in the phone's
-   * view when it was tapped, set by a sport whose `serving` is valid only at that score (`SportEvent.base`). The sport's
-   * send compares it with the ledger's count and drops `serving` if they differ. Absent on a tap that names no
-   * `serving`, on a tap of a sport that sets none, and on a queue file written before it existed.
+   * A count the tap was made at, for its sport's send to read (`SportEvent.base`). Table tennis: the score a tap's
+   * `serving` was made at, the number of standing score events in the phone's view, and the send drops `serving` if the
+   * ledger's count differs. Football's clock taps: the ledger's tip (its newest seq) the phone held, and the send
+   * withdraws one that another screen's later clock event overtook (`overtaken`). Absent on a tap that needs none, on a
+   * tap of a sport that sets none, and on a queue file written before it existed.
    */
   readonly base?: number;
+  /**
+   * The phone's own clock reading behind a stamp the sport put in the payload instead, kept here on the phone and never
+   * sent (`SportEvent.reading`). Football: a sub that joined a stoppage is queued with the stoppage's stamp, and its send
+   * falls back to this reading when the stoppage is gone (ruling 154, review M1). Absent on every other tap, and on a
+   * queue file written before it existed (the payload's stamp then stands).
+   */
+  readonly reading?: TapReading;
 };
+
+/** A clock reading: seconds into a period, as the engine's `GameTime` (`{ period, elapsed }`). */
+export type TapReading = { readonly period: string; readonly elapsed: number };
 
 /**
  * Why a queue can send no more, and nothing else discards a tap: the link is gone (the three codes the door answers 401

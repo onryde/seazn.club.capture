@@ -13,7 +13,7 @@ import {
   type QueueDead,
   type QueuedEvent,
 } from '@/domain/scoring/queue';
-import type { ScoringSport, SportFold, SportTypes } from '@/domain/scoring/scoringSport';
+import type { ScoringSport, SportFold, SportLine, SportTypes } from '@/domain/scoring/scoringSport';
 import { type SyncState, canDiscardQueued } from '@/domain/scoring/sync';
 import { type UndoTarget, undoEventFor, undoTarget } from '@/domain/scoring/undoTarget';
 import type {
@@ -146,7 +146,9 @@ export type MatchEffect =
    * `NO_LONGER_LEGAL`; anything else is `OTHER`). The runner says it in the record, one line for the taps one judgement
    * dropped: the pad's line is one sentence however many went, and the record is where the number is kept.
    */
-  | { readonly kind: 'dropped'; readonly code: string; readonly count: number };
+  | { readonly kind: 'dropped'; readonly code: string; readonly count: number }
+  /** The sport withdrew the head at its send (`SendWithdrawal`): the runner says the sport's line in the record. */
+  | { readonly kind: 'withdrawn'; readonly line: SportLine };
 
 export type SaveEffect = {
   readonly kind: 'save';
@@ -162,15 +164,17 @@ export type SaveEffect = {
 /** What a handler asks for: a save has no number until `step` numbers it. */
 export type Planned = Exclude<MatchEffect, SaveEffect> | Omit<SaveEffect, 'n'>;
 
+/** When a tap or an Undo was made (`at`, ISO), and on which clock (`QueuedEvent.stampedOn`, ruling 149): the sender's. */
+export type TapStamp = { readonly at: string; readonly stampedOn?: 'server' };
+
 export type MatchEvent<S extends SportTypes = SportTypes> =
-  | { readonly kind: 'tap'; readonly tap: S['tap']; readonly key: string; readonly at: string }
-  | {
+  | ({ readonly kind: 'tap'; readonly tap: S['tap']; readonly key: string } & TapStamp)
+  | ({
       readonly kind: 'undo';
       readonly key: string;
-      readonly at: string;
       /** The sport's ending prompt's Undo (badminton's Void sanction): taken only while an ending waits. */
       readonly only?: 'ending';
-    }
+    } & TapStamp)
   | { readonly kind: 'pickServer'; readonly side: PadSide }
   /** The scorer's pending picks, the whole map (S2-4 plan Task 3): taken whenever the match folds. */
   | { readonly kind: 'setPicks'; readonly picks: PendingPicks }
@@ -309,8 +313,15 @@ export function foldQueue(state: MatchState): readonly QueuedEvent[] {
 
 /** An Undo that waited for its tap's answer, made a plain void of the event the answer names. */
 export function resolved(waiting: QueuedEvent, eventId: string): QueuedEvent {
-  const { key, rulesVersion, createdAt, attempts } = waiting;
-  return { key, ...undoEventFor(eventId), rulesVersion, createdAt, attempts };
+  const { key, rulesVersion, createdAt, stampedOn, attempts } = waiting;
+  return {
+    key,
+    ...undoEventFor(eventId),
+    rulesVersion,
+    createdAt,
+    ...(stampedOn === undefined ? {} : { stampedOn }),
+    attempts,
+  };
 }
 
 /**

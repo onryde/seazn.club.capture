@@ -321,6 +321,9 @@ describe('every path the navigation moves to has its route file, and each Settin
       'src/ui/screens/CricketSheets.tsx',
       // Over totals, in the keys' place and in a sheet (S2-4 Task 17): no pad.
       'src/ui/screens/CricketTotals.tsx',
+      // Football (plan S2-5 P Task 12): its route row and its pad.
+      'src/ui/screens/FootballMatchScreen.tsx',
+      'src/ui/screens/FootballPadScreen.tsx',
     ]);
   });
 

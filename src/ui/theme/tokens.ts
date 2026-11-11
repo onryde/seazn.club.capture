@@ -42,9 +42,13 @@ export const colour = {
    * surface2. An opaque surface2 fill was the sheet's own colour and all but invisible on surface.
    */
   pressFill: '#f5f0e833',
+  /** Nothing: the two empty sides of a drawn triangle (the clock plate's Resume glyph). */
+  clear: '#00000000',
 
   /** --sport-led. Tailwind lime-400 in sRGB, NOT the v3 --mk-lime hex. */
   lime: '#9ae600',
+  /** The LED at 50% (the football clock panel's bottom hairline, owner ruling 152). */
+  limeHalf: '#9ae60080',
   /** --mk-live. Red is on-air here, which is why errors below are not red. */
   live: '#ef4444',
   /** --mk-orange: the night-legible caution. --sport-caution is the daylight one. */
@@ -353,6 +357,73 @@ const base = {
   padCardHeight: 11,
   padCardRadius: 1,
   /**
+   * The mark in a small square (owner ruling 144): Yellow's and Red's swatch is a card sized from its square
+   * (`cardSwatchSize`, ruling 163), and Sub's glyph is two arrows drawn from boxes, one pointing right and one left: each a bar `padSubBar` long and `padSubThickness` thick with a head `padSubHead` long and
+   * `2 * padSubHalf` tall, `padSubGap` apart.
+   */
+  padSubBar: 9,
+  padSubThickness: 2,
+  padSubHead: 5,
+  padSubHalf: 4,
+  padSubGap: 2,
+  /**
+   * The word under the mark in a small square: Barlow's 0.6 letterspacing is 4.8 dp over "Amarilla"; at 0.2 it holds in a
+   * 37.3 dp square at 320 dp at the label floor (footballFit.test.ts).
+   */
+  padSquareLabelSpacing: 0,
+  /**
+   * The word's room a side inside a small square, so it never touches the outline (device, build 1048). 3 dp, not the
+   * 4 of `space.xs`: at 320 dp "Yellow" is 39.9 dp in a 28.7 room at 4 and the 0.75 label floor needs 29.9.
+   */
+  padSquareLabelInset: 3,
+  /**
+   * How far football's board sits up into the pad's gap under the top bar (owner, 2026-11-11: "move up 5 px top from
+   * timer"): the gap is `space.sm` (8) and becomes 3, the 5 dp joining the board's own height, so the clock hero takes it
+   * or, past its cap, it ends below the cards (ruling 150). Football only: the other pads keep the 8.
+   */
+  footballBoardLift: 5,
+  /**
+   * The clock panel's bottom edge (owner ruling 152, the mockup's `border-bottom: 2px solid rgba(154,230,0,.5)`): 2 dp of
+   * `colour.limeHalf`, following the panel's rounded corners. The PAUSED tag's side padding (`.ptag`: 0 6px).
+   */
+  clockHairline: 2,
+  pausedTagPadX: 6,
+  /** A disabled small square's mark (a swatch or Sub's arrows), dimmed (the label goes to `ink3`). */
+  disabledMark: 0.4,
+  /**
+   * Undo in the pad's last-tap line (owner ruling 148, the mockup): an outlined button at least `padUndoMinWidth` wide
+   * with a glyph before its word, the glyph drawn from boxes: an arrow's head `padUndoHead` long and `2 * padUndoHalf`
+   * tall pointing left, then a hook `padUndoBody` wide and `padUndoHeight` tall, `padUndoStroke` thick, curving back.
+   */
+  padUndoMinWidth: 96,
+  padUndoHead: 5,
+  padUndoHalf: 4,
+  padUndoBody: 10,
+  padUndoHeight: 10,
+  padUndoStroke: 2,
+  /**
+   * The football clock grows into the height a tall phone leaves over (owner ruling 150): from `clockHero`'s size toward
+   * `clockHeroMax`, never so wide that the longest reading, "120+15:00", takes more than `clockWidestEm` of the font size
+   * in the face, shrunk to `clockFloor`.
+   */
+  clockHeroMax: 110,
+  clockWidestEm: 4.2,
+  /**
+   * The clock plate's Pause and Resume glyphs, drawn from boxes (owner ruling 130): Pause is two bars `padGlyphBar` wide and
+   * `padGlyphHeight` tall, `padGlyphGap` apart; Resume is a triangle `padGlyphLength` long and `2 * padGlyphHalf` tall.
+   */
+  padGlyphBar: 4,
+  padGlyphHeight: 14,
+  padGlyphGap: 3,
+  padGlyphLength: 12,
+  padGlyphHalf: 7,
+  /**
+   * The Goal square's numeral scales with the square's measured height (controller ruling 138): `goalNumeralRatio` of it,
+   * so a 128 dp square sets 56 dp, never over the full tier's `scoreCompact` size and never under `tallyCompact`'s, which
+   * is what a 48 dp square holds beside its word.
+   */
+  goalNumeralRatio: 0.4375,
+  /**
    * The stopwatch beside the cards, drawn at this size in its 24-unit box (the ring a little over half of it), and the
    * height of the marks' row: the card sits at its middle (padFit.test.ts).
    */
@@ -472,6 +543,34 @@ const base = {
   cricketRunKey: 64,
   cricketExtraKey: 48,
   cricketActionKey: 56,
+  /**
+   * The least a team column's name with gaps shrinks to before its two-line ellipsis, so no word of it breaks at a letter
+   * (the controller's fix-round ruling a): "Wolverhampton" (145.1 dp of `matchName`) needs 0.96 of it at 360 and 0.83 at
+   * 320 (footballFit.test.ts). iOS keeps to it; Android sends no scale and shrinks to its own 4 dp (as `nameFloor`).
+   */
+  teamNameFloor: 0.75,
+  /**
+   * The least a team column's score shrinks to before it would be cut (ruling f: never an ellipsis): "10 (10)" in the
+   * shootout, 180.1 dp of `scoreCompact`, needs 0.67 of it at 320 (footballFit.test.ts).
+   */
+  scoreFloor: 0.6,
+  /**
+   * The least a pad's match clock shrinks to on its one line (ruling d): "120+15:00" at the 1.15 font-scale cap is 222.1
+   * dp, which needs 0.93 of it in nl's room at 320 (footballFit.test.ts).
+   */
+  clockFloor: 0.85,
+  /** The Yellow and Red words, in their half-width buttons on a 320 dp column: they shrink to this and no further. */
+  cardLabelFloor: 0.75,
+  /** A disabled Sub's note ("Plus de remplacement" in fr is 127.7 dp in the 120 dp under the squares at 320): one line, shrunk to this. */
+  noteFloor: 0.75,
+  /**
+   * A step sheet's rows scroll past this height (S2-5 design §6.3: a team's players and its bench can be 16 rows and
+   * more), while the title and Cancel stay put: five 48 dp rows, their gaps and half of a sixth row, so a list that
+   * scrolls shows that it does.
+   */
+  sheetListMax: 5 * 48 + 5 * 8 + 24,
+  /** A shootout kick's mark under its team's column (S2-5 design §6.5): a lime dot when scored, a lilac ring when not. */
+  kickMark: 12,
 } as const;
 
 /** The cells the controls half's width is made of (`base` holds the shipped ones). */

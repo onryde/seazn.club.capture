@@ -6,6 +6,7 @@ import { LanguageProvider } from '@/hooks/useLanguage';
 import { PortsProvider, type Ports } from '@/hooks/usePorts';
 import { SINGLES_SEED } from '@/services/fakeScoringPort';
 import { saveScoringLink } from '@/services/scoringLinkStore';
+import { createSteadyClock } from '@/services/steadyClock';
 import { FAKE_SCORING_SECRET } from '../../test/fakeScoringLinkPort';
 import { createFakePorts, timerClock, type FakePorts } from '../../test/fakePorts';
 
@@ -76,6 +77,39 @@ async function decidedByThisPhone(fakes: FakePorts): Promise<Match> {
   return match;
 }
 
+/**
+ * A phone whose wall clock the test moves alone (`jump`), with the steady clock `createNativePorts` builds over it: the
+ * clock every scoring time on the phone is read on (rulings 137, 149).
+ */
+async function jumpingRig(): Promise<{
+  fakes: FakePorts;
+  jump: (ms: number) => void;
+  sleep: (ms: number) => void;
+}> {
+  let skew = 0;
+  let asleep = 0;
+  const wall = () => Date.now() + skew;
+  const fakes = createFakePorts({ clock: () => new Date(wall()) });
+  const steadyClock = createSteadyClock({
+    wall,
+    mono: () => Date.now() - asleep,
+    logger: fakes.ports.logger,
+    foreground: fakes.foreground,
+    serverClock: fakes.serverClock,
+  });
+  Object.assign(fakes.ports, { steadyClock });
+  await saveScoringLink(fakes.kv, FIXTURE, LINK, 'stg.seazn.club', 'badminton');
+  return {
+    fakes,
+    jump: (ms) => (skew += ms),
+    // Real time and the wall clock run on; the monotonic source stops (CLOCK_MONOTONIC in suspend).
+    sleep: (ms) => {
+      asleep += ms;
+      vi.setSystemTime(Date.now() + ms);
+    },
+  };
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-11-03T09:00:00.000Z'));
@@ -100,5 +134,62 @@ describe('the pad of a match this phone decided', () => {
     expect(undoOn(restarted)).toBe(false);
     await wait(10_000);
     expect(undoLeft(restarted)).toBeNull();
+  });
+
+  // Ruling 149's audit: the window is a span of this phone's own time, its start and every reading of it on the steady
+  // clock, so a wall clock moved while it counts neither closes it early nor keeps it open past 45 s.
+  it.each([
+    ['+4:05', 245_000],
+    ['−4:05', -245_000],
+  ])(
+    'the wall clock moved %s while the window counts: it still counts real seconds',
+    async (_, ms) => {
+      const { fakes, jump } = await jumpingRig();
+      const match = await decidedByThisPhone(fakes);
+      expect(undoLeft(match)).toBe(44);
+      jump(ms);
+      await wait(10_000);
+      expect(undoLeft(match)).toBe(34);
+      expect(undoOn(match)).toBe(true);
+      await wait(34_000);
+      expect(undoLeft(match)).toBeNull();
+      expect(undoOn(match)).toBe(false);
+    },
+  );
+
+  // The reducer judges a press of Undo on the runner's clock (`undoRunOut`), the same steady clock the card reads.
+  it('the wall clock moved +4:05 while the window counts: Undo 10 s after the decision is still taken', async () => {
+    const { fakes, jump } = await jumpingRig();
+    const match = await decidedByThisPhone(fakes);
+    jump(245_000);
+    await wait(10_000);
+    act(() => void pad(match).actions.undo());
+    await flush();
+    expect(undoLeft(match)).toBe('no card');
+  });
+
+  it('the wall clock moved −4:05 while the window counts: Undo 46 s after the decision is refused', async () => {
+    const { fakes, jump } = await jumpingRig();
+    const match = await decidedByThisPhone(fakes);
+    jump(-245_000);
+    await wait(45_000);
+    act(() => void pad(match).actions.undo());
+    await flush();
+    expect(undoLeft(match)).toBeNull();
+  });
+
+  // Review M3: through the real steady clock's rebase at a return. Asleep a minute, the window comes back closed.
+  it('the phone asleep a minute while the window counts: back in front it is closed, and Undo is refused', async () => {
+    const { fakes, sleep } = await jumpingRig();
+    const match = await decidedByThisPhone(fakes);
+    expect(undoLeft(match)).toBe(44);
+    fakes.foreground.leave();
+    sleep(60_000);
+    act(() => fakes.foreground.fire());
+    await flush();
+    expect(undoLeft(match)).toBeNull();
+    act(() => void pad(match).actions.undo());
+    await flush();
+    expect(undoLeft(match)).toBeNull();
   });
 });

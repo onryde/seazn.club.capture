@@ -66,7 +66,7 @@
     "authorization"
   ],
   "reasons": {
-    "action": "JS: a UI action word",
+    "action": "JS: a UI action word; JS: scoring.football.clock / scoring.football.period",
     "answer": "native: the class name of a code or start answer (Open, Waiting, Status…), never its body",
     "appVersion": "native: the build's version and number, 1.0.0-656: app.json's version and the commit count app.config.ts builds it with (owner, 2026-10-26)",
     "attempt": "both: an attempt id is a number; a word here is a label",
@@ -87,10 +87,10 @@
     "lastEnd": "native: LastEnd wire",
     "lock": "JS: an orientation lock name",
     "mode": "JS: a mode name",
-    "ms": "JS: a duration",
+    "ms": "JS: a duration; JS: scoring.clock.offset, the server's clock less the phone's",
     "notReady": "native: NotReady wire (A11)",
     "op": "both: a store operation name (native: read, write, prune, delete)",
-    "phase": "native: a phase name",
+    "phase": "native: a phase name; JS: scoring.football.clock / scoring.football.period / scoring.football.clockTapWithdrawn (the period a withdrawn clock tap was made in)",
     "pickSource": "native: preview-size, which rule chose the preview's size: ours (16:9 first) or vendor (StreamPack's area rule); a preview-failed line with action sizes for the same camera overrides ours (see preview-failed)",
     "problem": "both: a parse problem word; JS: the scanned code's, native: the code answer's (code-unreadable)",
     "reason": "both: a reason word (EndReason, DropReason and UnpairReason wires included); native bitrate: the regulator's rule that moved the target, drops, backlog, raise or clamp (R-990P); native preview-relaid: why the preview was laid out again, requested or empty (N42)",

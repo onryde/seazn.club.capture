@@ -747,6 +747,53 @@ of es, fr and nl is wanted (the owner, 2026-11-10: "No need").
 | Extras {total}                                       | Extras {total}                                           | Extras {total}                                              | Extra's {total}                                         | `board.summary.extrasNone`: an innings with no extras reads "Extras 0" (fix 11); `card.extras` adds the letters when there were some.           |
 | Tied — super over / Tied again — super over {number} | Empate — super over / Nuevo empate — super over {number} | Égalité — super over / Encore égalité · super over {number} | Gelijk — super over / Weer gelijk — super over {number} | `break.tied`, `break.tiedAgain`: the tie card names which super over comes next (D12). fr uses a middle dot for the second dash, to fit 320 dp. |
 
+### Football pad words (S2-5 Task 8, 2026-11-08)
+
+The words for the football pad, its columns, the More sheet and the clock bar (`scoring.football.*`).
+
+| English                              | Español                                              | Français                                       | Nederlands                          | Notes                                                      |
+| ------------------------------------ | ---------------------------------------------------- | ---------------------------------------------- | ----------------------------------- | ---------------------------------------------------------- |
+| Goal                                 | Gol                                                  | But                                            | Doelpunt                            | `column.goal`: the lime plate.                             |
+| Card / Yellow card / Red card        | Tarjeta / Tarjeta amarilla / Tarjeta roja            | Carton / Carton jaune / Carton rouge           | Kaart / Gele kaart / Rode kaart     | `column.card`, `card.yellow`, `card.red`.                  |
+| Sub                                  | Cambio                                               | Remplacement                                   | Wissel                              | `column.sub`.                                              |
+| No team sheet / No subs left         | Sin alineación / Sin cambios                         | Pas de feuille de match / Plus de remplacement | Geen opstelling / Geen wissels meer | The one line under a disabled Sub.                         |
+| Scored / Missed                      | Marcado / Fallado                                    | Marqué / Manqué                                | Raak / Mis                          | The shootout's two buttons.                                |
+| Penalties                            | Tanda de penaltis                                    | Tirs au but                                    | Strafschoppenreeks                  | `period.shootout`: the shootout, never a penalty in play.  |
+| Missed penalty                       | Penalti fallado                                      | Penalty manqué                                 | Gemiste strafschop                  | `more.penalty`: a penalty in play that did not go in.      |
+| Half-time / Full time / Quarter-time | Descanso / Final / Pausa                             | Mi-temps / Fin du match / Pause                | Rust / Einde wedstrijd / Pauze      | `break.*`, and `end.HT`/`end.FT`.                          |
+| Extra time / End of extra time       | Prórroga / Fin de la prórroga                        | Prolongation / Fin de la prolongation          | Verlenging / Einde verlenging       | `note.extraTime`, `end.ET_FT`.                             |
+| Sin-bin / Back from sin-bin          | Expulsión temporal / Vuelve de la expulsión temporal | Exclusion temporaire / Retour d'exclusion      | Tijdstraf / Terug uit tijdstraf     | `more.sinBin`, `more.sinBinEnd`.                           |
+| Own goal                             | Autogol                                              | Contre son camp                                | Eigen doelpunt                      | In `last.ownGoal`: credited to the team it counts for.     |
+| Correct clock / Match clock          | Corregir el reloj / Reloj del partido                | Corriger le chrono / Chrono du match           | Klok corrigeren / Wedstrijdklok     | `more.correct`, `clock.said`.                              |
+| Rolling                              | Libres                                               | Libres                                         | Doorlopend                          | `rules.subsRolling`: a player who came off may go back on. |
+
+Revision, 2026-11-08 (fix round 2, the controller's ruling): `last.clockCorrected`, History's and the last-tap line's
+words for a clock correction (a Correct, or the resync after a late Start), is said as a record: "Clock corrected" /
+"Reloj corregido" / "Chrono corrigé" / "Klok gecorrigeerd", the clock's face after it. The button keeps `more.correct`'s
+words above. Drafts, not yet reviewed.
+
+Revision, 2026-11-11 (the controller's ruling 155, the concussion substitution): the Sub sheet's third step and its
+History line. "Which sub? · {team}" / "¿Qué tipo de cambio? · {team}" / "Quel remplacement ? · {team}" / "Welke wissel? ·
+{team}" (`sheet.whichSub`); "Normal sub" / "Cambio normal" / "Remplacement normal" / "Gewone wissel"
+(`sheet.normalSub`); "Concussion sub" / "Cambio por conmoción" / "Remplacement pour commotion" / "Wissel bij
+hersenschudding" (`sheet.concussionSub`, and `last.concussionSub` with the sub line's words after it); "None left" /
+"No quedan" / "Plus aucun" / "Geen meer" (`sheet.noneLeft`, under a spent Concussion sub). The concussion words follow
+the web's rules field (`rules.field.concussionSubs.label`). Drafts, not yet reviewed.
+
+Revision, 2026-11-11 (engine 7.0.0, F-R3: the extra-time substitution allowance): a Match details row under Subs.
+"Extra-time subs" / "Cambios en prórroga" / "Changements en prolongation" / "Wissels in verlenging"
+(`rules.extraTimeSubs`; fr avoids "Remplacements", 113 dp against the label column's 112); "+{subs} in {count} more
+window(s)" / "+{subs} en {count} ventana(s) más" / "+{subs} en {count} fois de plus" / "+{subs} in {count} extra
+wisselmoment(en)" (`rules.extraTimeSubsCapped`, as `rules.subsCapped`'s windows are worded); "+{subs}"
+(`rules.extraTimeSubsMax`); "+{count} window(s)" / "+{count} ventana(s)" / "+{count} fois" / "+{count}
+wisselmoment(en)" (`rules.extraTimeSubsWindows`). Drafts, not yet reviewed.
+
+Revision, 2026-11-11 (review M4, M5): two Match details labels were wider than the rules card's 112 dp label column and
+broke mid-word, so the copy changed and the column did not. fr `rules.subs` is "Changements" (was "Remplacements", 113.4
+dp), one word with `rules.extraTimeSubs` in the row under it; nl `rules.shootout` is "Strafschoppen" (was
+"Strafschoppenreeks", 142.8 dp). The fit test now holds every rules label, in all four languages, to 112 dp. Drafts, not
+yet reviewed.
+
 ## App settings (2026-11-02)
 
 The app's own Settings, from the gear in Home's top-right corner (owner, 2026-11-02: "we should have common setting in a top

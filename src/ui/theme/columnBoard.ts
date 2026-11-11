@@ -1,0 +1,199 @@
+import { layout, space } from '@/ui/theme/tokens';
+import { type TypeRole, typeScale } from '@/ui/theme/type';
+
+/**
+ * A board of a clock hero over team columns (S2-5 design §6.1, §6.2; owner rulings 130 and 132, "Clock hero" and "the
+ * score in the Goal square"): its two tiers and the heights each needs. The board's own height picks the tier, so a
+ * short phone never overflows: full where the board holds the hero over a column whose Goal square is at least
+ * `goalHeight('full')` tall, else compact, with the time and the numeral a step down (`tallyCompact`), the name on one
+ * line, and the Goal square as small as a 48 dp touch target (ruling 144: every button in a column is a square, the Goal
+ * one as wide as the column and three small ones under it). footballFit.test.ts writes the sums out.
+ */
+export type BoardTier = 'full' | 'compact';
+
+type TierFaces = {
+  /** A team's name: its lines, then an ellipsis. */
+  readonly nameLines: number;
+  /** The numeral in the Goal square. */
+  readonly numeral: TypeRole;
+  readonly time: TypeRole;
+  /** The gap between a column's rows, and the one between the clock's face and its plate. */
+  readonly gap: number;
+};
+
+export const TIER_FACES: Readonly<Record<BoardTier, TierFaces>> = {
+  full: {
+    nameLines: layout.padNameLines,
+    numeral: 'scoreCompact',
+    time: 'clockHero',
+    gap: space.sm,
+  },
+  compact: { nameLines: 1, numeral: 'tallyCompact', time: 'tallyCompact', gap: space.xs },
+};
+
+/** The marks' row: one line of the count's role, whatever it holds (fix-round ruling b). A card icon sits inside it. */
+export const MARKS_HEIGHT = typeScale.periodScore.lineHeight;
+
+/** The period's line, under the time. */
+export const PERIOD_HEIGHT = typeScale.diagSection.lineHeight;
+
+/**
+ * The clock's face, a rounded panel on `surface` (owner ruling 146, the mockup): the time and the period's line under it
+ * (a touch target at least), with the tier's gap of padding above and below and the 2 dp lime hairline under it (rulings 147 and 152).
+ */
+export function faceHeight(tier: BoardTier): number {
+  const { gap, time } = TIER_FACES[tier];
+  return (
+    Math.max(layout.touch, typeScale[time].lineHeight + PERIOD_HEIGHT) +
+    2 * gap +
+    layout.clockHairline
+  );
+}
+
+/** The clock hero and the gap under it: the face, the gap, the one plate (a touch target), then the board's gap. */
+export function clockBarHeight(tier: BoardTier): number {
+  return faceHeight(tier) + TIER_FACES[tier].gap + layout.touch + space.sm;
+}
+
+/** A column's head: the name's lines, a gap, and the marks' row. */
+export function headHeight(tier: BoardTier): number {
+  const { nameLines, gap } = TIER_FACES[tier];
+  return nameLines * typeScale.matchName.lineHeight + gap + MARKS_HEIGHT;
+}
+
+/** The Goal square's least height: a touch target compact; full, the numeral over its word with a little air. */
+export function goalHeight(tier: BoardTier): number {
+  if (tier === 'compact') return layout.touch;
+  return typeScale[TIER_FACES.full.numeral].lineHeight + PERIOD_HEIGHT + 2 * space.sm;
+}
+
+/**
+ * The one line under the three small squares, reserved whether a note shows or not (a disabled Sub's "No subs left", too
+ * long for a square), so a team without a team sheet never moves its squares off the other team's.
+ */
+export const NOTE_HEIGHT = typeScale.metricUnit.lineHeight;
+
+/**
+ * The Goal square's side (ruling 144): the column's whole text width, capped by the height the column leaves it. A
+ * square that does not fit the height shrinks to it and is centred.
+ */
+export const goalSide = (room: { readonly width: number; readonly height: number }): number =>
+  Math.min(room.width, room.height);
+
+/**
+ * The least height a column holds in: its padding and the colour bar on its top edge, the head, the Goal square, the row of three squares (a touch target)
+ * and its note line, a gap before each of the three under the head's.
+ */
+export const columnHeight = (tier: BoardTier): number =>
+  2 * space.sm +
+  layout.padSideBar +
+  headHeight(tier) +
+  goalHeight(tier) +
+  3 * TIER_FACES[tier].gap +
+  layout.touch +
+  NOTE_HEIGHT;
+
+/**
+ * The compact threshold: the least board height the full tier holds in, the hero over a column of its least size. A
+ * board under it is compact. It is built with the least row of squares (48 dp); a column wide enough for squares taller
+ * than that (a tablet: 600 dp wide gives 84) would overflow by the difference just above this height. No phone does
+ * (every phone this wide is taller than the threshold first), so the board's width is not asked for here.
+ */
+export const BOARD_FULL_HEIGHT = clockBarHeight('full') + columnHeight('full');
+
+/** The tier a board laid out `height` tall takes. */
+export const boardTier = (height: number): BoardTier =>
+  height < BOARD_FULL_HEIGHT ? 'compact' : 'full';
+
+/**
+ * The Goal square's numeral size in dp, from the square's measured height (controller ruling 138): the full tier is
+ * always the full size (`scoreCompact`); compact scales it by `layout.goalNumeralRatio`, never under `tallyCompact`'s size
+ * (what a 48 dp square holds over its word) and never over the full size. Layout-time only: no tick reads it.
+ */
+export function goalNumeralSize(tier: BoardTier, height: number): number {
+  const most = typeScale[TIER_FACES.full.numeral].fontSize;
+  if (tier === 'full') return most;
+  const least = typeScale[TIER_FACES.compact.numeral].fontSize;
+  return Math.min(most, Math.max(least, Math.round(height * layout.goalNumeralRatio)));
+}
+
+/**
+ * The full tier's clock digits in dp for a board `width` by `height` dp laid out (owner ruling 150): `clockHero`'s size
+ * when the column has no height to spare, growing with the height that is left once the Goal square (which is width-capped,
+ * ruling 144) and the rest of the column are in, up to `layout.clockHeroMax`, and never so big that "120+15:00" takes more
+ * than the face at `layout.clockFloor`. Layout-time only: no tick reads it.
+ */
+export function clockHeroSize(board: { readonly width: number; readonly height: number }): number {
+  const base = typeScale.clockHero;
+  const text = (board.width - space.sm) / 2 - 2 * space.sm;
+  const row = Math.max(layout.touch, (text - 2 * space.xs) / 3);
+  const gap = TIER_FACES.full.gap;
+  const fixed = 2 * space.sm + layout.padSideBar + headHeight('full') + 3 * gap + row + NOTE_HEIGHT;
+  const spare = board.height - clockBarHeight('full') - fixed - Math.max(goalHeight('full'), text);
+  const ratio = base.lineHeight / base.fontSize;
+  const grown = Math.floor((base.lineHeight + Math.max(0, spare)) / ratio);
+  const widest = Math.floor(board.width / (layout.clockWidestEm * layout.clockFloor));
+  return Math.max(base.fontSize, Math.min(grown, layout.clockHeroMax, widest));
+}
+
+/** The line height for a clock hero of `size` dp: `clockHero`'s own ratio, rounded down so it never takes more than it was given. */
+export const clockHeroLine = (size: number): number =>
+  Math.floor((size * typeScale.clockHero.lineHeight) / typeScale.clockHero.fontSize + 1e-9);
+
+/**
+ * Sub's word in each language at `diagSection`'s size (14), upper case, no letterspacing: Barlow Condensed 600's advances,
+ * written out so the layout needs no font reader (`smallLabelFit.test.ts` checks every one against the font file and that
+ * the four dictionaries' Sub words are all here).
+ */
+export const SMALL_WORD_WIDTH: Readonly<Record<string, number>> = {
+  SUB: 19.2,
+  CAMBIO: 36.5,
+  'REMPL.': 35.2,
+  WISSEL: 36.5,
+};
+
+/**
+ * Yellow's and Red's card (owner ruling 163, 2026-11-11: "remove the word and keep colour only"): portrait, 3:4, as large as
+ * the square holds inside its outline and `layout.padSquareLabelInset`, a whole number of dp on a 4 dp grid so its sides
+ * are whole (h = 4k, w = 3k), from the square as laid out (0 before: the least, a 36 by 27 card). Sized from the
+ * measurement like the Goal numeral (ruling 138).
+ */
+export function cardSwatchSize(square: { readonly width: number; readonly height: number }): {
+  readonly width: number;
+  readonly height: number;
+} {
+  if (square.width <= 0 || square.height <= 0) return { width: 27, height: 36 };
+  const pad = 2 * (layout.iconBorder + layout.padSquareLabelInset);
+  const room = Math.min(square.height - pad, ((square.width - pad) * 4) / 3);
+  const height = Math.max(4, Math.floor(room / 4) * 4);
+  return { width: (height * 3) / 4, height };
+}
+
+/**
+ * What the NE2211 drew over those advances: RED and SUB 7 to 9 % wider (build 1060). Its runtime shrink (`adjustsFontSizeToFit`)
+ * did not run there and "YELLOW" read "YELLO" in a room of 46 dp for a word of 39.9 x 1.1 = 43.9, so the size is computed.
+ */
+export const DEVICE_ADVANCE = 1.1;
+
+/**
+ * The size and the side inset of a small square's word, from the square's measured outer `side` (0 before it is laid out:
+ * the token's size). The word keeps `layout.padSquareLabelInset` clear of the outline and shrinks until it fits, never
+ * under `layout.cardLabelFloor` of the token (floored to a whole dp so it errs small); at the floor it gives up inset, not
+ * letters. Like the Goal numeral (ruling 138) it is layout-time: nothing here is measured by the runtime. A word the table
+ * does not hold is measured as 0.72 em a letter.
+ */
+export function smallLabelFit(
+  side: number,
+  word: string,
+): { readonly fontSize: number; readonly inset: number } {
+  const base = typeScale.diagSection.fontSize;
+  const inset = layout.padSquareLabelInset;
+  if (side <= 0) return { fontSize: base, inset };
+  const upper = word.toUpperCase();
+  const need = (SMALL_WORD_WIDTH[upper] ?? [...upper].length * base * 0.72) * DEVICE_ADVANCE;
+  const outer = side - 2 * layout.iconBorder;
+  const scale = Math.max(layout.cardLabelFloor, Math.min(1, (outer - 2 * inset) / need));
+  const fontSize = Math.floor(base * scale);
+  const left = (outer - need * (fontSize / base)) / 2;
+  return { fontSize, inset: Math.max(0, Math.min(inset, left)) };
+}
