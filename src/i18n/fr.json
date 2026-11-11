@@ -945,7 +945,7 @@
   "scoring.football.more.details": "Détails du match",
   "scoring.football.correct.title": "Ajuster le chrono",
   "scoring.football.correct.set": "Terminé",
-  "scoring.football.correct.floor": "Impossible d'aller avant le dernier événement",
+  "scoring.football.correct.floor": "Pas avant le dernier événement ({minute}). Annulez-le, ou l'organisateur le corrige.",
   "scoring.football.correct.back60": "−1 min",
   "scoring.football.correct.back10": "−10 s",
   "scoring.football.correct.fwd10": "+10 s",

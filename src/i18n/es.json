@@ -945,7 +945,7 @@
   "scoring.football.more.details": "Detalles del partido",
   "scoring.football.correct.title": "Ajustar el reloj",
   "scoring.football.correct.set": "Listo",
-  "scoring.football.correct.floor": "No puede ser anterior al último evento",
+  "scoring.football.correct.floor": "No se puede antes del último evento ({minute}). Deshazlo o lo corrige el organizador.",
   "scoring.football.correct.back60": "−1 min",
   "scoring.football.correct.back10": "−10 s",
   "scoring.football.correct.fwd10": "+10 s",

@@ -10,6 +10,7 @@ import {
   type BoardBin,
   type BoardColumn,
 } from '@/domain/scoring/footballBoard';
+import { matchTime, minuteText } from '@/domain/scoring/footballClock';
 import { PERIOD_TOOL } from '@/domain/scoring/footballPad';
 import type { FootballDisplay, FootballPadKey } from '@/domain/scoring/footballTypes';
 import { holdsScreen, type PadHalf, type PadStateCard } from '@/domain/scoring/padView';
@@ -364,11 +365,15 @@ const CorrectView = memo(function CorrectView({
   const words = useCorrectWords();
   useClockTick(display.clock.anchor?.running === true);
   const seconds = readingNow() + sheet.deltaSeconds;
+  // The floor's minute in the pad's own format ("12'", "45+2'"), so the scorer sees what Undo or the organiser must clear.
+  const floorMinute = minuteText(
+    matchTime({ period: display.enginePhase, elapsed: sheet.floor }, display.cfg),
+  );
   return (
     <ClockCorrectSheet
       time={footballCorrectTime(display, seconds)}
       atFloor={seconds <= sheet.floor}
-      floorLine={t('scoring.football.correct.floor')}
+      floorLine={t('scoring.football.correct.floor', { minute: floorMinute })}
       words={words}
       onStep={actions.step}
       onSet={actions.set}

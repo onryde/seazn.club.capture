@@ -429,6 +429,37 @@ describe('the board 5 dp higher (owner, 2026-11-11)', () => {
   });
 });
 
+// Owner ruling 164: the Adjust clock floor line names the minute and the way out. It is the sheet's `status` line (Geist 400
+// at 13.5), the screen less the sheet's padding (space.md a side) wide, two lines allowed; the longest minute is "45+12'".
+const geist400 = loadFont('geist-400');
+const statusWidth = (text: string) => geist400.width(text, typeScale.status.fontSize);
+
+describe('the Adjust clock floor line at 320 and 360 in four languages (ruling 164)', () => {
+  const room = (width: number) => width - 2 * space.md;
+  const LITERAL = {
+    en: "Can't go before the last event (12'). Undo it first, or the organiser can fix it.",
+    es: "No se puede antes del último evento (12'). Deshazlo o lo corrige el organizador.",
+    fr: "Pas avant le dernier événement (12'). Annulez-le, ou l'organisateur le corrige.",
+    nl: "Niet vóór de laatste gebeurtenis (12'). Maak die ongedaan, of vraag de organisator.",
+  } as const;
+
+  it.each(LANGUAGES)(
+    '%s: names the minute, fills it literally, takes at most two lines',
+    (lang, dictionary) => {
+      const template = said(dictionary, 'scoring.football.correct.floor');
+      expect(template).toContain('{minute}');
+      expect(template.replace('{minute}', "12'")).toBe(LITERAL[lang]);
+      for (const width of WIDTHS)
+        for (const minute of ["12'", "45+2'", "90+12'"]) {
+          const text = template.replace('{minute}', minute);
+          expect(linesOf(text, room(width), statusWidth), `${text} @${width}`).toBeLessThanOrEqual(
+            2,
+          );
+        }
+    },
+  );
+});
+
 describe('the End of period cell’s height at 320 and 360 (ruling 160)', () => {
   it('is 48 dp with two lines and 67 with three, from the tokens', () => {
     expect(typeScale.actionSecondary.lineHeight).toBe(19);

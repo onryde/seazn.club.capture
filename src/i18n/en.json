@@ -945,7 +945,7 @@
   "scoring.football.more.details": "Match details",
   "scoring.football.correct.title": "Adjust clock",
   "scoring.football.correct.set": "Done",
-  "scoring.football.correct.floor": "Can't go before the last event",
+  "scoring.football.correct.floor": "Can't go before the last event ({minute}). Undo it first, or the organiser can fix it.",
   "scoring.football.correct.back60": "−1 min",
   "scoring.football.correct.back10": "−10 s",
   "scoring.football.correct.fwd10": "+10 s",

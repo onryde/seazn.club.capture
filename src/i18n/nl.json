@@ -945,7 +945,7 @@
   "scoring.football.more.details": "Wedstrijddetails",
   "scoring.football.correct.title": "Klok aanpassen",
   "scoring.football.correct.set": "Klaar",
-  "scoring.football.correct.floor": "Kan niet vóór de laatste gebeurtenis",
+  "scoring.football.correct.floor": "Niet vóór de laatste gebeurtenis ({minute}). Maak die ongedaan, of vraag de organisator.",
   "scoring.football.correct.back60": "−1 min",
   "scoring.football.correct.back10": "−10 s",
   "scoring.football.correct.fwd10": "+10 s",

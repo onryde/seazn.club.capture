@@ -656,11 +656,17 @@ describe('the clock’s Adjust clock, the sheets and a sin-bin', () => {
     await press(app, en['scoring.football.correct.back60'], sheet);
     expect(within(sheet).getByText('0:03')).toBeTruthy();
     expect(back().getAttribute('aria-disabled')).toBe('true');
-    expect(within(sheet).queryByText(en['scoring.football.correct.floor'])).not.toBeNull();
+    // Owner ruling 164: the floor line names the last event's minute (3 s in is the 1st) and the way out.
+    expect(
+      within(sheet).queryByText(fill(en['scoring.football.correct.floor'], { minute: "1'" })),
+    ).not.toBeNull();
+    expect(en['scoring.football.correct.floor']).toBe(
+      "Can't go before the last event ({minute}). Undo it first, or the organiser can fix it.",
+    );
     await pass(app, 3000);
     expect(within(sheet).getByText('0:06')).toBeTruthy();
     expect(back().getAttribute('aria-disabled')).not.toBe('true');
-    expect(within(sheet).queryByText(en['scoring.football.correct.floor'])).toBeNull();
+    expect(within(sheet).queryByText(/Can't go before the last event/)).toBeNull();
   });
 
   it('History from the top bar lists the goal; Match details opens from More', async () => {
