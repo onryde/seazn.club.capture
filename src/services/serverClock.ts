@@ -9,9 +9,10 @@ export const OFFSET_LOG_STEP_MS = 2000;
  * (`offsetSampleOf`, through the scoring port's `serverTime`), read by the football clock as `steadyClock.nowMs() +
  * offsetMs()`: each sample is measured against the steady clock too (ruling 137), so the two are one clock.
  * Built once in the ports, before the scoring port it is handed to. It never ticks by itself: it changes only when an
- * answer arrives. Nothing subscribes to it today: the football clock (`useFootballClock`) reads `offsetMs()` when it is
- * read, on its clock leaf's one-second tick and when a button is pressed, so a new sample shows at the next tick.
- * `subscribe` is there for a reader that must redraw on the sample itself; it is never held in context (AGENTS §8).
+ * answer arrives. The football clock (`useFootballClock`) does not subscribe: it reads `offsetMs()` when it is read, on
+ * its clock leaf's one-second tick and when a button is pressed, so a new sample shows at the next tick. One reader
+ * subscribes: `useSubsNow` (`useFootballMatch.ts`) re-arms the substitution-stoppage redraw when the offset moves
+ * (ruling 154). `subscribe` is never held in context (AGENTS §8).
  */
 export type ServerClock = {
   /** How far the server's clock is ahead of this phone's, in ms (negative when behind): 0 until a sample. */
