@@ -192,8 +192,8 @@ function useColumnView({ column, half, display, readingNow }: SideColumnProps): 
   );
 }
 
-/** The swatch of a card button: Yellow's caution, Red's dismissal (AGENTS §5: the pad's card icons, nothing else). */
-const SWATCH = { yellow: 'caution', red: 'dismissal' } as const;
+/** The mark of a small square: Yellow's caution swatch, Red's dismissal (AGENTS §5: the pad's card icons), Sub's arrows. */
+const MARK = { yellow: 'caution', red: 'dismissal', sub: 'sub' } as const;
 
 /**
  * What a screen reader hears of a button: the primary one says its word, the team and its score ("Goal, Home FC, 2");
@@ -235,7 +235,7 @@ function teamAction(
     primary: action.primary,
     enabled: action.enabled,
     note: action.note === null ? null : words(action.note),
-    swatch: word === 'yellow' || word === 'red' ? SWATCH[word] : null,
+    mark: word === 'yellow' || word === 'red' || word === 'sub' ? MARK[word] : null,
   };
 }
 

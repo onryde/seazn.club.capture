@@ -6,7 +6,8 @@ import { type TypeRole, typeScale } from '@/ui/theme/type';
  * score in the Goal square"): its two tiers and the heights each needs. The board's own height picks the tier, so a
  * short phone never overflows: full where the board holds the hero over a column whose Goal square is at least
  * `goalHeight('full')` tall, else compact, with the time and the numeral a step down (`tallyCompact`), the name on one
- * line, and the Goal square a 48 dp row of the numeral and its word. footballFit.test.ts writes the sums out.
+ * line, and the Goal square as small as a 48 dp touch target (ruling 144: every button in a column is a square, the Goal
+ * one as wide as the column and three small ones under it). footballFit.test.ts writes the sums out.
  */
 export type BoardTier = 'full' | 'compact';
 
@@ -59,11 +60,39 @@ export function goalHeight(tier: BoardTier): number {
 }
 
 /**
- * The least height a column holds in: its padding, the head, the Goal square, and Yellow and Red's row and Sub, each a
- * touch target, a gap before each of the three.
+ * The one line under the three small squares, reserved whether a note shows or not (a disabled Sub's "No subs left", too
+ * long for a square), so a team without a team sheet never moves its squares off the other team's.
+ */
+export const NOTE_HEIGHT = typeScale.metricUnit.lineHeight;
+
+/**
+ * The side of a small square (owner ruling 144, "Big Goal, three small"): a third of the column's text width less the two
+ * gaps between them (`space.xs`). The row is that tall, but never under a touch target: a column narrower than three
+ * touch targets (about 160 dp, a phone under 360 wide) keeps `layout.touch` and the three squares are near-square
+ * (controller ruling 145).
+ */
+export const smallSide = (textWidth: number): number => (textWidth - 2 * space.xs) / 3;
+export const smallRowHeight = (textWidth: number): number =>
+  Math.max(layout.touch, smallSide(textWidth));
+
+/**
+ * The Goal square's side (ruling 144): the column's whole text width, capped by the height the column leaves it. A
+ * square that does not fit the height shrinks to it and is centred.
+ */
+export const goalSide = (room: { readonly width: number; readonly height: number }): number =>
+  Math.min(room.width, room.height);
+
+/**
+ * The least height a column holds in: its padding, the head, the Goal square, the row of three squares (a touch target)
+ * and its note line, a gap before each of the three under the head's.
  */
 export const columnHeight = (tier: BoardTier): number =>
-  2 * space.sm + headHeight(tier) + goalHeight(tier) + 3 * TIER_FACES[tier].gap + 2 * layout.touch;
+  2 * space.sm +
+  headHeight(tier) +
+  goalHeight(tier) +
+  3 * TIER_FACES[tier].gap +
+  layout.touch +
+  NOTE_HEIGHT;
 
 /**
  * The compact threshold: the least board height the full tier holds in, the hero over a column of its least size. A
@@ -78,7 +107,7 @@ export const boardTier = (height: number): BoardTier =>
 /**
  * The Goal square's numeral size in dp, from the square's measured height (controller ruling 138): the full tier is
  * always the full size (`scoreCompact`); compact scales it by `layout.goalNumeralRatio`, never under `tallyCompact`'s size
- * (what a 48 dp square holds beside its word) and never over the full size. Layout-time only: no tick reads it.
+ * (what a 48 dp square holds over its word) and never over the full size. Layout-time only: no tick reads it.
  */
 export function goalNumeralSize(tier: BoardTier, height: number): number {
   const most = typeScale[TIER_FACES.full.numeral].fontSize;

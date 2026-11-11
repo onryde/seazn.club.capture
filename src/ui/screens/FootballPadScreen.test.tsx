@@ -6,7 +6,7 @@ import en from '@/i18n/en.json';
 import { footballSeed } from '@/services/fakeFootballPad';
 import type { FakeMatchSeed, FakeSeedEvent } from '@/services/fakeScoringPort';
 import { STORE_KEYS } from '@/services/modeStore';
-import { colour } from '@/ui/theme/tokens';
+import { colour, layout } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
 import { TEST_NOW } from '../../../test/fakePorts';
 import {
@@ -292,6 +292,74 @@ describe('the team columns', () => {
   });
 });
 
+// Owner ruling 144: every button in a column is a square. jsdom has no layout, so what is read here is what the screen
+// hands the column: the squares, their words, the note on its line, and the shootout's shape.
+describe('the squares (ruling 144)', () => {
+  const noteRoom = (side: 'first' | 'second') =>
+    within(column(side)).getByTestId('column-note-room');
+
+  it('the Goal square is alone in its room and Yellow, Red and Sub are one row of three squares, a mark over each word', async () => {
+    await open(LIVE);
+    const row = within(column('first')).getByTestId('column-cards');
+    expect(within(row).getAllByRole('button')).toHaveLength(3);
+    for (const square of within(row).getAllByRole('button'))
+      expect(declaredStyle(square, 'aspect-ratio')).toBe('1 / 1');
+    expect(within(row).getAllByTestId('card-swatch')).toHaveLength(2);
+    expect(within(row).getAllByTestId('sub-glyph')).toHaveLength(1);
+    expect(
+      within(within(column('first')).getByTestId('goal-room')).getAllByRole('button'),
+    ).toHaveLength(1);
+  });
+
+  it('a team with no team sheet has Sub disabled, greyed, its note on the line under the squares and in its name', async () => {
+    await open(footballSeed({ sheet: 'none', events: asSeed(KICK_OFF) }));
+    const note = en['scoring.football.column.noSheet'];
+    const sub = within(column('first')).getByRole('button', {
+      name: `${teamSaid('subSaid', 'Riverside FC')}, ${note}`,
+    });
+    expect(sub.getAttribute('aria-disabled')).toBe('true');
+    expect(within(sub).queryByText(note)).toBeNull();
+    expect(within(sub).getByText(en['scoring.football.column.sub'])).toBeTruthy();
+    expect(within(noteRoom('first')).getByText(note)).toBeTruthy();
+    expect(within(noteRoom('second')).getByText(note)).toBeTruthy();
+  });
+
+  it('a team with a team sheet has an empty note line, so the squares sit as high as the other team’s', async () => {
+    await open(LIVE);
+    expect(noteRoom('first').textContent).toBe('');
+    expect(declaredStyle(noteRoom('first'), 'height')).toBe(
+      declaredStyle(noteRoom('second'), 'height'),
+    );
+  });
+
+  it('two taps on Sub open one player list, not two', async () => {
+    const app = await open(LIVE);
+    const sub = () =>
+      within(column('first')).getByRole('button', { name: teamSaid('subSaid', 'Riverside FC') });
+    later(app);
+    act(() => {
+      fireEvent.click(sub());
+      fireEvent.click(sub());
+    });
+    await flush(400);
+    expect(screen.getAllByTestId('step-sheet')).toHaveLength(1);
+  });
+
+  it('in the shootout Missed is one full-width row under the Scored square, and no squares row, note line or glyph', async () => {
+    await open(footballSeed({ cfg: KO_11, events: asSeed(KICKS_4_3) }));
+    for (const side of ['first', 'second'] as const) {
+      const col = within(column(side));
+      expect(col.queryByTestId('column-cards')).toBeNull();
+      expect(col.queryByTestId('column-note-room')).toBeNull();
+      expect(col.queryByTestId('sub-glyph')).toBeNull();
+      const missed = col.getByRole('button', { name: en['scoring.football.column.missed'] });
+      expect(declaredStyle(missed, 'min-height')).toBe(`${layout.touch}px`);
+      expect(declaredStyle(missed, 'aspect-ratio')).toBe('');
+      expect(col.getByTestId('goal-room')).toBeTruthy();
+    }
+  });
+});
+
 describe('Yellow and Red (ruling 136)', () => {
   /** The home side's number 4 already on a yellow, after kick-off. */
   const BOOKED = footballSeed({ events: asSeed(YELLOWED_HOME_4) });
@@ -357,8 +425,8 @@ describe('Yellow and Red (ruling 136)', () => {
 });
 
 // The controller's fix-round 2 ruling (R1), redone for the clock hero (ruling 130): the board's own height picks its tier.
-// The full tier needs the hero's 164 dp (a 100 face, 8, the 48 plate, 8) over a column of 320 (2 × 8, an 84 head, a 100
-// Goal square, 3 × 8, 2 × 48 buttons): 484. Below it the clock and both columns go compact, at once
+// The full tier needs the hero's 164 dp (a 100 face, 8, the 48 plate, 8) over a column of 288 (2 × 8, an 84 head, a 100
+// Goal room, 3 × 8, the 48 row of squares and the 16 note line): 452. Below it the clock and both columns go compact, at once
 // (footballFit.test.ts holds the heights).
 describe('a short phone (ruling R1)', () => {
   const H1 = en['scoring.football.period.H1'];
@@ -367,21 +435,23 @@ describe('a short phone (ruling R1)', () => {
   const FULL = `${typeScale.clockHero.fontSize}px`;
   const COMPACT = `${typeScale.tallyCompact.fontSize}px`;
 
-  it('at 484 dp of board the pad is full; at 483 the clock and the columns go compact', async () => {
+  it('at 452 dp of board the pad is full; at 451 the clock and the columns go compact', async () => {
     await open(STARTED);
     // Before the phone lays the board out, it is full.
     expect(linesAllowed(name())).toBe(2);
     expect(timeSize()).toBe(FULL);
     expect(within(clockBar()).getByText(H1)).toBeTruthy();
     const board = screen.getByTestId('football-board');
-    layOut(board, { width: 328, height: 484 });
+    layOut(board, { width: 328, height: 452 });
     expect(timeSize()).toBe(FULL);
     expect(linesAllowed(name())).toBe(2);
-    layOut(board, { width: 328, height: 483 });
+    layOut(board, { width: 328, height: 451 });
     expect(timeSize()).toBe(COMPACT);
     expect(linesAllowed(name())).toBe(1);
     expect(linesAllowed(within(column('first')).getByText('Riverside FC'))).toBe(1);
-    expect(declaredStyle(screen.getAllByTestId('goal-square')[0]!, 'flex-direction')).toBe('row');
+    expect(declaredStyle(screen.getAllByTestId('goal-room')[0]!, 'min-height')).toBe(
+      `${layout.touch}px`,
+    );
   });
 
   it('a phone that grows again goes back to full', async () => {

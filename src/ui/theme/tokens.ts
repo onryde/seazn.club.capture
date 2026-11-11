@@ -354,8 +354,24 @@ const base = {
   padCardWidth: 8,
   padCardHeight: 11,
   padCardRadius: 1,
-  /** The square swatch before Yellow's and Red's word (owner ruling 132): the card icon's colours, drawn as a square. */
-  padSwatch: 8,
+  /**
+   * The mark in a small square (owner ruling 144): Yellow's and Red's swatch is a card, `padSquareSwatchWidth` by
+   * `padSquareSwatchHeight`, and Sub's glyph is two arrows drawn from boxes, one pointing right and one left, the height
+   * of the swatch: each a bar `padSubBar` long and `padSubThickness` thick with a head `padSubHead` long and
+   * `2 * padSubHalf` tall, `padSubGap` apart.
+   */
+  padSquareSwatchWidth: 14,
+  padSquareSwatchHeight: 18,
+  padSubBar: 9,
+  padSubThickness: 2,
+  padSubHead: 5,
+  padSubHalf: 4,
+  padSubGap: 2,
+  /**
+   * The word under the mark in a small square: Barlow's 0.6 letterspacing is 4.8 dp over "Amarilla"; at 0.2 it holds in a
+   * 37.3 dp square at 320 dp at the label floor (footballFit.test.ts).
+   */
+  padSquareLabelSpacing: 0.2,
   /**
    * The clock plate's Pause and Resume glyphs, drawn from boxes (owner ruling 130): Pause is two bars `padGlyphBar` wide and
    * `padGlyphHeight` tall, `padGlyphGap` apart; Resume is a triangle `padGlyphLength` long and `2 * padGlyphHalf` tall.
@@ -509,7 +525,7 @@ const base = {
   clockFloor: 0.85,
   /** The Yellow and Red words, in their half-width buttons on a 320 dp column: they shrink to this and no further. */
   cardLabelFloor: 0.75,
-  /** A disabled column button's note ("Plus de remplacement" in fr is 127.7 dp in a 104 dp room at 320): one line, shrunk to this. */
+  /** A disabled Sub's note ("Plus de remplacement" in fr is 127.7 dp in the 120 dp under the squares at 320): one line, shrunk to this. */
   noteFloor: 0.75,
   /**
    * A step sheet's rows scroll past this height (S2-5 design §6.3: a team's players and its bench can be 16 rows and

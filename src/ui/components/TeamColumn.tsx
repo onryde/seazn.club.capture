@@ -15,7 +15,9 @@ import {
   type BoardTier,
   goalHeight,
   goalNumeralSize,
+  goalSide,
   MARKS_HEIGHT,
+  NOTE_HEIGHT,
   TIER_FACES,
 } from '@/ui/theme/columnBoard';
 import { colour, layout, plateInk, pressedOpacity, radius, space } from '@/ui/theme/tokens';
@@ -24,8 +26,9 @@ import { type TypeRole, typeScale } from '@/ui/theme/type';
 /**
  * One button in a team's column, in the operator's words already (the sport's screen translates its own board): its id
  * goes back to the caller; the primary one is the lime Goal square, which carries the column's score; a disabled one may
- * say why, on a line under its word. `said` is what a screen reader hears when it is more than the word ("Goal, Home FC,
- * 2"); `swatch` marks a card button and puts it in the row of two.
+ * say why, on the line under the squares. `said` is what a screen reader hears when it is more than the word ("Goal, Home
+ * FC, 2"); `mark` is what a small square draws over its word (a card's swatch, or the two arrows of Sub) and puts the
+ * button in the row of three.
  */
 export type TeamAction = {
   readonly id: string;
@@ -34,7 +37,7 @@ export type TeamAction = {
   readonly primary: boolean;
   readonly enabled: boolean;
   readonly note: string | null;
-  readonly swatch: 'caution' | 'dismissal' | null;
+  readonly mark: 'caution' | 'dismissal' | 'sub' | null;
 };
 
 /** What a team's column draws: nothing here is decided, only drawn (S2-5 design §6.2). */
@@ -61,35 +64,29 @@ type TeamColumnProps = {
 };
 
 /**
- * A team's column on a pad whose score is not a tap (S2-5 design §6.2, rulings 105 and 132): the name as typed heads it
+ * A team's column on a pad whose score is not a tap (S2-5 design §6.2, rulings 105, 132 and 144): the name as typed heads it
  * (two lines, then an ellipsis, a fixed height so two columns line up), then one line of marks (a card icon per colour
- * with its count, then the sport's tags), the lime Goal square with the score as its numeral and its word under it, a
- * row of the card buttons (each with its colour's swatch), and the other buttons full width, each at least a touch
- * target. A kit part with no sport named (the controller's ruling 5). A screen reader hears the name and the marks as
- * one, then each button; the square says its score.
+ * with its count, then the sport's tags), then the buttons, every one a square: the lime Goal square as wide as the column
+ * (its height permitting, else the square shrinks to the height and is centred) with the score as its numeral and its word
+ * under it, a row of three small squares (Yellow, Red and Sub, each a mark over its word) and the note line a disabled
+ * one may use. A column too narrow for three touch targets (under about 160 dp) keeps the squares' 48 dp height, so they
+ * are near-square (ruling 145). Any other button (Missed) is a full-width row. A kit part with no sport named (the
+ * controller's ruling 5). A screen reader hears the name and the marks as one, then each button; the square says its score.
  *
  * The controller's fix-round rulings: the name shrinks to fit before its ellipsis, so no word breaks at a letter (a);
  * the marks' row is one line of fixed height, so the buttons never move (b); the numeral shrinks to fit its line and is
- * never cut (f). Compact (R1) sets the name on one line and the square as a row of numeral and word, so a short phone
+ * never cut (f), and scales with the square it is in (138). Compact (R1) sets the name on one line, so a short phone
  * keeps a touch target per button. footballFit.test.ts holds the numbers.
  */
 export const TeamColumn = memo(function TeamColumn({ view, onAction, compact }: TeamColumnProps) {
   const tier: BoardTier = compact === true ? 'compact' : 'full';
-  const swatched = view.actions.filter((action) => action.swatch !== null);
+  const squares = view.actions.filter((action) => action.mark !== null);
+  const note = squares.find((action) => action.note !== null)?.note ?? null;
   return (
     <View testID="team-column" style={columnStyle(view.bar, tier)}>
       <ColumnHead view={view} tier={tier} />
-      {view.actions.map((action) => {
-        if (action.swatch !== null) {
-          return action === swatched[0] ? (
-            <View key="cards" testID="column-cards" style={rowStyle(tier)}>
-              {swatched.map((card) => (
-                <CardButton key={card.id} action={card} onAction={onAction} />
-              ))}
-            </View>
-          ) : null;
-        }
-        return action.primary ? (
+      {view.actions.map((action) =>
+        action.primary ? (
           <GoalSquare
             key={action.id}
             action={action}
@@ -97,10 +94,36 @@ export const TeamColumn = memo(function TeamColumn({ view, onAction, compact }: 
             tier={tier}
             onAction={onAction}
           />
-        ) : (
+        ) : null,
+      )}
+      {squares.length === 0 ? null : (
+        <>
+          <View testID="column-cards" style={styles.smallRow}>
+            {squares.map((square) => (
+              <SmallSquare key={square.id} action={square} onAction={onAction} />
+            ))}
+          </View>
+          <View testID="column-note-room" style={styles.noteRoom}>
+            {note === null ? null : (
+              <Text
+                testID="column-note"
+                variant="metricUnit"
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={layout.noteFloor}
+                style={styles.note}
+              >
+                {note}
+              </Text>
+            )}
+          </View>
+        </>
+      )}
+      {view.actions.map((action) =>
+        !action.primary && action.mark === null ? (
           <ColumnButton key={action.id} action={action} onAction={onAction} />
-        );
-      })}
+        ) : null,
+      )}
     </View>
   );
 });
@@ -184,76 +207,89 @@ type GoalSquareProps = ColumnButtonProps & {
 };
 
 /**
- * The primary button, the lime plate with night ink (AGENTS §5), with the team's score as its numeral and the word under
- * it (a row in a compact column). The numeral shrinks to fit its line, down to `layout.scoreFloor`, and is never cut.
+ * The primary button, the lime plate with night ink (AGENTS §5): a square as wide as the column, its height permitting
+ * (`goalSide`), centred in the room the column leaves it, with the team's score as its numeral and the word under it.
+ * The numeral scales with the measured square and shrinks to fit its line, down to `layout.scoreFloor`, never cut.
  */
 const GoalSquare = memo(function GoalSquare({ action, value, tier, onAction }: GoalSquareProps) {
   const press = useCallback(() => onAction(action.id), [onAction, action.id]);
   const off = !action.enabled;
-  const [height, setHeight] = useState(goalHeight(tier));
+  const [room, setRoom] = useState({ width: goalHeight(tier), height: goalHeight(tier) });
   const measured = useCallback((event: LayoutChangeEvent) => {
-    setHeight(Math.round(event.nativeEvent.layout.height));
+    const { width, height } = event.nativeEvent.layout;
+    setRoom({ width: Math.round(width), height: Math.round(height) });
   }, []);
-  const size = goalNumeralSize(tier, height);
+  const side = goalSide(room);
+  const size = goalNumeralSize(tier, side);
   const fit = useMemo(() => ({ fontSize: size, lineHeight: Math.round(size * 1.06) }), [size]);
+  const box = useMemo(() => ({ width: side, height: side }), [side]);
+  const style = useCallback(
+    ({ pressed }: PressableStateCallbackType) => [
+      styles.square,
+      off ? styles.squareOff : null,
+      pressed && !off ? styles.pressedPlate : null,
+      box,
+    ],
+    [off, box],
+  );
+  return (
+    <View testID="goal-room" onLayout={measured} style={GOAL_ROOM[tier]}>
+      <Pressable
+        testID="goal-square"
+        accessibilityRole="button"
+        accessibilityLabel={nameOf(action)}
+        disabled={off}
+        onPress={press}
+        style={style}
+      >
+        <Text
+          testID="column-value"
+          aria-hidden
+          variant={TIER_FACES[tier].numeral}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={layout.scoreFloor}
+          style={[styles.numeral, fit, off ? styles.labelOff : styles.labelPrimary]}
+        >
+          {value}
+        </Text>
+        <Text
+          aria-hidden
+          variant="diagSection"
+          numberOfLines={1}
+          style={off ? styles.labelOff : styles.labelPrimary}
+        >
+          {action.label}
+        </Text>
+      </Pressable>
+    </View>
+  );
+});
+
+/**
+ * Yellow, Red or Sub: one of three equal squares on `surface2`, its mark (a card's swatch, or the two arrows) over its word
+ * (small caps, shrunk to `cardLabelFloor`). A disabled one greys.
+ */
+const SmallSquare = memo(function SmallSquare({ action, onAction }: ColumnButtonProps) {
+  const press = useCallback(() => onAction(action.id), [onAction, action.id]);
+  const off = !action.enabled;
   return (
     <Pressable
-      testID="goal-square"
-      onLayout={measured}
       accessibilityRole="button"
       accessibilityLabel={nameOf(action)}
       disabled={off}
       onPress={press}
-      style={squareStyle(tier, off)}
+      style={off ? smallOff : smallOn}
     >
-      <Text
-        testID="column-value"
-        aria-hidden
-        variant={TIER_FACES[tier].numeral}
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={layout.scoreFloor}
-        style={[
-          styles.numeral,
-          tier === 'compact' ? fit : null,
-          off ? styles.labelOff : styles.labelPrimary,
-        ]}
-      >
-        {value}
-      </Text>
-      <Text
-        aria-hidden
-        variant="diagSection"
-        numberOfLines={1}
-        style={off ? styles.labelOff : styles.labelPrimary}
-      >
-        {action.label}
-      </Text>
-    </Pressable>
-  );
-});
-
-/** Yellow or Red: outlined on `surface2`, a small square swatch of the card's colour before its word. */
-const CardButton = memo(function CardButton({ action, onAction }: ColumnButtonProps) {
-  const press = useCallback(() => onAction(action.id), [onAction, action.id]);
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={nameOf(action)}
-      disabled={!action.enabled}
-      onPress={press}
-      style={action.enabled ? cardPressable : cardOff}
-    >
-      <View
-        testID="card-swatch"
-        style={action.swatch === 'dismissal' ? dismissalSwatch : cautionSwatch}
-      />
+      <View style={off ? styles.markOff : null}>
+        <SquareMark mark={action.mark} />
+      </View>
       <Text
         variant="diagSection"
         numberOfLines={1}
         adjustsFontSizeToFit
         minimumFontScale={layout.cardLabelFloor}
-        style={styles.cardLabel}
+        style={off ? styles.smallLabelOff : styles.smallLabel}
       >
         {action.label}
       </Text>
@@ -261,7 +297,31 @@ const CardButton = memo(function CardButton({ action, onAction }: ColumnButtonPr
   );
 });
 
-/** A team's other button (Sub, Missed): full width on `surface2`; a disabled one greys, with its note under its word. */
+/** A card's swatch, or Sub's two arrows drawn from boxes (react-native-svg does not load in the tests). */
+function SquareMark({ mark }: { readonly mark: TeamAction['mark'] }) {
+  if (mark === 'sub') return <SubGlyph />;
+  return (
+    <View testID="card-swatch" style={mark === 'dismissal' ? dismissalSwatch : cautionSwatch} />
+  );
+}
+
+/** Sub's glyph: an arrow right over an arrow left, each a bar and a head made from a box with no width. */
+const SubGlyph = memo(function SubGlyph() {
+  return (
+    <View testID="sub-glyph" style={styles.subGlyph}>
+      <View style={styles.subArrow}>
+        <View style={styles.subBar} />
+        <View style={styles.subHeadRight} />
+      </View>
+      <View style={styles.subArrow}>
+        <View style={styles.subHeadLeft} />
+        <View style={styles.subBar} />
+      </View>
+    </View>
+  );
+});
+
+/** A team's other button (Missed): a full-width row on `surface2`, a touch target tall; a disabled one greys. */
 const ColumnButton = memo(function ColumnButton({ action, onAction }: ColumnButtonProps) {
   const press = useCallback(() => onAction(action.id), [onAction, action.id]);
   return (
@@ -326,43 +386,77 @@ const styles = StyleSheet.create({
   caution: { backgroundColor: colour.cardCaution },
   dismissal: { backgroundColor: colour.cardDismissal },
   count: { color: colour.ink2 },
-  // The Goal square takes what the column's other rows leave; the others are a touch target each.
+  // The Goal square's room takes what the column's other rows leave, at least the tier's least (`goalHeight`); the square
+  // is as wide as the column or as tall as the room, centred (ruling 144), its side set from the measured room.
+  goalRoom: { flex: 1, minWidth: 0, alignItems: 'center', justifyContent: 'center' },
+  goalRoomFull: { minHeight: goalHeight('full') },
+  goalRoomCompact: { minHeight: goalHeight('compact') },
   square: {
-    flex: 1,
-    minHeight: goalHeight('full'),
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: space.xs,
     borderRadius: radius.card,
     backgroundColor: colour.lime,
   },
-  squareCompact: {
-    minHeight: goalHeight('compact'),
-    flexDirection: 'row',
-    gap: space.sm,
-  },
   squareOff: { backgroundColor: colour.surface2 },
   numeral: { flexShrink: 1 },
-  cardRow: { flexDirection: 'row', gap: space.xs },
-  cardButton: {
+  // Three equal squares: a third of the column each, as tall as they are wide, but never under a touch target, so a column
+  // under about 160 dp keeps 48 dp and they are near-square (controller ruling 145).
+  smallRow: { flexDirection: 'row', gap: space.xs },
+  small: {
     flex: 1,
     minWidth: 0,
     minHeight: layout.touch,
-    flexDirection: 'row',
+    aspectRatio: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: space.xs,
+    gap: layout.padSubGap,
     borderRadius: radius.card,
-    borderWidth: layout.iconBorder,
-    borderColor: colour.ink3,
     backgroundColor: colour.surface2,
   },
+  markOff: { opacity: 0.4 },
   swatch: {
-    width: layout.padSwatch,
-    height: layout.padSwatch,
+    width: layout.padSquareSwatchWidth,
+    height: layout.padSquareSwatchHeight,
     borderRadius: layout.padCardRadius,
   },
-  cardLabel: { flexShrink: 1, color: colour.ink },
+  smallLabel: {
+    alignSelf: 'stretch',
+    textAlign: 'center',
+    letterSpacing: layout.padSquareLabelSpacing,
+    color: colour.ink,
+  },
+  smallLabelOff: {
+    alignSelf: 'stretch',
+    textAlign: 'center',
+    letterSpacing: layout.padSquareLabelSpacing,
+    color: colour.ink3,
+  },
+  noteRoom: { height: NOTE_HEIGHT, justifyContent: 'center' },
+  subGlyph: { gap: layout.padSubGap },
+  subArrow: { flexDirection: 'row', alignItems: 'center' },
+  subBar: { width: layout.padSubBar, height: layout.padSubThickness, backgroundColor: colour.ink },
+  // An arrow's head: a box with no width whose one side's border is the point and whose top and bottom are clear.
+  subHeadRight: {
+    width: 0,
+    height: 0,
+    borderTopWidth: layout.padSubHalf,
+    borderBottomWidth: layout.padSubHalf,
+    borderLeftWidth: layout.padSubHead,
+    borderTopColor: colour.clear,
+    borderBottomColor: colour.clear,
+    borderLeftColor: colour.ink,
+  },
+  subHeadLeft: {
+    width: 0,
+    height: 0,
+    borderTopWidth: layout.padSubHalf,
+    borderBottomWidth: layout.padSubHalf,
+    borderRightWidth: layout.padSubHead,
+    borderTopColor: colour.clear,
+    borderBottomColor: colour.clear,
+    borderRightColor: colour.ink,
+  },
   button: {
     minHeight: layout.touch,
     alignItems: 'center',
@@ -377,7 +471,7 @@ const styles = StyleSheet.create({
   labelPrimary: { color: plateInk },
   labelOther: { color: colour.ink },
   labelOff: { color: colour.ink3 },
-  note: { textAlign: 'center' },
+  note: { textAlign: 'center', color: colour.ink2 },
 });
 
 /** Module-level so render allocates no function. Pressed: the plate dims, the other buttons take the press fill. */
@@ -402,26 +496,16 @@ const HEAD: Record<BoardTier, StyleProp<ViewStyle>> = {
   compact: styles.gapCompact,
 };
 const headStyle = (tier: BoardTier) => HEAD[tier];
-const ROWS: Record<BoardTier, StyleProp<ViewStyle>> = {
-  full: [styles.cardRow, styles.gapFull],
-  compact: [styles.cardRow, styles.gapCompact],
+const GOAL_ROOM: Record<BoardTier, StyleProp<ViewStyle>> = {
+  full: [styles.goalRoom, styles.goalRoomFull],
+  compact: [styles.goalRoom, styles.goalRoomCompact],
 };
-const rowStyle = (tier: BoardTier) => ROWS[tier];
-const SQUARE_ON: Record<BoardTier, ReturnType<typeof pressable>> = {
-  full: pressable(styles.square, styles.pressedPlate),
-  compact: pressable([styles.square, styles.squareCompact], styles.pressedPlate),
-};
-const SQUARE_OFF: Record<BoardTier, StyleProp<ViewStyle>> = {
-  full: [styles.square, styles.squareOff],
-  compact: [styles.square, styles.squareCompact, styles.squareOff],
-};
-const squareStyle = (tier: BoardTier, off: boolean) => (off ? SQUARE_OFF[tier] : SQUARE_ON[tier]);
 
 const cautionCard = [styles.card, styles.caution];
 const dismissalCard = [styles.card, styles.dismissal];
 const cautionSwatch = [styles.swatch, styles.caution];
 const dismissalSwatch = [styles.swatch, styles.dismissal];
-const cardPressable = pressable(styles.cardButton, styles.pressedOther);
-const cardOff: StyleProp<ViewStyle> = [styles.cardButton];
+const smallOn = pressable(styles.small, styles.pressedOther);
+const smallOff: StyleProp<ViewStyle> = styles.small;
 const otherButton = pressable(styles.button, styles.pressedOther);
 const otherOff: StyleProp<ViewStyle> = styles.button;
