@@ -166,7 +166,7 @@ const loading = (): RunnerSnapshot => LOADING;
 
 /**
  * The resync after a Start accepted late (ruling 2): the watch (`resyncStep`) over every state the runner publishes, at
- * the phone's time then. Each Start is decided once (its memory is this mount's); a resync is tapped like any clock tap
+ * the time then, on the clock each Start was stamped on. Each Start is decided once (its memory is this mount's); a resync is tapped like any clock tap
  * and said in the record. A runner that dies first makes none (ruling 10).
  */
 function useResync(
@@ -180,19 +180,20 @@ function useResync(
     runner?.snapshot ?? loading,
   );
   const memory = useRef(NO_RESYNC);
-  const { steadyClock, logger } = ports;
+  const { steadyClock, serverClock, logger } = ports;
   const { tap } = sender;
   useEffect(() => {
     if (snapshot.kind !== 'ready') return;
-    // The steady clock (ruling 137): the clock the Start's own tap was stamped by (`useSender`).
-    const stepped = resyncStep(memory.current, snapshot.state, steadyClock.nowMs());
+    // Now on both clocks a Start's own tap may be stamped on (`tapStampNow`, ruling 149): each is read on its own.
+    const now = { deviceMs: steadyClock.nowMs(), offsetMs: serverClock.knownOffsetMs() };
+    const stepped = resyncStep(memory.current, snapshot.state, now);
     memory.current = stepped.memory;
     for (const made of stepped.taps) {
       const action = tap(made).ok ? 'resync' : 'resyncRefused';
       logger.info(CLOCK_EVENT, { action, phase });
     }
     // A new phase runs the watch again over the same state: each Start is decided once, so it asks for nothing again.
-  }, [snapshot, steadyClock, logger, tap, phase]);
+  }, [snapshot, steadyClock, serverClock, logger, tap, phase]);
 }
 
 /** The sheets over the pad, closed at once when the link dies, since the bad-link card then shows. */

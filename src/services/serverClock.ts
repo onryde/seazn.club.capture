@@ -16,6 +16,11 @@ export const OFFSET_LOG_STEP_MS = 2000;
 export type ServerClock = {
   /** How far the server's clock is ahead of this phone's, in ms (negative when behind): 0 until a sample. */
   offsetMs(): number;
+  /**
+   * The same offset, or null until the first sample: whether a tap can be stamped on the server's clock at all (ruling
+   * 149). Once formed it stays formed for the life of the app; `dropSamples` keeps it.
+   */
+  knownOffsetMs(): number | null;
   /** One answer's sample of the offset. */
   sample(sampleMs: number): void;
   /**
@@ -39,6 +44,7 @@ export function createServerClock(deps: { readonly logger: Logger }): ServerCloc
   const listeners = new Set<() => void>();
   return {
     offsetMs: () => offset ?? 0,
+    knownOffsetMs: () => offset,
     sample: (sampleMs) => {
       // Only the newest samples count (`medianOffset`); the rest are dropped so a long match keeps five numbers.
       samples = [...samples, sampleMs].slice(-OFFSET_WINDOW);

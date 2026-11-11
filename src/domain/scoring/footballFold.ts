@@ -21,8 +21,10 @@ import {
   periodStarted,
   correctionsIn,
   restamp,
+  stampBase,
   subStamp,
   type AnchorEvent,
+  type ClockBase,
 } from '@/domain/scoring/footballClock';
 import {
   footballCfg,
@@ -89,8 +91,11 @@ type FootballStream = {
   readonly envelopes: EventEnvelope[];
   readonly entries: LedgerEntry[];
   readonly legal: string[];
-  /** A queued tap's payload as tapped, by its envelope's id: what the clock's anchor reads (`queuedOnto`). */
-  readonly tapped: Map<string, unknown>;
+  /**
+   * A queued tap's payload as tapped and the clock its stamp is on (ruling 149), by its envelope's id: what the clock's
+   * anchor reads (`queuedOnto`).
+   */
+  readonly tapped: Map<string, { readonly payload: unknown; readonly base: ClockBase }>;
 };
 
 /** What the fold says of one event: the period it was recorded in, and the goals after it, top side first. */
@@ -250,7 +255,7 @@ function queuedOnto(
   stream.legal.push(tap.key);
   envelopes.push(envelope);
   stream.entries.push({ envelope, own: true, sending: true });
-  stream.tapped.set(envelope.id, tap.payload);
+  stream.tapped.set(envelope.id, { payload: tap.payload, base: stampBase(tap) });
 }
 
 const nextSeq = (envelopes: readonly EventEnvelope[]) =>
@@ -641,22 +646,23 @@ function anchorEventsOf(input: SportFoldInput, stream: FootballStream): readonly
 
 /**
  * One event as the anchor reads it: the ledger's at its `recorded_at`, on the clock `anchorBase` names; a queued tap's on
- * the phone's, with its payload as tapped (`tapped`).
+ * its own stamp's clock, with its payload as tapped (`tapped`).
  */
 function anchorEventOf(
   input: SportFoldInput,
   entry: LedgerEntry,
   index: number,
   voided: ReadonlySet<string>,
-  tapped: ReadonlyMap<string, unknown>,
+  tapped: ReadonlyMap<string, { readonly payload: unknown; readonly base: ClockBase }>,
 ): AnchorEvent {
   const { envelope } = entry;
   const event = entry.sending ? undefined : input.ledger[index];
+  const queued = tapped.get(envelope.id);
   return {
     type: envelope.type,
-    payload: tapped.get(envelope.id) ?? envelope.payload,
+    payload: queued?.payload ?? envelope.payload,
     atMs: Date.parse(envelope.recordedAt),
-    base: event === undefined ? 'device' : anchorBase(event, input.ownEventIds),
+    base: event === undefined ? (queued?.base ?? 'device') : anchorBase(event, input.ownEventIds),
     standing: !voided.has(envelope.id),
   };
 }

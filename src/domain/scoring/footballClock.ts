@@ -14,8 +14,28 @@ import type { LedgerEvent } from '@/domain/scoring/wire';
  * server's time and the timer are the screen's hook's, never the fold's.
  */
 
-/** Whose clock an anchor's time is written in: the server's `recorded_at`, or this phone's own clock (a stand-in, a queued tap). */
+/**
+ * Whose clock an anchor's time is written in: the server's (its `recorded_at`, and this phone's own taps stamped on it,
+ * ruling 149), or this phone's own clock (a tap made before any offset was known, or written before ruling 149).
+ */
 export type ClockBase = 'server' | 'device';
+
+/** The clock a stamp of this phone's is on (`QueuedEvent.stampedOn`, ruling 149): no mark is the phone's own. */
+export const stampBase = (stamped: { readonly stampedOn?: 'server' }): ClockBase =>
+  stamped.stampedOn === 'server' ? 'server' : 'device';
+
+/**
+ * Now, on both clocks a stamp can be on: the phone's steady clock, and the server clock's offset from it, null until it
+ * has one. A reader compares a stamp only with now on the stamp's own clock (`nowOn`).
+ */
+export type StampNow = { readonly deviceMs: number; readonly offsetMs: number | null };
+
+/**
+ * `now` on `base`'s clock. A server stamp read while no offset is known (a cold start whose first answer carried no
+ * `Date`) reads the device's time: the best there is, and what every stamp was before ruling 149.
+ */
+export const nowOn = (base: ClockBase, now: StampNow): number =>
+  base === 'server' ? now.deviceMs + (now.offsetMs ?? 0) : now.deviceMs;
 
 /** The clock as a clock event left it: the match time it set, whether it runs, and when it was set, on which clock. */
 export type ClockAnchor = {
@@ -106,11 +126,13 @@ const projected = (anchor: ClockAnchor, atMs: number): number =>
 
 /**
  * The clock an event's time is written in. A stand-in for this phone's accepted tap (an own event with no device link:
- * `sync.ts` keeps it at the phone's time) is the phone's; every event the server sent back is the server's, its own copy
- * of this phone's taps included. A queued tap is the phone's, at `createdAt`.
+ * `sync.ts` keeps it at its tap's time) is on the clock its tap was stamped on (`stampBase`, ruling 149); every event the
+ * server sent back is the server's, its own copy of this phone's taps included. A queued tap is its own stamp's.
  */
 export function anchorBase(event: LedgerEvent, ownEventIds: readonly string[]): ClockBase {
-  return event.deviceLinkId === null && ownEventIds.includes(event.id) ? 'device' : 'server';
+  return event.deviceLinkId === null && ownEventIds.includes(event.id)
+    ? stampBase(event)
+    : 'server';
 }
 
 /**
@@ -136,7 +158,10 @@ export function reading(
 /** How long after its tap a Start may be accepted before every other screen would read it short: 3 s. */
 const RESYNC_AFTER_MS = 3000;
 
-/** This phone's own clock tap, as the resync rule reads it: when it was made (the phone's clock) and what it said. */
+/**
+ * This phone's own clock tap, as the resync rule reads it: when it was made and what it said. Every time given with it
+ * (`acceptedAtMs`, `leftQueueAtMs`) is on the clock its tap was stamped on (`stampBase`, `nowOn`; ruling 149).
+ */
 export type OwnClockTap = {
   readonly createdAtMs: number;
   readonly running: boolean;
@@ -146,7 +171,7 @@ export type OwnClockTap = {
 };
 
 /**
- * Whether this phone's own clock tap, accepted at `acceptedAtMs` (the phone's clock), wants a resync tap after it: a
+ * Whether this phone's own clock tap, accepted at `acceptedAtMs` (on the tap's own clock), wants a resync tap after it: a
  * Start accepted 3 s or more after it was tapped, while no later clock event stands. A Start's stamp is the reading at
  * the tap, and the server records it at its arrival, so every other screen would read the clock short by the wait; a
  * running clock event made now (`resyncTap`) re-anchors them, and the Start's own payload is never changed. A Pause is
@@ -165,7 +190,7 @@ export function needsResync(
 
 /**
  * The resync tap: the clock running at the Start's own stamp plus the whole seconds it waited, from its tap to the moment
- * it left the queue (`leftQueueAtMs`, the phone's clock: accepted, or its copy read back). It is built from the Start's
+ * it left the queue (`leftQueueAtMs`, on the tap's own clock: accepted, or its copy read back). It is built from the Start's
  * own tap, never from the display's anchor: once the server's copy is read, that anchor is the copy's, recorded at its
  * arrival, and reads short by the wait (the controller's ruling 2, Batch C). A normal clock tap made through
  * `footballEventFor` (stamped in the fold's phase there), so every screen re-anchors on it.

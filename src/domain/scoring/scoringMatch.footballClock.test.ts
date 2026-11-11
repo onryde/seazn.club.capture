@@ -10,6 +10,7 @@ import {
   foldQueue,
   foldRead,
   ownIds,
+  resolved,
   type MatchEffect,
   type MatchEvent,
   type MatchHeld,
@@ -247,7 +248,7 @@ describe('the resync watch (ruling 2)', () => {
     let memory = from;
     const taps: FootballTap[] = [];
     for (const [state, at] of states) {
-      const stepped = resyncStep(memory, state, at);
+      const stepped = resyncStep(memory, state, { deviceMs: at, offsetMs: null });
       memory = stepped.memory;
       taps.push(...stepped.taps);
     }
@@ -664,7 +665,7 @@ describe.each([
     let memory = NO_RESYNC;
     const taps: FootballTap[] = [];
     for (const [state, atMs] of states) {
-      const stepped = resyncStep(memory, state, atMs);
+      const stepped = resyncStep(memory, state, { deviceMs: atMs, offsetMs: null });
       memory = stepped.memory;
       taps.push(...stepped.taps);
     }
@@ -846,5 +847,122 @@ describe.each([
         [accepted3, T + 720_000],
       ]),
     ).toEqual([{ kind: 'clock', running: true, elapsed: 720 }]);
+  });
+});
+
+// Ruling 149 (F5 on build 1039): a tap is stamped on the server's clock once an offset is known, and its stand-in in the
+// ledger and its queue entry say so, so the clock anchored on it is read on the server's clock, where a wall clock moved
+// after the tap cannot reach it. With no offset known it is the phone's own, and read on the phone's own clock.
+describe('the clock a tap was stamped on (ruling 149)', () => {
+  /** The phone's steady clock after a jump of +4:05 the return followed, and the offset the next answer formed. */
+  const JUMP = 245_000;
+
+  /** Kick-off tapped at T on the clock `stampedOn` names, sent and accepted at once. */
+  function kickOff(stampedOn?: 'server') {
+    const tapped = landed(
+      readyOn([start()]),
+      {
+        kind: 'tap',
+        tap: KICK_START,
+        key: 'k-start',
+        at: iso(T),
+        ...(stampedOn === undefined ? {} : { stampedOn }),
+      },
+      T,
+    );
+    const answer = {
+      kind: 'answered',
+      sent: tapped.send!.sent,
+      answer: accepted(2, 'ev-own-2'),
+    } as const;
+    return { queued: tapped.state, done: landed(tapped.state, answer, T).state };
+  }
+
+  it('a server-stamped Start, queued and accepted: its anchor is the server’s, and a jump the offset follows moves nothing', () => {
+    const { queued, done } = kickOff('server');
+    expect(queued.sync.queue.pending[0]?.stampedOn).toBe('server');
+    expect(anchorOf(queued)?.base).toBe('server');
+    expect(done.sync.ledger.at(-1)).toMatchObject({ id: 'ev-own-2', stampedOn: 'server' });
+    expect(anchorOf(done)?.base).toBe('server');
+    const fold = foldRead(done);
+    if (fold === null || fold.kind !== 'folded') throw new Error('did not fold');
+    expect(
+      reading(fold.display.clock.anchor, { deviceMs: T + JUMP + 40_000, offsetMs: -JUMP }),
+    ).toBe(40);
+  });
+
+  it('a Start with no mark, queued and accepted: its anchor is the phone’s own clock, and the offset cancels', () => {
+    const { queued, done } = kickOff();
+    expect(queued.sync.queue.pending[0]).not.toHaveProperty('stampedOn');
+    expect(anchorOf(queued)?.base).toBe('device');
+    expect(done.sync.ledger.at(-1)).not.toHaveProperty('stampedOn');
+    expect(anchorOf(done)?.base).toBe('device');
+    expect(readingAt(done, T + 40_000)).toBe(40);
+  });
+
+  it('an Undo that waited for its tap’s answer keeps its own stamp’s clock when it is made a plain void', () => {
+    const waiting = {
+      key: 'k-undo',
+      type: 'core.void',
+      payload: { event_id: '' },
+      rulesVersion: 1,
+      createdAt: iso(T),
+      stampedOn: 'server',
+      attempts: 0,
+      voidsKey: 'k-start',
+    } as const;
+    expect(resolved(waiting, 'ev-own-2')).toMatchObject({ createdAt: iso(T), stampedOn: 'server' });
+    const { stampedOn: _, ...own } = waiting;
+    expect(resolved(own, 'ev-own-2')).not.toHaveProperty('stampedOn');
+  });
+
+  /** Kick-off tapped at T on `stampedOn`'s clock, then sent and accepted 120 s later. */
+  function lateKickOff(stampedOn?: 'server') {
+    const tapped = landed(
+      readyOn([start()]),
+      {
+        kind: 'tap',
+        tap: KICK_START,
+        key: 'k-start',
+        at: iso(T),
+        ...(stampedOn === undefined ? {} : { stampedOn }),
+      },
+      T,
+      T + 120_000,
+    );
+    const answer = {
+      kind: 'answered',
+      sent: tapped.send!.sent,
+      answer: accepted(2, 'ev-own-2'),
+    } as const;
+    return { queued: tapped.state, done: landed(tapped.state, answer, T + 120_000).state };
+  }
+
+  function resyncsAt(
+    states: readonly MatchState<FootballTypes>[],
+    now: { deviceMs: number; offsetMs: number | null },
+  ) {
+    let memory = NO_RESYNC;
+    const taps: FootballTap[] = [];
+    for (const state of states) {
+      const stepped = resyncStep(memory, state, now);
+      memory = stepped.memory;
+      taps.push(...stepped.taps);
+    }
+    return taps;
+  }
+
+  it('a server-stamped Start accepted late: its wait is read on the server’s clock, across a jump the offset follows', () => {
+    const { queued, done } = lateKickOff('server');
+    expect(resyncsAt([queued, done], { deviceMs: T + JUMP + 120_000, offsetMs: -JUMP })).toEqual([
+      { kind: 'clock', running: true, elapsed: 120 },
+    ]);
+  });
+
+  it('a Start with no mark accepted late: its wait is read on the phone’s own clock, whatever the offset formed since', () => {
+    const { queued, done } = lateKickOff();
+    expect(resyncsAt([queued, done], { deviceMs: T + 120_000, offsetMs: -OFFSET })).toEqual([
+      { kind: 'clock', running: true, elapsed: 120 },
+    ]);
   });
 });

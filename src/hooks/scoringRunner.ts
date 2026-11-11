@@ -35,7 +35,7 @@ import type { LogFields } from '@/services/scrub';
 
 export type RunnerPorts = Pick<
   Ports,
-  'scoring' | 'tapQueue' | 'kv' | 'foreground' | 'clock' | 'logger' | 'hosts'
+  'scoring' | 'tapQueue' | 'kv' | 'foreground' | 'clock' | 'steadyClock' | 'logger' | 'hosts'
 >;
 
 export type RunnerMode = 'focused' | 'headless';
@@ -106,7 +106,10 @@ export function createScoringRunner(ports: RunnerPorts, options: Options): Scori
     snapshot = next;
     listeners.forEach((listener) => listener());
   };
-  const now = (): number => ports.clock().getTime();
+  // The steady clock (rulings 137, 149): every time the runner holds is a span of this phone's own time, never compared
+  // with a stamp or the server's: its waits, and the Undo window's start (`decidedAt`), which `useUndoWindow` reads on the
+  // same clock. A wall clock moved while one runs neither ends it early nor holds it open.
+  const now = (): number => ports.steadyClock.nowMs();
 
   // --- the reducer's step ------------------------------------------------------------------------------------------
 

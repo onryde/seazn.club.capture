@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { TAKEN, refusing, type PadLineWords, type PadOutcome } from '@/domain/scoring/padLine';
 import type { PendingPicks } from '@/domain/scoring/pendingPicks';
-import type { MatchEvent } from '@/domain/scoring/scoringMatchState';
+import type { MatchEvent, TapStamp } from '@/domain/scoring/scoringMatchState';
 import { viewAs, type MatchPad, type MatchView } from '@/domain/scoring/scoringMatchView';
 import type { ScoringSport, SportTypes } from '@/domain/scoring/scoringSport';
 import { uuidV4 } from '@/domain/scoring/tapKey';
@@ -151,28 +151,46 @@ export type MatchSender<S extends SportTypes> = {
 };
 
 /**
+ * A tap's stamp, made now (ruling 149): on the server's clock, the steady clock (ruling 137) plus the offset the server
+ * clock holds, marked `'server'`, once there is an offset; before the first answer (a cold start offline), on the
+ * steady clock alone, with no mark. A server stamp is the clock every other time a tap meets is on (the ledger's
+ * `recorded_at`, the match clock's reading), and the offset in force at the tap is the right one for it: a sleep leaves
+ * the offset as it was, and a wall clock moved while away moves the steady clock and the offset by the same amount, so a
+ * stamp made before it never needs to cross it.
+ */
+export function tapStampNow(ports: Pick<Ports, 'steadyClock' | 'serverClock'>): TapStamp {
+  const steadyMs = ports.steadyClock.nowMs();
+  const offsetMs = ports.serverClock.knownOffsetMs();
+  if (offsetMs === null) return { at: new Date(steadyMs).toISOString() };
+  return { at: new Date(steadyMs + offsetMs).toISOString(), stampedOn: 'server' };
+}
+
+/**
  * Hands events to the runner: what each tap came to, at once, or "not now" while there is no runner. Each is stamped by
- * the steady clock (ruling 137), every sport's: football's clock reads a queued tap's time on it, so both must be one
- * clock; for the others the stamp is the reconnect question's and the line's, where it is as right as the wall clock.
+ * `tapStampNow`, every sport's: football's clock anchors on a tap's time, and every sport's reconnect question compares
+ * it with the server's `recorded_at`.
  */
 export function useSender<S extends SportTypes>(
   ports: Ports,
   runner: ScoringRunner | null,
 ): MatchSender<S> {
   const send = useCallback(
-    (event: (key: string, at: string) => MatchEvent): PadOutcome =>
-      runner?.dispatch(
-        event(newTapKey(ports.logger), new Date(ports.steadyClock.nowMs()).toISOString()),
-      ) ?? NOT_NOW,
+    (event: (key: string, stamp: TapStamp) => MatchEvent): PadOutcome =>
+      runner?.dispatch(event(newTapKey(ports.logger), tapStampNow(ports))) ?? NOT_NOW,
     [runner, ports],
   );
   const tap = useCallback(
-    (made: S['tap']) => send((key, at) => ({ kind: 'tap', tap: made, key, at })),
+    (made: S['tap']) => send((key, stamp) => ({ kind: 'tap', tap: made, key, ...stamp })),
     [send],
   );
   const undo = useCallback(
     (only?: 'ending') =>
-      send((key, at) => ({ kind: 'undo', key, at, ...(only === undefined ? {} : { only }) })),
+      send((key, stamp) => ({
+        kind: 'undo',
+        key,
+        ...stamp,
+        ...(only === undefined ? {} : { only }),
+      })),
     [send],
   );
   const say = useCallback(

@@ -27,6 +27,19 @@ describe('createServerClock', () => {
     expect(offsetLines()).toEqual([]);
   });
 
+  // Ruling 149: whether a tap can be stamped on the server's clock at all. An offset of 0 is an offset.
+  it('knownOffsetMs is null before any sample, then the offset, 0 included, and dropping the samples keeps it', () => {
+    const { clock } = clockOver();
+    expect(clock.knownOffsetMs()).toBeNull();
+    clock.sample(0);
+    expect(clock.knownOffsetMs()).toBe(0);
+    clock.sample(-245_000);
+    clock.sample(-245_000);
+    expect(clock.knownOffsetMs()).toBe(-245_000);
+    clock.dropSamples();
+    expect(clock.knownOffsetMs()).toBe(-245_000);
+  });
+
   it('offsetMs is the median of the newest five samples', () => {
     const { clock } = clockOver();
     clock.sample(300_500);

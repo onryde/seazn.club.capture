@@ -1,6 +1,14 @@
 import { gameTimeOf } from '@seazn/engine/core';
 import { isRecord } from '@/domain/credentials/wire';
-import { needsResync, resyncTap, type OwnClockTap } from '@/domain/scoring/footballClock';
+import {
+  needsResync,
+  nowOn,
+  resyncTap,
+  stampBase,
+  type ClockBase,
+  type OwnClockTap,
+  type StampNow,
+} from '@/domain/scoring/footballClock';
 import type { FootballTap } from '@/domain/scoring/footballTypes';
 import type { QueuedEvent } from '@/domain/scoring/queue';
 import { copiesOf } from '@/domain/scoring/scoringMatchAsk';
@@ -16,8 +24,11 @@ import { voidTargetOf, type LedgerEvent } from '@/domain/scoring/wire';
  * again. The hook keeps the memory and taps what it asks for; if the app dies first, no resync is made (ruling 10).
  */
 
-/** A Start of this phone's in the queue: its tap, as the resync rule reads it, and its payload, by which its event is known. */
-type WaitingStart = OwnClockTap & { readonly payload: unknown };
+/**
+ * A Start of this phone's in the queue: its tap, as the resync rule reads it, the clock its stamp is on (ruling 149), and
+ * its payload, by which its event is known.
+ */
+type WaitingStart = OwnClockTap & { readonly base: ClockBase; readonly payload: unknown };
 
 export type ResyncMemory = {
   /** The running Starts seen in the queue and not decided yet, by key. */
@@ -45,23 +56,27 @@ type Stepped = { readonly memory: ResyncMemory; readonly taps: readonly ClockTap
 const CLOCK = 'football.clock';
 const PERIOD = 'football.period';
 
-/** The watch over `state` at `nowMs` (the phone's clock): what it remembers now, and the resyncs it asks for. */
-export function resyncStep(memory: ResyncMemory, state: MatchState, nowMs: number): Stepped {
+/**
+ * The watch over `state` at `now`: what it remembers now, and the resyncs it asks for. Each Start's wait is read on the
+ * clock its own tap was stamped on (`nowOn`, ruling 149), never across the two.
+ */
+export function resyncStep(memory: ResyncMemory, state: MatchState, now: StampNow): Stepped {
   const waiting = new Map(memory.waiting);
   const decided = new Set(memory.decided);
   const claimed = new Set(memory.claimed);
   watchQueue(state, waiting, decided);
   const voided = voidedOf(state);
   const taps: ClockTap[] = [];
-  // In the order they were tapped, which is the order their events land in.
-  const inOrder = [...waiting].sort(([, a], [, b]) => a.createdAtMs - b.createdAtMs);
-  for (const [key, start] of inOrder) {
+  // In the order they were tapped, which is the order their events land in: the order they were first seen in the
+  // queue, which only ever grows at its end. Never by their stamps, which may be on two clocks (ruling 149).
+  for (const [key, start] of [...waiting]) {
     const landed = landingOf(state, key, start, claimed);
     if (landed === 'queued') continue;
     waiting.delete(key);
     decided.add(key);
     if (landed === null) continue;
     claimed.add(landed.id);
+    const nowMs = nowOn(start.base, now);
     if (!voided.has(landed.id) && needsResync(start, nowMs, laterStands(state, landed, key))) {
       taps.push(resyncTap(start, nowMs));
     }
@@ -100,6 +115,7 @@ function startOf(tap: QueuedEvent): WaitingStart | null {
   if (!isRecord(tap.payload) || tap.payload.running !== true || stamp === null) return null;
   return {
     createdAtMs: Date.parse(tap.createdAt),
+    base: stampBase(tap),
     running: true,
     period: stamp.period,
     elapsed: stamp.elapsed,

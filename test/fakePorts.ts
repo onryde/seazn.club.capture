@@ -405,10 +405,13 @@ export type FakeServerClock = ServerClock & {
  * is ignored: the estimate from samples is the real clock's (`createServerClock`).
  */
 export function createFakeServerClock(): FakeServerClock {
-  let offset = 0;
+  // None until the test sets one, as the real clock has none until its first sample: taps are then stamped on the
+  // phone's own clock (ruling 149), as every test written before the ruling expects.
+  let offset: number | null = null;
   const listeners = new Set<() => void>();
   return {
-    offsetMs: () => offset,
+    offsetMs: () => offset ?? 0,
+    knownOffsetMs: () => offset,
     sample: () => {},
     dropSamples: () => {},
     subscribe: (listener) => {

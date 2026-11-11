@@ -19,6 +19,7 @@ import {
   type Handled,
   type MatchEvent,
   type MatchState,
+  type TapStamp,
 } from '@/domain/scoring/scoringMatchState';
 
 /**
@@ -31,18 +32,19 @@ type Folded<S extends SportTypes> = Extract<SportFold<S>, { kind: 'folded' }>;
 type TapEvent<S extends SportTypes> = Extract<MatchEvent<S>, { kind: 'tap' }>;
 type UndoEvent = Extract<MatchEvent, { kind: 'undo' }>;
 
-/** A new tap in the queue, made now under the rules the phone holds. */
+/** A new tap in the queue, made now under the rules the phone holds, at the sender's stamp and on its clock. */
 const queuedOf = (
   state: MatchState,
   make: { type: string; payload: unknown; base?: number },
   key: string,
-  at: string,
+  { at, stampedOn }: TapStamp,
 ): QueuedEvent => ({
   key,
   type: make.type,
   payload: make.payload,
   rulesVersion: state.sync.rulesVersion,
   createdAt: at,
+  ...(stampedOn === undefined ? {} : { stampedOn }),
   attempts: 0,
   ...(make.base === undefined ? {} : { base: make.base }),
 });
@@ -69,7 +71,7 @@ export function onTap<S extends SportTypes>(state: MatchState<S>, event: TapEven
   const { sport } = state;
   const made = sport.eventFor(tap, { bootstrap: state.bootstrap, display: fold.display });
   if (made === null) return refused(state, 'notNow');
-  const queued = queuedOf(state, made, event.key, event.at);
+  const queued = queuedOf(state, made, event.key, event);
   if (!takes(state, queued)) return refused(state, sport.refusalFor(tap));
   const toss = sport.tossOf(tap) ?? state.toss;
   const next = { ...withTap(state, queued), toss, line: null, undone: null };
@@ -143,7 +145,7 @@ function undoing<S extends SportTypes>(
 ): Handled<S> {
   if (target.kind === 'awaitAnswer') return waiting(state, target.key, event);
   if (target.kind === 'queued') return discarding(state, target.key, fold);
-  return voiding(state, target.eventId, event.key, event.at);
+  return voiding(state, target.eventId, event.key, event);
 }
 
 /**
@@ -155,7 +157,7 @@ function waiting<S extends SportTypes>(
   tapKey: string,
   event: UndoEvent,
 ): Handled<S> {
-  const made = queuedOf(state, undoEventFor(''), event.key, event.at);
+  const made = queuedOf(state, undoEventFor(''), event.key, event);
   const next = { ...withTap(state, { ...made, voidsKey: tapKey }), line: null, undone: null };
   return handled(part(next), { outcome: TAKEN, pump: false });
 }
@@ -187,9 +189,9 @@ function voiding<S extends SportTypes>(
   state: MatchState<S>,
   eventId: string,
   key: string,
-  at: string,
+  stamp: TapStamp,
 ): Handled<S> {
-  const queued = queuedOf(state, undoEventFor(eventId), key, at);
+  const queued = queuedOf(state, undoEventFor(eventId), key, stamp);
   return handled(part({ ...withTap(state, queued), line: null, undone: null }), {
     outcome: TAKEN,
     pump: false,

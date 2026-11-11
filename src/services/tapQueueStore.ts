@@ -529,12 +529,23 @@ function encodeQueue(queue: MatchQueue): string {
     fixtureId: queue.fixtureId,
     label: queue.label,
     pending: queue.pending.map(
-      ({ key, type, payload, rulesVersion, createdAt, attempts, voidsKey, base }): QueuedEvent => ({
+      ({
         key,
         type,
         payload,
         rulesVersion,
         createdAt,
+        stampedOn,
+        attempts,
+        voidsKey,
+        base,
+      }): QueuedEvent => ({
+        key,
+        type,
+        payload,
+        rulesVersion,
+        createdAt,
+        ...(stampedOn === undefined ? {} : { stampedOn }),
         attempts,
         ...(voidsKey === undefined ? {} : { voidsKey }),
         ...(base === undefined ? {} : { base }),
@@ -597,6 +608,7 @@ function readTap(raw: unknown): QueuedEvent | undefined {
     payload: raw.payload,
     rulesVersion,
     createdAt,
+    ...stampedOnOf(raw),
     attempts,
     ...(base === undefined ? {} : { base }),
   };
@@ -625,7 +637,7 @@ function encodeLedger(fixtureId: string, events: readonly LedgerEvent[]): string
     v: FILE_VERSION,
     fixtureId,
     events: events.map(
-      ({ id, seq, type, payload, recordedAt, voids, deviceLinkId }): LedgerEvent => ({
+      ({ id, seq, type, payload, recordedAt, voids, deviceLinkId, stampedOn }): LedgerEvent => ({
         id,
         seq,
         type,
@@ -633,6 +645,7 @@ function encodeLedger(fixtureId: string, events: readonly LedgerEvent[]): string
         recordedAt,
         voids,
         deviceLinkId,
+        ...(stampedOn === undefined ? {} : { stampedOn }),
       }),
     ),
   });
@@ -665,8 +678,25 @@ function readLedgerEvent(raw: unknown): LedgerEvent | undefined {
   if (id === undefined || seq === undefined || type === undefined || recordedAt === undefined)
     return undefined;
   if (voids === undefined || deviceLinkId === undefined) return undefined;
-  return { id, seq, type, payload: raw.payload, recordedAt, voids, deviceLinkId };
+  return {
+    id,
+    seq,
+    type,
+    payload: raw.payload,
+    recordedAt,
+    voids,
+    deviceLinkId,
+    ...stampedOnOf(raw),
+  };
 }
+
+/**
+ * The clock a tap's time, or a stand-in's, is on (ruling 149): `'server'` is the one mark there is. No mark, or anything
+ * else, is this phone's own clock: what every file written before the ruling holds (v1.0.6 stamped on the wall clock),
+ * and the record is kept either way, since it is the scorer's.
+ */
+const stampedOnOf = (raw: Record<string, unknown>): { stampedOn?: 'server' } =>
+  raw.stampedOn === 'server' ? { stampedOn: 'server' } : {};
 
 /** `null` is none; a non-empty string is itself; anything else is garbled (`undefined`). */
 const readNullableText = (value: unknown): string | null | undefined =>

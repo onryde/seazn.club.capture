@@ -9,7 +9,9 @@ import type { Ports } from '@/hooks/usePorts';
  * decided it, with the seconds counted on the result card. Where the window starts is not this hook's to say: the
  * reducer dates the dispatched tap that decides the match (`scoringMatchWindow.ts`) and the hub keeps it between screens,
  * so it arrives with the pad as `decidedAt`, and a rescan, a restart or a ledger read that lands late never starts one.
- * The rule is pure (`undoWindow.ts`); this hook owns the phone's clock and one timer, and applies the window to the pad.
+ * The rule is pure (`undoWindow.ts`); this hook owns the clock and one timer, and applies the window to the pad. The clock
+ * is the steady one (rulings 137, 149), the runner's, which dated `decidedAt`: a wall clock moved while the card counts
+ * never closes the window early or keeps it open.
  *
  * The timer is set for the moment the card next changes (`undoWindowChangesAt`), counted from the tap and not from when
  * this screen drew it, so every digit changes on the tap's own second and the last change is the close itself, to the
@@ -21,12 +23,12 @@ export function useUndoWindow<S extends SportTypes>(
   ports: Ports,
   pad: MatchPad<S> | null,
 ): MatchPad<S> | null {
-  const { clock } = ports;
+  const { steadyClock } = ports;
   const openedAt = pad?.decidedAt ?? null;
   // The clock is read by every render, so what the card says is always the clock's, however long since the last timer.
-  const left = undoWindowLeft(openedAt, clock().getTime());
+  const left = undoWindowLeft(openedAt, steadyClock.nowMs());
   const windowed = useMemo(() => withWindow(pad, left), [pad, left]);
-  useNextChange(counting(windowed), openedAt, clock);
+  useNextChange(counting(windowed), openedAt, steadyClock);
   return windowed;
 }
 
@@ -50,11 +52,15 @@ function withWindow<S extends SportTypes>(
  * Renders again when the card next changes, while it counts; no timer is set otherwise. Each firing is a render, which
  * sets the next timer: one is pending at a time. A timer that fires a hair early renders the same second and sets the rest.
  */
-function useNextChange(running: boolean, openedAt: number | null, clock: Ports['clock']): void {
+function useNextChange(
+  running: boolean,
+  openedAt: number | null,
+  clock: Ports['steadyClock'],
+): void {
   const [fired, setFired] = useState(0);
   useEffect(() => {
     if (!running) return;
-    const current = clock().getTime();
+    const current = clock.nowMs();
     const at = undoWindowChangesAt(openedAt, current);
     const timer = setTimeout(
       () => setFired((count) => count + 1),

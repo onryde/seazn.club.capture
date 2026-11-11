@@ -17,7 +17,16 @@ export type QueuedEvent = {
   readonly payload: unknown;
   /** The rules version the tap was made under (the pad's, when it was tapped). */
   readonly rulesVersion: number;
+  /** When the tap was made, on the clock `stampedOn` names. */
   readonly createdAt: string;
+  /**
+   * The clock `createdAt` is on (ruling 149). `'server'`: the server's, the steady clock plus the offset the server clock
+   * held at the tap, so it is the same clock as the ledger's `recorded_at` and a wall clock moved after the tap never
+   * moves it. Absent: this phone's own clock, for a tap made before any offset was known (a cold start offline, on the
+   * steady clock), and for every tap written before ruling 149 (v1.0.6: the wall clock; earlier S2-5 builds: the steady
+   * clock), which is what they are. A reader compares it only with a time on the same clock.
+   */
+  readonly stampedOn?: 'server';
   /**
    * How many sends of this tap were made without a definite answer: counted and saved when a send starts, kept on no
    * answer, back to 0 on an answer that says it was not stored. More than 0, the tap may be in the ledger already.

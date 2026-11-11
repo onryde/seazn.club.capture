@@ -164,15 +164,17 @@ export type SaveEffect = {
 /** What a handler asks for: a save has no number until `step` numbers it. */
 export type Planned = Exclude<MatchEffect, SaveEffect> | Omit<SaveEffect, 'n'>;
 
+/** When a tap or an Undo was made (`at`, ISO), and on which clock (`QueuedEvent.stampedOn`, ruling 149): the sender's. */
+export type TapStamp = { readonly at: string; readonly stampedOn?: 'server' };
+
 export type MatchEvent<S extends SportTypes = SportTypes> =
-  | { readonly kind: 'tap'; readonly tap: S['tap']; readonly key: string; readonly at: string }
-  | {
+  | ({ readonly kind: 'tap'; readonly tap: S['tap']; readonly key: string } & TapStamp)
+  | ({
       readonly kind: 'undo';
       readonly key: string;
-      readonly at: string;
       /** The sport's ending prompt's Undo (badminton's Void sanction): taken only while an ending waits. */
       readonly only?: 'ending';
-    }
+    } & TapStamp)
   | { readonly kind: 'pickServer'; readonly side: PadSide }
   /** The scorer's pending picks, the whole map (S2-4 plan Task 3): taken whenever the match folds. */
   | { readonly kind: 'setPicks'; readonly picks: PendingPicks }
@@ -311,8 +313,15 @@ export function foldQueue(state: MatchState): readonly QueuedEvent[] {
 
 /** An Undo that waited for its tap's answer, made a plain void of the event the answer names. */
 export function resolved(waiting: QueuedEvent, eventId: string): QueuedEvent {
-  const { key, rulesVersion, createdAt, attempts } = waiting;
-  return { key, ...undoEventFor(eventId), rulesVersion, createdAt, attempts };
+  const { key, rulesVersion, createdAt, stampedOn, attempts } = waiting;
+  return {
+    key,
+    ...undoEventFor(eventId),
+    rulesVersion,
+    createdAt,
+    ...(stampedOn === undefined ? {} : { stampedOn }),
+    attempts,
+  };
 }
 
 /**
