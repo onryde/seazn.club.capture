@@ -98,7 +98,10 @@ const squareText = (width: number) => teamText(width) - 2 * space.xs;
 /** The three small squares' side: a third of the column's text less the two gaps (space.xs) between them (ruling 144). */
 const smallText = (width: number) => (teamText(width) - 2 * space.xs) / 3;
 /** What a word has inside a small square: its side less the outline's two edges (owner ruling 152). */
-const smallWordRoom = (width: number) => smallText(width) - 2 * layout.iconBorder;
+const smallWordRoom = (width: number) =>
+  smallText(width) - 2 * layout.iconBorder - 2 * SMALL_LABEL_INSET;
+/** The label's own inset a side inside the square, so it never touches the outline (device, build 1048; `space.xs`). */
+const SMALL_LABEL_INSET = 3;
 /** The word under a mark in a small square: `diagSection` caps at the squares' own letterspacing. */
 const squareWordWidth = (text: string) =>
   barlow600.width(text.toUpperCase(), typeScale.diagSection.fontSize) +
@@ -350,12 +353,20 @@ describe('the column buttons at 320 and 360 in four languages', () => {
     },
   );
 
-  it('the room a word has: 38.7 dp at 320 and 45.3 at 360; Amarilla, the widest, needs 0.77 and 0.90 inside the outline (the margin over the 0.75 floor is a hair: the 320 dp shot judges it)', () => {
+  it('the room a word has: a 38.7 dp square holds 30.7 at 320 and 45.3 holds 37.3 at 360 (literal widths) once the outline (1 a side) and the label’s inset (3 a side) are out; Yellow, the widest word, needs 0.77 and 0.93', () => {
+    expect(layout.padSquareLabelInset).toBe(SMALL_LABEL_INSET);
     expect(layout.padSquareLabelSpacing).toBe(0);
-    const widest = squareWordWidth('Amarilla');
-    expect(widest.toFixed(1)).toBe('47.9');
+    expect(smallWordRoom(320).toFixed(1)).toBe('30.7');
+    expect(smallWordRoom(360).toFixed(1)).toBe('37.3');
+    const widest = squareWordWidth('Yellow');
+    expect(widest.toFixed(1)).toBe('39.9');
     expect((smallWordRoom(320) / widest).toFixed(2)).toBe('0.77');
-    expect((smallWordRoom(360) / widest).toFixed(2)).toBe('0.90');
+    expect((smallWordRoom(360) / widest).toFixed(2)).toBe('0.93');
+  });
+
+  it('Spanish Yellow is "Amar.", as French Sub is "Rempl.": "Amarilla" is 47.9 dp and would need 0.64 at 320, under the floor', () => {
+    expect(squareWordWidth('Amarilla')).toBeGreaterThan(smallWordRoom(320) / layout.cardLabelFloor);
+    expect(es['scoring.football.column.yellow']).toBe('Amar.');
   });
 
   // A note is too long for a square, even in two lines (a word of fr "Plus de remplacement" is wider than the square), so

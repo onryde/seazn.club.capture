@@ -375,6 +375,11 @@ const base = {
    */
   padSquareLabelSpacing: 0,
   /**
+   * The word's room a side inside a small square, so it never touches the outline (device, build 1048). 3 dp, not the
+   * 4 of `space.xs`: at 320 dp "Yellow" is 39.9 dp in a 28.7 room at 4 and the 0.75 label floor needs 29.9.
+   */
+  padSquareLabelInset: 3,
+  /**
    * The clock panel's bottom edge (owner ruling 152, the mockup's `border-bottom: 2px solid rgba(154,230,0,.5)`): 2 dp of
    * `colour.limeHalf`, following the panel's rounded corners. The PAUSED tag's side padding (`.ptag`: 0 6px).
    */

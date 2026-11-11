@@ -448,6 +448,7 @@ const styles = StyleSheet.create({
   },
   smallLabel: {
     alignSelf: 'stretch',
+    paddingHorizontal: layout.padSquareLabelInset,
     textAlign: 'center',
     letterSpacing: layout.padSquareLabelSpacing,
     color: colour.ink,

@@ -125,6 +125,14 @@ describe('TeamColumn', () => {
     expect(screen.queryByTestId('column-note')).toBeNull();
   });
 
+  it('insets the small squares’ word from the outline (the device showed YELLOW touching it)', () => {
+    renderColumn(VIEW);
+    const word = within(button('Yellow')).getByText('Yellow');
+    expect(declaredStyle(word, 'padding-left')).toBe(`${layout.padSquareLabelInset}px`);
+    expect(declaredStyle(word, 'padding-right')).toBe(`${layout.padSquareLabelInset}px`);
+    expect(layout.padSquareLabelInset).toBeGreaterThanOrEqual(3);
+  });
+
   it('draws no note line at all when told none is reserved and the column has no note', () => {
     renderColumn(VIEW, undefined, false);
     expect(screen.queryByTestId('column-note-room')).toBeNull();
