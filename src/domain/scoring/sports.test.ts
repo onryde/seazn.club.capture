@@ -32,7 +32,7 @@ describe('sportFor', () => {
     expect(sportFor('Football')).toBeNull();
   });
 
-  it.each(['tennis', '', 'Badminton', 'constructor', 'toString'])(
+  it.each(['hockey', '', 'Badminton', 'constructor', 'toString'])(
     'is null for %j: a sport this build does not score, or no row of the table',
     (key) => {
       expect(sportFor(key)).toBeNull();

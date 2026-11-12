@@ -9,6 +9,7 @@ import { boardgame } from '@seazn/engine/sports/boardgame';
 import { cricket } from '@seazn/engine/sports/cricket';
 import { football } from '@seazn/engine/sports/football';
 import { badminton, tabletennis, volleyball } from '@seazn/engine/sports/setbased';
+import { tennis } from '@seazn/engine/sports/tennis';
 import { badmintonCfg, refusalOf } from '@/domain/scoring/badmintonEngine';
 import type { BadmintonTap } from '@/domain/scoring/badmintonPad';
 import { chessCfg, chessRefusalOf } from '@/domain/scoring/chessEngine';
@@ -17,6 +18,11 @@ import { footballRefusalOf, type FootballEngineMatch } from '@/domain/scoring/fo
 import type { PadSide } from '@/domain/scoring/padView';
 import { envelopeOf, lineupOf } from '@/domain/scoring/setBasedEngine';
 import { tableTennisCfg, tableTennisRefusalOf } from '@/domain/scoring/tableTennisEngine';
+import {
+  tennisLineupOf,
+  tennisRefusalOf,
+  type TennisEngineMatch,
+} from '@/domain/scoring/tennisEngine';
 import { volleyballCfg, volleyballRefusalOf } from '@/domain/scoring/volleyballEngine';
 import { volleyballLineupOf } from '@/domain/scoring/volleyballLineup';
 import { teamSheetOf } from '@/domain/scoring/teamSheet';
@@ -47,9 +53,9 @@ import type { ScoringPort } from '@/services/scoringPort';
  */
 export type FakeSeedEvent = { readonly type: string; readonly payload: unknown };
 
-/** The sports the fake can serve: the set-based ones the phone scores, chess (the engine's `boardgame`), cricket, football and volleyball. */
+/** The sports the fake can serve: the set-based ones the phone scores, chess (the engine's `boardgame`), cricket, football, volleyball and tennis. */
 export type FakeSportKey =
-  'badminton' | 'tabletennis' | 'boardgame' | 'cricket' | 'football' | 'volleyball';
+  'badminton' | 'tabletennis' | 'boardgame' | 'cricket' | 'football' | 'volleyball' | 'tennis';
 
 /** What the fake hands a sport's judge: the match's id, its config as the sport's schema read it and its two lineups. */
 type FakeEngineMatch = {
@@ -100,6 +106,17 @@ const SPORTS: Readonly<Record<FakeSportKey, FakeSport>> = {
     lineupsOf: (sides) => ({
       home: volleyballLineupOf(sides.home),
       away: volleyballLineupOf(sides.away),
+    }),
+  },
+  tennis: {
+    module: tennis,
+    // A seed's config is the fake's own: one the schema refuses is a bad seed, and throws.
+    cfg: (raw) => tennis.configSchema.parse(raw),
+    refusalOf: (match: TennisEngineMatch, events) => tennisRefusalOf(match, events),
+    // The team sheet and the pair order, as the web builds them.
+    lineupsOf: (sides) => ({
+      home: tennisLineupOf(sides.home),
+      away: tennisLineupOf(sides.away),
     }),
   },
   cricket: {

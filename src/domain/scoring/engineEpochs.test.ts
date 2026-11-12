@@ -32,4 +32,9 @@ describe('the engine’s epochs are the ones each sport sends', () => {
     expect(foldEpochOf('volleyball')).toBe(1);
     expect(volleyballSport.epoch).toBe(1);
   });
+
+  // Literal 2, copied by hand from the release (W2e T4 raised it); Task 3's seeds read the engine's own number.
+  it('tennis 2, as at engine 7.0.0 (W2e T4: no scoring after a default, an unreachable set score refused)', () => {
+    expect(foldEpochOf('tennis')).toBe(2);
+  });
 });
