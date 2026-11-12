@@ -440,6 +440,41 @@ describe('tennis: History’s rows and the last-tap line at 320 and 360 in four 
   );
 });
 
+describe('tennis: Set score’s sheet at 320 and 360 in four languages', () => {
+  // The score sheet's title is the sheet's title role; a field's label shares its row with the two-touch-wide input.
+  const field = (width: number) => sheet(width) - 2 * layout.touch - space.sm;
+  const SIDES = ['Ana Ruiz', 'Springfield Tennis Club', 'Ruiz / Vega h1 / Ruiz / Vega h2'] as const;
+
+  it.each(LANGUAGES)(
+    '%s: the title in at most two lines, no word wider than the sheet',
+    (_lang, dictionary: Dictionary) => {
+      const title = fill(said(dictionary, `${TN}.setScore.title`), { set: '5' });
+      for (const width of WIDTHS) {
+        expect(wordsFit(title, sheet(width), titleWidth), `${title} @${width}`).toBe(true);
+        expect(linesOf(title, sheet(width), titleWidth), `${title} @${width}`).toBeLessThanOrEqual(
+          2,
+        );
+      }
+    },
+  );
+
+  it.each(LANGUAGES)(
+    '%s: each field’s label, with the longest side, in at most three lines, no word broken',
+    (_lang, dictionary: Dictionary) => {
+      for (const key of ['games', 'tiebreak'])
+        for (const side of SIDES)
+          for (const width of WIDTHS) {
+            const label = fill(said(dictionary, `${TN}.setScore.${key}`), { side });
+            expect(wordsFit(label, field(width), controlWidth), `${label} @${width}`).toBe(true);
+            expect(
+              linesOf(label, field(width), controlWidth),
+              `${label} @${width}`,
+            ).toBeLessThanOrEqual(3);
+          }
+    },
+  );
+});
+
 describe('tennis: every word it has is measured here (the sweep)', () => {
   // A key added to the dictionary must be named by a group above or below: a dead or unmeasured word fails here.
   const MEASURED: readonly RegExp[] = [
@@ -460,6 +495,7 @@ describe('tennis: every word it has is measured here (the sweep)', () => {
     /^last\./,
     /^undone\./,
     /^setHeading$/,
+    /^setScore\./,
   ];
   /** Words the fit tests do not measure, each with the reason. */
   const ELSEWHERE: Readonly<Record<string, string>> = {

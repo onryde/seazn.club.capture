@@ -1138,5 +1138,8 @@
   "scoring.tennis.undone.setScore": "Score set undone",
   "scoring.tennis.undone.violation": "{level} undone — {person}",
   "scoring.tennis.undone.award": "Game award undone — {side}",
-  "scoring.tennis.undone.break": "Break undone"
+  "scoring.tennis.undone.break": "Break undone",
+  "scoring.tennis.setScore.title": "Set score · Set {set}",
+  "scoring.tennis.setScore.games": "Games — {side}",
+  "scoring.tennis.setScore.tiebreak": "Tie-break — {side}"
 }

@@ -6,6 +6,7 @@ import { CricketMatchScreen } from '@/ui/screens/CricketMatchScreen';
 import { FootballMatchScreen } from '@/ui/screens/FootballMatchScreen';
 import { screenFor } from '@/ui/screens/scoringScreens';
 import { TableTennisMatchScreen } from '@/ui/screens/TableTennisMatchScreen';
+import { TennisMatchScreen } from '@/ui/screens/TennisMatchScreen';
 
 // Owner ruling 38 (2026-11-02): a screen per sport, picked from a table by the sport's key. Literal keys.
 
@@ -40,14 +41,21 @@ describe('the sports screens table', () => {
     }
   });
 
+  it('tennis is drawn by its own screen, no set-based sport’s (S2-7 Task 11)', () => {
+    expect(screenFor('tennis')).toBe(TennisMatchScreen);
+    for (const other of ['badminton', 'tabletennis', 'volleyball']) {
+      expect(screenFor('tennis')).not.toBe(screenFor(other));
+    }
+  });
+
   it('every sport the runtime scores has a screen: the table cannot fall behind the sports', () => {
-    for (const key of ['badminton', 'tabletennis', 'boardgame', 'cricket', 'football']) {
+    for (const key of ['badminton', 'tabletennis', 'boardgame', 'cricket', 'football', 'tennis']) {
       expect(sportFor(key), key).not.toBeNull();
       expect(screenFor(key), key).not.toBeNull();
     }
   });
 
-  it.each(['tennis', '', 'Badminton', 'chess', 'Football', 'soccer', 'constructor', '__proto__'])(
+  it.each(['padel', '', 'Badminton', 'chess', 'Football', 'soccer', 'constructor', '__proto__'])(
     'has no screen for %j: a sport this build does not score, an inherited name included',
     (key) => {
       expect(screenFor(key)).toBeNull();

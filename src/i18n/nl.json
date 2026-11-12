@@ -1138,5 +1138,8 @@
   "scoring.tennis.undone.setScore": "Stand ingevoerd ongedaan gemaakt",
   "scoring.tennis.undone.violation": "{level} ongedaan gemaakt: {person}",
   "scoring.tennis.undone.award": "Game ongedaan gemaakt: {side}",
-  "scoring.tennis.undone.break": "Pauze ongedaan gemaakt"
+  "scoring.tennis.undone.break": "Pauze ongedaan gemaakt",
+  "scoring.tennis.setScore.title": "Stand zetten · Set {set}",
+  "scoring.tennis.setScore.games": "Games: {side}",
+  "scoring.tennis.setScore.tiebreak": "Tiebreak: {side}"
 }

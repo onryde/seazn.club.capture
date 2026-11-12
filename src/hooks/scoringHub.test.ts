@@ -355,13 +355,13 @@ describe('resuming the senders (a launch, a return)', () => {
 
   it('marks the queue of a sport this build does not score dead, once: a second resume starts nothing for it', async () => {
     const fakes = createFakePorts({ clock: timerClock });
-    await queued(fakes, 'm-tennis');
-    await saveScoringLink(fakes.kv, 'm-tennis', LINK, HOST, 'tennis');
+    await queued(fakes, 'm-padel');
+    await saveScoringLink(fakes.kv, 'm-padel', LINK, HOST, 'padel');
     const hub = scoringHubOf(fakes.ports);
     await hub.resume();
     await flush();
     expect(listeners(fakes)).toBe(0);
-    expect((await fakes.tapQueue.load('m-tennis'))?.dead).toBe('LINK_INVALID');
+    expect((await fakes.tapQueue.load('m-padel'))?.dead).toBe('LINK_INVALID');
     const save = vi.spyOn(fakes.tapQueue, 'save');
     const load = vi.spyOn(fakes.tapQueue, 'load');
     await hub.resume();

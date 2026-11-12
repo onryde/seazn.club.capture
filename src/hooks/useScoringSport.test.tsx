@@ -91,11 +91,11 @@ describe('useScoringSport', () => {
   });
 
   it('a sport this build does not score is named, never opened as another sport', async () => {
-    const fakes = await rig('tennis');
+    const fakes = await rig('padel');
     const bootstrap = vi.spyOn(fakes.scoring, 'bootstrap');
     const view = mount(fakes);
     await flush();
-    expect(view.result.current).toEqual({ kind: 'unsupportedSport', sportKey: 'tennis' });
+    expect(view.result.current).toEqual({ kind: 'unsupportedSport', sportKey: 'padel' });
     expect(bootstrap).not.toHaveBeenCalled();
   });
 

@@ -126,7 +126,7 @@ describe('a match kept as a sport this build does not score', () => {
   it.each<RunnerMode>(['focused', 'headless'])(
     'says so, %s, and reads, sends and changes nothing',
     async (mode) => {
-      const fakes = await kept('tennis');
+      const fakes = await kept('padel');
       const reads = [
         vi.spyOn(fakes.scoring, 'bootstrap'),
         vi.spyOn(fakes.scoring, 'events'),
@@ -135,7 +135,7 @@ describe('a match kept as a sport this build does not score', () => {
       const runner = createScoringRunner(fakes.ports, { fixtureId: FIXTURE, mode });
       await runner.start();
       await flush();
-      expect(runner.snapshot()).toEqual({ kind: 'unsupportedSport', sportKey: 'tennis' });
+      expect(runner.snapshot()).toEqual({ kind: 'unsupportedSport', sportKey: 'padel' });
       expect(reads.map((read) => read.mock.calls.length)).toEqual([0, 0, 0]);
       expect(fakes.scoring.append).not.toHaveBeenCalled();
       // Nothing is changed but the word: the taps stay for a build that scores the sport, or for Dismiss.
@@ -147,7 +147,7 @@ describe('a match kept as a sport this build does not score', () => {
   );
 
   it('marks the queue dead so Home offers Dismiss: the taps can never be sent by this build', async () => {
-    const fakes = await kept('tennis');
+    const fakes = await kept('padel');
     const runner = createScoringRunner(fakes.ports, { fixtureId: FIXTURE, mode: 'headless' });
     await runner.start();
     await flush();
@@ -159,7 +159,7 @@ describe('a match kept as a sport this build does not score', () => {
   });
 
   it('leaves a queue with nothing in it as it was', async () => {
-    const fakes = await kept('tennis');
+    const fakes = await kept('padel');
     await fakes.tapQueue.save({ ...(await fakes.tapQueue.load(FIXTURE))!, pending: [] });
     await createScoringRunner(fakes.ports, { fixtureId: FIXTURE, mode: 'headless' }).start();
     await flush();
@@ -167,7 +167,7 @@ describe('a match kept as a sport this build does not score', () => {
   });
 
   it('keeps the word a queue already died of', async () => {
-    const fakes = await kept('tennis');
+    const fakes = await kept('padel');
     await fakes.tapQueue.save({ ...(await fakes.tapQueue.load(FIXTURE))!, dead: 'finalized' });
     await createScoringRunner(fakes.ports, { fixtureId: FIXTURE, mode: 'headless' }).start();
     await flush();
@@ -175,16 +175,16 @@ describe('a match kept as a sport this build does not score', () => {
   });
 
   it('a mark the disk refuses is recorded and never raised: the runner still says so', async () => {
-    const fakes = await kept('tennis');
+    const fakes = await kept('padel');
     vi.spyOn(fakes.tapQueue, 'save').mockRejectedValue(new Error('disk full'));
     const runner = createScoringRunner(fakes.ports, { fixtureId: FIXTURE, mode: 'focused' });
     await runner.start();
     await flush();
-    expect(runner.snapshot()).toEqual({ kind: 'unsupportedSport', sportKey: 'tennis' });
+    expect(runner.snapshot()).toEqual({ kind: 'unsupportedSport', sportKey: 'padel' });
   });
 
   it('marks nothing when the secure store does not answer: that says nothing of the link or its sport', async () => {
-    const fakes = await kept('tennis');
+    const fakes = await kept('padel');
     vi.spyOn(fakes.kv, 'get').mockRejectedValue(new Error('keystore locked'));
     const runner = createScoringRunner(fakes.ports, { fixtureId: FIXTURE, mode: 'focused' });
     await runner.start();

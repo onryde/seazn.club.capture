@@ -173,11 +173,11 @@ describe('a match the phone cannot score', () => {
     const app = await opened({
       kvSeed: {
         ...IN_MATCH,
-        [linkKey(FAKE_MATCH)]: JSON.stringify({ ...LINK, sportKey: 'tennis' }),
+        [linkKey(FAKE_MATCH)]: JSON.stringify({ ...LINK, sportKey: 'padel' }),
       },
     });
     expect(title()).toBe(en['scoring.state.unsupported.title']);
-    expect(screen.getByText('Sport: tennis')).toBeTruthy();
+    expect(screen.getByText('Sport: padel')).toBeTruthy();
     expect(buttons()).toEqual([en['scoring.card.updateNeeded.browser']]);
     act(() => within(card()).getByRole('button').click());
     await flush(100);
@@ -314,7 +314,7 @@ describe('keeping the screen on', () => {
     await opened({
       kvSeed:
         key === 'unsupported'
-          ? { ...IN_MATCH, [linkKey(FAKE_MATCH)]: JSON.stringify({ ...LINK, sportKey: 'tennis' }) }
+          ? { ...IN_MATCH, [linkKey(FAKE_MATCH)]: JSON.stringify({ ...LINK, sportKey: 'padel' }) }
           : IN_MATCH,
       prepare: (fakes) => {
         if (key === 'unreadableQueue')

@@ -1138,5 +1138,8 @@
   "scoring.tennis.undone.setScore": "Score saisi annulé",
   "scoring.tennis.undone.violation": "Sanction annulée\u00a0: {level}, {person}",
   "scoring.tennis.undone.award": "Jeu attribué annulé\u00a0: {side}",
-  "scoring.tennis.undone.break": "Pause annulée"
+  "scoring.tennis.undone.break": "Pause annulée",
+  "scoring.tennis.setScore.title": "Score du set · Set {set}",
+  "scoring.tennis.setScore.games": "Jeux\u00a0: {side}",
+  "scoring.tennis.setScore.tiebreak": "Tie-break\u00a0: {side}"
 }
