@@ -149,6 +149,10 @@ export type TennisDisplay = {
   readonly serverId: string | null;
   readonly setsWon: Readonly<Record<PadSide, number>>;
   readonly finished: readonly TennisSetLine[];
+  /**
+   * The winner of each game of the set under way, in play order (index = game number - 1; awarded games count: a violation's game is an award tap). Empty between sets, and for a set entered by Set score, which has no games to list.
+   */
+  readonly gameWins: readonly PadSide[];
   /** The heaviest violation each side holds in the set under way (a per-set walk; an undone one is not counted). */
   readonly heaviest: Readonly<Record<PadSide, TennisSeenLevel | null>>;
   /** The points and set scores standing in the scorer's view, this phone's legal queued taps on top. */
@@ -180,8 +184,14 @@ export type TennisPadKey =
   | 'scoring.tennis.endingPending'
   | 'scoring.tennis.serving'
   | 'scoring.tennis.serverPerson'
-  | 'scoring.tennis.foot.games'
-  | 'scoring.tennis.foot.gamesSaid'
+  | 'scoring.tennis.board.sets'
+  | 'scoring.tennis.board.games'
+  | 'scoring.tennis.board.set'
+  | 'scoring.tennis.board.mtb'
+  | 'scoring.tennis.board.won'
+  | 'scoring.tennis.board.gamesWon'
+  | 'scoring.tennis.board.said'
+  | 'scoring.tennis.final'
   | 'scoring.tennis.tool.violation'
   | 'scoring.tennis.tool.violationShort'
   | 'scoring.tennis.tool.break'
@@ -238,6 +248,14 @@ export type TennisPadKey =
   | 'scoring.tennis.break.kind.other'
   | 'scoring.tennis.break.both'
   | 'scoring.tennis.setHeading'
+  | 'scoring.tennis.history.game'
+  | 'scoring.tennis.history.gameNoServer'
+  | 'scoring.tennis.history.gameWon'
+  | 'scoring.tennis.history.gameWonNoServer'
+  | 'scoring.tennis.history.tiebreak'
+  | 'scoring.tennis.history.tiebreakWon'
+  | 'scoring.tennis.history.matchTiebreak'
+  | 'scoring.tennis.history.matchTiebreakWon'
   | 'scoring.tennis.player'
   | 'scoring.tennis.last.start'
   | 'scoring.tennis.last.toss'

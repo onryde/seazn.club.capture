@@ -30,6 +30,14 @@ export type TennisFacts = {
    * else the game's call ("30–15", "AD–40") or a breaker's points ("4–3"). First side's first, joined by an en dash.
    */
   readonly after: string;
+  /** The game it was recorded in, 1-based in its set and counting every game of it (awarded ones too): the board BEFORE it. */
+  readonly game: number;
+  /** Whether that game was a set tie-break or the match tie-break, else null. */
+  readonly breaker: 'tiebreak' | 'matchTiebreak' | null;
+  /** The side serving that game, or null when the engine cannot name the order. */
+  readonly server: PadSide | null;
+  /** The side that won the game (a set's last game, a tie-break) this event closed, or null: a point, an award, a penalty. */
+  readonly closed: PadSide | null;
 };
 
 /**

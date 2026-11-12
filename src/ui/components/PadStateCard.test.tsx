@@ -70,6 +70,19 @@ describe('PadStateCard', () => {
       },
     );
 
+    it('keeps the sport’s result line under the sentence when the card carries one (tennis, ruling 239)', () => {
+      const title = {
+        key: 'scoring.tennis.result',
+        vars: { side: 'Ada Voss', sets: '7–6(6) 6–0' },
+      } as const;
+      renderWithPorts(<PadStateCard card={{ kind: 'carriedForward', title }} />);
+      expect(screen.getByTestId('pad-card-result').textContent).toBe('Ada Voss won 7–6(6) 6–0');
+      expect(card().textContent).toBe(`${WORDS[0][1]}${WORDS[0][2]}Ada Voss won 7–6(6) 6–0`);
+      expect(getComputedStyle(screen.getByTestId('pad-card-result')).color).toBe(
+        edgeOf(colour.lime),
+      );
+    });
+
     it('is a card of its own words, the title above the sentence, with no Undo and no countdown', () => {
       renderWithPorts(<PadStateCard card={{ kind: 'carriedForward' }} />);
       expect([...card().children].map((child) => child.textContent)).toEqual([

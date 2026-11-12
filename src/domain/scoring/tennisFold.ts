@@ -84,6 +84,8 @@ type Folded = {
   readonly state: NestedState;
   /** What the fold said of each event still standing, by envelope id. */
   readonly facts: ReadonlyMap<string, TennisFacts>;
+  /** The winner of each game of the set under way, in play order (game number - 1): awarded games count; none after a set score. */
+  readonly gameWins: readonly PadSide[];
 };
 
 export function foldTennis(input: SportFoldInput): SportFold<TennisTypes> {
@@ -136,7 +138,7 @@ function mayAppend(match: Match, before: readonly EventEnvelope[], next: EventEn
 /**
  * The read path's tolerant fold with each standing event's facts, or the detail of why the stream cannot be replayed: the
  * engine's refusal (`engine:<code>`) or damaged server data that made the engine throw something of its own
- * (`damaged:<name>`). A throw from OUR callback (`factsOf`, `tally`) is a bug in this build, not the ledger's, and is rethrown
+ * (`damaged:<name>`). A throw from OUR callback (`factsOf`, `snapOf`) is a bug in this build, not the ledger's, and is rethrown
  * as the sibling folds rethrow what is not the engine's, never dressed up as "can't be worked out".
  */
 function foldOf(
@@ -145,21 +147,25 @@ function foldOf(
   envelopes: readonly EventEnvelope[],
 ): Folded | string {
   const facts = new Map<string, TennisFacts>();
-  let before = { sets: 0, games: 0 };
+  let before: Snap = START;
+  let gameWins: readonly PadSide[] = [];
   let ours: { readonly error: unknown } | null = null;
   try {
     const { state } = foldMatchWithStoppage(tennis, cfg, lineups, envelopes, {
       onFolded: (after, event) => {
         try {
-          facts.set(event.id, factsOf(before, after));
-          before = tally(after);
+          const now = snapOf(after);
+          const fact = factsOf(before, now, after, event.type);
+          facts.set(event.id, fact);
+          gameWins = gameWinsAfter(gameWins, before, now, fact.closed);
+          before = now;
         } catch (error) {
           ours = { error };
           throw error;
         }
       },
     });
-    return { state, facts };
+    return { state, facts, gameWins };
   } catch (error) {
     if (ours !== null) throw (ours as { readonly error: unknown }).error;
     return EngineError.is(error) ? `engine:${error.code}` : `damaged:${nameOf(error)}`;
@@ -169,28 +175,78 @@ function foldOf(
 /** The name of a thrown value, never its message (which can quote the server's bytes). */
 const nameOf = (error: unknown): string => (error instanceof Error ? error.name : typeof error);
 
-const tally = (state: Readonly<NestedState>) => ({
+/** What the fold kept of the state just after an event: the numbers only, so a later event never reads a state that moved. */
+type Snap = {
+  readonly sets: number;
+  readonly home: number;
+  readonly away: number;
+  readonly kind: NestedState['points']['kind'];
+  readonly phase: NestedState['phase'];
+  /** The engine's serving side, null when it cannot name the order. */
+  readonly server: PadSide | null;
+};
+
+const START: Snap = { sets: 0, home: 0, away: 0, kind: 'standard', phase: 'pre', server: null };
+
+const snapOf = (state: Readonly<NestedState>): Snap => ({
   sets: state.sets.length,
-  games: state.games.home + state.games.away,
+  home: state.games.home,
+  away: state.games.away,
+  kind: state.points.kind,
+  phase: state.phase,
+  server: guarded(() => servingOf(state), null),
 });
 
 /**
- * The facts of an event, from the state just after it and the tally just before: a point that closed a set is in that set
- * (the kernel moved on to the next); anything else is in the set under way, which is the next one between sets.
+ * The facts of an event, from the snapshots just before and after it: a point that closed a set is in that set (the kernel
+ * moved on to the next); anything else is in the set under way, which is the next one between sets. The game, the breaker
+ * and the server are the board BEFORE the event, so a point that closes a game belongs to that game, not the next; before the
+ * match starts the server is read after the event (a toss names it).
  */
 function factsOf(
-  before: { sets: number; games: number },
+  before: Snap,
+  after: Snap,
   state: Readonly<NestedState>,
+  type: string,
 ): TennisFacts {
-  const closedSet = state.sets.length > before.sets;
-  const gameWon = closedSet || state.games.home + state.games.away > before.games;
+  const closedSet = after.sets > before.sets;
+  const gameWon = closedSet || after.home + after.away > before.home + before.away;
   const over = state.phase === 'done' || state.phase === 'final';
   const won = closedSet && over ? 'match' : closedSet ? 'set' : gameWon ? 'game' : 'none';
   return {
-    set: closedSet ? state.sets.length : state.sets.length + 1,
+    set: closedSet ? after.sets : after.sets + 1,
     won,
     after: afterOf(state, gameWon, closedSet),
+    game: before.home + before.away + 1,
+    breaker: before.kind === 'standard' ? null : before.kind,
+    server: before.phase === 'pre' ? after.server : before.server,
+    closed: type === 'tennis.set_summary' ? null : closerOf(state, before, after, closedSet),
   };
+}
+
+/** The side that won the game (or set) an event closed, or none. */
+function closerOf(
+  state: Readonly<NestedState>,
+  before: Snap,
+  after: Snap,
+  closedSet: boolean,
+): PadSide | null {
+  const closed = state.sets[state.sets.length - 1];
+  if (closedSet)
+    return closed === undefined ? null : closed.home > closed.away ? 'first' : 'second';
+  if (after.home + after.away <= before.home + before.away) return null;
+  return after.home > before.home ? 'first' : 'second';
+}
+
+/** The set's game winners after an event: a closed set starts the next empty; a game won (awarded ones too) is added. */
+function gameWinsAfter(
+  wins: readonly PadSide[],
+  before: Snap,
+  after: Snap,
+  closed: PadSide | null,
+): readonly PadSide[] {
+  if (after.sets > before.sets) return [];
+  return closed === null ? wins : [...wins, closed];
 }
 
 /** The board a point left: the games of the game or set it closed, else the game's call. */
@@ -282,7 +338,7 @@ function displayOf(
   match: Match,
   cfg: TennisCfg,
   stream: SetBasedStream,
-  { state, facts }: Folded,
+  { state, facts, gameWins }: Folded,
   recorded: ReadonlyMap<string, Recorded>,
   undoable: boolean,
 ): TennisDisplay {
@@ -309,6 +365,7 @@ function displayOf(
     serverId: serverIdOf(state, match.names),
     setsWon: pairOf(state.setsWon),
     finished: state.sets.map((closed) => setLineOf(closed)),
+    gameWins,
     heaviest: heaviestOf(match, stream, set, facts),
     scoreEvents: standing(stream.envelopes, 'tennis.point', 'tennis.set_summary').length,
     serveEvents: serveEventsIn(stream.envelopes),

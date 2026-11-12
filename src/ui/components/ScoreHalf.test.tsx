@@ -795,3 +795,110 @@ describe('ScoreHalf, a name that is one long word', () => {
     expect(linesAllowed(screen.getByText('A. Sharma / R. Iyer'))).toBe(layout.padNameLines);
   });
 });
+
+// S2-7 Task 18 (rulings 235, 239, 240, 242): tennis's half as a scoreboard row, the server's line and the final board. Sizes,
+// colours and what a phone draws are the device check's; this reads what the half shows and says.
+describe('ScoreHalf as a tennis scoreboard row', () => {
+  const T = 'scoring.tennis.board.';
+  const board = (
+    dots: readonly number[] | null,
+    sets: readonly string[] = [],
+  ): PadHalf<MessageKey> => ({
+    ...top,
+    periods: null,
+    serving: null,
+    value: '30',
+    scoreboard: {
+      setsLabel: { key: `${T}sets` as MessageKey },
+      sets,
+      dots,
+      said: [{ key: `${T}gamesWon` as MessageKey, vars: { count: 3, games: '1, 3, 4' } }],
+    },
+  });
+
+  it('draws the Sets label and a box for each set over, then a numbered dot for each game won, then Tap', () => {
+    renderWithPorts(<ScoreHalf half={board([1, 3, 4], ['7', '6'])} flash={0} onTap={vi.fn()} />);
+    const row = screen.getByTestId('scoreboard');
+    expect(within(row).getByText(en[`${T}sets` as keyof typeof en])).toBeTruthy();
+    expect(screen.getAllByTestId('board-set').map((one) => one.textContent)).toEqual(['7', '6']);
+    expect(screen.getAllByTestId('game-dot').map((one) => one.textContent)).toEqual([
+      '1',
+      '3',
+      '4',
+    ]);
+    expect(row.textContent?.endsWith(TAP)).toBe(true);
+    expect(screen.getByTestId('score').textContent).toBe('30');
+  });
+
+  it('draws no Sets label before a set is over, and no dots for a side that has won no game or in a match tie-break', () => {
+    renderWithPorts(<ScoreHalf half={board([])} flash={0} onTap={vi.fn()} />);
+    expect(screen.queryByText(en[`${T}sets` as keyof typeof en])).toBeNull();
+    expect(screen.queryAllByTestId('game-dot')).toEqual([]);
+    expect(screen.getByTestId('scoreboard')).toBeTruthy();
+  });
+
+  it('draws no dots in a match tie-break (null), the Sets boxes staying', () => {
+    renderWithPorts(<ScoreHalf half={board(null, ['6', '3'])} flash={0} onTap={vi.fn()} />);
+    expect(screen.queryAllByTestId('game-dot')).toEqual([]);
+    expect(screen.getAllByTestId('board-set')).toHaveLength(2);
+  });
+
+  it('says the games count and which games in the half’s name, and draws no old bottom row', () => {
+    renderWithPorts(<ScoreHalf half={board([1, 3, 4])} flash={0} onTap={vi.fn()} />);
+    const said = en[`${T}gamesWon` as keyof typeof en]
+      .replace('{count}', '3')
+      .replace('{games}', '1, 3, 4');
+    expect(said).toBe('Games 3: 1, 3, 4');
+    expect(screen.getByRole('button', { name: `A. Sharma, 30, ${said}` })).toBeTruthy();
+    expect(screen.queryByTestId('periods')).toBeNull();
+  });
+
+  it('draws the server’s line under the names and names the server before the value', () => {
+    const half = {
+      ...board([]),
+      server: { key: 'scoring.tennis.serverPerson', vars: { person: 'Ana Ruiz' } },
+    } as PadHalf<MessageKey>;
+    renderWithPorts(<ScoreHalf half={half} flash={0} onTap={vi.fn()} />);
+    expect(screen.getByTestId('server').textContent).toBe('Ana Ruiz serves');
+    expect(
+      screen.getByRole('button', {
+        name: 'A. Sharma, Ana Ruiz serves, 30, Games: 0'.replace('Games: 0', 'Games 3: 1, 3, 4'),
+      }),
+    ).toBeTruthy();
+  });
+
+  it('draws the final board in the place of the value: a box a set with its label, the tie-break loser’s points in brackets', () => {
+    const half: PadHalf<MessageKey> = {
+      ...top,
+      periods: null,
+      serving: { shown: { key: `${T}won` as MessageKey }, said: { key: `${T}won` as MessageKey } },
+      value: '',
+      tappable: false,
+      finalBoard: {
+        boxes: [
+          {
+            label: { key: `${T}set` as MessageKey, vars: { set: 1 } },
+            value: '6',
+            bracket: '5',
+            tone: 'plain',
+          },
+          { label: { key: `${T}sets` as MessageKey }, value: '2', tone: 'plate' },
+        ],
+        said: [
+          {
+            key: `${T}said` as MessageKey,
+            vars: { label: { key: `${T}sets` as MessageKey }, value: '2' },
+          },
+        ],
+      },
+    };
+    renderWithPorts(<ScoreHalf half={half} flash={0} onTap={vi.fn()} />);
+    expect(screen.queryByTestId('score')).toBeNull();
+    expect(screen.queryByTestId('scoreboard')).toBeNull();
+    expect(screen.getAllByTestId('final-box').map((one) => one.textContent)).toEqual(['6(5)', '2']);
+    expect(screen.getByTestId('final-bracket').textContent).toBe('(5)');
+    expect(screen.getByTestId('serving').textContent).toBe(en[`${T}won` as keyof typeof en]);
+    expect(screen.getByTestId('final-board').textContent).toContain('Set 1');
+    expect(screen.getByRole('button', { name: 'A. Sharma, Sets: 2, Won' })).toBeTruthy();
+  });
+});

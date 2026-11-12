@@ -1,6 +1,5 @@
 import {
   withCard,
-  type PadFoot,
   type PadLastTap,
   type PadHalf,
   type PadMatchDetails,
@@ -15,6 +14,7 @@ import {
 import { padMarks, setBasedTally, type PadCardMark } from '@/domain/scoring/setBasedPad';
 import { sideNames } from '@/domain/scoring/setBasedSides';
 import { doneSaid, endingSaid, whoWord } from '@/domain/scoring/tennisHistory';
+import { finalBoardOf, matchWinner, scoreboardOf } from '@/domain/scoring/tennisBoard';
 import { LEVEL_CARDS, levelWord } from '@/domain/scoring/tennisLevels';
 import { tennisRuleRows } from '@/domain/scoring/tennisRules';
 import { TENNIS_TOOL_SLOTS, takesTaps, tennisTools } from '@/domain/scoring/tennisTools';
@@ -53,6 +53,7 @@ export function tennisPad(display: TennisDisplay, sync: PadSync = SYNCED): PadVi
     tools: tennisTools(display),
     toolSlots: TENNIS_TOOL_SLOTS,
     card: null,
+    ...resultOf(display),
   };
   return withCard(view, cardOf(display));
 }
@@ -63,24 +64,37 @@ export function tennisDetails(display: TennisDisplay): PadMatchDetails<TennisPad
 }
 
 function half(display: TennisDisplay, side: PadSide): PadHalf<TennisPadKey> {
-  const plate = takesTaps(display) && display.serving === side ? serving() : null;
+  const taps = takesTaps(display);
+  const final = display.phase === 'decided' || display.phase === 'ended';
+  const plate = taps && display.serving === side ? serving() : null;
   return {
     side,
     label: sideNames(display.sides[side]),
-    value: display.call[side],
+    value: final ? '' : display.call[side],
     periods: null,
-    // The doubles server's name when the engine names it (ruling 235); the plate marks the side alone otherwise.
-    sub: plate === null ? null : servingPerson(display),
+    sub: null,
+    // The doubles server's name when the engine names it (ruling 235), under the side's names; the plate marks the side alone otherwise.
+    server: plate === null ? null : servingPerson(display),
+    scoreboard: taps ? scoreboardOf(display, side) : null,
+    finalBoard: final ? finalBoardOf(display, side) : null,
     marks: padMarks(violationCard(display, side), null),
-    serving: plate,
+    // The ball while play is on; once the match is won the winner's half carries WON in its place.
+    serving: final ? won(display, side) : plate,
     plate: null,
     action: null,
-    // The bar follows the ball: the serving side's is lit, neither while the engine names no server.
-    bar: plate === null ? 'dim' : 'lit',
-    foot: foot(display, side),
+    // The bar follows the ball: the serving side's is lit, neither while the engine names no server; the winner's once won.
+    bar: (final ? matchWinner(display) === side : plate !== null) ? 'lit' : 'dim',
+    foot: null,
     hint: { key: 'scoring.tennis.hint' },
-    tappable: takesTaps(display),
+    tappable: taps,
   };
+}
+
+/** The winner's plate, where the serving one sat; none for the other side and for a match the organiser ended. */
+function won(display: TennisDisplay, side: PadSide): PadServing<TennisPadKey> | null {
+  return matchWinner(display) === side
+    ? { shown: { key: 'scoring.tennis.board.won' }, said: { key: 'scoring.tennis.board.won' } }
+    : null;
 }
 
 const serving = (): PadServing<TennisPadKey> => ({
@@ -93,18 +107,6 @@ function servingPerson(display: TennisDisplay): Text | null {
   return display.servingPerson === null
     ? null
     : { key: 'scoring.tennis.serverPerson', vars: { person: display.servingPerson } };
-}
-
-/** The side's games in the set, "Games 4"; none in a match tie-break (it has none), before the start or once the match is over. */
-function foot(display: TennisDisplay, side: PadSide): PadFoot<TennisPadKey> | null {
-  if (!takesTaps(display) || display.breaker === 'matchTiebreak') return null;
-  const vars = { games: display.games[side] };
-  return {
-    text: { key: 'scoring.tennis.foot.games', vars },
-    said: { key: 'scoring.tennis.foot.gamesSaid', vars },
-    place: 'slot',
-    caution: false,
-  };
 }
 
 /** The side's heaviest violation of the set as a card, or none; its name is what a screen reader hears of it. */
@@ -144,10 +146,7 @@ const SAID_LINES = 2;
  * its own: no tap is taken then, so nothing is under a thumb to move.
  */
 function strip(display: TennisDisplay): readonly PadStripItem<TennisPadKey>[] {
-  const set: PadStripItem<TennisPadKey> = {
-    slot: 'set',
-    text: { key: 'scoring.tennis.setOf', vars: { set: display.set, bestOf: display.cfg.bestOf } },
-  };
+  const set: PadStripItem<TennisPadKey> = { slot: 'set', text: setText(display) };
   const said: Text | null = display.endingPending
     ? { key: 'scoring.tennis.endingPending' }
     : endingText(display);
@@ -157,6 +156,13 @@ function strip(display: TennisDisplay): readonly PadStripItem<TennisPadKey>[] {
     { slot: 'note', text: noteOf(display) },
     { slot: 'ends', text: display.endsChanged ? { key: 'scoring.tennis.endsChange' } : null },
   ];
+}
+
+/** "Set 2 of 3" while the match is on; "Final" once it is decided or ended (ruling 239). */
+function setText(display: TennisDisplay): Text {
+  if (display.phase === 'decided' || display.phase === 'ended')
+    return { key: 'scoring.tennis.final' };
+  return { key: 'scoring.tennis.setOf', vars: { set: display.set, bestOf: display.cfg.bestOf } };
 }
 
 /** The breaker's name, else deuce or the deciding point (never at advantage: the half shows AD), else nothing. */
@@ -182,18 +188,23 @@ function endingText(display: TennisDisplay): Text | null {
  * the sets as the engine writes them ("7–6(5) 3–6 6–4", a match tie-break "[10–7]": ruling 225). None while the match is on.
  */
 function cardOf(display: TennisDisplay): PadStateCard<TennisPadKey> | null {
-  if (display.phase === 'ended') {
-    const title = endingText(display);
-    return title === null ? null : { kind: 'resultRecorded', undoLeft: null, title };
-  }
-  if (display.phase !== 'decided') return null;
-  const winner: PadSide = display.setsWon.first > display.setsWon.second ? 'first' : 'second';
+  const title = resultText(display);
+  return title === null ? null : { kind: 'resultRecorded', undoLeft: null, title };
+}
+
+/** The result in words: how the organiser ended it, or the winner and the sets; none while the match is on. */
+function resultText(display: TennisDisplay): Text | null {
+  if (display.phase === 'ended') return endingText(display);
+  const winner = matchWinner(display);
+  if (winner === null) return null;
   const sets = display.finished.map((one) => one.text).join(' ');
-  const title: Text = {
-    key: 'scoring.tennis.result',
-    vars: { side: sideNames(display.sides[winner]), sets },
-  };
-  return { kind: 'resultRecorded', undoLeft: null, title };
+  return { key: 'scoring.tennis.result', vars: { side: sideNames(display.sides[winner]), sets } };
+}
+
+/** The result the carried-forward card carries (ruling 239), so a match the web moved on keeps its score on screen. */
+function resultOf(display: TennisDisplay): { readonly result?: Text } {
+  const result = resultText(display);
+  return result === null ? {} : { result };
 }
 
 // ---------------------------------------------------------------------------------------------------------------

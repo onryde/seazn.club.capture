@@ -12,6 +12,7 @@ import type { PadCard, PadHalf, PadPeriodScore, PadSide, PadText } from '@/domai
 import { usePadText } from '@/hooks/usePadText';
 import type { MessageKey } from '@/i18n/messages';
 import { Glyph } from '@/ui/components/Glyph';
+import { boardRoom, FinalBoard, ScoreboardRow, ServerLine } from '@/ui/components/HalfBoards';
 import { NameText } from '@/ui/components/NameText';
 import { SidePlate } from '@/ui/components/SidePlate';
 import { TapFlash } from '@/ui/components/TapFlash';
@@ -50,6 +51,9 @@ export const ScoreHalf = memo(function ScoreHalf({ half, flash, onTap }: ScoreHa
   const sub = half.sub === null ? null : words(half.sub);
   const foot = half.foot == null ? null : words(half.foot.text);
   const spokenFoot = half.foot == null ? null : words(half.foot.said);
+  const server = half.server == null ? null : words(half.server);
+  const board = half.scoreboard ?? null;
+  const final = half.finalBoard ?? null;
   // The counts sit in the bottom row's slot, or on a line of their own when the slot holds something else.
   const inSlot = half.foot?.place === 'slot';
   const caution = half.foot?.caution === true;
@@ -58,7 +62,7 @@ export const ScoreHalf = memo(function ScoreHalf({ half, flash, onTap }: ScoreHa
     <Pressable
       testID={`half-${half.side}`}
       accessibilityRole="button"
-      accessibilityLabel={halfName(half, words, sub, said, spokenFoot)}
+      accessibilityLabel={halfName(half, words, sub, said, spokenFoot, server)}
       accessibilityHint={words(half.hint)}
       disabled={!half.tappable}
       onPress={tap}
@@ -67,22 +71,36 @@ export const ScoreHalf = memo(function ScoreHalf({ half, flash, onTap }: ScoreHa
     >
       <TapFlash cue={flash} />
       <HalfHead half={half} />
+      {server === null ? null : <ServerLine words={server} />}
       <View style={styles.middle}>
-        <Text
-          testID="score"
-          variant={scoreRole(height === null ? null : height - footRoom(inSlot ? null : foot))}
-        >
-          {half.value}
-        </Text>
+        {final === null ? (
+          <Text
+            testID="score"
+            variant={scoreRole(
+              height === null
+                ? null
+                : height - footRoom(inSlot ? null : foot) - boardRoom(board, server !== null),
+            )}
+          >
+            {half.value}
+          </Text>
+        ) : (
+          <FinalBoard boxes={final.boxes} />
+        )}
       </View>
       {foot === null || inSlot ? null : <HalfCounts text={foot} caution={caution} />}
-      <HalfFoot
-        scores={half.periods?.scores ?? NO_SCORES}
-        sub={sub}
-        counts={inSlot ? foot : null}
-        caution={caution}
-        hint={half.tappable ? words(half.action ?? TAP) : null}
-      />
+      {board === null ? null : (
+        <ScoreboardRow board={board} hint={half.tappable ? words(half.action ?? TAP) : null} />
+      )}
+      {board !== null || final !== null ? null : (
+        <HalfFoot
+          scores={half.periods?.scores ?? NO_SCORES}
+          sub={sub}
+          counts={inSlot ? foot : null}
+          caution={caution}
+          hint={half.tappable ? words(half.action ?? TAP) : null}
+        />
+      )}
     </Pressable>
   );
 });
@@ -150,11 +168,24 @@ function halfName(
   sub: string | null,
   marks: readonly string[],
   foot: string | null,
+  server: string | null,
 ): string {
   const periods = half.periods === null ? NO_WORDS : half.periods.said.map(words);
+  const boards = (half.scoreboard ?? half.finalBoard)?.said.map(words) ?? NO_WORDS;
   const serving = half.serving === null ? null : words(half.serving.said);
   const plate = half.plate === null ? null : words(half.plate);
-  return [half.label, half.value, ...periods, sub, foot, ...marks, serving, plate]
+  return [
+    half.label,
+    server,
+    half.value,
+    ...periods,
+    ...boards,
+    sub,
+    foot,
+    ...marks,
+    serving,
+    plate,
+  ]
     .filter(isWords)
     .join(', ');
 }

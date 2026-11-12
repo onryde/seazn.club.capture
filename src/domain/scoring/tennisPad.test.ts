@@ -50,17 +50,17 @@ describe('the halves', () => {
   it('name both partners of a doubles side with " / " between, and the server only on the serving half (ruling 235)', () => {
     const view = padOf([start()], { bootstrap: DOUBLES });
     expect(view.halves[0].label).toBe('Ruiz / Vega h1 / Ruiz / Vega h2');
-    expect(view.halves[0].sub).toEqual({
+    expect(view.halves[0].server).toEqual({
       key: 'scoring.tennis.serverPerson',
       vars: { person: 'Ruiz / Vega h1' },
     });
-    expect(view.halves[1].sub).toBeNull();
+    expect(view.halves[1].server).toBeNull();
   });
 
   it('name no server in singles, in a tie-break or while the order is undeclared: the plate stands alone', () => {
-    expect(padOf([start()]).halves.map((half) => half.sub)).toEqual([null, null]);
+    expect(padOf([start()]).halves.map((half) => half.server)).toEqual([null, null]);
     const tiebreak = padOf([start(), ...gamesOf('HAHAHAHAHAHA')], { bootstrap: DOUBLES });
-    expect(tiebreak.halves.map((half) => half.sub)).toEqual([null, null]);
+    expect(tiebreak.halves.map((half) => half.server)).toEqual([null, null]);
     expect(tiebreak.halves.map((half) => half.serving !== null)).toContain(true);
   });
 
@@ -108,50 +108,13 @@ describe('the serve ball', () => {
     expect(view.halves.map((half) => half.bar)).toEqual(['dim', 'dim']);
   });
 
-  it('is on neither side once the match is decided', () => {
-    expect(plates(padOf([start(), ...gamesOf('HHHHHHHHHHHH')]))).toEqual([null, null]);
+  it('is on neither side once the match is decided: the winner carries WON in its place (ruling 239)', () => {
+    const won = { shown: { key: `${T}board.won` }, said: { key: `${T}board.won` } };
+    expect(plates(padOf([start(), ...gamesOf('HHHHHHHHHHHH')]))).toEqual([won, null]);
   });
 
   it('is on neither side before the start', () => {
     expect(plates(padOf([]))).toEqual([null, null]);
-  });
-});
-
-describe('the foot', () => {
-  const foot = (view: PadView<TennisPadKey>) => view.halves.map((half) => half.foot);
-
-  it('counts each side’s games in the set, with the words for a screen reader', () => {
-    const view = padOf([start(), ...gamesOf('HHA')]);
-    expect(foot(view)).toEqual([
-      {
-        text: { key: `${T}foot.games`, vars: { games: 2 } },
-        said: { key: `${T}foot.gamesSaid`, vars: { games: 2 } },
-        place: 'slot',
-        caution: false,
-      },
-      {
-        text: { key: `${T}foot.games`, vars: { games: 1 } },
-        said: { key: `${T}foot.gamesSaid`, vars: { games: 1 } },
-        place: 'slot',
-        caution: false,
-      },
-    ]);
-  });
-
-  it('starts again at 0 in the next set', () => {
-    const view = padOf([start(), ...gamesOf('HHHHHH')]);
-    expect(foot(view).map((one) => one?.text)).toEqual([
-      { key: `${T}foot.games`, vars: { games: 0 } },
-      { key: `${T}foot.games`, vars: { games: 0 } },
-    ]);
-  });
-
-  it('is none in a match tie-break (it has no games), before the start and once decided', () => {
-    const noAd = withCfg(DOUBLES, DOUBLES_NOAD_CFG);
-    const mtb = padOf([start(), ...gamesOf('HHHHHH'), ...gamesOf('AAAAAA')], { bootstrap: noAd });
-    expect(foot(mtb)).toEqual([null, null]);
-    expect(foot(padOf([]))).toEqual([null, null]);
-    expect(foot(padOf([start(), ...gamesOf('HHHHHHHHHHHH')]))).toEqual([null, null]);
   });
 });
 

@@ -290,19 +290,209 @@ describe('tennis: the serve plate at 320 and 360 in four languages', () => {
   );
 });
 
-describe('tennis: a half’s foot at 320 and 360 in four languages', () => {
-  // "Games 12" at its widest (a set score's bound, 12 games), in the bottom row's slot beside "Tap": the half's inner width,
-  // less a gap on each side and the kit's word Tap.
-  const foot = (dictionary: Dictionary) =>
-    fill(said(dictionary, `${TN}.foot.games`), { games: '12' });
+describe('tennis: a half’s scoreboard row at 320 and 360 in four languages (rulings 240, 242)', () => {
+  /** `boardLabel`: Barlow Condensed 600 at 12, uppercase, letter-spaced. */
+  const labelWidth = (text: string) =>
+    barlow600.width(text.toUpperCase(), typeScale.boardLabel.fontSize) +
+    typeScale.boardLabel.letterSpacing * [...text].length;
+  /** A set's box: two tabular digits of `boardScore` and the box's padding, never under `padBoardBox`. */
+  const boxWidth = Math.max(
+    layout.padBoardBox,
+    barlow700.width('00', typeScale.boardScore.fontSize) + 2 * space.xs,
+  );
+  /** The items' room: the half's inner width less the gap and the word Tap, which gives way before them. */
+  const itemsRoom = (width: number, dictionary: Dictionary) =>
+    halfInner(width) - space.sm - unitWidth(said(dictionary, 'scoring.pad.tap'));
+  const DOT = layout.padDot + layout.padDotGap;
+  /** Lines the row's items take: the label and the boxes, then the dots wrapping after them. */
+  const rowLines = (room: number, dictionary: Dictionary, sets: number, dots: number) => {
+    const lead =
+      sets === 0
+        ? 0
+        : labelWidth(said(dictionary, `${TN}.board.sets`)) +
+          space.xs +
+          sets * (boxWidth + space.xs);
+    const first = Math.max(0, Math.floor((room - lead + layout.padDotGap) / DOT));
+    const rest = Math.max(0, dots - first);
+    return 1 + Math.ceil(rest / Math.max(1, Math.floor((room + layout.padDotGap) / DOT)));
+  };
 
-  it.each(LANGUAGES)('%s: the foot is never cut beside Tap', (lang, dictionary: Dictionary) => {
-    const tap = unitWidth(said(dictionary, 'scoring.pad.tap'));
-    for (const width of WIDTHS)
-      expect(controlWidth(foot(dictionary)), `${lang} @${width}`).toBeLessThanOrEqual(
-        halfInner(width) - 2 * space.sm - tap,
-      );
+  it('keeps a numbered dot at the owner’s floor of 20 dp', () => {
+    expect(layout.padDot).toBeGreaterThanOrEqual(20);
   });
+
+  it.each(LANGUAGES)(
+    '%s: the Sets label and four set boxes stand whole on a line at both widths',
+    (lang, dictionary: Dictionary) => {
+      for (const width of WIDTHS)
+        expect(
+          labelWidth(said(dictionary, `${TN}.board.sets`)) + space.xs + 4 * (boxWidth + space.xs),
+          `${lang} @${width}`,
+        ).toBeLessThanOrEqual(itemsRoom(width, dictionary));
+    },
+  );
+
+  it.each(LANGUAGES)(
+    '%s: twelve dots (6-6) beside two set boxes take at most two lines, one beside none',
+    (lang, dictionary: Dictionary) => {
+      for (const width of WIDTHS) {
+        const room = itemsRoom(width, dictionary);
+        expect(rowLines(room, dictionary, 2, 12), `${lang} @${width}`).toBeLessThanOrEqual(2);
+        expect(rowLines(room, dictionary, 0, 12), `${lang} @${width}`).toBeLessThanOrEqual(2);
+      }
+    },
+  );
+
+  // Anti-vacuity: the dots do not all fit one line beside two boxes at 320 (that is why they wrap), and fewer do.
+  it('would not hold twelve dots on the line beside two set boxes at 320, and holds five', () => {
+    expect(rowLines(itemsRoom(320, en), en, 2, 12)).toBe(2);
+    expect(rowLines(itemsRoom(320, en), en, 2, 5)).toBe(1);
+  });
+
+  it.each(LANGUAGES)(
+    '%s: a screen reader’s "Games 12: …" and "Sets: …" words are filled',
+    (_lang, dictionary: Dictionary) => {
+      const spoken = fill(said(dictionary, `${TN}.board.gamesWon`), {
+        count: '3',
+        games: '1, 3, 4',
+      });
+      expect(spoken).toContain('3');
+      expect(spoken).toContain('1, 3, 4');
+      expect(said(dictionary, `${TN}.board.said`)).toContain('{label}');
+    },
+  );
+});
+
+describe('tennis: the final board at 320 and 360 in four languages (ruling 239)', () => {
+  const labelWidth = (text: string) =>
+    barlow600.width(text.toUpperCase(), typeScale.boardLabel.fontSize) +
+    typeScale.boardLabel.letterSpacing * [...text].length;
+  const digits = (text: string) => barlow700.width(text, typeScale.finalScore.fontSize);
+  const small = (text: string) => barlow700.width(text, typeScale.boardScore.fontSize);
+  /** A box's width: its label or value, never under `padFinalBox`, with the box's padding. */
+  const box = (label: string, value: string, bracket = '') =>
+    Math.max(
+      layout.padFinalBox,
+      labelWidth(label),
+      digits(value) + (bracket === '' ? 0 : small(`(${bracket})`)) + 2 * space.xs,
+    );
+  const row = (dictionary: Dictionary, sets: number, bracketAt: number | null) => {
+    const labels = [
+      ...Array.from({ length: sets }, (_, at) =>
+        fill(said(dictionary, `${TN}.board.set`), { set: String(at + 1) }),
+      ),
+      said(dictionary, `${TN}.board.sets`),
+    ];
+    const widths = labels.map((label, at) => box(label, '6', at === bracketAt ? '6' : ''));
+    return widths.reduce((sum, one) => sum + one, 0) + (widths.length - 1) * space.xs;
+  };
+
+  it.each(LANGUAGES)(
+    '%s: a four-box board (Set 1, Set 2, MTB, Sets) fits the half, with a tie-break loser’s brackets',
+    (lang, dictionary: Dictionary) => {
+      const mtb = said(dictionary, `${TN}.board.mtb`);
+      const labels = [
+        fill(said(dictionary, `${TN}.board.set`), { set: '1' }),
+        fill(said(dictionary, `${TN}.board.set`), { set: '2' }),
+        mtb,
+        said(dictionary, `${TN}.board.sets`),
+      ];
+      const widths = labels.map((label, at) => box(label, '10', at === 0 ? '6' : ''));
+      const total = widths.reduce((sum, one) => sum + one, 0) + 3 * space.xs;
+      for (const width of WIDTHS)
+        expect(total, `${lang} @${width}`).toBeLessThanOrEqual(halfInner(width));
+    },
+  );
+
+  it.each(LANGUAGES)(
+    '%s: a best of five (five set boxes and Sets) fits the half at both widths',
+    (lang, dictionary: Dictionary) => {
+      for (const width of WIDTHS)
+        expect(row(dictionary, 5, null), `${lang} @${width}`).toBeLessThanOrEqual(halfInner(width));
+    },
+  );
+
+  it('is measured against something real (anti-vacuity): nine boxes would not fit at 320', () => {
+    expect(row(en, 8, null)).toBeGreaterThan(halfInner(320));
+  });
+
+  it.each(LANGUAGES)(
+    '%s: the WON plate, "Final" and the strip’s slot',
+    (lang, dictionary: Dictionary) => {
+      const plate = (text: string) =>
+        barlow700.width(text.toUpperCase(), typeScale.state.fontSize) +
+        typeScale.state.letterSpacing * [...text].length;
+      for (const width of WIDTHS) {
+        expect(
+          plate(said(dictionary, `${TN}.board.won`)) + 2 * space.sm,
+          `${lang} @${width}`,
+        ).toBeLessThanOrEqual((halfInner(width) * 2) / 5);
+        expect(
+          linesOf(said(dictionary, `${TN}.final`), stripSlot(width), unitWidth),
+          `${lang} @${width}`,
+        ).toBe(1);
+      }
+    },
+  );
+});
+
+describe('tennis: History’s game headings at 320 and 360 in four languages (ruling 238)', () => {
+  const headingWidth = (text: string) =>
+    barlow700.width(text.toUpperCase(), typeScale.state.fontSize) +
+    typeScale.state.letterSpacing * [...text].length;
+  const LONG = 'Anastasia Vandenberghe-Oyelaran / Konstantinos Wolfeschlegelstein';
+  const KEYS = [
+    'game',
+    'gameNoServer',
+    'gameWon',
+    'gameWonNoServer',
+    'tiebreak',
+    'tiebreakWon',
+    'matchTiebreak',
+    'matchTiebreakWon',
+  ] as const;
+
+  it.each(LANGUAGES)(
+    '%s: every heading, with two doubles pairs for server and winner, in the cover’s column in at most five lines (two 65-character pairs is the extreme), no word broken',
+    (lang, dictionary: Dictionary) => {
+      for (const key of KEYS) {
+        const text = fill(said(dictionary, `${TN}.history.${key}`), {
+          set: '3',
+          game: '12',
+          server: LONG,
+          winner: LONG,
+        });
+        for (const width of WIDTHS) {
+          expect(wordsFit(text, column(width), headingWidth), `${lang} ${key} @${width}`).toBe(
+            true,
+          );
+          expect(
+            linesOf(text, column(width), headingWidth),
+            `${lang} ${key} @${width}`,
+          ).toBeLessThanOrEqual(5);
+        }
+      }
+    },
+  );
+
+  it.each(LANGUAGES)(
+    '%s: a singles heading is one or two lines',
+    (lang, dictionary: Dictionary) => {
+      for (const key of KEYS) {
+        const text = fill(said(dictionary, `${TN}.history.${key}`), {
+          set: '3',
+          game: '12',
+          server: 'Ana Ruiz',
+          winner: 'Bea Lund',
+        });
+        for (const width of WIDTHS)
+          expect(
+            linesOf(text, column(width), headingWidth),
+            `${lang} ${key} @${width}`,
+          ).toBeLessThanOrEqual(2);
+      }
+    },
+  );
 });
 
 describe('tennis: the rules rows and the result card at 320 and 360 in four languages', () => {
@@ -426,7 +616,7 @@ describe('tennis: the violation, award and break sheets at 320 and 360 in four l
 
   // The sentences a step says in the body role: wrapping at spaces, never broken, in at most four lines.
   it.each(LANGUAGES)(
-    '%s: the questions, the confirm lines and the done lines in at most four lines, no word broken',
+    '%s: the questions, the confirm lines and the done lines in at most five lines (two 65-character pairs is the extreme), no word broken',
     (_lang, dictionary: Dictionary) => {
       const side = SIDES[2];
       const lines = [
@@ -557,7 +747,9 @@ describe('tennis: every word it has is measured here (the sweep)', () => {
     /^note\./,
     /^endsChange$/,
     /^endingPending$/,
-    /^foot\.games$/,
+    /^board\./,
+    /^final$/,
+    /^history\./,
     /^rules\./,
     /^ending\./,
     /^result$/,
@@ -578,7 +770,6 @@ describe('tennis: every word it has is measured here (the sweep)', () => {
     hint: 'the half’s spoken hint: never drawn (the kit draws the word Tap)',
     serving: 'the plate’s word: the serve plate group above',
     setsTally: 'said to a screen reader only',
-    'foot.gamesSaid': 'said to a screen reader only',
     'level.warning':
       'a level’s word: a screen reader, and the violation sheet’s choices (measured with the sheets)',
     'level.pointPenalty':

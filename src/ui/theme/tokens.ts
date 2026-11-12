@@ -349,6 +349,20 @@ const base = {
    */
   padPeriodBox: 26,
   /**
+   * A tennis half's scoreboard (S2-7 Task 18, rulings 240, 242): a box of the row is at least this wide (two tabular digits of
+   * `boardScore` and its padding), and as tall as the line of `boardScore`; a numbered game dot is a circle of `padDot` (the
+   * owner's floor, 20), `padDotGap` apart. The row keeps one box's height with no dot, so the first one moves nothing, and
+   * wraps its dots to a second line when twelve and the set boxes do not fit (`tennisFit.test.ts`).
+   */
+  padBoardBox: 28,
+  padDot: 20,
+  padDotGap: 2,
+  /** The serving ball before a doubles server's name (ruling 235): a small lime disc. */
+  padBall: 9,
+  /** A final board's box (ruling 239): at least this wide, a set's games in `finalScore`, and growing to `padFinalBoxMax` while the row has room. */
+  padFinalBox: 36,
+  padFinalBoxMax: 64,
+  /**
    * A card icon in a half's top-right corner (owner ruling 56, 2026-11-04: "just small squere icon", a TV scoreboard's
    * card): an upright rectangle about 8 x 11 dp with a 1 dp radius and a hairline (`ink3`) so its edge reads against the
    * night ground. A yellow-red pair is two of them, `space.xs` apart.
