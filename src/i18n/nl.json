@@ -1076,7 +1076,7 @@
   "scoring.tennis.board.set": "Set {set}",
   "scoring.tennis.board.mtb": "STB",
   "scoring.tennis.board.won": "Winnaar",
-  "scoring.tennis.board.gamesWon": "Games {count}: {games}",
+  "scoring.tennis.board.gamesWon": "Gewonnen games {count}: {games}",
   "scoring.tennis.board.said": "{label}: {value}",
   "scoring.tennis.final": "Eindstand",
   "scoring.tennis.tool.violation": "Overtreding",

@@ -816,6 +816,23 @@ describe('ScoreHalf as a tennis scoreboard row', () => {
     },
   });
 
+  // Review I1 (Task 18 fix round 1): the row's real height, wrapped dot lines included, is charged to the big call. A half 198 tall
+  // holds the call at 96 beside a one-line row (22: 4 dp over the 18 bottom row, so 194 needed); a two-line row (48) leaves 168.
+  it.each([
+    [null, typeScale.score.fontSize],
+    [22, typeScale.score.fontSize],
+    [48, typeScale.scoreCompact.fontSize],
+    [70, typeScale.scoreCompact.fontSize],
+  ] as const)(
+    'steps the call down for a scoreboard row %s tall in a half 198 tall',
+    (row, size) => {
+      renderWithPorts(<ScoreHalf half={board([1, 3, 4], ['7', '6'])} flash={0} onTap={vi.fn()} />);
+      layOut(screen.getByTestId('half-first'), { width: 288, height: 198 });
+      if (row !== null) layOut(screen.getByTestId('scoreboard'), { width: 288, height: row });
+      expect(getComputedStyle(screen.getByTestId('score')).fontSize).toBe(`${size}px`);
+    },
+  );
+
   it('draws the Sets label and a box for each set over, then a numbered dot for each game won, then Tap', () => {
     renderWithPorts(<ScoreHalf half={board([1, 3, 4], ['7', '6'])} flash={0} onTap={vi.fn()} />);
     const row = screen.getByTestId('scoreboard');
@@ -848,7 +865,7 @@ describe('ScoreHalf as a tennis scoreboard row', () => {
     const said = en[`${T}gamesWon` as keyof typeof en]
       .replace('{count}', '3')
       .replace('{games}', '1, 3, 4');
-    expect(said).toBe('Games 3: 1, 3, 4');
+    expect(said).toBe('Games won 3: 1, 3, 4');
     expect(screen.getByRole('button', { name: `A. Sharma, 30, ${said}` })).toBeTruthy();
     expect(screen.queryByTestId('periods')).toBeNull();
   });
@@ -862,7 +879,10 @@ describe('ScoreHalf as a tennis scoreboard row', () => {
     expect(screen.getByTestId('server').textContent).toBe('Ana Ruiz serves');
     expect(
       screen.getByRole('button', {
-        name: 'A. Sharma, Ana Ruiz serves, 30, Games: 0'.replace('Games: 0', 'Games 3: 1, 3, 4'),
+        name: 'A. Sharma, Ana Ruiz serves, 30, Games: 0'.replace(
+          'Games: 0',
+          'Games won 3: 1, 3, 4',
+        ),
       }),
     ).toBeTruthy();
   });

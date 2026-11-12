@@ -83,14 +83,19 @@ function setBoxes(display: TennisDisplay, side: PadSide): readonly PadFinalBox<T
   return [...over, ...underWay(display, side)];
 }
 
-/** The set the organiser ended the match in, when a point was played in it: its games, or the match tie-break's points. */
+/** The set the organiser ended the match in, when a point was played in it: its games (0 and 0 before a game is won), or the match tie-break's points. */
 function underWay(display: TennisDisplay, side: PadSide): readonly PadFinalBox<TennisPadKey>[] {
   if (display.phase !== 'ended') return [];
   if (display.breaker === 'matchTiebreak')
     return display.call.first === '0' && display.call.second === '0'
       ? []
       : [{ label: MTB, value: display.call[side], tone: 'plain' }];
-  if (display.games.first + display.games.second === 0) return [];
+  // A point played in the set counts though no game is won yet (15-0 at a retirement): its box shows 0 and 0.
+  const played =
+    display.games.first + display.games.second > 0 ||
+    display.call.first !== '0' ||
+    display.call.second !== '0';
+  if (!played) return [];
   return [
     {
       label: setLabel(display.finished.length + 1),

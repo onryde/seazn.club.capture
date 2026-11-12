@@ -1076,7 +1076,7 @@
   "scoring.tennis.board.set": "Set {set}",
   "scoring.tennis.board.mtb": "MTB",
   "scoring.tennis.board.won": "Won",
-  "scoring.tennis.board.gamesWon": "Games {count}: {games}",
+  "scoring.tennis.board.gamesWon": "Games won {count}: {games}",
   "scoring.tennis.board.said": "{label}: {value}",
   "scoring.tennis.final": "Final",
   "scoring.tennis.tool.violation": "Violation",

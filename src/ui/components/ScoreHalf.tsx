@@ -48,6 +48,7 @@ export const ScoreHalf = memo(function ScoreHalf({ half, flash, onTap }: ScoreHa
   const words = usePadText();
   const tap = useCallback(() => onTap(half.side), [onTap, half.side]);
   const [height, measure] = useHeight();
+  const [rowHeight, measureRow] = useHeight();
   const sub = half.sub === null ? null : words(half.sub);
   const foot = half.foot == null ? null : words(half.foot.text);
   const spokenFoot = half.foot == null ? null : words(half.foot.said);
@@ -79,7 +80,9 @@ export const ScoreHalf = memo(function ScoreHalf({ half, flash, onTap }: ScoreHa
             variant={scoreRole(
               height === null
                 ? null
-                : height - footRoom(inSlot ? null : foot) - boardRoom(board, server !== null),
+                : height -
+                    footRoom(inSlot ? null : foot) -
+                    boardRoom(board, server !== null, rowHeight),
             )}
           >
             {half.value}
@@ -90,7 +93,11 @@ export const ScoreHalf = memo(function ScoreHalf({ half, flash, onTap }: ScoreHa
       </View>
       {foot === null || inSlot ? null : <HalfCounts text={foot} caution={caution} />}
       {board === null ? null : (
-        <ScoreboardRow board={board} hint={half.tappable ? words(half.action ?? TAP) : null} />
+        <ScoreboardRow
+          board={board}
+          hint={half.tappable ? words(half.action ?? TAP) : null}
+          onHeight={measureRow}
+        />
       )}
       {board !== null || final !== null ? null : (
         <HalfFoot

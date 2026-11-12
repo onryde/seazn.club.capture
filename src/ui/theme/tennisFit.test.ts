@@ -290,6 +290,19 @@ describe('tennis: the serve plate at 320 and 360 in four languages', () => {
   );
 });
 
+/**
+ * A pad half's height, ARITHMETIC as `volleyballFit.test.ts` writes it out (not measured, not imported): 32 (the safe area
+ * above) + 48 (the top bar) + the strip + 54 (the last-tap line, three lines) + 48 (the tool row) + five 8 dp gaps, shared by
+ * two halves: 201 at 320 × 640, 243 at 360 × 724. Whether text stays inside on a phone is the device's.
+ */
+const HALF_FIXED =
+  32 + 48 + layout.padStripLines * typeScale.metricUnit.lineHeight + 54 + 48 + 5 * 8;
+const PHONES = [
+  [320, 640],
+  [360, 724],
+] as const;
+const halfAt = (height: number) => (height - HALF_FIXED) / 2;
+
 describe('tennis: a half’s scoreboard row at 320 and 360 in four languages (rulings 240, 242)', () => {
   /** `boardLabel`: Barlow Condensed 600 at 12, uppercase, letter-spaced. */
   const labelWidth = (text: string) =>
@@ -319,6 +332,9 @@ describe('tennis: a half’s scoreboard row at 320 and 360 in four languages (ru
     const rest = Math.max(0, dots - first);
     return 1 + extra + Math.ceil(rest / Math.max(1, Math.floor((room + layout.padDotGap) / DOT)));
   };
+
+  /** What the games row says of its games, per language: they were won, so a listener cannot take them for games played. */
+  const WON_WORD = { en: /won/i, es: /ganados/i, fr: /gagnés/i, nl: /gewonnen/i } as const;
 
   it('keeps a numbered dot at the owner’s floor of 20 dp', () => {
     expect(layout.padDot).toBeGreaterThanOrEqual(20);
@@ -369,17 +385,84 @@ describe('tennis: a half’s scoreboard row at 320 and 360 in four languages (ru
   });
 
   it.each(LANGUAGES)(
-    '%s: a screen reader’s "Games 12: …" and "Sets: …" words are filled',
-    (_lang, dictionary: Dictionary) => {
+    '%s: a screen reader’s "Games won 3: …" and "Sets: …" words are filled, and say the games were won',
+    (lang, dictionary: Dictionary) => {
       const spoken = fill(said(dictionary, `${TN}.board.gamesWon`), {
         count: '3',
         games: '1, 3, 4',
       });
       expect(spoken).toContain('3');
       expect(spoken).toContain('1, 3, 4');
+      expect(spoken).toMatch(WON_WORD[lang]);
       expect(said(dictionary, `${TN}.board.said`)).toContain('{label}');
     },
   );
+});
+
+// Review I1 (Task 18 fix round 1): the vertical budget of the worst live board. A half holds, at the smallest call
+// (`scoreCompact`, 68): its padding (2 × 16), the names' two lines (22 each), the doubles server's line (18), the call and the
+// scoreboard row, whose first line is 22 and each wrapped dot line 20 + the 2 dp dot gap.
+describe('tennis: the worst live scoreboard fits a half’s height (arithmetic; ruling 242)', () => {
+  const labelWidth = (text: string) =>
+    barlow600.width(text.toUpperCase(), typeScale.boardLabel.fontSize) +
+    typeScale.boardLabel.letterSpacing * [...text].length;
+  const boxWidth = Math.max(
+    layout.padBoardBox,
+    barlow700.width('00', typeScale.boardScore.fontSize) + 2 * space.xs,
+  );
+  const DOT = layout.padDot + layout.padDotGap;
+  /** Lines of the row beside `sets` finished-set boxes and twelve dots, as the width model of the row above counts them. */
+  const linesOf12 = (width: number, dictionary: Dictionary, sets: number) => {
+    const room = halfInner(width) - space.sm - unitWidth(said(dictionary, 'scoring.pad.tap'));
+    const lead =
+      labelWidth(said(dictionary, `${TN}.board.sets`)) + space.xs + sets * (boxWidth + space.xs);
+    const first = Math.max(0, Math.floor((room - lead + layout.padDotGap) / DOT));
+    return 1 + Math.ceil(Math.max(0, 12 - first) / Math.floor((room + layout.padDotGap) / DOT));
+  };
+  const rowHeight = (lines: number) => 22 + (lines - 1) * (layout.padDot + layout.padDotGap);
+  const content = (lines: number, server: boolean) =>
+    2 * space.md +
+    2 * 22 +
+    (server ? 18 : 0) +
+    typeScale.scoreCompact.lineHeight +
+    rowHeight(lines);
+
+  it('uses the tokens it is written from', () => {
+    expect([typeScale.scoreCompact.lineHeight, typeScale.label.lineHeight, layout.padDot]).toEqual([
+      68, 22, 20,
+    ]);
+    expect([halfAt(640), halfAt(724)]).toEqual([201, 243]);
+  });
+
+  it.each(LANGUAGES)(
+    '%s: best of 5 (four sets over) with twelve dots, doubles’ server line included, fits the half at 360 × 724',
+    (lang, dictionary: Dictionary) => {
+      const lines = linesOf12(360, dictionary, 4);
+      expect(content(lines, true), `${lang} ${lines} lines`).toBeLessThanOrEqual(halfAt(724));
+    },
+  );
+
+  // At 320 × 640 the half is 201: the call at its smallest, the names and the server's line leave 39 dp, which holds the
+  // row's first line and one wrapped line only when the names or the server's line take less than they are budgeted. The
+  // worst board (four sets over, twelve dots) overflows that budget by these dp, pinned so it cannot grow unseen; the
+  // overflow lands in the half's 16 dp padding first, and the device check judges the rest.
+  it.each([
+    ['en', en, 5, 0],
+    ['es', es, 27, 9],
+    ['fr', fr, 27, 9],
+    ['nl', nl, 5, 0],
+  ] as const)(
+    '%s: at 320 × 640 the worst board is over the budget by %i dp with the doubles’ server line, %i dp without',
+    (lang, dictionary: Dictionary, doubles, singles) => {
+      const lines = linesOf12(320, dictionary, 4);
+      expect(Math.max(0, content(lines, true) - halfAt(640)), lang).toBe(doubles);
+      expect(Math.max(0, content(lines, false) - halfAt(640)), lang).toBe(singles);
+    },
+  );
+
+  it('two dot lines (twelve dots beside two set boxes) fit a singles half at 320 × 640', () => {
+    expect(content(linesOf12(320, en, 2), false)).toBeLessThanOrEqual(halfAt(640));
+  });
 });
 
 describe('tennis: the final board at 320 and 360 in four languages (ruling 239)', () => {
@@ -445,6 +528,20 @@ describe('tennis: the final board at 320 and 360 in four languages (ruling 239)'
               `${lang} best of ${bestOf} mtb ${mtb} @${width}`,
             ).toBeLessThanOrEqual(2);
           }
+    },
+  );
+
+  // Review I1 (Task 18 fix round 1): the half's height. The final half has no bottom row: its padding (at least 8 dp a side),
+  // the names' two lines (22 each) and the board, each of its lines a label (14), a 4 dp gap and a `finalScore` (48), the lines
+  // 4 dp apart. The worst board is a best of 5 with a bracket on every loser box.
+  it.each(LANGUAGES)(
+    '%s: the worst final board (five sets, every bracket, and Sets) fits a half at 320 × 640 and 360 × 724',
+    (lang, dictionary: Dictionary) => {
+      for (const [width, height] of PHONES) {
+        const rows = lines(board(dictionary, 5, false, [0, 1, 2, 3, 4]), halfInner(width));
+        const content = 2 * space.sm + 2 * 22 + rows * (14 + 4 + 48) + (rows - 1) * 4;
+        expect(content, `${lang} ${rows} rows @${width}`).toBeLessThanOrEqual(halfAt(height));
+      }
     },
   );
 

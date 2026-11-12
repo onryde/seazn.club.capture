@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import type { PadFinalBox, PadScoreboard } from '@/domain/scoring/padView';
 import { usePadText } from '@/hooks/usePadText';
 import type { MessageKey } from '@/i18n/messages';
@@ -18,14 +18,19 @@ type FinalBox = PadFinalBox<MessageKey>;
 
 /**
  * The room a scoreboard half's rows take beyond the one bottom row `halfNeeds` counts, for the score's size (`scoreRole`): the
- * server's line, and the row's box where it is taller than that row. Dots that wrap to a second line (twelve beside two set
- * boxes at 320 dp, ruling 242) add a line the score is not told of, which the device check judges.
+ * server's line, and the row as laid out where it is taller than that row. The row's height is the phone's own measure
+ * (`ScoreboardRow`'s `onLayout`), so dots that wrap to a second or third line (twelve beside four set boxes at 320 dp, ruling
+ * 242) take room from the score; before it is measured the row is one line.
  */
-export function boardRoom(board: Board | null | undefined, serverShown: boolean): number {
+export function boardRoom(
+  board: Board | null | undefined,
+  serverShown: boolean,
+  rowHeight: number | null = null,
+): number {
   const server = serverShown ? typeScale.control.lineHeight : 0;
   if (board === null || board === undefined) return server;
   const bottom = Math.max(typeScale.control.lineHeight, typeScale.metricUnit.lineHeight);
-  return server + Math.max(0, typeScale.boardScore.lineHeight - bottom);
+  return server + Math.max(0, (rowHeight ?? typeScale.boardScore.lineHeight) - bottom);
 }
 
 /** The server's name under the side's names, the serving ball before it: one line, cut with an ellipsis rather than wrapped. */
@@ -49,13 +54,16 @@ export const ServerLine = memo(function ServerLine({ words }: { readonly words: 
 export const ScoreboardRow = memo(function ScoreboardRow({
   board,
   hint,
+  onHeight,
 }: {
   readonly board: Board;
   readonly hint: string | null;
+  /** The row's height as laid out, for the score's size (`boardRoom`). */
+  readonly onHeight: (event: LayoutChangeEvent) => void;
 }) {
   const words = usePadText();
   return (
-    <View testID="scoreboard" aria-hidden style={styles.row}>
+    <View testID="scoreboard" aria-hidden style={styles.row} onLayout={onHeight}>
       <View style={styles.items}>
         {board.sets.length === 0 ? null : (
           <>
@@ -145,7 +153,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
-    gap: space.xs,
+    columnGap: space.xs,
+    // Wrapped dot lines stand one dot gap apart, so a third line costs 22 dp, not 24.
+    rowGap: layout.padDotGap,
     minHeight: typeScale.boardScore.lineHeight,
   },
   label: { flexShrink: 0, color: colour.ink3 },

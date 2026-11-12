@@ -242,6 +242,15 @@ describe('the final board (ruling 239)', () => {
     expect(won(view, 1)?.boxes.map((box) => box.value)).toEqual(['0', '1', '0']);
   });
 
+  it('shows a box of 0 and 0 for the set under way of an ended match with a point played but no game won', () => {
+    const view = padOf([start(), ...points('H'), forfeit('A', 'retired')]);
+    expect(won(view, 0)?.boxes.map((box) => [box.label, box.value])).toEqual([
+      [set(1), '0'],
+      [SETS, '0'],
+    ]);
+    expect(won(view, 1)?.boxes.map((box) => box.value)).toEqual(['0', '0']);
+  });
+
   it('shows the match tie-break under way of an ended match as MTB with its points', () => {
     const noAd = withCfg(SINGLES, DOUBLES_NOAD_CFG);
     const view = padOf(

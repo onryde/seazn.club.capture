@@ -4,6 +4,7 @@ import {
   type EventEnvelope,
   type LineupPair,
 } from '@seazn/engine/core';
+import { closerOf, gameWinsAfter, START, type Snap } from '@/domain/scoring/tennisFoldFacts';
 import { tennisPadRules } from '@seazn/engine/pad';
 import { serveContext, type NestedState } from '@seazn/engine/sports/nested';
 import { tennis } from '@seazn/engine/sports/tennis';
@@ -175,19 +176,6 @@ function foldOf(
 /** The name of a thrown value, never its message (which can quote the server's bytes). */
 const nameOf = (error: unknown): string => (error instanceof Error ? error.name : typeof error);
 
-/** What the fold kept of the state just after an event: the numbers only, so a later event never reads a state that moved. */
-type Snap = {
-  readonly sets: number;
-  readonly home: number;
-  readonly away: number;
-  readonly kind: NestedState['points']['kind'];
-  readonly phase: NestedState['phase'];
-  /** The engine's serving side, null when it cannot name the order. */
-  readonly server: PadSide | null;
-};
-
-const START: Snap = { sets: 0, home: 0, away: 0, kind: 'standard', phase: 'pre', server: null };
-
 const snapOf = (state: Readonly<NestedState>): Snap => ({
   sets: state.sets.length,
   home: state.games.home,
@@ -217,31 +205,6 @@ function factsOf(before: Snap, after: Snap, state: Readonly<NestedState>): Tenni
     server: before.phase === 'pre' ? after.server : before.server,
     closed: closerOf(state, before, after, closedSet),
   };
-}
-
-/** The side that won the game (or set) an event closed, or none; a Set score closes a set with no game, and History reads it as its own group. */
-function closerOf(
-  state: Readonly<NestedState>,
-  before: Snap,
-  after: Snap,
-  closedSet: boolean,
-): PadSide | null {
-  const closed = state.sets[state.sets.length - 1];
-  if (closedSet)
-    return closed === undefined ? null : closed.home > closed.away ? 'first' : 'second';
-  if (after.home + after.away <= before.home + before.away) return null;
-  return after.home > before.home ? 'first' : 'second';
-}
-
-/** The set's game winners after an event: a closed set starts the next empty; a game won (awarded ones too) is added. */
-function gameWinsAfter(
-  wins: readonly PadSide[],
-  before: Snap,
-  after: Snap,
-  closed: PadSide | null,
-): readonly PadSide[] {
-  if (after.sets > before.sets) return [];
-  return closed === null ? wins : [...wins, closed];
 }
 
 /** The board a point left: the games of the game or set it closed, else the game's call. */
