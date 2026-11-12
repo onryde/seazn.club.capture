@@ -1,0 +1,148 @@
+import type { MatchContext } from '@/domain/scoring/matchContext';
+import type { PadSide } from '@/domain/scoring/padView';
+import type { SetBasedSide } from '@/domain/scoring/setBasedSides';
+import type { TennisCfg } from '@/domain/scoring/tennisEngine';
+
+/**
+ * Tennis's types (S2-7 Task 4; rulings 215-229), volleyball's `volleyballTypes.ts` in a file of its own so the fold, the
+ * events and later the pad can name them. Whoever keeps the score (the engine, through `foldTennis`) decides every field of
+ * the display: the pad only draws them. The top half is `home`, the bottom `away`.
+ */
+
+/** The ladder a phone sends, lightest first: `tennisPadRules.sanctionLevels` without `default` (ruling 218). */
+export type TennisLevel = 'warning' | 'point_penalty' | 'game_penalty';
+
+/** A level as read from the web: the phone never sends `default`, but the organiser's console does. */
+export type TennisSeenLevel = TennisLevel | 'default';
+
+/** A break's kind (`tennisPadRules.interruptionKinds`, ruling 220). */
+export type TennisBreakKind = 'medical' | 'toilet' | 'heat' | 'other';
+
+/**
+ * One tap the scorer can make. `violation.person` is a bootstrap person id (a doubles side's player), null for the side
+ * alone; `break.side` null is "Both / none"; `setScore.tb` is the tie-break's points, null for a set without one.
+ */
+export type TennisTap =
+  | { readonly kind: 'start' }
+  | { readonly kind: 'point'; readonly side: PadSide }
+  | {
+      readonly kind: 'setScore';
+      readonly first: number;
+      readonly second: number;
+      readonly tb: { readonly first: number; readonly second: number } | null;
+    }
+  | {
+      readonly kind: 'violation';
+      readonly side: PadSide;
+      readonly level: TennisLevel;
+      readonly person: string | null;
+    }
+  | { readonly kind: 'award'; readonly side: PadSide }
+  | { readonly kind: 'break'; readonly breakKind: TennisBreakKind; readonly side: PadSide | null };
+
+/** What a point closed: nothing, a game, a set or the match. */
+export type TennisWon = 'none' | 'game' | 'set' | 'match';
+
+/** A person a record names: by the name the sheet gives, or (`name` null) one the sheet no longer lists. */
+export type TennisPerson = { readonly name: string | null };
+
+/** What the last tap did; `undone` names the tap Undo took back. */
+export type TennisLastTap =
+  | { readonly kind: 'start' }
+  | {
+      readonly kind: 'point';
+      readonly side: PadSide;
+      readonly set: number;
+      readonly won: TennisWon;
+    }
+  | {
+      readonly kind: 'setScore';
+      readonly first: number;
+      readonly second: number;
+      readonly tb: { readonly first: number; readonly second: number } | null;
+    }
+  | {
+      readonly kind: 'violation';
+      readonly side: PadSide;
+      readonly level: TennisSeenLevel;
+      readonly person: TennisPerson | null;
+    }
+  | { readonly kind: 'award'; readonly side: PadSide }
+  | { readonly kind: 'break'; readonly breakKind: TennisBreakKind; readonly side: PadSide | null }
+  | { readonly kind: 'undone'; readonly tap: TennisUndoneTap };
+
+/** What a tap did when it was recorded: never an Undo. */
+export type TennisDone = Exclude<TennisLastTap, { readonly kind: 'undone' }>;
+
+/** A tap Undo took back, as the last-tap line names it: never the start, whose Undo returns to the Start screen. */
+export type TennisUndoneTap = Exclude<TennisDone, { readonly kind: 'start' }>;
+
+/**
+ * A set over, as the engine banks it: the games each side won, the tie-break's points when it was a tie-break set, and
+ * whether it was a match tie-break decider (whose "games" are its points). `text` is the one-line form the result and the
+ * strip use ("7–6(5)", "3–6", "[10–7]"): numbers and punctuation, never translated.
+ */
+export type TennisSetLine = {
+  readonly first: number;
+  readonly second: number;
+  readonly winner: PadSide;
+  readonly tiebreak: { readonly first: number; readonly second: number } | null;
+  readonly matchTiebreak: boolean;
+  readonly text: string;
+};
+
+/** How the organiser ended the match (ruling 225, G2); `side` is the side at fault, null when neither is. */
+export type TennisEnding = {
+  readonly kind: 'retired' | 'defaulted' | 'walkover' | 'withdrew' | 'abandoned';
+  readonly side: PadSide | null;
+};
+
+/** Not started; under way; won on court; ended by the organiser. */
+export type TennisPhase = 'notStarted' | 'live' | 'decided' | 'ended';
+
+/** A game's call for one side: 0, 15, 30, 40, AD, or a breaker's points as a number. */
+export type TennisCall = string;
+
+export type TennisDisplay = {
+  readonly sides: Readonly<Record<PadSide, SetBasedSide>>;
+  readonly doubles: boolean;
+  readonly context: MatchContext;
+  readonly cfg: TennisCfg;
+  readonly phase: TennisPhase;
+  /** The set under way, or about to start; the last one once the match is decided. */
+  readonly set: number;
+  /** The games of that set. */
+  readonly games: Readonly<Record<PadSide, number>>;
+  readonly call: Readonly<Record<PadSide, TennisCall>>;
+  readonly breaker: 'tiebreak' | 'matchTiebreak' | null;
+  readonly note: 'deuce' | 'decidingPoint' | null;
+  readonly endsChanged: boolean;
+  /** The engine's serving side, or null when it cannot name one (`serveContext.serveOrderKnown` false, F1). */
+  readonly serving: PadSide | null;
+  readonly setsWon: Readonly<Record<PadSide, number>>;
+  readonly finished: readonly TennisSetLine[];
+  /** The heaviest violation each side holds in the set under way (a per-set walk; an undone one is not counted). */
+  readonly heaviest: Readonly<Record<PadSide, TennisSeenLevel | null>>;
+  /** The points and set scores standing in the scorer's view, this phone's legal queued taps on top. */
+  readonly scoreEvents: number;
+  readonly ending: TennisEnding | null;
+  /** A `default` is recorded and the organiser's forfeit has not landed: the engine refuses every tap (G1). */
+  readonly endingPending: boolean;
+  readonly lastTap: TennisLastTap | null;
+  /** This phone has a tap of its own that Undo can take back. */
+  readonly undoable: boolean;
+};
+
+/**
+ * Every dictionary key the pad and its History words name. The pad's keys arrive with the pad (Task 6); until then any
+ * `scoring.` key is allowed here and nothing names one.
+ */
+export type TennisPadKey = `scoring.${string}`;
+
+/** Tennis's pad types: what the match runtime is generic over (`SportTypes`). */
+export type TennisTypes = {
+  readonly tap: TennisTap;
+  readonly display: TennisDisplay;
+  readonly padKey: TennisPadKey;
+  readonly undone: TennisUndoneTap;
+};
