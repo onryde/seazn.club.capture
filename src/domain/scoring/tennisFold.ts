@@ -31,6 +31,7 @@ import {
   type TennisEngineMatch,
 } from '@/domain/scoring/tennisEngine';
 import { tennisHistory, type TennisHistoryEntry } from '@/domain/scoring/tennisHistory';
+import { serveEventsIn } from '@/domain/scoring/tennisPointDetails';
 import {
   endingKindOf,
   isSeenLevel,
@@ -305,10 +306,12 @@ function displayOf(
     serving: servingOf(state),
     servingPerson: servingPersonOf(state, match.names),
     toss: state.opener === undefined ? null : sideOf(state.opener),
+    serverId: serverIdOf(state, match.names),
     setsWon: pairOf(state.setsWon),
     finished: state.sets.map((closed) => setLineOf(closed)),
     heaviest: heaviestOf(match, stream, set, facts),
     scoreEvents: standing(stream.envelopes, 'tennis.point', 'tennis.set_summary').length,
+    serveEvents: serveEventsIn(stream.envelopes),
     ending,
     endingPending: phase === 'live' && defaultStands(stream.envelopes),
     lastTap: lastTapOf(stream.envelopes, recorded, undoneTap),
@@ -356,6 +359,20 @@ function servingPersonOf(state: Readonly<NestedState>, names: SetBasedNames): st
   if (guarded(() => R.breakerInForce(state), true)) return null;
   const members = names.members[sideOf(serve.side)];
   return members.find((one) => one.personId === serve.personId)?.fullName ?? null;
+}
+
+/**
+ * The person a detailed point names as its server (ruling 234): none unless the engine names the order (`serveOrderKnown`);
+ * then the doubles server the engine names outside a breaker (as `servingPersonOf`), or a singles side's one player, whose
+ * side `serving` names exactly, in a breaker too. Never a guess: a doubles pair with no order, or in a breaker, names none.
+ */
+function serverIdOf(state: Readonly<NestedState>, names: SetBasedNames): string | null {
+  const serve = serveContext(state);
+  if (!serve.serveOrderKnown) return null;
+  if (serve.personId !== null && !guarded(() => R.breakerInForce(state), true))
+    return serve.personId;
+  const members = names.members[sideOf(serve.side)];
+  return members.length === 1 ? members[0].personId : null;
 }
 
 function setLineOf(closed: NestedState['sets'][number]): TennisSetLine {

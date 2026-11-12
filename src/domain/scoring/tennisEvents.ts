@@ -3,6 +3,7 @@ import type { QueuedEvent } from '@/domain/scoring/queue';
 import type { SportEvent, SportEventContext } from '@/domain/scoring/scoringSport';
 import { seatsOf } from '@/domain/scoring/setBasedSides';
 import { isBreakKind, isSeenLevel } from '@/domain/scoring/tennisLedgerHistory';
+import { POINT_DETAILS_HOLD_MS, pointDetailsForSend } from '@/domain/scoring/tennisPointDetails';
 import type { TennisDisplay, TennisTap, TennisTypes } from '@/domain/scoring/tennisTypes';
 import type { BootstrapSide, LedgerEvent } from '@/domain/scoring/wire';
 
@@ -11,8 +12,8 @@ import type { BootstrapSide, LedgerEvent } from '@/domain/scoring/wire';
  * (`volleyballEvents`). The top half is `home`, the bottom `away`. The engine judges whether the event is legal now
  * (`foldTennis`'s `legalQueued`); this decides only what the tap is, and refuses (null) a tap that names what the match does
  * not have: an empty seat, a person the side does not list, a level or a break kind the pad does not send. The pad never
- * writes `core.forfeit`, `core.settle`, `core.abandon`, a sanction at level `default`, a point with `server`, `scorer` or
- * `meta`, a break with `person`, `duration` or `at`, or a `reason` on a sanction or an award (AGENTS §1; rulings 217, 218,
+ * writes `core.forfeit`, `core.settle`, `core.abandon`, a sanction at level `default`, a point with `scorer`, or with
+ * `server` or `meta` unless the scorer turned the point details on (ruling 234), a break with `person`, `duration` or `at`, or a `reason` on a sanction or an award (AGENTS §1; rulings 217, 218,
  * 220).
  */
 
@@ -31,7 +32,7 @@ export function tennisEventFor(tap: TennisTap, { bootstrap, display }: Context):
     case 'toss':
       return tossEvent(seats, tap.side, display);
     case 'point':
-      return { type: 'tennis.point', payload: { by: seats[tap.side].entrantId } };
+      return pointEvent(seats, tap, display);
     case 'setScore':
       return setScoreEvent(tap);
     case 'violation':
@@ -51,6 +52,27 @@ export function tennisEventFor(tap: TennisTap, { bootstrap, display }: Context):
 function tossEvent(seats: Seats, side: PadSide, display: TennisDisplay): SportEvent | null {
   if (display.phase !== 'notStarted' || display.toss !== null) return null;
   return { type: 'tennis.toss', payload: { serving: seats[side].entrantId } };
+}
+
+/**
+ * A point: `{by}` alone, sent at once (ruling 217); with the details on (ruling 234), held for its chips
+ * (`POINT_DETAILS_HOLD_MS`), naming the server the engine names (`serverId`), and carrying the count of serve events it was
+ * made at, so its send can tell whether that server still stands (`pointDetailsForSend`).
+ */
+function pointEvent(
+  seats: Seats,
+  tap: Extract<TennisTap, { readonly kind: 'point' }>,
+  display: TennisDisplay,
+): SportEvent {
+  const by = seats[tap.side].entrantId;
+  if (tap.details !== true) return { type: 'tennis.point', payload: { by } };
+  const { serverId } = display;
+  return {
+    type: 'tennis.point',
+    payload: serverId === null ? { by } : { by, server: serverId },
+    base: display.serveEvents,
+    hold: POINT_DETAILS_HOLD_MS,
+  };
 }
 
 /** A set's games, and the tie-break's points only for a set that had one. */
@@ -105,15 +127,15 @@ function breakEvent(
 }
 
 /**
- * The payload to send for a queued tap: as queued. Tennis holds no anchor (ruling 216: no serve question, and a point is
- * `{by}` alone), so nothing in a payload can go stale between its making and its send, and over one ledger the answer is
- * one payload however often it is asked.
+ * The payload to send for a queued tap: as queued, but for a detailed point whose serve moved under it (another scorer's
+ * point while it was held: `pointDetailsForSend`), which goes as the side alone. Over one ledger the answer is one payload
+ * however often it is asked.
  */
 export function tennisPayloadForSend(
   queued: QueuedEvent,
-  _ledger: readonly LedgerEvent[],
-  _copied: boolean,
+  ledger: readonly LedgerEvent[],
+  copied: boolean,
   _send: unknown,
 ): unknown {
-  return queued.payload;
+  return pointDetailsForSend(queued, ledger, copied);
 }

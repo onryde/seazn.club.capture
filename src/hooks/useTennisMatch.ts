@@ -5,6 +5,7 @@ import type { MatchPad } from '@/domain/scoring/scoringMatchView';
 import type { HalfFlash } from '@/domain/scoring/tapFlash';
 import { tennisPeopleOf, violationDone, type TennisPeople } from '@/domain/scoring/tennisSanction';
 import { tennisSport } from '@/domain/scoring/tennisSport';
+import { chipOf, chipTools, type TennisPointKind } from '@/domain/scoring/tennisPointDetails';
 import type { TennisDisplay, TennisPadKey, TennisTypes } from '@/domain/scoring/tennisTypes';
 import type { PadActions, PadScreenModel, ScoringMatch } from '@/hooks/padScreenModel';
 import type { RunnerSnapshot, ScoringRunner } from '@/hooks/scoringRunner';
@@ -20,6 +21,7 @@ import {
 import type { Ports } from '@/hooks/usePorts';
 import { useLinks, useScoringMatch, useSender, type MatchSender } from '@/hooks/useScoringMatch';
 import { useBackToHome } from '@/hooks/useStreamLinks';
+import { useTennisPointDetails, type TennisPointDetails } from '@/hooks/useTennisPointDetails';
 import {
   useTennisSheets,
   type TennisSheetDriver,
@@ -47,6 +49,8 @@ export type TennisPadActions = PadActions & {
   /** The Start screen: the pick of who serves first (ruling 233), then Start match, which queues the toss before the start. */
   readonly pickServer: (side: PadSide) => void;
   readonly start: () => void;
+  /** The match's "Point details" switch, in Match details (ruling 234). */
+  readonly togglePointDetails: () => void;
   /** The reconnect question (owner ruling 43): Send my taps, Discard them (which asks again) and its confirm's Discard. */
   readonly sendTaps: () => void;
   readonly askDiscard: () => void;
@@ -57,6 +61,8 @@ export type TennisPadActions = PadActions & {
 export type TennisPadModel = PadScreenModel<TennisPadKey, TennisSheetView> & {
   /** The Start screen's pick of who serves first; none until the scorer picks, and none once the match starts. */
   readonly toss: PadSide | null;
+  /** The match's "Point details" switch (ruling 234): on, a point is held for its chips, which stand in the tools' place. */
+  readonly pointDetails: boolean;
   readonly actions: TennisPadActions;
 };
 
@@ -77,21 +83,18 @@ function useTennisPad(
   const [cardNote, setCardNote] = useState<MessageKey | null>(null);
   const settle = useSettle(sender.say);
   const undoStart = useUndoWithToss(sender, pad?.display, ports.logger);
-  const driver = useMemo<PadTapDriver>(
-    () => ({
-      rally: (side) => sender.tap({ kind: 'point', side }),
-      undo: undoStart,
-    }),
-    [sender, undoStart],
-  );
+  const details = useTennisPointDetails(ports, runner);
+  const rally = usePoint(sender, details, pad?.display);
+  const driver = useMemo<PadTapDriver>(() => ({ rally, undo: undoStart }), [rally, undoStart]);
   const taps = useTaps(driver, settle, sender.say, setFlash);
   const people = usePeople(runner);
   const sheets = useSheets(ports, runner, sender, taps.opening, pad, people);
-  const actions = useActions({ sender, runner, pad, taps, sheets, setCardNote });
+  const actions = useActions({ sender, runner, pad, taps, sheets, setCardNote, details });
   useBackCloses(sheets.open, sheets.back);
+  const { chips } = details;
   const view = useMemo(
-    () => (pad === null ? null : withViolationNote(pad.view, pad.display)),
-    [pad],
+    () => (pad === null ? null : withChips(withViolationNote(pad.view, pad.display), chips)),
+    [pad, chips],
   );
   return useMemo(
     () =>
@@ -105,10 +108,41 @@ function useTennisPad(
             cardNote,
             flash,
             toss: pad.toss,
+            pointDetails: details.on,
             actions,
           },
-    [pad, view, sheets.view, cardNote, flash, actions],
+    [pad, view, sheets.view, cardNote, flash, actions, details.on],
   );
+}
+
+/**
+ * A point to the side: with the Point details switch on (ruling 234), held for its chips, which are judged on the view the
+ * point was made on (`pointed`: who served it); off, `{by}` alone, sent at once (ruling 217).
+ */
+function usePoint(
+  sender: Sender,
+  details: TennisPointDetails,
+  display: TennisDisplay | undefined,
+): (side: PadSide) => PadOutcome {
+  const { on, pointed } = details;
+  return useCallback(
+    (side: PadSide) => {
+      const outcome = sender.tap({ kind: 'point', side, details: on });
+      if (outcome.ok && display !== undefined) pointed(side, display);
+      return outcome;
+    },
+    [sender, on, pointed, display],
+  );
+}
+
+/** While a point is held for its chips, they stand in the tools' place, sharing the row (no fixed slots). */
+function withChips(
+  view: PadView<TennisPadKey>,
+  chips: readonly TennisPointKind[] | null,
+): PadView<TennisPadKey> {
+  if (chips === null) return view;
+  const { toolSlots: _slots, ...rest } = view;
+  return { ...rest, tools: chipTools(chips) };
 }
 
 /**
@@ -227,10 +261,11 @@ type Parts = {
   readonly taps: ReturnType<typeof useTaps>;
   readonly sheets: ReturnType<typeof useSheets>;
   readonly setCardNote: (note: MessageKey | null) => void;
+  readonly details: TennisPointDetails;
 };
 
 function useActions(parts: Parts): TennisPadActions {
-  const { taps, sheets, sender, runner, pad } = parts;
+  const { taps, sheets, sender, runner, pad, details } = parts;
   const home = useBackToHome();
   const { pickServer, start } = useStart(runner, sender, pad, taps.opening);
   const asked = useAskActions(
@@ -240,7 +275,9 @@ function useActions(parts: Parts): TennisPadActions {
     sheets.actions.askDiscard,
   );
   const links = useLinks(runner, parts.setCardNote);
-  const tool = useGuardedTool(taps.secondTouch, sheets.actions.tool);
+  const open = useToolOrChip(sheets.actions.tool, details.chip);
+  const tool = useGuardedTool(taps.secondTouch, open);
+  const togglePointDetails = details.toggle;
   const { tapHalf, undo } = taps;
   return useMemo(
     () => ({
@@ -253,8 +290,35 @@ function useActions(parts: Parts): TennisPadActions {
       ...links,
       pickServer,
       start,
+      togglePointDetails,
     }),
-    [home, tapHalf, undo, tool, sheets.actions, asked, links, pickServer, start],
+    [
+      home,
+      tapHalf,
+      undo,
+      tool,
+      sheets.actions,
+      asked,
+      links,
+      pickServer,
+      start,
+      togglePointDetails,
+    ],
+  );
+}
+
+/** A tool in the row: a chip tags the held point (ruling 234); any other opens its sheet. */
+function useToolOrChip(
+  open: (id: string) => void,
+  chip: (kind: TennisPointKind) => void,
+): (id: string) => void {
+  return useCallback(
+    (id: string) => {
+      const kind = chipOf(id);
+      if (kind === null) open(id);
+      else chip(kind);
+    },
+    [open, chip],
   );
 }
 

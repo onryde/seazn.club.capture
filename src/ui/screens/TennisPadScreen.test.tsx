@@ -68,7 +68,11 @@ const aSecondOn = (app: LaunchedApp) => {
 const half = (side: 'first' | 'second') => screen.getByTestId(`half-${side}`);
 const score = (side: 'first' | 'second') => within(half(side)).getByTestId('score').textContent;
 const row = () => [...screen.getByTestId('tool-row').children];
-const cells = () => row().map((child) => child.querySelector('[role="button"]'));
+// A fixed row wraps each tool in a slot; the chips share the row with no slots, so a cell is then the button itself.
+const cells = () =>
+  row().map((child) =>
+    child.matches('[role="button"]') ? child : child.querySelector('[role="button"]'),
+  );
 const tools = () => cells().map((button) => button?.getAttribute('aria-label') ?? null);
 const drawn = () => cells().map((button) => button?.textContent ?? null);
 const enabled = () => cells().map((button) => button?.getAttribute('aria-disabled') !== 'true');
@@ -381,6 +385,69 @@ describe('doubles', () => {
     expect(buttons(screen.getByTestId('step-sheet'))).toEqual(
       expect.arrayContaining(['Ana Ruiz', 'Eva Vega']),
     );
+  });
+});
+
+// Ruling 234 (Task 17): the Point details switch in Match details, off by default; on, a point's chips stand in the tools'
+// place, Ace (the top side serves: it was picked at Start) or Double fault, Winner and Error, the error said in full.
+describe.each(['en', 'es', 'fr', 'nl'] as const)('the point details, in %s', (lang) => {
+  const words = DICTIONARIES[lang];
+  const detailsSwitch = () =>
+    screen.getByRole('switch', { name: words['scoring.tennis.details.switch'] });
+
+  async function switchOn(app: LaunchedApp) {
+    await tap(app, words['scoring.details.title']);
+    expect(detailsSwitch().getAttribute('aria-checked')).toBe('false');
+    aSecondOn(app);
+    act(() => fireEvent.click(detailsSwitch()));
+    await flush(400);
+    expect(detailsSwitch().getAttribute('aria-checked')).toBe('true');
+    await tap(app, words['panel.close']);
+  }
+
+  it('the switch is in Match details, off; on, the server’s point shows Ace, Winner and Error, and Ace brings the tools back', async () => {
+    const app = await started(TENNIS_TOUR_SEED, lang);
+    await switchOn(app);
+    await point(app, 'first');
+    expect(tools()).toEqual([
+      words['scoring.tennis.chip.ace'],
+      words['scoring.tennis.chip.winner'],
+      words['scoring.tennis.chip.errorSaid'],
+    ]);
+    expect(drawn()).toEqual([
+      words['scoring.tennis.chip.ace'],
+      words['scoring.tennis.chip.winner'],
+      words['scoring.tennis.chip.error'],
+    ]);
+    await tap(app, words['scoring.tennis.chip.ace']);
+    expect(tools()).toEqual([
+      words['scoring.tennis.tool.violation'],
+      words['scoring.tennis.tool.break'],
+      words['scoring.tennis.tool.award'],
+      words['scoring.tennis.tool.setScore'],
+    ]);
+  });
+
+  it('the receiver’s point shows Double fault, Winner and Error', async () => {
+    const app = await started(TENNIS_TOUR_SEED, lang);
+    await switchOn(app);
+    await point(app, 'second');
+    expect(drawn()).toEqual([
+      words['scoring.tennis.chip.doubleFault'],
+      words['scoring.tennis.chip.winner'],
+      words['scoring.tennis.chip.error'],
+    ]);
+  });
+
+  it('with the switch off, a point leaves the tools as they are', async () => {
+    const app = await started(TENNIS_TOUR_SEED, lang);
+    await point(app, 'first');
+    expect(drawn()).toEqual([
+      words['scoring.tennis.tool.violationShort'],
+      words['scoring.tennis.tool.break'],
+      words['scoring.tennis.tool.awardShort'],
+      words['scoring.tennis.tool.setScore'],
+    ]);
   });
 });
 

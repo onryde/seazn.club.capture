@@ -142,6 +142,54 @@ describe('tennis: the tool row at 320 and 360 in four languages', () => {
   });
 });
 
+// Ruling 234 (Task 17): while a detailed point is held its chips stand in the tools' place, at most three (Ace or Double
+// fault, Winner, Error), sharing the row as the tools do (no fixed slots). Every drawn chip in its lines with no word broken;
+// a four-cell row would not hold them, so the room measured is the three-cell row's.
+describe('tennis: the point chips at 320 and 360 in four languages', () => {
+  /** A cell's text in a row of three: the row less its two gaps, shared equally, less the cell's padding and border. */
+  const chipRoom = (width: number) =>
+    (column(width) - 2 * space.sm) / 3 - 2 * space.sm - 2 * layout.iconBorder;
+  const fits = (label: string, room: number) =>
+    linesOf(label, room, toolWidth) <= layout.padToolLines && wordsFit(label, room, toolWidth);
+  const CHIPS = ['chip.ace', 'chip.doubleFault', 'chip.winner', 'chip.error'];
+
+  it('leaves each chip’s text 72.67 dp at 320 and 86 at 360 (a row of three)', () => {
+    expect(WIDTHS.map((width) => Number(chipRoom(width).toFixed(2)))).toEqual([72.67, 86]);
+  });
+
+  it.each(LANGUAGES)(
+    '%s: every drawn chip in its lines, no word broken',
+    (_lang, dictionary: Dictionary) => {
+      for (const key of CHIPS)
+        for (const width of WIDTHS) {
+          const label = said(dictionary, `${TN}.${key}`);
+          expect(fits(label, chipRoom(width)), `${label} @${width}`).toBe(true);
+        }
+    },
+  );
+
+  // Anti-vacuity: the Spanish Winner is wider than a cell of four at 320 (its word "ganador" is 56.7 dp against 48), so the
+  // three-cell room is what holds it.
+  it('would not hold the Spanish Winner in a cell of four at 320', () => {
+    const toolRoom4 = (column(320) - 3 * space.sm) / 4 - 2 * space.sm - 2 * layout.iconBorder;
+    expect(fits(said(es, `${TN}.chip.winner`), toolRoom4)).toBe(false);
+  });
+
+  it.each(LANGUAGES)(
+    '%s: the Point details switch’s label on one line in the Match details sheet',
+    (_lang, dictionary: Dictionary) => {
+      for (const width of WIDTHS) {
+        // The sheet's content, less the row's padding, its gap and the 40 dp track (ChoiceRow, SwitchTrack).
+        const room = sheet(width) - 2 * layout.switchRowPadX - space.sm - layout.switchTrackW;
+        expect(
+          linesOf(said(dictionary, `${TN}.details.switch`), room, controlWidth),
+          `@${width}`,
+        ).toBe(1);
+      }
+    },
+  );
+});
+
 describe('tennis: the doubles server’s line beside the half’s foot at 320 and 360 in four languages', () => {
   // Ruling 235: "Ana Ruiz serves" in the half's bottom row, which `HalfFoot` never cuts (the counts and the hint give way
   // before it), so it must be whole in the half's inner width. The names are the longest a sheet gives a player here.
@@ -522,6 +570,8 @@ describe('tennis: every word it has is measured here (the sweep)', () => {
     /^undone\./,
     /^setHeading$/,
     /^setScore\./,
+    /^chip\.(ace|doubleFault|winner|error)$/,
+    /^details\.switch$/,
   ];
   /** Words the fit tests do not measure, each with the reason. */
   const ELSEWHERE: Readonly<Record<string, string>> = {
@@ -538,6 +588,7 @@ describe('tennis: every word it has is measured here (the sweep)', () => {
     'level.default':
       'a level’s word: a screen reader, and History’s sentences (measured with the History group)',
     player: 'a word standing for a name: measured inside the History sentences through the names',
+    'chip.errorSaid': 'the Error chip’s full word: said to a screen reader only',
   };
 
   it('every scoring.tennis key is in a measured group or has its reason', () => {

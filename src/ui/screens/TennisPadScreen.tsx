@@ -5,6 +5,7 @@ import type { TennisPadActions, TennisPadModel } from '@/hooks/useTennisMatch';
 import type { TennisSheetView } from '@/hooks/useTennisSheets';
 import { useT } from '@/hooks/useLanguage';
 import { AskSheet } from '@/ui/components/AskSheet';
+import { ChoiceRow } from '@/ui/components/ChoiceRow';
 import { KeepScreenOn } from '@/ui/components/KeepScreenOn';
 import { PadContent } from '@/ui/components/PadContent';
 import {
@@ -20,9 +21,10 @@ import { colour } from '@/ui/theme/tokens';
  * The tennis pad (S2-7 Task 11; spec layout A, owner ruling 38: a screen per sport), drawn from the model of
  * `useTennisMatch`. Its layout is the set-based sports' (`PadContent`): the top bar, the strip (Set N of M, the note and
  * Change ends), the two halves with the serve ball and the side's card, the last-tap line with the one Undo, and the four
- * tools that always fill the row (Violation, Break, Award game, Set score: rulings 228, 231, 232). What is tennis's here: that
- * the screen is held on while the pad is (`holdsScreen`) and its sheets. The Start screen is the kit's, with the serve question
- * (ruling 233): the hook's Start turns the pick into the toss and the start.
+ * tools that always fill the row (Violation, Break, Award game, Set score: rulings 228, 231, 232), or, while a point is
+ * held for its details, its chips (ruling 234; the hook's). What is tennis's here: that the screen is held on while the
+ * pad is (`holdsScreen`), its sheets, and the Point details switch in Match details. The Start screen is the kit's, with
+ * the serve question (ruling 233): the hook's Start turns the pick into the toss and the start.
  */
 export function TennisPadScreen({ model }: { readonly model: TennisPadModel }) {
   const { view, sheet, actions } = model;
@@ -30,7 +32,7 @@ export function TennisPadScreen({ model }: { readonly model: TennisPadModel }) {
     <View style={styles.screen}>
       {holdsScreen(view.card) ? <KeepScreenOn /> : null}
       <PadContent model={model} covered={sheet !== null} />
-      <PadSheet sheet={sheet} actions={actions} />
+      <PadSheet sheet={sheet} pointDetails={model.pointDetails} actions={actions} />
     </View>
   );
 }
@@ -41,9 +43,11 @@ export function TennisPadScreen({ model }: { readonly model: TennisPadModel }) {
  */
 const PadSheet = memo(function PadSheet({
   sheet,
+  pointDetails,
   actions,
 }: {
   readonly sheet: TennisSheetView | null;
+  readonly pointDetails: boolean;
   readonly actions: TennisPadActions;
 }) {
   if (sheet === null) return null;
@@ -58,7 +62,13 @@ const PadSheet = memo(function PadSheet({
     case 'setScore':
       return <TennisSetScore sheet={sheet} actions={actions} />;
     case 'details':
-      return <MatchDetailsView details={sheet.details} onClose={actions.dismiss} />;
+      return (
+        <MatchDetailsView
+          details={sheet.details}
+          onClose={actions.dismiss}
+          sport={<PointDetailsSwitch on={pointDetails} onPress={actions.togglePointDetails} />}
+        />
+      );
     case 'history':
       return <MatchHistory groups={sheet.groups} onClose={actions.cancel} />;
     case 'ask':
@@ -72,6 +82,22 @@ const PadSheet = memo(function PadSheet({
         />
       );
   }
+});
+
+/**
+ * The match's "Point details" switch (ruling 234, the owner's: off by default): on, a point is held a moment for its chips
+ * (Ace, Double fault, Winner, Error), which stand in the tools' place. One row, the label and the pill, as the app's
+ * Settings draws a switch.
+ */
+const PointDetailsSwitch = memo(function PointDetailsSwitch({
+  on,
+  onPress,
+}: {
+  readonly on: boolean;
+  readonly onPress: () => void;
+}) {
+  const { t } = useT();
+  return <ChoiceRow label={t('scoring.tennis.details.switch')} checked={on} onPress={onPress} />;
 });
 
 const SET_SCORE_STARTS: readonly [number, number] = [0, 0];

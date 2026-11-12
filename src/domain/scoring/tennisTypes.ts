@@ -26,7 +26,11 @@ export type TennisTap =
   | { readonly kind: 'start' }
   /** Who serves the first game, asked at Start and queued before it (ruling 233); `side` is the pad's top or bottom half. */
   | { readonly kind: 'toss'; readonly side: PadSide }
-  | { readonly kind: 'point'; readonly side: PadSide }
+  /**
+   * A point to the side. `details`: the match's "Point details" switch is on (ruling 234), so the point is held for its chips
+   * and carries `server` when the engine names one; absent, it is `{by}` alone, sent at once (ruling 217).
+   */
+  | { readonly kind: 'point'; readonly side: PadSide; readonly details?: boolean }
   | {
       readonly kind: 'setScore';
       readonly first: number;
@@ -138,12 +142,19 @@ export type TennisDisplay = {
   readonly servingPerson: string | null;
   /** The side the match's toss named to serve first (the engine's `opener`), or null while no toss is held (ruling 233). */
   readonly toss: PadSide | null;
+  /**
+   * The person a detailed point names as its `server` (ruling 234), only when the engine names the order (`serveOrderKnown`):
+   * a singles side's one player, or the doubles server the engine names outside a breaker (ruling 235's rule); else none.
+   */
+  readonly serverId: string | null;
   readonly setsWon: Readonly<Record<PadSide, number>>;
   readonly finished: readonly TennisSetLine[];
   /** The heaviest violation each side holds in the set under way (a per-set walk; an undone one is not counted). */
   readonly heaviest: Readonly<Record<PadSide, TennisSeenLevel | null>>;
   /** The points and set scores standing in the scorer's view, this phone's legal queued taps on top. */
   readonly scoreEvents: number;
+  /** The points, set scores and awarded games standing in that view: what moves the serve (`serveEventsIn`). */
+  readonly serveEvents: number;
   readonly ending: TennisEnding | null;
   /** A `default` is recorded and the organiser's forfeit has not landed: the engine refuses every tap (G1). */
   readonly endingPending: boolean;
@@ -177,6 +188,11 @@ export type TennisPadKey =
   | 'scoring.tennis.tool.award'
   | 'scoring.tennis.tool.awardShort'
   | 'scoring.tennis.tool.setScore'
+  | 'scoring.tennis.chip.ace'
+  | 'scoring.tennis.chip.doubleFault'
+  | 'scoring.tennis.chip.winner'
+  | 'scoring.tennis.chip.error'
+  | 'scoring.tennis.chip.errorSaid'
   | 'scoring.tennis.level.warning'
   | 'scoring.tennis.level.pointPenalty'
   | 'scoring.tennis.level.gamePenalty'
