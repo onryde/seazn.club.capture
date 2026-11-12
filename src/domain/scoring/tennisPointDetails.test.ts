@@ -6,6 +6,8 @@ import {
   chipOf,
   chipTools,
   pointChips,
+  pointDetailsNote,
+  serveMark,
   withPointKind,
 } from '@/domain/scoring/tennisPointDetails';
 import type { Bootstrap } from '@/domain/scoring/wire';
@@ -55,7 +57,7 @@ describe('a detailed point, as the event queued', () => {
     expect(detailed([start()], 'second')).toEqual({
       type: 'tennis.point',
       payload: { by: AWAY, server: 'h1' },
-      base: 0,
+      base: serveMark(0, 'none'),
       hold: 10_000,
     });
   });
@@ -65,16 +67,29 @@ describe('a detailed point, as the event queued', () => {
     expect(detailed([start(), ...gamesOf('H')], 'first')).toEqual({
       type: 'tennis.point',
       payload: { by: HOME, server: 'a1' },
-      base: 4,
+      base: serveMark(4, 'none'),
       hold: 10_000,
     });
+  });
+
+  it('marks how the toss stood for its side: naming it, naming the other, or none', () => {
+    expect(detailed([toss('A'), start()], 'second')?.base).toBe(serveMark(0, 'by'));
+    expect(detailed([toss('A'), start()], 'first')?.base).toBe(serveMark(0, 'other'));
+    expect(detailed([toss('H'), start(), point('A')], 'first')?.base).toBe(serveMark(1, 'by'));
+  });
+
+  it('keeps every mark apart: no count and toss share a number', () => {
+    const marks = [0, 1, 2].flatMap((count) =>
+      (['none', 'by', 'other'] as const).map((toss) => serveMark(count, toss)),
+    );
+    expect(new Set(marks).size).toBe(9);
   });
 
   it('counts an award game as a serve event, since it moves the serve', () => {
     expect(detailed([start(), point('H'), award('A')], 'first')).toEqual({
       type: 'tennis.point',
       payload: { by: HOME, server: 'a1' },
-      base: 2,
+      base: serveMark(2, 'none'),
       hold: 10_000,
     });
   });
@@ -196,23 +211,67 @@ describe('the send of a detailed point', () => {
   });
 
   it('goes as queued when the serve events standing are the ones it was made at', () => {
-    expect(tennisPayloadForSend(tagged(1), ledgerOf([start(), point('A')]), false, SEND)).toEqual(
-      TAGGED,
-    );
+    expect(
+      tennisPayloadForSend(
+        tagged(serveMark(1, 'none')),
+        ledgerOf([start(), point('A')]),
+        false,
+        SEND,
+      ),
+    ).toEqual(TAGGED);
   });
 
   it('goes as the side alone when another scorer’s point landed first (the server and the kind were judged on another point)', () => {
     const moved = ledgerOf([start(), point('A'), point('H')]);
-    expect(tennisPayloadForSend(tagged(1), moved, false, SEND)).toEqual({ by: HOME });
+    expect(tennisPayloadForSend(tagged(serveMark(1, 'none')), moved, false, SEND)).toEqual({
+      by: HOME,
+    });
+  });
+
+  it('goes as the side alone when another phone’s toss stands where this phone’s was (two phones raced Start)', () => {
+    const theirs = ledgerOf([toss('A'), start()]);
+    expect(tennisPayloadForSend(tagged(serveMark(0, 'by')), theirs, false, SEND)).toEqual({
+      by: HOME,
+    });
+  });
+
+  it('goes as queued when the toss it was judged on is the one standing', () => {
+    expect(
+      tennisPayloadForSend(tagged(serveMark(0, 'by')), ledgerOf([toss('H'), start()]), false, SEND),
+    ).toEqual(TAGGED);
+    expect(
+      tennisPayloadForSend(
+        tagged(serveMark(0, 'other')),
+        ledgerOf([toss('A'), start()]),
+        false,
+        SEND,
+      ),
+    ).toEqual(TAGGED);
   });
 
   it('goes as queued while the ledger holds its copy (the server matches a resend by key)', () => {
     const moved = ledgerOf([start(), point('A'), point('H')]);
-    expect(tennisPayloadForSend(tagged(1), moved, true, SEND)).toEqual(TAGGED);
+    expect(tennisPayloadForSend(tagged(serveMark(1, 'none')), moved, true, SEND)).toEqual(TAGGED);
   });
 
   it('goes as queued with no count to judge by (a plain point)', () => {
     const moved = ledgerOf([start(), point('A'), point('H')]);
     expect(tennisPayloadForSend(tagged(), moved, false, SEND)).toEqual(TAGGED);
+  });
+});
+
+describe('the record’s note on a detailed point’s send', () => {
+  const queued = (payload: unknown) => queuedOf('k1', { type: 'tennis.point', payload });
+  const DROPPED = { event: 'scoring.point-detail-dropped', fields: { reason: 'serveMoved' } };
+
+  it('says the details were not sent when the point goes as the side alone', () => {
+    expect(pointDetailsNote(queued({ by: HOME, server: 'h1' }), { by: HOME })).toEqual(DROPPED);
+  });
+
+  it('says nothing for a point sent as queued, or one that was the side alone already', () => {
+    const tagged = { by: HOME, server: 'h1', meta: { kind: 'ace' } };
+    expect(pointDetailsNote(queued(tagged), tagged)).toBeNull();
+    expect(pointDetailsNote(queued({ by: HOME }), { by: HOME })).toBeNull();
+    expect(pointDetailsNote(queued('garbled'), 'garbled')).toBeNull();
   });
 });

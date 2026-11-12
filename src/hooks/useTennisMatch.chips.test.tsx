@@ -7,6 +7,7 @@ import {
   HOME_ENTRANT,
   START,
   TENNIS_STARTED_SEED,
+  TENNIS_TOUR_SEED,
   gameEvents,
   pointEvent,
   singlesSeed,
@@ -28,7 +29,7 @@ const HOST = 'stg.seazn.club';
 const LINK = { origin: 'https://stg.seazn.club', token: FAKE_SCORING_SECRET };
 const SEED = TENNIS_STARTED_SEED;
 const HOME_PLAYER = 'ent-home-p1';
-const KEY = `scoring.tennis.details.${SEED.fixtureId}`;
+const KEY = `scoring.switch.pointDetails.${SEED.fixtureId}`;
 
 async function flush(): Promise<void> {
   await act(async () => {
@@ -66,8 +67,8 @@ const toolIds = (view: PadView<string>) => view.tools.map((tool) => tool.id);
 const TOOLS = ['violation', 'break', 'award', 'setScore'];
 
 /** The points the server holds, in order. */
-async function serverPoints(fakes: FakePorts) {
-  const events = await fakes.scoring.events(LINK, SEED.fixtureId, 0);
+async function serverPoints(fakes: FakePorts, seed: FakeMatchSeed = SEED) {
+  const events = await fakes.scoring.events(LINK, seed.fixtureId, 0);
   if (!Array.isArray(events)) throw new Error('the server did not answer');
   return events.filter((event) => event.type === 'tennis.point').map((event) => event.payload);
 }
@@ -81,6 +82,12 @@ async function switchedOn(seed: FakeMatchSeed = SEED) {
   await flush();
   return { fakes, view };
 }
+
+/** The record's lines saying a point's details were not sent. */
+const droppedLines = (fakes: FakePorts) =>
+  readRecord(fakes.record)
+    .filter((line) => line.event === 'scoring.point-detail-dropped')
+    .map(({ level, event, fields }) => ({ level, event, fields }));
 
 async function point(view: Match, side: 'first' | 'second') {
   act_(view, (actions) => actions.tapHalf(side));
@@ -317,6 +324,34 @@ describe('a point held for its chips', () => {
     expect(toolIds(pad(again).view)).toEqual(TOOLS);
   });
 
+  it('two phones race Start: the other’s toss lands first, so a point held on this phone’s toss goes as the side alone', async () => {
+    const { fakes, view } = await switchedOn(TENNIS_TOUR_SEED);
+    fakes.scoring.goOffline(true);
+    act_(view, (actions) => actions.pickServer('first'));
+    await flush();
+    act_(view, (actions) => actions.start());
+    await flush();
+    await wait(300);
+    await point(view, 'first');
+    // Judged on this phone's toss (home serves), the point would be home's ace and name home's player as the server.
+    expect(toolIds(pad(view).view)).toEqual(['chip.ace', 'chip.winner', 'chip.ue']);
+    fakes.scoring.addOtherScorerEvent('tennis.toss', { serving: AWAY_ENTRANT });
+    fakes.scoring.addOtherScorerEvent('core.start', {});
+    fakes.scoring.goOffline(false);
+    fakes.realtime.ping();
+    await wait(2_000);
+    // This phone's toss is refused (a toss already stands): the scorer is asked, and sends the rest.
+    expect(pad(view).sheet?.kind).toBe('ask');
+    act_(view, (actions) => actions.sendTaps());
+    await flush();
+    await wait(12_000);
+    // Away serves on the server's toss: the server and any kind this phone judged on its own toss are not sent.
+    expect(await serverPoints(fakes, TENNIS_TOUR_SEED)).toEqual([{ by: HOME_ENTRANT }]);
+    expect(droppedLines(fakes)).toEqual([
+      { level: 'warn', event: 'scoring.point-detail-dropped', fields: { reason: 'serveMoved' } },
+    ]);
+  });
+
   it('another scorer’s point while it is held: the scorer is asked, and Send sends it as the side alone', async () => {
     const { fakes, view } = await switchedOn();
     await point(view, 'first');
@@ -330,5 +365,9 @@ describe('a point held for its chips', () => {
     await wait(10_000);
     // Made on 0-0 with home serving and no chip: the server it named was judged on another point, so it goes untagged.
     expect(await serverPoints(fakes)).toEqual([{ by: AWAY_ENTRANT }, { by: HOME_ENTRANT }]);
+    // One line, no payload: the details judged on another serve were not sent.
+    expect(droppedLines(fakes)).toEqual([
+      { level: 'warn', event: 'scoring.point-detail-dropped', fields: { reason: 'serveMoved' } },
+    ]);
   });
 });

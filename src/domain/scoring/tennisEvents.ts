@@ -3,7 +3,12 @@ import type { QueuedEvent } from '@/domain/scoring/queue';
 import type { SportEvent, SportEventContext } from '@/domain/scoring/scoringSport';
 import { seatsOf } from '@/domain/scoring/setBasedSides';
 import { isBreakKind, isSeenLevel } from '@/domain/scoring/tennisLedgerHistory';
-import { POINT_DETAILS_HOLD_MS, pointDetailsForSend } from '@/domain/scoring/tennisPointDetails';
+import {
+  POINT_DETAILS_HOLD_MS,
+  pointDetailsForSend,
+  serveMark,
+  type TossMark,
+} from '@/domain/scoring/tennisPointDetails';
 import type { TennisDisplay, TennisTap, TennisTypes } from '@/domain/scoring/tennisTypes';
 import type { BootstrapSide, LedgerEvent } from '@/domain/scoring/wire';
 
@@ -56,8 +61,9 @@ function tossEvent(seats: Seats, side: PadSide, display: TennisDisplay): SportEv
 
 /**
  * A point: `{by}` alone, sent at once (ruling 217); with the details on (ruling 234), held for its chips
- * (`POINT_DETAILS_HOLD_MS`), naming the server the engine names (`serverId`), and carrying the count of serve events it was
- * made at, so its send can tell whether that server still stands (`pointDetailsForSend`).
+ * (`POINT_DETAILS_HOLD_MS`), naming the server the engine names (`serverId`), and carrying the serve it was judged on
+ * (`serveMark`: the serve events standing and the toss), so its send can tell whether that server still stands
+ * (`pointDetailsForSend`).
  */
 function pointEvent(
   seats: Seats,
@@ -70,10 +76,14 @@ function pointEvent(
   return {
     type: 'tennis.point',
     payload: serverId === null ? { by } : { by, server: serverId },
-    base: display.serveEvents,
+    base: serveMark(display.serveEvents, tossMarkOf(display.toss, tap.side)),
     hold: POINT_DETAILS_HOLD_MS,
   };
 }
+
+/** How the toss the point is judged on stands for its side. */
+const tossMarkOf = (toss: PadSide | null, side: PadSide): TossMark =>
+  toss === null ? 'none' : toss === side ? 'by' : 'other';
 
 /** A set's games, and the tie-break's points only for a set that had one. */
 function setScoreEvent(tap: Extract<TennisTap, { readonly kind: 'setScore' }>): SportEvent {

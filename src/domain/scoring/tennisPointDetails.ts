@@ -2,6 +2,7 @@ import { tennisPadRules } from '@seazn/engine/pad';
 import { isRecord } from '@/domain/credentials/wire';
 import type { PadSide, PadTool } from '@/domain/scoring/padView';
 import type { QueuedEvent } from '@/domain/scoring/queue';
+import type { SportLine } from '@/domain/scoring/scoringSport';
 import { standing, type VoidableEvent } from '@/domain/scoring/setBasedEvents';
 import type { TennisPadKey } from '@/domain/scoring/tennisTypes';
 
@@ -75,24 +76,64 @@ export function withPointKind(payload: unknown, kind: TennisPointKind): unknown 
 }
 
 /**
- * The events standing that move the serve: points, set scores and awarded games. A detailed point carries this count from
- * its making (`QueuedEvent.base`) so its send can tell whether the serve it was judged on still stands.
+ * The events standing that move the serve: points, set scores and awarded games. A toss moves it too, but only one stands
+ * in a match, so it is read by the side it names (`serveMark`), not counted.
  */
 export const serveEventsIn = (events: readonly VoidableEvent[]): number =>
   standing(events, 'tennis.point', 'tennis.set_summary', 'tennis.game.award').length;
 
+/** How the toss stands for a point to one side: none, naming that side to serve first, or naming the other. */
+export type TossMark = 'none' | 'by' | 'other';
+const TOSS_MARKS: readonly TossMark[] = ['none', 'by', 'other'];
+
 /**
- * A detailed point's payload at its send: as queued, unless serve events landed that it was not made on (another scorer's
- * point while it was held): its `server` and its kind were judged on another point, so it goes as the side alone, the
- * point still counted. As queued while the ledger holds its copy (the web matches a resend by key, never by payload), and
- * for a tap with no count (a plain point, any other tap).
+ * What a detailed point was judged on, as one number (`QueuedEvent.base`): the serve events standing, and how the toss
+ * stood. Two phones racing Start each queue a toss and one is refused, so a point held on this phone's toss is judged on a
+ * serve that never stood though the count is the same: the toss's side tells them apart.
+ */
+export const serveMark = (serveEvents: number, toss: TossMark): number =>
+  serveEvents * TOSS_MARKS.length + TOSS_MARKS.indexOf(toss);
+
+type PayloadEvent = VoidableEvent & { readonly payload: unknown };
+
+/** The toss standing in a ledger, read against the entrant a point is to (`by`). */
+function tossIn(ledger: readonly PayloadEvent[], by: unknown): TossMark {
+  const toss = standing(ledger, 'tennis.toss').at(-1);
+  if (toss === undefined) return 'none';
+  return isRecord(toss.payload) && toss.payload.serving === by ? 'by' : 'other';
+}
+
+/**
+ * A detailed point's payload at its send: as queued, unless the serve it was judged on no longer stands: serve events
+ * landed that it was not made on (another scorer's point while it was held), or another phone's toss stands where this
+ * phone's was (a race to Start). Its `server` and its kind were then judged on another serve, so it goes as the side alone,
+ * the point still counted. As queued while the ledger holds its copy (the web matches a resend by key, never by payload),
+ * and for a tap with no mark (a plain point, any other tap).
  */
 export function pointDetailsForSend(
   queued: QueuedEvent,
-  ledger: readonly VoidableEvent[],
+  ledger: readonly PayloadEvent[],
   copied: boolean,
 ): unknown {
   const { payload, base } = queued;
-  if (base === undefined || copied || serveEventsIn(ledger) === base) return payload;
-  return isRecord(payload) ? { by: payload.by } : payload;
+  if (base === undefined || copied || !isRecord(payload)) return payload;
+  const now = serveMark(serveEventsIn(ledger), tossIn(ledger, payload.by));
+  return now === base ? payload : { by: payload.by };
+}
+
+/** The record's word when a detailed point goes without what was judged on a serve that no longer stands. */
+const SERVE_MOVED: SportLine = {
+  event: 'scoring.point-detail-dropped',
+  fields: { reason: 'serveMoved' },
+};
+
+/**
+ * The record's line for a point sent with less than it was queued with (`pointDetailsForSend` took its `server` and kind):
+ * the scorer's chip, if any, never reaches Seazn, and the record says so once, with no payload. A point already sent as
+ * the side alone has nothing left to lose and says nothing again.
+ */
+export function pointDetailsNote(queued: QueuedEvent, payload: unknown): SportLine | null {
+  const before = queued.payload;
+  if (!isRecord(before) || !isRecord(payload)) return null;
+  return Object.keys(payload).length < Object.keys(before).length ? SERVE_MOVED : null;
 }

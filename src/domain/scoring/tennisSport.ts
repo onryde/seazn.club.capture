@@ -4,6 +4,7 @@ import type { ScoringSport } from '@/domain/scoring/scoringSport';
 import { tennisEventFor, tennisPayloadForSend } from '@/domain/scoring/tennisEvents';
 import { foldTennis, undoneTap } from '@/domain/scoring/tennisFold';
 import { tennisPad } from '@/domain/scoring/tennisPad';
+import { pointDetailsNote } from '@/domain/scoring/tennisPointDetails';
 import type { TennisTypes } from '@/domain/scoring/tennisTypes';
 
 /**
@@ -18,6 +19,8 @@ export const tennisSport: ScoringSport<TennisTypes> = {
   fold: memoFold(foldTennis),
   eventFor: tennisEventFor,
   payloadForSend: tennisPayloadForSend,
+  /** A detailed point sent without its server and kind (the serve moved while it was held) says so in the record. */
+  sendNote: pointDetailsNote,
   /** The side the toss tap names (ruling 233): the Start screen's pick, which the match keeps until the start. */
   tossOf: (tap) => (tap.kind === 'toss' ? tap.side : null),
   /** A set score the match cannot reach is an invalid score; any other tap is not now. */

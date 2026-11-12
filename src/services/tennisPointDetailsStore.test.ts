@@ -6,7 +6,7 @@ import { readPointDetails, savePointDetails } from '@/services/tennisPointDetail
 // default. A switch that cannot be read is off: the point is then `{by}` alone, sent at once, as before the ruling.
 
 const FIXTURE = '6f0c5a52-3d1e-4a0b-8f55-0c2f6d7b9e10';
-const KEY = `scoring.tennis.details.${FIXTURE}`;
+const KEY = `scoring.switch.pointDetails.${FIXTURE}`;
 
 const refusing: KeyValueStore = {
   get: () => Promise.reject(new Error('locked')),

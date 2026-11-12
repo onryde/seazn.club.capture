@@ -1,16 +1,18 @@
 import type { KeyValueStore } from '@/services/KeyValueStore';
+import { matchSwitchKey } from '@/services/scoringMatchSwitches';
 
 /**
  * A tennis match's "Point details" switch (S2-7 ruling 234, the owner's: "Off, switch to show"), on this phone, per match,
- * in the key-value store under `scoring.tennis.details.{fixtureId}`. Off by default and whenever it cannot be read: off, a
- * point is `{by}` alone and sent at once (ruling 217). Turned off, nothing is kept. No secret: the word `on` alone.
+ * in the key-value store under `scoring.switch.pointDetails.{fixtureId}` (`scoringMatchSwitches`, which forgets it with
+ * the match's link). Off by default and whenever it cannot be read: off, a point is `{by}` alone and sent at once (ruling
+ * 217). Turned off, nothing is kept. No secret: the word `on` alone.
  */
 
 /** A fixture id is a key as well: letters, digits, `_` and `-` (the secure store takes no more; `scoringLinkStore`'s rule). */
 const FIXTURE_ID = /^[A-Za-z0-9_-]{1,100}$/;
 const ON = 'on';
 
-const keyOf = (fixtureId: string): string => `scoring.tennis.details.${fixtureId}`;
+const keyOf = (fixtureId: string): string => matchSwitchKey('pointDetails', fixtureId);
 
 /**
  * Whether the switch is on for the match: false for a match never switched, or a store that does not answer (the secure
