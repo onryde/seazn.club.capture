@@ -39,6 +39,10 @@ const unitWidth = (text: string) => geist500.width(text, typeScale.metricUnit.fo
 const controlWidth = (text: string) => geist500.width(text, typeScale.control.fontSize);
 /** `body`: Geist 400. A rules row. */
 const bodyWidth = (text: string) => geist400.width(text, typeScale.body.fontSize);
+/** `title`: a sheet's title, Barlow Condensed 700, uppercase, letter-spaced. */
+const titleWidth = (text: string) =>
+  barlow700.width(text.toUpperCase(), typeScale.title.fontSize) +
+  typeScale.title.letterSpacing * [...text].length;
 /** `panelTitle`: the result card's title, Barlow Condensed 700 at 22, uppercase, letter-spaced. */
 const panelWidth = (text: string) =>
   barlow700.width(text.toUpperCase(), typeScale.panelTitle.fontSize) +
@@ -67,6 +71,9 @@ const stripSlot = (width: number) => (column(width) - 2 * space.sm) / 3;
 const stripHalf = (width: number) => (column(width) - space.sm) / 2;
 /** Inside a half: the column less the side bar and the half's padding (space.md a side). */
 const halfInner = (width: number) => column(width) - layout.padSideBar - 2 * space.md;
+/** A step sheet's content: the screen less its padding. A choice's text: less its own padding and border. */
+const sheet = (width: number) => width - 2 * space.md;
+const choice = (width: number) => sheet(width) - 2 * space.md - 2 * layout.iconBorder;
 /** The result card's text: the column less the card's padding and its edge. */
 const cardRoom = (width: number) => column(width) - 2 * space.md - layout.padSideBar;
 
@@ -256,6 +263,86 @@ describe('tennis: the rules rows and the result card at 320 and 360 in four lang
   );
 });
 
+describe('tennis: the violation, award and break sheets at 320 and 360 in four languages', () => {
+  const SIDES = ['Ana Ruiz', 'Springfield Tennis Club', 'Ruiz / Vega h1 / Ruiz / Vega h2'] as const;
+  const kinds = ['medical', 'toilet', 'heat', 'other'] as const;
+  const levels = ['warning', 'pointPenalty', 'gamePenalty'] as const;
+
+  it.each(LANGUAGES)(
+    '%s: each sheet’s title in at most two lines, no word wider than the sheet',
+    (_lang, dictionary: Dictionary) => {
+      const titles = [
+        'violation.title',
+        'violation.who',
+        'violation.confirm.title',
+        'award.title',
+        'award.confirm.title',
+        'break.title',
+        ...kinds.map((kind) => `break.kind.${kind}`),
+      ].map((key) => said(dictionary, `${TN}.${key}`));
+      for (const title of titles)
+        for (const width of WIDTHS) {
+          expect(wordsFit(title, sheet(width), titleWidth), `${title} @${width}`).toBe(true);
+          expect(
+            linesOf(title, sheet(width), titleWidth),
+            `${title} @${width}`,
+          ).toBeLessThanOrEqual(2);
+        }
+    },
+  );
+
+  it.each(LANGUAGES)(
+    '%s: each choice, no word wider than a choice’s text, and a long side in at most two lines',
+    (_lang, dictionary: Dictionary) => {
+      const texts = [
+        ...levels.map((level) => said(dictionary, `${TN}.level.${level}`)),
+        ...kinds.map((kind) => said(dictionary, `${TN}.break.kind.${kind}`)),
+        said(dictionary, `${TN}.break.both`),
+        said(dictionary, `${TN}.violation.confirm.action`),
+        said(dictionary, `${TN}.award.confirm.action`),
+        ...SIDES,
+      ];
+      for (const text of texts)
+        for (const width of WIDTHS)
+          expect(wordsFit(text, choice(width), controlWidth), `${text} @${width}`).toBe(true);
+      for (const side of SIDES)
+        for (const width of WIDTHS)
+          expect(
+            linesOf(side, choice(width), controlWidth),
+            `${side} @${width}`,
+          ).toBeLessThanOrEqual(2);
+    },
+  );
+
+  // The sentences a step says in the body role: wrapping at spaces, never broken, in at most four lines.
+  it.each(LANGUAGES)(
+    '%s: the questions, the confirm lines and the done lines in at most four lines, no word broken',
+    (_lang, dictionary: Dictionary) => {
+      const side = SIDES[2];
+      const lines = [
+        said(dictionary, `${TN}.award.ask`),
+        said(dictionary, `${TN}.break.askKind`),
+        said(dictionary, `${TN}.break.askSide`),
+        fill(said(dictionary, `${TN}.award.confirm.body`), { side }),
+        fill(said(dictionary, `${TN}.violation.confirm.body`), {
+          level: said(dictionary, `${TN}.level.gamePenalty`),
+          who: side,
+        }),
+        fill(said(dictionary, `${TN}.violation.done.point`), { other: side }),
+        fill(said(dictionary, `${TN}.violation.done.game`), { other: side }),
+        said(dictionary, `${TN}.violation.done.breaker`),
+      ];
+      for (const text of lines)
+        for (const width of WIDTHS) {
+          expect(wordsFit(text, sheet(width), bodyWidth), `${text} @${width}`).toBe(true);
+          expect(linesOf(text, sheet(width), bodyWidth), `${text} @${width}`).toBeLessThanOrEqual(
+            4,
+          );
+        }
+    },
+  );
+});
+
 describe('tennis: every word it has is measured here (the sweep)', () => {
   // A key added to the dictionary must be named by a group above or below: a dead or unmeasured word fails here.
   const MEASURED: readonly RegExp[] = [
@@ -270,6 +357,9 @@ describe('tennis: every word it has is measured here (the sweep)', () => {
     /^ending\./,
     /^result$/,
     /^start\.ask$/,
+    /^violation\./,
+    /^award\./,
+    /^break\./,
   ];
   /** Words the fit tests do not measure, each with the reason. */
   const ELSEWHERE: Readonly<Record<string, string>> = {
@@ -277,11 +367,12 @@ describe('tennis: every word it has is measured here (the sweep)', () => {
     serving: 'the plate’s word: the kit’s serving plate fit (padFit, a half)',
     setsTally: 'said to a screen reader only',
     'foot.gamesSaid': 'said to a screen reader only',
-    'level.warning': 'a level’s word: a screen reader, and the violation steps’ choices (Task 7)',
+    'level.warning':
+      'a level’s word: a screen reader, and the violation sheet’s choices (measured with the sheets)',
     'level.pointPenalty':
-      'a level’s word: a screen reader, and the violation steps’ choices (Task 7)',
+      'a level’s word: a screen reader, and the violation sheet’s choices (measured with the sheets)',
     'level.gamePenalty':
-      'a level’s word: a screen reader, and the violation steps’ choices (Task 7)',
+      'a level’s word: a screen reader, and the violation sheet’s choices (measured with the sheets)',
     'level.default': 'a level’s word: a screen reader, and History (Task 8)',
   };
 

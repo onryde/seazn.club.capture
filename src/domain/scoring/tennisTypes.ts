@@ -135,8 +135,8 @@ export type TennisDisplay = {
 
 /**
  * Every dictionary key the pad names (`MessageKey`s, so each must exist in en.json): the strip, the halves, the tool row, the
- * level words, the rules rows and the endings. The violation, award and break steps' keys arrive with them (Task 7) and
- * History's with its words (Task 8).
+ * level words, the rules rows and the endings, and the violation, award and break steps' (Task 7). History's arrive with
+ * its words (Task 8).
  */
 export type TennisPadKey =
   | 'scoring.tennis.hint'
@@ -180,7 +180,28 @@ export type TennisPadKey =
   | 'scoring.tennis.ending.withdrew'
   | 'scoring.tennis.ending.abandoned'
   | 'scoring.tennis.ending.by'
-  | 'scoring.tennis.result';
+  | 'scoring.tennis.result'
+  | 'scoring.tennis.violation.title'
+  | 'scoring.tennis.violation.who'
+  | 'scoring.tennis.violation.confirm.title'
+  | 'scoring.tennis.violation.confirm.body'
+  | 'scoring.tennis.violation.confirm.action'
+  | 'scoring.tennis.violation.done.point'
+  | 'scoring.tennis.violation.done.game'
+  | 'scoring.tennis.violation.done.breaker'
+  | 'scoring.tennis.award.title'
+  | 'scoring.tennis.award.ask'
+  | 'scoring.tennis.award.confirm.title'
+  | 'scoring.tennis.award.confirm.body'
+  | 'scoring.tennis.award.confirm.action'
+  | 'scoring.tennis.break.title'
+  | 'scoring.tennis.break.askKind'
+  | 'scoring.tennis.break.askSide'
+  | 'scoring.tennis.break.kind.medical'
+  | 'scoring.tennis.break.kind.toilet'
+  | 'scoring.tennis.break.kind.heat'
+  | 'scoring.tennis.break.kind.other'
+  | 'scoring.tennis.break.both';
 
 /** Tennis's pad types: what the match runtime is generic over (`SportTypes`). */
 export type TennisTypes = {
