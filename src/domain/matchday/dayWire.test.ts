@@ -133,7 +133,7 @@ describe('parseDay reads a day in camelCase, with Dates', () => {
               away: 'Cat & Dan',
               status: 'inPlay',
               scheduledAt: new Date('2026-11-07T10:00:00.000Z'),
-              summary: '14-9',
+              summary: '1–1 · 14–9',
             },
             next: [
               {
@@ -158,7 +158,7 @@ describe('parseDay reads a day in camelCase, with Dates', () => {
                 away: 'Cat & Dan',
                 status: 'finished',
                 scheduledAt: new Date('2026-11-07T08:00:00.000Z'),
-                summary: '21-15 21-18',
+                summary: '2–0',
               },
             ],
           },
