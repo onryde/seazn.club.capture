@@ -7,8 +7,8 @@ import { scoringOrigin } from '@/domain/mode/scoringOrigin';
 const OPEN = { fixtureId: '7b2c3d4e-5f6a-4b7c-9d8e-0f1a2b3c4d5e', courtName: 'Court 1' };
 
 describe('scoringOrigin', () => {
-  it('from Match Day, Back is the list, labelled with the court', () => {
-    expect(scoringOrigin('matchday', OPEN)).toEqual({ back: 'matchday', label: '‹ Court 1' });
+  it('from Match Day, Back is the list, naming the court', () => {
+    expect(scoringOrigin('matchday', OPEN)).toEqual({ back: 'matchday', courtName: 'Court 1' });
   });
 
   it('with the mode active but no match open, Back is Home', () => {
@@ -25,14 +25,14 @@ describe('scoringOrigin', () => {
   it('a court name is shown as it is, however long or odd', () => {
     expect(scoringOrigin('matchday', { ...OPEN, courtName: 'Centre Court {1}' })).toEqual({
       back: 'matchday',
-      label: '‹ Centre Court {1}',
+      courtName: 'Centre Court {1}',
     });
   });
 
   it('a court with no name still names the way back', () => {
     expect(scoringOrigin('matchday', { ...OPEN, courtName: '' })).toEqual({
       back: 'matchday',
-      label: '‹',
+      courtName: '',
     });
   });
 });

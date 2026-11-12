@@ -97,9 +97,12 @@ describe('a match Match Day opened is spared by the hub’s sweep', () => {
     expect((await readScoringLink(fakes.kv, FIXTURE, HOST)).kind).toBe('link');
   });
 
-  it('a list the phone cannot read spares nothing it cannot see: the sweep goes on as before', async () => {
+  it('a list the phone will not read fails closed: nothing is swept this round, and the next readable one decides', async () => {
     const fakes = await leftover(FIXTURE);
-    vi.spyOn(fakes.ports.matchDayStore, 'opened').mockResolvedValue([]);
+    const read = vi.spyOn(fakes.ports.matchDayStore, 'openedKnown').mockResolvedValueOnce(null);
+    await scoringHubOf(fakes.ports).resume();
+    expect(await kept(fakes)).toBe(true);
+    read.mockRestore();
     await scoringHubOf(fakes.ports).resume();
     expect((await readScoringLink(fakes.kv, FIXTURE, HOST)).kind).toBe('none');
   });
@@ -110,7 +113,7 @@ describe('the sweep reads Match Day’s list across an await', () => {
     const fakes = await leftover(FIXTURE);
     const hub = scoringHubOf(fakes.ports);
     let release = (): void => undefined;
-    vi.spyOn(fakes.ports.matchDayStore, 'opened').mockImplementation(async () => {
+    vi.spyOn(fakes.ports.matchDayStore, 'openedKnown').mockImplementation(async () => {
       release = hub.claim(FIXTURE);
       return [];
     });
@@ -123,7 +126,7 @@ describe('the sweep reads Match Day’s list across an await', () => {
     const fakes = await leftover(FIXTURE);
     const hub = scoringHubOf(fakes.ports);
     let handle: ReturnType<typeof hub.focus> | null = null;
-    vi.spyOn(fakes.ports.matchDayStore, 'opened').mockImplementation(async () => {
+    vi.spyOn(fakes.ports.matchDayStore, 'openedKnown').mockImplementation(async () => {
       handle = hub.focus(FIXTURE);
       return [];
     });
@@ -135,7 +138,7 @@ describe('the sweep reads Match Day’s list across an await', () => {
   it('the match saved while the list is read keeps it', async () => {
     const fakes = await leftover(FIXTURE);
     const hub = scoringHubOf(fakes.ports);
-    vi.spyOn(fakes.ports.matchDayStore, 'opened').mockImplementation(async () => {
+    vi.spyOn(fakes.ports.matchDayStore, 'openedKnown').mockImplementation(async () => {
       await fakes.ports.modeStore.open({
         mode: 'scoring',
         raw: '',

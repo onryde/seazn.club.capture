@@ -28,9 +28,12 @@ export function useScoringOrigin(): ScoringOrigin {
   return useMemo(() => scoringOrigin(active, open), [active, open]);
 }
 
-/** What the pad's Back is called: "‹ Court 1" from Match Day's list, "Home" otherwise (a screen reader's name for it). */
+/** What the pad's Back is called: "Back to Court 1" from Match Day's list ("Back to Match Day" for an unnamed court), "Home" otherwise. */
 export function useBackLabel(): string {
   const { t } = useT();
   const origin = useScoringOrigin();
-  return origin.back === 'matchday' ? origin.label : t('stream.home');
+  if (origin.back !== 'matchday') return t('stream.home');
+  return t('matchday.backTo', {
+    court: origin.courtName === '' ? t('mode.matchday') : origin.courtName,
+  });
 }

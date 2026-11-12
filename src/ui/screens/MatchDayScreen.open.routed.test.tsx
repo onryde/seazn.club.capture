@@ -7,7 +7,7 @@ import { FAKE_DAY } from '@/services/fakeMatchDayPort';
 import { SINGLES_SEED, seedFromPadSample, type FakeMatchSeed } from '@/services/fakeScoringPort';
 import { STORE_KEYS } from '@/services/modeStore';
 import { scoringLinkKey } from '@/services/scoringLinkStore';
-import { TEST_NOW } from '../../../test/fakePorts';
+import { readRecord, TEST_NOW } from '../../../test/fakePorts';
 import { dayLink } from '../../../test/fixtures/dayCode';
 import { flush, launchApp, type LaunchedApp } from '../../../test/routedApp';
 
@@ -36,7 +36,7 @@ const serving = (row: Row, events?: FakeMatchSeed['events']): FakeMatchSeed => (
   linkId: 'fake-link-md',
   ...(events === undefined ? {} : { events }),
 });
-const BACK = '‹ Court 1';
+const BACK = 'Back to Court 1';
 
 beforeEach(() => vi.useFakeTimers({ now: TEST_NOW }));
 afterEach(() => vi.useRealTimers());
@@ -57,7 +57,7 @@ const mode = (app: LaunchedApp) => {
 };
 
 describe('opening a match from the list', () => {
-  it('tapping Now opens the pad with Back labelled "‹ Court 1"', async () => {
+  it('tapping Now opens the pad with Back labelled "Back to Court 1"', async () => {
     const app = await launchApp({ kvSeed: IN_MATCHDAY, scoringSeed: serving(NOW_ROW) });
     expect(app.nav.current()).toBe('matchday');
     await tapRow(/^Now, Ng v Brown/);
@@ -193,6 +193,55 @@ describe('opening a match from the list', () => {
     });
     await tapRow(/^Now, Ng v Brown/);
     expect(app.nav.current()).toBe('scoring');
+  });
+});
+
+describe('finished rows, and a clear the phone refuses', () => {
+  const finished = (fixtureId: string, home: string, away: string): Row => ({
+    ...NOW_ROW,
+    fixtureId,
+    home,
+    away,
+    status: 'finished',
+    summary: '21-10',
+  });
+  const HELD = finished('f-held', 'Lee', 'Tan');
+  const UNHELD = finished('f-unheld', 'Roy', 'Kim');
+  const DAY = {
+    ...FAKE_DAY,
+    courts: [
+      {
+        ...(FAKE_DAY.courts[0] as NonNullable<(typeof FAKE_DAY.courts)[0]>),
+        finished: [HELD, UNHELD],
+      },
+    ],
+  };
+
+  it('a finished row opens only when this phone holds its link; the other is no control and shows its result', async () => {
+    const app = await launchApp({
+      kvSeed: { ...IN_MATCHDAY, 'matchday.opened': JSON.stringify([HELD.fixtureId]) },
+      prepare: (fakes) => fakes.matchDay.answerDay({ ok: true, value: DAY }),
+    });
+    await flush(100);
+    expect(screen.getByRole('button', { name: /^Finished, Lee v Tan, 21-10/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Roy v Kim/ })).toBeNull();
+    expect(screen.getByLabelText('Finished, Roy v Kim, 21-10')).toBeTruthy();
+  });
+
+  it('a refused clear of matchday.open is recorded and Back still lands on the list', async () => {
+    const app = await launchApp({
+      kvSeed: IN_MATCHDAY,
+      scoringSeed: serving(NOW_ROW),
+      prepare: (fakes) =>
+        void vi
+          .spyOn(fakes.ports.matchDayStore, 'clearOpen')
+          .mockRejectedValue(new Error('keystore refused')),
+    });
+    await tapRow(/^Now, Ng v Brown/);
+    await pressBack(app);
+    expect(readRecord(app.record).map((line) => line.event)).toContain(
+      'matchday.open-clear-refused',
+    );
   });
 });
 

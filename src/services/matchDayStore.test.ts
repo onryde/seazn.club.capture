@@ -549,3 +549,39 @@ describe('the match open in Remote Scoring (MD-2 Task 5)', () => {
     expect(await store.loadOpen()).toBeNull();
   });
 });
+
+describe('the opened list read for a delete, and a refused clear (MD-2 Task 5 fix round 1)', () => {
+  const A = '7b2c3d4e-5f6a-4b7c-9d8e-0f1a2b3c4d5e';
+
+  it('openedKnown is the list, empty when none is stored, and null when the phone refuses the read', async () => {
+    expect(await storeOver().store.openedKnown()).toEqual([]);
+    const seeded = createMemoryKeyValueStore({ [MATCHDAY_KEYS.opened]: JSON.stringify([A]) });
+    expect(await storeOver({ kv: seeded }).store.openedKnown()).toEqual([A]);
+    const locked: KeyValueStore = {
+      get: async () => {
+        throw new Error('locked');
+      },
+      set: async () => undefined,
+      delete: async () => undefined,
+    };
+    expect(await storeOver({ kv: locked }).store.openedKnown()).toBeNull();
+  });
+
+  it('a refused delete of matchday.open still clears the held value, tells the listeners and rejects', async () => {
+    const memory = createMemoryKeyValueStore();
+    const kv: KeyValueStore = {
+      get: memory.get,
+      set: memory.set,
+      delete: async () => {
+        throw new Error('keystore refused');
+      },
+    };
+    const { store } = storeOver({ kv });
+    await store.setOpen({ fixtureId: A, courtName: 'Court 1' });
+    let told = 0;
+    store.subscribeOpen(() => (told += 1));
+    await expect(store.clearOpen()).rejects.toThrow('keystore refused');
+    expect(store.openMatch()).toBeNull();
+    expect(told).toBe(1);
+  });
+});

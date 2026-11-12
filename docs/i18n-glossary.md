@@ -901,9 +901,11 @@ without a `_review` marker.
 Added with opening a match (MD-2 Task 5, 2026-11-12), the line on the list when the server says a match is not on the
 code's courts. Committed without a `_review` marker.
 
-| English                         | Español                            | Français                            | Nederlands                              | Notes                                                                                              |
-| ------------------------------- | ---------------------------------- | ----------------------------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| This match isn't on your courts | Este partido no está en tus pistas | Ce match n'est pas sur vos terrains | Deze wedstrijd staat niet op jouw banen | `matchday.outOfScope`: one line on the list; nothing opens. Courts as `matchday.noCourt` has them. |
+| English                         | Español                            | Français                            | Nederlands                              | Notes                                                                                                              |
+| ------------------------------- | ---------------------------------- | ----------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| This match isn't on your courts | Este partido no está en tus pistas | Ce match n'est pas sur vos terrains | Deze wedstrijd staat niet op jouw banen | `matchday.outOfScope`: one line on the list; nothing opens. Courts as `matchday.noCourt` has them.                 |
+| Couldn't open this match        | No se pudo abrir este partido      | Impossible d'ouvrir ce match        | Kon deze wedstrijd niet openen          | `matchday.cantOpen`: one line on the list; nothing opens (no usable day code, or a link this build will not keep). |
+| Back to {court}                 | Volver a {court}                   | Retour à {court}                    | Terug naar {court}                      | `matchday.backTo`: the pad's Back, as its accessible name only (the chevron is drawn alone).                       |
 
 ## Translation review
 

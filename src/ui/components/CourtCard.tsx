@@ -32,6 +32,8 @@ type CourtCardProps = {
   readonly onOpen?: (row: Row, courtName: string) => void;
   /** Where the card sits in its column, once laid out: the list scrolls to the court it came back from. */
   readonly onSlot?: (courtName: string, y: number) => void;
+  /** The matches whose link this phone holds: only these finished rows open (the finished answer carries no link). */
+  readonly opened?: ReadonlySet<string>;
 };
 
 /**
@@ -45,6 +47,7 @@ export const CourtCard = memo(function CourtCard({
   zone,
   onOpen,
   onSlot,
+  opened,
 }: CourtCardProps) {
   const { t } = useT();
   const words = useRowWords(zone);
@@ -63,7 +66,13 @@ export const CourtCard = memo(function CourtCard({
       </View>
       <StakeLine stake={stake} />
       <QueueRows card={card} words={words} onOpen={onOpen} />
-      <FinishedRows court={card.name} rows={card.finished} words={words} onOpen={onOpen} />
+      <FinishedRows
+        court={card.name}
+        rows={card.finished}
+        words={words}
+        onOpen={onOpen}
+        opened={opened}
+      />
     </View>
   );
 });
@@ -134,7 +143,9 @@ const FinishedRows = memo(function FinishedRows({
   rows,
   words,
   onOpen,
+  opened,
 }: {
+  readonly opened: ReadonlySet<string> | undefined;
   readonly court: string;
   readonly rows: readonly Row[];
   readonly words: (row: Row) => RowWords;
@@ -156,7 +167,7 @@ const FinishedRows = memo(function FinishedRows({
           spoken={heading}
           dim
           words={words}
-          onOpen={onOpen}
+          onOpen={opened?.has(row.fixtureId) === true ? onOpen : undefined}
         />
       ))}
     </>

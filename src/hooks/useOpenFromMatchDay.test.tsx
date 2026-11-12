@@ -40,12 +40,16 @@ afterEach(() => vi.useRealTimers());
 
 type Sink = OpenSink & { readonly lines: (string | null)[]; refreshed: number };
 
-async function mount(over: { kv?: KeyValueStore; saved?: boolean } = {}) {
+async function mount(over: { kv?: KeyValueStore; saved?: boolean | 'foreign' } = {}) {
   const seed =
     over.saved === false
       ? { [STORE_KEYS.active]: 'matchday' }
       : {
-          [STORE_KEYS.code('matchday')]: encodeSavedCode(SAVED_DAY),
+          [STORE_KEYS.code('matchday')]: encodeSavedCode(
+            over.saved === 'foreign'
+              ? { ...SAVED_DAY, raw: dayLink('elsewhere.example') }
+              : SAVED_DAY,
+          ),
           [STORE_KEYS.active]: 'matchday',
         };
   // `kv` is the secure store the link store and Match Day's store see; the mode store keeps its own, seeded.
@@ -125,7 +129,7 @@ describe('opening a match from its row', () => {
       },
     });
     await tap(m.open);
-    expect(m.sink.lines).toEqual([null, 'matchday.offlineEmpty']);
+    expect(m.sink.lines).toEqual([null, 'matchday.cantOpen']);
     expect(calls).not.toHaveBeenCalledWith('scoring');
     expect((await stored(m, NOW_ROW.fixtureId)).kind).toBe('none');
     expect(await m.ports.matchDayStore.opened()).toEqual([]);
@@ -140,9 +144,16 @@ describe('opening a match from its row', () => {
       value: { kind: 'link', url: dayLink(), sportKey: 'badminton' },
     });
     await tap(m.open);
-    expect(m.sink.lines).toEqual([null, 'matchday.offlineEmpty']);
+    expect(m.sink.lines).toEqual([null, 'matchday.cantOpen']);
     expect(calls).not.toHaveBeenCalledWith('scoring');
     expect((await stored(m, NOW_ROW.fixtureId)).kind).toBe('none');
+  });
+
+  it('a saved day code this build cannot address says so, and asks nothing', async () => {
+    const m = await mount({ saved: 'foreign' });
+    await tap(m.open);
+    expect(m.matchDay.calls).toEqual([]);
+    expect(m.sink.lines).toEqual([null, 'matchday.cantOpen']);
   });
 
   it('the claim that guards the link while it is written is let go: once Match Day lets the match go, a sweep takes it', async () => {
@@ -189,6 +200,8 @@ describe('opening a match from its row', () => {
     await tap(m.open);
     expect(m.matchDay.calls).toEqual([]);
     expect(calls).not.toHaveBeenCalledWith('scoring');
+    expect(m.sink.lines).toEqual([null, 'matchday.cantOpen']);
+    expect(readRecord(m.record).map((line) => line.event)).toContain('matchday.open-no-code');
   });
 
   it('clears the last line as a new tap starts', async () => {

@@ -144,7 +144,9 @@ function createScoringHub(ports: Ports): ScoringHub {
    */
   const unwanted = async (id: string): Promise<boolean> => {
     if (!nobodyHolds(id)) return false;
-    if ((await ports.matchDayStore.opened()).includes(id)) return false;
+    // Fails closed: a list the phone will not read spares the match this round, never deletes it.
+    const opened = await ports.matchDayStore.openedKnown();
+    if (opened === null || opened.includes(id)) return false;
     // The list was read across an await: what a screen, a scan or a save took meanwhile still counts.
     return nobodyHolds(id);
   };

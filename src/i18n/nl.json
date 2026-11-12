@@ -1205,5 +1205,7 @@
   "matchday.approve.webOnly.swiss": "Ronde {done} voltooid · koppel op de website",
   "matchday.approve.webOnly.draw": "Groepen afgelopen · {division} · schema op de website",
   "matchday.sending.atRisk": "Taps in gevaar",
-  "matchday.outOfScope": "Deze wedstrijd staat niet op jouw banen"
+  "matchday.outOfScope": "Deze wedstrijd staat niet op jouw banen",
+  "matchday.cantOpen": "Kon deze wedstrijd niet openen",
+  "matchday.backTo": "Terug naar {court}"
 }

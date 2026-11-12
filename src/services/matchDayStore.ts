@@ -39,6 +39,8 @@ export type MatchDayStore = {
   writeCache(code: SavedDayCode, day: MatchDay, at: Date): Promise<void>;
   clearCache(): Promise<void>;
   opened(): Promise<readonly string[]>;
+  /** Like `opened`, but null when the phone refuses the read: a caller that deletes must not read that as none. */
+  openedKnown(): Promise<readonly string[] | null>;
   addOpened(fixtureId: string): Promise<void>;
   removeOpened(fixtureId: string): Promise<void>;
   /** Reads `matchday.open` into the held value (`openMatch`); never rejects. A reopen decides only after it. */
@@ -120,6 +122,13 @@ export function createMatchDayStore(deps: {
         await files.remove(TEMP);
       }),
     opened,
+    openedKnown: async () => {
+      try {
+        return readOpened(await kv.get(MATCHDAY_KEYS.opened));
+      } catch {
+        return null;
+      }
+    },
     addOpened: (fixtureId) =>
       writeOpened((ids) => (ids.includes(fixtureId) ? ids : [...ids, fixtureId])),
     removeOpened: (fixtureId) => writeOpened((ids) => ids.filter((id) => id !== fixtureId)),
@@ -143,8 +152,12 @@ export function createMatchDayStore(deps: {
       }),
     clearOpen: () =>
       serial(async () => {
-        await kv.delete(MATCHDAY_KEYS.open);
-        hold(null);
+        // The held value is what the session's Back reads: it goes even when the delete is refused (the caller records it).
+        try {
+          await kv.delete(MATCHDAY_KEYS.open);
+        } finally {
+          hold(null);
+        }
       }),
   };
 }

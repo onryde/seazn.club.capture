@@ -44,7 +44,11 @@ export function useOpenFromMatchDay(
       try {
         say(null);
         const code = savedDayCode(ports);
-        if (code === null) return;
+        if (code === null) {
+          // No day code this build can address (none saved, or its host changed): said, never a tap that does nothing.
+          ports.logger.warn('matchday.open-no-code');
+          return say('matchday.cantOpen');
+        }
         const answer = await askOpen(ports, code, row.fixtureId);
         await settle(ports, { row, courtName, code }, answer, { say, refresh });
       } catch {
@@ -107,7 +111,7 @@ async function openLink(
   const scanned = recognise(link.url, ports.clock(), ports.hosts);
   if (scanned.outcome !== 'code' || scanned.code.mode !== 'scoring') {
     ports.logger.warn('matchday.open-foreign-link');
-    return sink.say('matchday.offlineEmpty');
+    return sink.say('matchday.cantOpen');
   }
   let kept: KeptLink | null = null;
   try {

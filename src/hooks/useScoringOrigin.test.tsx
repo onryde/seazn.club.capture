@@ -46,15 +46,21 @@ describe('the pad’s Back', () => {
     expect(m.hook.result.current.label).toBe(en['stream.home']);
   });
 
-  it('follows the store: open from Match Day, it is "‹ Court 1" and goes to the list; cleared, Home again', async () => {
+  it('follows the store: open from Match Day, it is "Back to Court 1" and goes to the list; cleared, Home again', async () => {
     const m = await mounted('matchday');
     m.navigation.go('scoring');
     await act(() => m.ports.matchDayStore.setOpen(OPEN));
-    expect(m.hook.result.current.label).toBe('‹ Court 1');
+    expect(m.hook.result.current.label).toBe('Back to Court 1');
     act(() => m.hook.result.current.back());
     expect(m.navigation.current()).toBe('matchday');
     await act(() => m.ports.matchDayStore.clearOpen());
     expect(m.hook.result.current.label).toBe(en['stream.home']);
+  });
+
+  it('an unnamed court is named by the mode: "Back to Match Day"', async () => {
+    const m = await mounted('matchday');
+    await act(() => m.ports.matchDayStore.setOpen({ ...OPEN, courtName: '  ' }));
+    expect(m.hook.result.current.label).toBe('Back to Match Day');
   });
 
   it('under another mode a match left open is not Match Day’s: Home', async () => {

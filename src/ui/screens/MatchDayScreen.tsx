@@ -44,7 +44,8 @@ export function MatchDayScreen() {
   const [line, say] = useState<MessageKey | null>(null);
   const open = useOpenFromMatchDay({ say, refresh: list.refresh });
   const cameBackTo = useCameBackFrom();
-  const body = { list, line, open, cameBackTo };
+  const opened = useOpenedIds(list.updatedAt);
+  const body = { list, line, open, cameBackTo, opened };
   return (
     <View testID="matchday-screen" style={styles.screen}>
       <View style={styles.bar}>
@@ -74,16 +75,51 @@ function useCameBackFrom(): string | null {
   return court;
 }
 
+const NONE_OPENED: ReadonlySet<string> = new Set();
+
+/**
+ * The matches this phone has opened from Match Day, read again with each read of the day: a finished row opens only
+ * when its link is held (the finished answer carries none), and is otherwise not a control. Until the read lands, none.
+ */
+function useOpenedIds(readAt: Date | null): ReadonlySet<string> {
+  const { matchDayStore } = usePorts();
+  const [opened, setOpened] = useState(NONE_OPENED);
+  useEffect(() => {
+    let alive = true;
+    void matchDayStore.opened().then((ids) => alive && setOpened(new Set(ids)));
+    return () => {
+      alive = false;
+    };
+  }, [matchDayStore, readAt]);
+  return opened;
+}
+
 type BodyProps = {
   readonly list: MatchDayList;
   readonly line: MessageKey | null;
   readonly open: (row: Row, courtName: string) => Promise<void>;
   readonly cameBackTo: string | null;
+  readonly opened: ReadonlySet<string>;
 };
 
-const MatchDayBody = memo(function MatchDayBody({ list, line, open, cameBackTo }: BodyProps) {
+const MatchDayBody = memo(function MatchDayBody({
+  list,
+  line,
+  open,
+  cameBackTo,
+  opened,
+}: BodyProps) {
   if (list.day !== null)
-    return <DayList list={list} day={list.day} line={line} open={open} cameBackTo={cameBackTo} />;
+    return (
+      <DayList
+        list={list}
+        day={list.day}
+        line={line}
+        open={open}
+        cameBackTo={cameBackTo}
+        opened={opened}
+      />
+    );
   if (list.state === 'offline') return <OfflineEmpty retry={list.refresh} reading={list.reading} />;
   return <Opening />;
 });
@@ -129,12 +165,14 @@ const DayList = memo(function DayList({
   line,
   open,
   cameBackTo,
+  opened,
 }: {
   readonly list: MatchDayList;
   readonly day: MatchDay;
   readonly line: MessageKey | null;
   readonly open: BodyProps['open'];
   readonly cameBackTo: string | null;
+  readonly opened: ReadonlySet<string>;
 }) {
   const { t } = useT();
   const { scroller, onSlot } = useScrollToCourt(cameBackTo);
@@ -166,7 +204,7 @@ const DayList = memo(function DayList({
         </Text>
       )}
       {banner === null ? null : <ApprovalBanner banner={banner} />}
-      <Courts day={day} unsent={list.unsent} open={open} onSlot={onSlot} />
+      <Courts day={day} unsent={list.unsent} open={open} onSlot={onSlot} opened={opened} />
       <RowSection
         title={`${t('matchday.noCourt')} · ${day.noCourt.length}`}
         rows={day.noCourt}
@@ -230,9 +268,11 @@ const Courts = memo(function Courts({
   unsent,
   open,
   onSlot,
+  opened,
 }: {
   readonly day: MatchDay;
   readonly unsent: ReadonlyMap<string, number | null>;
+  readonly opened: ReadonlySet<string>;
   readonly open: BodyProps['open'];
   readonly onSlot: (courtName: string, y: number) => void;
 }) {
@@ -253,6 +293,7 @@ const Courts = memo(function Courts({
           zone={day.tz}
           onOpen={open}
           onSlot={onSlot}
+          opened={opened}
         />
       ))}
     </>

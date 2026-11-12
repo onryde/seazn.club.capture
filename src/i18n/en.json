@@ -1205,5 +1205,7 @@
   "matchday.approve.webOnly.swiss": "Round {done} complete · pair on the web desk",
   "matchday.approve.webOnly.draw": "Groups finished · {division} · draw on the web desk",
   "matchday.sending.atRisk": "Taps at risk",
-  "matchday.outOfScope": "This match isn't on your courts"
+  "matchday.outOfScope": "This match isn't on your courts",
+  "matchday.cantOpen": "Couldn't open this match",
+  "matchday.backTo": "Back to {court}"
 }
