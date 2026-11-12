@@ -333,11 +333,27 @@ describe('a finished match’s card at 320 and 360 dp, in four languages', () =>
       }
   });
 
-  it('on landscape Home the title and the longest name are one line each beside Close, so the card is the 48 dp the press target is', () => {
+  it('View result and Close sit side by side on one row at 320 and 360 dp, in every language', () => {
+    for (const width of WIDTHS)
+      for (const lang of LANGS) {
+        const both =
+          ghost(word(lang, 'home.scoring.view')) +
+          space.sm +
+          ghost(word(lang, 'home.scoring.close'));
+        expect(both, `${width} ${lang}`).toBeLessThanOrEqual(innerAt(width));
+      }
+  });
+
+  it('on landscape Home the title and the longest name are one line each beside View result and Close, so the card is the 48 dp the press target is', () => {
     const heights: Record<string, number> = {};
     for (const [width, height] of GEOMETRIES)
       for (const lang of LANGS) {
-        const column = columnAt(width, ghost(word(lang, 'home.scoring.close')));
+        const column = columnAt(
+          width,
+          ghost(word(lang, 'home.scoring.view')) +
+            space.sm +
+            ghost(word(lang, 'home.scoring.close')),
+        );
         const title = Math.max(...titles(lang).map((text) => linesOf(text, column, state)));
         const name = linesOf(LONG_LABEL, column, geistLine);
         expect([title, name], `${width}x${height} ${lang}`).toEqual([1, 1]);

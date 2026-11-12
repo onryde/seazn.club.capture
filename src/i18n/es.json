@@ -35,6 +35,8 @@
   "home.scoring.finishedScore": "Terminado · {score}",
   "home.scoring.close": "Cerrar",
   "home.scoring.closeMatch": "Cerrar {match}",
+  "home.scoring.view": "Ver resultado",
+  "home.scoring.viewMatch": "Ver resultado de {match}",
   "home.scoring.confirm.title": "¿Descartar {match}?",
   "home.scoring.confirm.body.one": "Se borrará {count} toque sin enviar. No llegará a Seazn.",
   "home.scoring.confirm.body.other": "Se borrarán {count} toques sin enviar. No llegarán a Seazn.",

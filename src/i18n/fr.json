@@ -35,6 +35,8 @@
   "home.scoring.finishedScore": "Terminé · {score}",
   "home.scoring.close": "Fermer",
   "home.scoring.closeMatch": "Fermer {match}",
+  "home.scoring.view": "Voir le résultat",
+  "home.scoring.viewMatch": "Voir le résultat de {match}",
   "home.scoring.confirm.title": "Ignorer {match}\u00a0?",
   "home.scoring.confirm.body.one": "{count} saisie non envoyée sera supprimée. Elle n'arrivera pas chez Seazn.",
   "home.scoring.confirm.body.other": "{count} saisies non envoyées seront supprimées. Elles n'arriveront pas chez Seazn.",

@@ -82,9 +82,9 @@ function CardActions(props: { children: ReactNode }) {
   );
 }
 
-/** A screen reader's name for a card's Dismiss or Close: its match, or "another match" for one that never learned its name. */
+/** A screen reader's name for a card's Dismiss, Close or View result: its match, or "another match" for one that never learned its name. */
 function nameFor(
-  key: 'home.scoring.dismissMatch' | 'home.scoring.closeMatch',
+  key: 'home.scoring.dismissMatch' | 'home.scoring.closeMatch' | 'home.scoring.viewMatch',
   label: string,
   translator: Translator,
 ): string {
@@ -205,8 +205,9 @@ function FinishedText({ current }: { current: ScoringCurrent }) {
 
 /**
  * A match that is over, every tap sent (owner ruling 41, 2026-11-02): its words open the match, as they stand (the pad's
- * result card, or its view-only one once the organiser has finalized it), and Close, the one button, lets it go. There is
- * no Forget and no Continue: the match is not in play, and closing it loses nothing.
+ * result card, or its view-only one once the organiser has finalized it); View result, a button before Close (owner,
+ * 2026-11-12: the words did not look pressable, superseding "the one button"), does the same, and Close lets it go.
+ * There is no Forget and no Continue: the match is not in play, and closing it loses nothing.
  */
 function FinishedCard(props: ContinueProps) {
   const translator = useT();
@@ -218,6 +219,11 @@ function FinishedCard(props: ContinueProps) {
         <FinishedText current={current} />
       </PressableText>
       <CardActions>
+        <GhostButton
+          label={translator.t('home.scoring.view')}
+          accessibilityLabel={nameFor('home.scoring.viewMatch', current.label, translator)}
+          onPress={props.onContinue}
+        />
         <GhostButton
           label={translator.t('home.scoring.close')}
           accessibilityLabel={nameFor('home.scoring.closeMatch', current.label, translator)}

@@ -35,6 +35,8 @@
   "home.scoring.finishedScore": "Afgelopen · {score}",
   "home.scoring.close": "Sluiten",
   "home.scoring.closeMatch": "{match} sluiten",
+  "home.scoring.view": "Bekijk uitslag",
+  "home.scoring.viewMatch": "Bekijk uitslag van {match}",
   "home.scoring.confirm.title": "{match} verwijderen?",
   "home.scoring.confirm.body.one": "{count} niet-verstuurde tap wordt verwijderd. Hij bereikt Seazn niet.",
   "home.scoring.confirm.body.other": "{count} niet-verstuurde taps worden verwijderd. Ze bereiken Seazn niet.",
