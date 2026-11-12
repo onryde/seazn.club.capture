@@ -60,7 +60,11 @@ describe('a scoring link scanned from Home', () => {
     await waitFor(() => expect(home.navigation.current()).toBe('scoring'));
     expect(home.kv.entries.get(STORE_KEYS.active)).toBe('scoring');
     const saved = decodeSavedCode(home.kv.entries.get(STORE_KEYS.code('scoring')) ?? '');
-    expect(saved?.scoring).toEqual({ fixtureId: FAKE_MATCH, label: FAKE_LABEL });
+    // The fake server's match, as the scan names it: its sides, then the organiser's number.
+    expect(saved?.scoring).toEqual({
+      fixtureId: FAKE_MATCH,
+      label: 'A. Sharma v L. Chen · Match 4',
+    });
     expect(JSON.parse(home.kv.entries.get(linkKey(FAKE_MATCH)) ?? 'null')).toEqual({
       ...LINK,
       sportKey: 'badminton',

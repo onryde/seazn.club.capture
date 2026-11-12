@@ -34,7 +34,7 @@ const scoring = {
   token: 'abc_123-XYZ',
 } as const satisfies ModeCode;
 /** The match the fake server names for any link (`SINGLES_SEED`): what the scan's check hands the sheet to open. */
-const MATCH = { fixtureId: 'fake-singles', label: 'Match 4' };
+const MATCH = { fixtureId: 'fake-singles', label: 'A. Sharma v L. Chen · Match 4' };
 const SAVE_FAILED = "Couldn't save on this phone. Try again.";
 
 const flush = (ms = 10) => act(() => vi.advanceTimersByTimeAsync(ms));
