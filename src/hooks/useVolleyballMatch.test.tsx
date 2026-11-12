@@ -201,6 +201,35 @@ describe('the deciding set toss (ruling 180)', () => {
     expect(pad(view).view.lastTap?.text).not.toMatchObject({ key: 'scoring.volleyball.tossLost' });
   });
 
+  // F1 (device exit bar): a scorer with a tap of their own, then another scorer's rally: Undo is off for "another scorer
+  // since", and the pad said so twice (the toss line and the note). Only the toss line stands while it shows.
+  it('says it once: the toss line shows and the other-scorer note stays down; the note returns after the next point', async () => {
+    const { fakes, view } = await opened(VOLLEYBALL_DECIDING_SEED);
+    await press(view, 'timeout');
+    await choose(view, 'first');
+    await wait(2_000);
+    act_(view, (actions) => actions.tapHalf('second'));
+    await wait(300);
+    expect(pad(view).sheet?.kind).toBe('toss');
+    fakes.scoring.addOtherScorerEvent('volleyball.rally', { wonBy: HOME_ENTRANT });
+    fakes.realtime.ping();
+    await flush();
+    expect(pad(view).view.lastTap?.text).toEqual({ key: 'scoring.volleyball.tossLost' });
+    expect(pad(view).line).toBeNull();
+  });
+
+  it('with no toss line, the other-scorer note still shows after another scorer’s point (F1 keeps it for the rest)', async () => {
+    const { fakes, view } = await opened(VOLLEYBALL_DECIDING_SEED);
+    await press(view, 'timeout');
+    await choose(view, 'first');
+    await wait(2_000);
+    fakes.scoring.addOtherScorerEvent('volleyball.rally', { wonBy: HOME_ENTRANT });
+    fakes.realtime.ping();
+    await flush();
+    expect(pad(view).view.lastTap?.text).not.toMatchObject({ key: 'scoring.volleyball.tossLost' });
+    expect(pad(view).line).toEqual({ kind: 'note', key: 'scoring.pad.otherScorerSince' });
+  });
+
   it('an answer pressed after the question was answered elsewhere never reaches the wire', async () => {
     const { fakes, view } = await opened(VOLLEYBALL_DECIDING_SEED);
     act_(view, (actions) => actions.tapHalf('second'));

@@ -105,6 +105,7 @@ function useVolleyballPad(
     () => (pad === null ? null : viewOf(pad, held.side, lostToss)),
     [pad, held.side, lostToss],
   );
+  const line = pad === null ? null : lineOf(pad, lostToss);
   return useMemo(
     () =>
       pad === null || view === null
@@ -113,13 +114,13 @@ function useVolleyballPad(
             kind: 'pad',
             view,
             sheet: sheets.view,
-            line: pad.line,
+            line,
             cardNote,
             flash,
             toss: pad.toss,
             actions,
           },
-    [pad, view, sheets.view, cardNote, flash, actions],
+    [pad, view, line, sheets.view, cardNote, flash, actions],
   );
 }
 
@@ -138,10 +139,23 @@ function viewOf(
   const view = heldView === pad.view ? withSanctionNote(heldView, pad.display) : heldView;
   // The scorer tapped under a toss sheet another scorer's rally made moot: nothing was sent, and the line says why until
   // this phone records its next point.
-  if (lostToss === null || lostToss !== pad.display.scoreEvents || pad.view.card !== null)
-    return view;
+  if (!tossLostShows(pad, lostToss)) return view;
   const text: PadText<VolleyballPadKey> = { key: 'scoring.volleyball.tossLost' };
   return { ...view, lastTap: { text, undo: view.lastTap?.undo ?? false } };
+}
+
+/** Whether the toss-lost line is on the pad: the toss the scorer answered was answered elsewhere, and no point of theirs since. */
+function tossLostShows(pad: PadFacts, lostToss: number | null): boolean {
+  return lostToss !== null && lostToss === pad.display.scoreEvents && pad.view.card === null;
+}
+
+/**
+ * The note under the pad. While the toss-lost line says another scorer's point got there first, the generic "another
+ * scorer since" note would say it again (F1), so it stays down; any other note stands.
+ */
+function lineOf(pad: PadFacts, lostToss: number | null): PadFacts['line'] {
+  const said = pad.line?.kind === 'note' && pad.line.key === 'scoring.pad.otherScorerSince';
+  return said && tossLostShows(pad, lostToss) ? null : pad.line;
 }
 
 function withSanctionNote(
