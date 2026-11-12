@@ -212,6 +212,11 @@ describe('the bootstrap again, for the people lists', () => {
     expect(kinds(step(playing(), { kind: 'peopleSheet' }, NOW + PACE - 1).effects)).toEqual([]);
   });
 
+  it('a people sheet inside the window owes the read: it is read when the pace allows', () => {
+    const early = step(playing(), { kind: 'peopleSheet' }, NOW + PACE - 1);
+    expect(wakeAt(early.state, NOW + PACE - 1)).toBe(NOW + PACE);
+  });
+
   it('the background sender never asks, on a foreground or a people sheet', () => {
     const state = ready({ judge: 'trust' }, PLAYING);
     expect(kinds(step(state, { kind: 'foreground' }, NOW + PACE).effects)).toEqual(['fetch']);

@@ -433,6 +433,32 @@ describe('volleyball: the indoor counts in the bottom row beside Tap are never c
     },
   );
 
+  // Whole-branch review M3: a count past its number ("3/2 · 12/6", shown and never refused) takes the numbers-only form at
+  // any set count, or the labelled form would be cut beside two boxes at 320 in French.
+  it.each(LANGUAGES)(
+    '%s: counts past their numbers, as numbers alone, fit beside 0 to 4 finished sets at 320 and 360',
+    (lang, dictionary: Dictionary) => {
+      const past = { timeouts: '3', timeoutCap: '2', subs: '12', subCap: '6' };
+      const shortPast = fill(said(dictionary, `${VB}.foot.indoorShort`), past);
+      for (const width of WIDTHS)
+        for (const sets of [0, 1, 2, 3, 4])
+          expect(
+            controlWidth(shortPast),
+            `${lang} @${width} with ${sets} sets`,
+          ).toBeLessThanOrEqual(roomFor(dictionary, width, sets));
+    },
+  );
+
+  it('needs the over-cap switch: the labelled past-cap counts are cut beside two sets at 320 in some language', () => {
+    const past = { timeouts: '3', timeoutCap: '2', subs: '12', subCap: '6' };
+    const cut = LANGUAGES.filter(
+      ([, dictionary]) =>
+        controlWidth(fill(said(dictionary, `${VB}.foot.indoor`), past)) >
+        roomFor(dictionary, 320, 2),
+    );
+    expect(cut.length).toBeGreaterThan(0);
+  });
+
   // Anti-vacuity: the switch is needed. The labelled counts would be cut beside four boxes at 320 in every language,
   // and the numbers alone fit beside four.
   it('needs the switch: labelled counts would be cut beside four sets at 320, in every language', () => {

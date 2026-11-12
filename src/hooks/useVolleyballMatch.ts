@@ -133,7 +133,9 @@ function viewOf(
   held: PadSide | null,
   lostToss: number | null,
 ): PadView<VolleyballPadKey> {
-  const view = withSanctionNote(withHeldServing(pad.view, held, pad.display), pad.display);
+  const heldView = withHeldServing(pad.view, held, pad.display);
+  // A held answer's line wins over a sanction's note: the scorer must read who serves next (review M2).
+  const view = heldView === pad.view ? withSanctionNote(heldView, pad.display) : heldView;
   // The scorer tapped under a toss sheet another scorer's rally made moot: nothing was sent, and the line says why until
   // this phone records its next point.
   if (lostToss === null || lostToss !== pad.display.scoreEvents || pad.view.card !== null)
@@ -251,10 +253,18 @@ function useActions(parts: Parts): VolleyballPadActions {
  * pad (a card stands over it) goes to the tap, which the match refuses in words.
  */
 function useHalf({ pad, taps, sheets, held }: Parts) {
-  const { tapHalf } = taps;
+  const { tapHalf, bounced } = taps;
   const asks = pad !== null && asksToss(pad, held.side === null);
   const toss = sheets.toss;
-  return useCallback((side: PadSide) => (asks ? toss(side) : tapHalf(side)), [asks, toss, tapHalf]);
+  return useCallback(
+    (side: PadSide) => {
+      if (!asks) return tapHalf(side);
+      // The second touch of a double tap on the rally that ended the set lands on the toss sheet's half: counted once, as
+      // on every pad, never a sheet over a rally already queued (review I1).
+      if (!bounced(side)) toss(side);
+    },
+    [asks, toss, tapHalf, bounced],
+  );
 }
 
 /**

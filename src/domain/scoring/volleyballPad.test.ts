@@ -69,6 +69,21 @@ describe('volleyballPad: the foot (ruling 175)', () => {
     expect(first(three).foot?.said).toMatchObject({ key: 'scoring.volleyball.foot.indoorSaid' });
   });
 
+  // Whole-branch review M3: "TM 3/2 · Remp. 12/6" is wider than the slot at 320 dp with two sets finished.
+  it('drops its labels once a count is past its number, at any set', () => {
+    const subs = (n: number) => Array.from({ length: n }, () => sub('H'));
+    expect(
+      first(padOf([...LIVE, timeout('H'), timeout('H'), timeout('H')])).foot?.text,
+    ).toMatchObject({ key: 'scoring.volleyball.foot.indoorShort' });
+    expect(first(padOf([...LIVE, ...subs(7)])).foot?.text).toMatchObject({
+      key: 'scoring.volleyball.foot.indoorShort',
+    });
+    // At the number exactly the labelled form still fits.
+    expect(
+      first(padOf([...LIVE, timeout('H'), timeout('H'), ...subs(6)])).foot?.text,
+    ).toMatchObject({ key: 'scoring.volleyball.foot.indoor' });
+  });
+
   it('has no foot where the match records no timeouts (an empty input)', () => {
     const noTimeouts = withCfg(INDOOR, {
       records: { timeouts: false, sanctions: true, substitutions: true, expedite: false },

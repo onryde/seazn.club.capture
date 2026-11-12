@@ -51,14 +51,15 @@ export function wanting<S extends SportTypes>(
 }
 
 /**
- * A sheet listing the match's people opened: the bootstrap again if the last read is 15 s back, nothing else. Only the
+ * A sheet listing the match's people opened: the bootstrap again if the last read is 15 s back, else owed for when it is; no ledger fetch. Only the
  * foreground folding runner reads it, and a dead or too large match has nothing it could change.
  */
 export function askedForPeople<S extends SportTypes>(state: MatchState<S>, now: number): Part<S> {
   if (state.judge !== 'fold' || state.sync.status === 'tooLarge' || deadOf(state) !== null) {
     return part(state);
   }
-  return paced(state, now) ? asking(state, now) : part(state);
+  // Inside the pace nothing is read, but the read is owed: it goes when the pace allows (review M4).
+  return paced(state, now) ? asking(state, now) : part({ ...state, bootstrapOwed: true });
 }
 
 /** No bootstrap is held, or the server's screen is a card in place of the pad. */

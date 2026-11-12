@@ -735,3 +735,75 @@ describe('every other pad button', () => {
     expect(pad(view).sheet).toBeNull();
   });
 });
+
+// Whole-branch review I1: the rally that closes the set before the deciding one is followed, 100 ms later, by its own
+// double touch. The pad then asks Who serves first?, but the touch is the same tap and counts once, as on every pad.
+const rallies = (winner: 'first' | 'second', n: number, serving?: 'first' | 'second') =>
+  Array.from({ length: n }, (_, i) =>
+    i === 0 && serving !== undefined ? rallyEvent(winner, serving) : rallyEvent(winner),
+  );
+
+describe('a double tap on the rally that ends the set before the deciding one', () => {
+  const START_EVENT = { type: 'core.start', payload: {} };
+  const cases: [string, FakeMatchSeed][] = [
+    [
+      'indoor set 4 at 0-24',
+      indoorSeed({
+        fixtureId: 'fake-vb-set4-end',
+        events: [
+          START_EVENT,
+          ...rallies('first', 25, 'first'),
+          ...rallies('second', 25),
+          ...rallies('first', 25),
+          ...rallies('second', 24),
+        ],
+      }),
+    ],
+    [
+      'beach set 2 at 0-20',
+      beachSeed({
+        fixtureId: 'fake-vb-beach-set2-end',
+        events: [START_EVENT, ...rallies('first', 21, 'first'), ...rallies('second', 20)],
+      }),
+    ],
+  ];
+
+  it.each(cases)(
+    '%s: the second touch counts once, opens no sheet, queues one rally',
+    async (_n, seed) => {
+      const { fakes, view } = await opened(seed);
+      fakes.scoring.goOffline(true);
+      act_(view, (actions) => actions.tapHalf('second'));
+      await flush();
+      await wait(100);
+      act_(view, (actions) => actions.tapHalf('second'));
+      await flush();
+      expect(pad(view).sheet).toBeNull();
+      expect(pad(view).line).toMatchObject({ kind: 'note', key: 'scoring.pad.countedOnce' });
+      expect(queuedOf(fakes, seed, 'volleyball.rally').map((rally) => rally.wonBy)).toEqual([
+        AWAY_ENTRANT,
+      ]);
+      // Once the window is over, the next tap is the new set's first and asks.
+      await wait(300);
+      act_(view, (actions) => actions.tapHalf('second'));
+      await flush();
+      expect(pad(view).sheet?.kind).toBe('toss');
+    },
+  );
+});
+
+// Whole-branch review M2: the held answer's line wins over a sanction's note.
+describe('a held answer and a sanction', () => {
+  it('keeps "Next point: X serving" on the line after a penalty', async () => {
+    const { fakes, view } = await opened(LOST_ANCHOR);
+    await press(view, 'serving');
+    await choose(view, 'second');
+    fakes.scoring.goOffline(true);
+    await press(view, 'more');
+    await choose(view, 'sanction.first');
+    await choose(view, 'penalty');
+    await choose(view, `${HOME_ENTRANT}-p2`);
+    expect(queuedOf(fakes, LOST_ANCHOR, 'volleyball.sanction')).toHaveLength(1);
+    expect(pad(view).view.lastTap?.text).toMatchObject({ key: 'scoring.volleyball.held' });
+  });
+});

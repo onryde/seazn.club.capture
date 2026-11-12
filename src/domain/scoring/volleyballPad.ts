@@ -138,11 +138,6 @@ function serverPerson(display: VolleyballDisplay): Text | null {
 // ---------------------------------------------------------------------------------------------------------------
 
 /**
- * "T/O 1 of 2 · Subs 4 of 6" (beach: "T/O 0 of 1"), and `caution` once either count has reached FIVB's number: it never
- * refuses the next one, it shows it (ruling 175). None before the start, once the match is decided, or in a match that
- * records no timeouts.
- */
-/**
  * With this many sets finished the bottom row holds this many boxes beside "Tap", and the labelled counts no longer fit
  * the slot at 320 dp in every language (volleyballFit.test.ts): the counts drop their labels ("2/2 · 6/6", timeouts then
  * subs, as the tool row's order) and the half's name still speaks them in full.
@@ -151,6 +146,12 @@ const SHORT_FOOT_FROM = 3;
 const LABELLED_FOOT = 'scoring.volleyball.foot.indoor';
 const SHORT_FOOT = 'scoring.volleyball.foot.indoorShort';
 
+/**
+ * "T/O 1 of 2 · Subs 4 of 6" (beach: "T/O 0 of 1"), and `caution` once either count has reached FIVB's number: it never
+ * refuses the next one, it shows it (ruling 175). None before the start, once the match is decided, or in a match that
+ * records no timeouts. Numbers alone ("2/2 · 6/6") from the third finished set, or once a count is past its number
+ * ("3/2 · 12/6" is wider than the slot: review M3).
+ */
 function foot(display: VolleyballDisplay, side: PadSide): PadFoot<VolleyballPadKey> | null {
   if (!takesTaps(display) || !display.records.timeouts) return null;
   const { counts, caps } = display;
@@ -167,8 +168,12 @@ function foot(display: VolleyballDisplay, side: PadSide): PadFoot<VolleyballPadK
     };
   }
   const vars = { ...timeouts, subs: mine.subs, subCap: caps.subs };
+  const over = mine.timeouts > caps.timeouts || (caps.subs > 0 && mine.subs > caps.subs);
   return {
-    text: { key: display.finished.length >= SHORT_FOOT_FROM ? SHORT_FOOT : LABELLED_FOOT, vars },
+    text: {
+      key: over || display.finished.length >= SHORT_FOOT_FROM ? SHORT_FOOT : LABELLED_FOOT,
+      vars,
+    },
     said: { key: 'scoring.volleyball.foot.indoorSaid', vars },
     place: 'slot',
     caution,

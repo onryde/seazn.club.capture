@@ -94,9 +94,19 @@ export function useTaps(
     say(COUNTED_ONCE);
     return true;
   }, [clock, say]);
+  const bounced = useCallback(
+    (tap: string): boolean => {
+      const prior = last.current;
+      const repeat = prior !== null && (prior.tap === tap || prior.opens);
+      if (!repeat || !isBounce(clock().getTime() - prior.at)) return false;
+      say(COUNTED_ONCE);
+      return true;
+    },
+    [last, clock, say],
+  );
   return useMemo(
-    () => ({ tapHalf, point, undo, opening, arm, secondTouch, choose }),
-    [tapHalf, point, undo, opening, arm, secondTouch, choose],
+    () => ({ tapHalf, point, undo, opening, arm, secondTouch, choose, bounced }),
+    [tapHalf, point, undo, opening, arm, secondTouch, choose, bounced],
   );
 }
 
