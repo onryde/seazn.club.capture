@@ -57,7 +57,7 @@ Produce these sections, in order:
       process death and cold start, a refused write, the engine failing
       or ending mid-flow, a phone call, the screen locking?
    4. What happens **in another mode, orientation or language** —
-      stream / scoring / dashboard, portrait / landscape, flat on a
+      stream / scoring / matchday, portrait / landscape, flat on a
       table, en / es / fr / nl (the longest string wins the layout)?
 
 End with a verdict: **Approved** or **Needs fixes**, one sentence why.

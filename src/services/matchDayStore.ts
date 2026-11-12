@@ -1,5 +1,6 @@
 import { tokenTag } from '@/domain/credentials/tokenTag';
 import { isRecord } from '@/domain/credentials/wire';
+import { readStoredDay } from '@/domain/matchday/dayWire';
 import type { MatchDay } from '@/domain/matchday/matchDay';
 import type { SavedDayCode } from '@/domain/mode/dayCode';
 import type { KeyValueStore } from '@/services/KeyValueStore';
@@ -77,7 +78,6 @@ export const MATCHDAY_DATE_KEYS: ReadonlySet<string> = new Set([
   'expiresAt',
   'scheduledAt',
 ]);
-const LISTS = ['courts', 'noCourt', 'online', 'approvals'] as const;
 const COPY = 'day.json';
 const TEMP = 'day.json.tmp';
 /** Where Task 3's first cut kept the copy: no build shipped it, but a dev twin may still hold one. */
@@ -225,17 +225,17 @@ async function peek(
   }
 }
 
-/** The copy, if it is this version's and every date in it is a date, with the tag of the code it belongs to. */
+/**
+ * The copy, if it is this version's and its day passes the day parser's full check (`readStoredDay`; final review M3:
+ * every row, court and approval), with the tag of the code it belongs to.
+ */
 function decode(text: string): Envelope | null {
   const data = parse(text);
   if (!isRecord(data) || data.v !== MATCHDAY_CACHE_VERSION || typeof data.tag !== 'string')
     return null;
   if (typeof data.at !== 'number' || !Number.isFinite(data.at)) return null;
-  const day = data.day;
-  if (!isRecord(day) || !(day.opensAt instanceof Date) || !(day.expiresAt instanceof Date))
-    return null;
-  if (!LISTS.every((list) => Array.isArray(day[list]))) return null;
-  return { tag: data.tag, copy: { day: day as MatchDay, at: new Date(data.at) } };
+  const day = readStoredDay(data.day);
+  return day === null ? null : { tag: data.tag, copy: { day, at: new Date(data.at) } };
 }
 
 /** JSON with its dates read back; a date that is no date refuses the whole copy. */

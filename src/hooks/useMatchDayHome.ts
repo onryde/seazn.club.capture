@@ -5,6 +5,7 @@ import { dayCodeOf, type SavedDayCode } from '@/domain/mode/dayCode';
 import type { ModeCode } from '@/domain/mode/Mode';
 import { recognise } from '@/domain/mode/recognise';
 import { savedCodeFrom, type SavedCode } from '@/domain/mode/savedCode';
+import { scoringHubOf } from '@/hooks/scoringHub';
 import type { OpenCode, SetPanel } from '@/hooks/useCodeCheck';
 import type { HomeNews, HomePanel, SaveFailed, SetStatusKey } from '@/hooks/useHome';
 import { usePorts, type Ports } from '@/hooks/usePorts';
@@ -124,6 +125,7 @@ async function afterScan(
   dayCode: SavedDayCode | null,
   verdict: Verdict,
 ): Promise<void> {
+  const before = savedDayRaw(ports);
   switch (verdict.kind) {
     case 'open':
       home.setPanel(null);
@@ -131,10 +133,11 @@ async function afterScan(
       // Review M1: the copy only once its code is saved. A7's Cancel, a refused save or a process death before the save
       // then writes nothing, so a code already saved never loses its own copy to one that went no further.
       if (dayCode !== null && isSaved(ports, code)) await keepCopy(ports, dayCode, verdict.day);
-      return;
+      return letGoOfReplaced(ports, code, before);
     case 'notYet':
       home.setPanel(null);
-      return keepUnopened(ports, home, code, verdict.news);
+      await keepUnopened(ports, home, code, verdict.news);
+      return letGoOfReplaced(ports, code, before);
     case 'stop':
       return home.setPanel({ kind: 'dayRefused', tapped: 'matchday', line: verdict.line });
     case 'offline':
@@ -145,6 +148,25 @@ async function afterScan(
         code,
       });
   }
+}
+
+/** The raw text of the day code saved now, or null for none (or a store not loaded). */
+function savedDayRaw(ports: Ports): string | null {
+  const snapshot = ports.modeStore.getSnapshot();
+  return snapshot.status === 'ready' ? (snapshot.saved.codes.matchday?.raw ?? null) : null;
+}
+
+/**
+ * Final review M2: a different day code now saved in place of `before` lets go of what the first one opened, as Exit
+ * does (`letGoOfOpened`), so its matches are not spared for the new day's life. With no code before, a list left by an
+ * Exit that died between its steps goes the same way. The same code again, or one that was not saved, lets go of
+ * nothing. A refusal is recorded, and the list stays for the next pass.
+ */
+async function letGoOfReplaced(ports: Ports, code: DayCode, before: string | null): Promise<void> {
+  if (before === code.raw || !isSaved(ports, code)) return;
+  await scoringHubOf(ports)
+    .letGoOfOpened()
+    .catch(() => ports.logger.warn('matchday.let-go-refused'));
 }
 
 /** The store holds this very code as Match Day's. */

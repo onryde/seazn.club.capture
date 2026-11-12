@@ -4,7 +4,7 @@ import { totalStake, type Stake } from '@/domain/matchday/matchDay';
 import { scoringHubOf } from '@/hooks/scoringHub';
 import { forgetWithCopy } from '@/hooks/useMatchDayHome';
 import { unsentOf } from '@/hooks/useMatchDay';
-import { savedDayCode } from '@/hooks/useOpenFromMatchDay';
+import { cancelOpens, savedDayCode } from '@/hooks/useOpenFromMatchDay';
 import { usePorts, type Ports } from '@/hooks/usePorts';
 
 /**
@@ -18,8 +18,8 @@ import { usePorts, type Ports } from '@/hooks/usePorts';
  * 2. notes, in a key of its own, the court of each match with taps still going, so Home can say "Sending 3 taps · Court 2";
  * 3. nudges the hub to send now (it never waits for the network: Exit leaves either way);
  * 4. forgets the day code and its copy, a refused forget saying so on Home (as an ended code's does);
- * 5. lets go of the opened matches and of the match open: each match keeps its own link and queue, and the hub's sweep
- *    takes it once its queue is empty and nothing else holds it;
+ * 5. lets go of the opened matches and of the match open: a match with a queue keeps its own link and queue, and the
+ *    hub's sweep takes it once its queue is empty and nothing else holds it; one never tapped goes now, link and all;
  * 6. goes Home.
  *
  * Every step after the first is on its own: one that the phone refuses is recorded and the rest still go. A second
@@ -66,6 +66,8 @@ export function useMatchDayExit(note: () => void = noNote): {
   const exit = useCallback(async () => {
     if (exiting.current) return;
     exiting.current = true;
+    // An open still in flight would land after Home (final review M1): it is cancelled before anything is read.
+    cancelOpens(ports);
     try {
       await leave(ports);
     } finally {
@@ -140,10 +142,13 @@ async function forgetDay(ports: Ports): Promise<void> {
   }
 }
 
-/** Match Day lets go of the matches it opened, including an id a dismissed dead-link card left (T5 c7), and the open one. */
+/**
+ * Match Day lets go of the matches it opened, including an id a dismissed dead-link card left (T5 c7), and the open one.
+ * A match viewed and never tapped has no queue for a sweep to find, so the hub leaves it first (final review I1).
+ */
 async function letGo(ports: Ports): Promise<void> {
-  await ports.matchDayStore
-    .clearOpened()
+  await scoringHubOf(ports)
+    .letGoOfOpened()
     .catch(() => ports.logger.warn('store.write-refused', { action: 'exit' }));
   await ports.matchDayStore
     .clearOpen()

@@ -42,7 +42,13 @@ const SAVED_DAY: SavedCode = {
 };
 const DAY_CODE = { origin: 'https://stg.seazn.club', token: FIXTURE_DAY_TOKEN };
 
-/** The fake day with the fake singles match as Court 2's Now: the one fixture the fake server serves. */
+/**
+ * A made-up match with a real fixture id, Court 2's Now in `DAY`. The day's copy reads back through the day parser
+ * (final review M3), whose fixture ids are uuids, so the fake server's 'fake-singles' is on no court a copy can hold.
+ */
+const ON_COURT_2 = '5c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f';
+
+/** The fake day with `ON_COURT_2` as Court 2's Now. */
 const DAY: MatchDay = {
   ...FAKE_DAY,
   courts: [
@@ -52,7 +58,7 @@ const DAY: MatchDay = {
       state: 'playing',
       now: {
         ...(FAKE_DAY.courts[0]?.now as NonNullable<MatchDay['courts'][number]['now']>),
-        fixtureId: FIXTURE,
+        fixtureId: ON_COURT_2,
       },
     },
   ],
@@ -288,6 +294,7 @@ describe('what Exit forgets and keeps', () => {
   it('forgets the code, the copy, the open match and every opened id, and goes Home', async () => {
     const view = await mount({ taps: 1 });
     await view.ports.matchDayStore.setOpen({ fixtureId: FIXTURE, courtName: 'Court 2' });
+    expect(await view.ports.matchDayStore.readCache(DAY_CODE)).not.toBeNull();
     await act(() => view.result.current.exit());
     expect(savedCode(view)).toBeNull();
     expect(view.kv.entries.has(STORE_KEYS.code('matchday'))).toBe(false);
@@ -306,14 +313,16 @@ describe('what Exit forgets and keeps', () => {
 
   it('notes the court of each match still sending, and none for a match with nothing unsent', async () => {
     const view = await mount({
-      taps: 2,
-      opened: [FIXTURE, OTHER],
+      opened: [ON_COURT_2, OTHER],
       prepare: async (fakes) => {
+        await fakes.tapQueue.save(
+          queueHolding(ON_COURT_2, 2, { askedAbout: [`${ON_COURT_2}-k0`] }),
+        );
         await fakes.tapQueue.save(queueHolding(OTHER, 0));
       },
     });
     await act(() => view.result.current.exit());
-    expect([...(await view.ports.matchDayStore.sending())]).toEqual([[FIXTURE, 'Court 2']]);
+    expect([...(await view.ports.matchDayStore.sending())]).toEqual([[ON_COURT_2, 'Court 2']]);
   });
 
   it('a match on no court in the copy is noted with none; no copy at all is the same', async () => {
@@ -632,5 +641,90 @@ describe('the record', () => {
     await act(() => view.result.current.exit());
     const line = readRecord(view.record).find((l) => l.event === 'matchday.exit');
     expect(line?.fields).toEqual({ unsent: null });
+  });
+});
+
+describe('Exit lets go of a match it opened that was never tapped (final review I1)', () => {
+  /** The nudge's own heal would also let go once the day is gone: held off, so what is seen is Exit's own pass. */
+  const holdNudge = (view: FakePorts) =>
+    vi.spyOn(scoringHubOf(view.ports), 'resume').mockResolvedValue(undefined);
+  const nothingLeft = async (view: FakePorts, id = FIXTURE) =>
+    !(await hasLink(view, id)) &&
+    (await view.tapQueue.loadBoot(id)) === null &&
+    (await view.tapQueue.loadLedger(id)) === null;
+
+  it('viewed with no taps: Exit itself takes its link, boot cache and ledger, and the list', async () => {
+    const view = await mount();
+    holdNudge(view);
+    await act(() => view.result.current.exit());
+    expect(await nothingLeft(view)).toBe(true);
+    expect(view.kv.entries.has(MATCHDAY_KEYS.opened)).toBe(false);
+    expect(view.navigation.current()).toBe('home');
+  });
+
+  it('with the nudge running too: nothing is left of the untapped match after Exit', async () => {
+    const view = await mount();
+    await act(() => view.result.current.exit());
+    await settle(2_000);
+    expect(await nothingLeft(view)).toBe(true);
+  });
+
+  it('a match with taps keeps its link until its queue empties; the untapped one beside it goes at Exit', async () => {
+    const view = await mount({
+      taps: 2,
+      opened: [FIXTURE, OTHER],
+      prepare: async (fakes) => {
+        await saveScoringLink(fakes.kv, OTHER, LINK, HOST, 'badminton');
+      },
+    });
+    const nudge = holdNudge(view);
+    await act(() => view.result.current.exit());
+    expect(await hasLink(view, OTHER)).toBe(false);
+    expect(await hasLink(view)).toBe(true);
+    expect((await view.tapQueue.load(FIXTURE))?.pending).toHaveLength(2);
+    nudge.mockRestore();
+    view.scoring.goOffline(false);
+    await act(() => scoringHubOf(view.ports).resume());
+    await settle(60_000);
+    expect(await view.tapQueue.load(FIXTURE)).toBeNull();
+    expect(await hasLink(view)).toBe(false);
+  });
+
+  it('a match on screen is untouched by Exit and stays on the list; its release lets it go', async () => {
+    const view = await mount();
+    const handle = scoringHubOf(view.ports).focus(FIXTURE);
+    await settle(1_000);
+    const nudge = holdNudge(view);
+    await act(() => view.result.current.exit());
+    expect(await hasLink(view)).toBe(true);
+    expect(await view.tapQueue.loadBoot(FIXTURE)).not.toBeNull();
+    expect(await view.ports.matchDayStore.opened()).toEqual([FIXTURE]);
+    nudge.mockRestore();
+    act(() => handle.release());
+    await settle(2_000);
+    expect(await nothingLeft(view)).toBe(true);
+    expect(await view.ports.matchDayStore.opened()).toEqual([]);
+  });
+
+  it('a refused delete of its link is recorded, keeps it on the list, Exit still goes Home, and a later resume lets it go', async () => {
+    const view = await mount();
+    const real = view.kv.delete.bind(view.kv);
+    const refuse = vi
+      .spyOn(view.kv, 'delete')
+      .mockImplementation((key: string) =>
+        key === `scoring.link.${FIXTURE}` ? Promise.reject(new Error('refused')) : real(key),
+      );
+    await act(() => view.result.current.exit());
+    await settle(2_000);
+    expect(view.navigation.current()).toBe('home');
+    expect(savedCode(view)).toBeNull();
+    expect(await hasLink(view)).toBe(true);
+    expect(await view.ports.matchDayStore.opened()).toEqual([FIXTURE]);
+    expect(readRecord(view.record).some((l) => l.event === 'matchday.let-go-refused')).toBe(true);
+    refuse.mockRestore();
+    await act(() => scoringHubOf(view.ports).resume());
+    await settle(2_000);
+    expect(await nothingLeft(view)).toBe(true);
+    expect(await view.ports.matchDayStore.opened()).toEqual([]);
   });
 });

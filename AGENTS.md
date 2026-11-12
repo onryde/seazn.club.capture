@@ -605,10 +605,14 @@ Three rules travel with these tokens:
   imported tokens. Telemetry never goes in context.
 - No React Query. The endpoints JS calls (the code check, the record upload
   behind `RecordUploadPort`: R3 of the D3 findings design; owner, 2026-10-11,
-  and Remote Scoring's capture API behind the scoring port) sit behind ports
-  with plain `fetch`; the rest are native's. Realtime is one subscription per
-  match, owned by the focused match (the hub's, `scoringHub.ts`), only as a
-  nudge to read again (S2 design §6.3).
+  Remote Scoring's capture API behind the scoring port, and Match Day's day,
+  open, review and approve calls behind the Match Day port,
+  `fetchMatchDayPort.ts`) sit behind ports with plain `fetch`; the rest are
+  native's. Match Day polls its day once every 15 s while the list is on
+  screen, within the code's rate limit: a 429 waits for the next poll (S4
+  design §5). Realtime is one subscription per match, owned by the focused
+  match (the hub's, `scoringHub.ts`), only as a nudge to read again
+  (S2 design §6.3).
 - `React.memo` and no anonymous functions in render, for HUD components
   specifically. This is the rare app where that is load-bearing.
 - Animations on Reanimated worklets — UI thread, never JS.
@@ -805,7 +809,8 @@ android --no-install`, then `pnpm expo run:android --no-bundler` or
   the phone's language. No AsyncStorage. `expo-file-system` for Remote
   Scoring's tap queue (write a `.tmp`, then move it over the file; on Android
   the move deletes then renames, so a read promotes a lone `.tmp`) and for
-  Match Day's day copy (the same pattern, in a folder of its own, since the tap
+  Match Day's day copy (the same pattern, at
+  `documentDirectory/matchday/day.json`, a folder of its own since the tap
   queue reads every file in its folder as a queue), `@seazn/engine`
   (pinned exactly, from GitHub Packages: the credential lives in the user
   config, never the project's `.npmrc`) for the fold, and

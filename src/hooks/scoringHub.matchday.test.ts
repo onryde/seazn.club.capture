@@ -231,3 +231,174 @@ describe('the sweep reads Match Day’s list across an await', () => {
     expect(await kept(fakes)).toBe(true);
   });
 });
+
+// MD-2 final review I1: a match opened from Match Day but never tapped has no queue file, so no sweep ever names it.
+// Before Match Day lets go of its list, the hub lets go of each such match (`leave`: its link and boot cache go, its own
+// tap ids stay a day), unless something still holds it. A match with a queue keeps its link by S2's tidy rule.
+
+/** A match viewed from Match Day and never tapped: its link and boot cache, no queue file, and no day code saved. */
+async function viewed(id = FIXTURE, seed: Record<string, string> = {}): Promise<FakePorts> {
+  const fakes = createFakePorts({ clock: timerClock, kvSeed: seed });
+  await saveScoringLink(fakes.kv, id, LINK, HOST, 'badminton');
+  const read = await fakes.scoring.bootstrap(LINK);
+  if (read.kind !== 'ok') throw new Error('the fake serves the match');
+  await fakes.tapQueue.saveBoot(id, { bootstrap: read.bootstrap, toss: null, picks: NO_PICKS });
+  await fakes.ports.matchDayStore.addOpened(id);
+  await fakes.ports.modeStore.load();
+  return fakes;
+}
+
+const goneAll = async (fakes: FakePorts, id = FIXTURE): Promise<boolean> =>
+  (await readScoringLink(fakes.kv, id, HOST)).kind === 'none' &&
+  (await fakes.tapQueue.loadBoot(id)) === null;
+
+const recorded = (fakes: FakePorts, event: string): boolean =>
+  readRecord(fakes.record).some((l) => l.event === event);
+
+describe('the heal lets go of a match Match Day opened that was never tapped (final review I1)', () => {
+  it('viewed through the pad (focus, ready, release with no taps), then the day goes: link and boot cache go', async () => {
+    const fakes = createFakePorts({ clock: timerClock, kvSeed: DAY_SEED });
+    await saveScoringLink(fakes.kv, FIXTURE, LINK, HOST, 'badminton');
+    await fakes.ports.matchDayStore.addOpened(FIXTURE);
+    await fakes.ports.modeStore.load();
+    const hub = scoringHubOf(fakes.ports);
+    const handle = hub.focus(FIXTURE);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(handle.runner.snapshot().kind).toBe('ready');
+    expect(await fakes.tapQueue.loadBoot(FIXTURE)).not.toBeNull();
+    handle.release();
+    await vi.advanceTimersByTimeAsync(1_000);
+    // The day still holds it: nothing goes.
+    expect((await readScoringLink(fakes.kv, FIXTURE, HOST)).kind).toBe('link');
+    await fakes.kv.delete(STORE_KEYS.code('matchday'));
+    await fakes.ports.modeStore.load();
+    await hub.resume();
+    expect(await goneAll(fakes)).toBe(true);
+    expect(await fakes.ports.matchDayStore.opened()).toEqual([]);
+  });
+
+  it('a code that ended (no day code) with a match viewed and no taps: the next resume lets it go', async () => {
+    const fakes = await viewed();
+    await scoringHubOf(fakes.ports).resume();
+    expect(await goneAll(fakes)).toBe(true);
+    expect(await fakes.ports.matchDayStore.opened()).toEqual([]);
+  });
+
+  it('a match with taps queued keeps its link until its queue empties; the untapped one goes now', async () => {
+    const fakes = await viewed();
+    await saveScoringLink(fakes.kv, OTHER, LINK, HOST, 'badminton');
+    await fakes.tapQueue.save({
+      fixtureId: OTHER,
+      label: 'Match 5',
+      pending: [queuedOf('k1', rally('H'))],
+      ownEventIds: [],
+      dead: null,
+      askedAbout: ['k1'],
+    });
+    await fakes.ports.matchDayStore.addOpened(OTHER);
+    await scoringHubOf(fakes.ports).resume();
+    expect(await goneAll(fakes)).toBe(true);
+    expect((await readScoringLink(fakes.kv, OTHER, HOST)).kind).toBe('link');
+    expect((await fakes.tapQueue.load(OTHER))?.pending).toHaveLength(1);
+    expect(await fakes.ports.matchDayStore.opened()).toEqual([]);
+  });
+
+  it('the focused match is untouched and stays on the list; its release lets it go', async () => {
+    const fakes = await viewed();
+    const hub = scoringHubOf(fakes.ports);
+    const handle = hub.focus(FIXTURE);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await hub.resume();
+    expect((await readScoringLink(fakes.kv, FIXTURE, HOST)).kind).toBe('link');
+    expect(await fakes.tapQueue.loadBoot(FIXTURE)).not.toBeNull();
+    expect(await fakes.ports.matchDayStore.opened()).toEqual([FIXTURE]);
+    handle.release();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(await goneAll(fakes)).toBe(true);
+    expect(await fakes.ports.matchDayStore.opened()).toEqual([]);
+  });
+
+  it('the saved Remote Scoring match is never let go by it', async () => {
+    const fakes = await viewed(FIXTURE, {
+      [STORE_KEYS.code('scoring')]: encodeSavedCode({
+        mode: 'scoring',
+        raw: '',
+        slot: null,
+        savedAt: new Date('2026-11-12T09:00:00.000Z'),
+        expiresAt: null,
+        stream: null,
+        scoring: { fixtureId: FIXTURE, label: 'Match 4' },
+      }),
+    });
+    await scoringHubOf(fakes.ports).resume();
+    expect((await readScoringLink(fakes.kv, FIXTURE, HOST)).kind).toBe('link');
+    expect(await fakes.ports.matchDayStore.opened()).toEqual([FIXTURE]);
+  });
+
+  it('a scan that claims the match while the queues are read keeps it', async () => {
+    const fakes = await viewed();
+    const hub = scoringHubOf(fakes.ports);
+    let release = (): void => undefined;
+    const list = fakes.tapQueue.listKnown.bind(fakes.tapQueue);
+    vi.spyOn(fakes.tapQueue, 'listKnown').mockImplementationOnce(async () => {
+      release = hub.claim(FIXTURE);
+      return list();
+    });
+    await hub.resume();
+    expect((await readScoringLink(fakes.kv, FIXTURE, HOST)).kind).toBe('link');
+    expect(await fakes.ports.matchDayStore.opened()).toEqual([FIXTURE]);
+    release();
+  });
+
+  it('a refused delete of the link keeps the match on the list, is recorded, and the next resume lets it go', async () => {
+    const fakes = await viewed();
+    await fakes.ports.matchDayStore.addOpened('left-by-a-dismiss');
+    const real = fakes.kv.delete.bind(fakes.kv);
+    const refuse = vi
+      .spyOn(fakes.kv, 'delete')
+      .mockImplementation((key) =>
+        key === `scoring.link.${FIXTURE}` ? Promise.reject(new Error('refused')) : real(key),
+      );
+    await scoringHubOf(fakes.ports).resume();
+    expect((await readScoringLink(fakes.kv, FIXTURE, HOST)).kind).toBe('link');
+    expect(await fakes.ports.matchDayStore.opened()).toEqual([FIXTURE]);
+    expect(recorded(fakes, 'matchday.let-go-refused')).toBe(true);
+    refuse.mockRestore();
+    await scoringHubOf(fakes.ports).resume();
+    expect(await goneAll(fakes)).toBe(true);
+    expect(await fakes.ports.matchDayStore.opened()).toEqual([]);
+  });
+
+  it('a queue folder the phone cannot list lets go of nothing and keeps the list (it is never read as no queue)', async () => {
+    const fakes = await viewed();
+    vi.spyOn(fakes.tapQueue, 'listKnown').mockResolvedValueOnce(null);
+    await scoringHubOf(fakes.ports).resume();
+    expect((await readScoringLink(fakes.kv, FIXTURE, HOST)).kind).toBe('link');
+    expect(await fakes.ports.matchDayStore.opened()).toEqual([FIXTURE]);
+    expect(recorded(fakes, 'matchday.heal-refused')).toBe(true);
+  });
+
+  it('a list the phone will not read lets go of nothing', async () => {
+    const fakes = await viewed();
+    vi.spyOn(fakes.ports.matchDayStore, 'openedKnown').mockResolvedValue(null);
+    await scoringHubOf(fakes.ports).resume();
+    expect((await readScoringLink(fakes.kv, FIXTURE, HOST)).kind).toBe('link');
+  });
+
+  it('a day still saved: nothing is let go by the heal', async () => {
+    const fakes = await viewed(FIXTURE, DAY_SEED);
+    await scoringHubOf(fakes.ports).resume();
+    expect((await readScoringLink(fakes.kv, FIXTURE, HOST)).kind).toBe('link');
+    expect(await fakes.tapQueue.loadBoot(FIXTURE)).not.toBeNull();
+    expect(await fakes.ports.matchDayStore.opened()).toEqual([FIXTURE]);
+  });
+
+  it('the record names no fixture, link or token', async () => {
+    const fakes = await viewed();
+    vi.spyOn(fakes.kv, 'delete').mockRejectedValue(new Error('refused'));
+    await scoringHubOf(fakes.ports).resume();
+    const text = JSON.stringify(readRecord(fakes.record));
+    expect(text).not.toContain(FIXTURE);
+    expect(text).not.toContain(FAKE_SCORING_SECRET);
+  });
+});

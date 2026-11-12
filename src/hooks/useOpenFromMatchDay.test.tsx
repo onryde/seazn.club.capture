@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Row } from '@/domain/matchday/matchDay';
 import { encodeSavedCode, type SavedCode } from '@/domain/mode/savedCode';
+import { useMatchDayExit } from '@/hooks/useMatchDayExit';
 import { useOpenFromMatchDay, type OpenSink } from '@/hooks/useOpenFromMatchDay';
 import { FAKE_DAY, FAKE_OPEN_URL } from '@/services/fakeMatchDayPort';
 import { createMemoryKeyValueStore, type KeyValueStore } from '@/services/KeyValueStore';
@@ -370,5 +371,314 @@ describe('a write the phone refuses', () => {
     await tap(m.open);
     await tap(m.open);
     expect(m.matchDay.calls.filter((call) => call.op === 'open')).toHaveLength(2);
+  });
+});
+
+// Final review M1: Exit while an open is in flight (a slow network: up to 8 s) cancels it. The late answer writes
+// nothing (no link, no opened, no open match, no `matchday.open` line) and never navigates, wherever in the open the
+// Exit lands: before the answer, while the link is written, or while Match Day notes the match.
+describe('Exit cancels an open still in flight (final review M1)', () => {
+  const exitOf = (m: Awaited<ReturnType<typeof mount>>) =>
+    renderHook(() => useMatchDayExit(), { wrapper: wrapperFor(m) }).result;
+  const nothingWritten = async (
+    m: Awaited<ReturnType<typeof mount>>,
+    go: ReturnType<typeof vi.spyOn>,
+  ) => {
+    expect((await stored(m, NOW_ROW.fixtureId)).kind).toBe('none');
+    expect(await m.ports.matchDayStore.opened()).toEqual([]);
+    expect(m.kv.entries.has('matchday.open')).toBe(false);
+    expect(m.ports.matchDayStore.openMatch() ?? null).toBeNull();
+    expect(readRecord(m.record).some((l) => l.event === 'matchday.open')).toBe(false);
+    expect(go).not.toHaveBeenCalledWith('scoring');
+    expect(m.navigation.current()).toBe('home');
+  };
+
+  it('a link answered after Exit is never kept, noted or opened', async () => {
+    const m = await mount();
+    const exit = exitOf(m);
+    const go = vi.spyOn(m.navigation, 'go');
+    const set = vi.spyOn(m.kv, 'set');
+    m.matchDay.hold();
+    let opening: Promise<void> = Promise.resolve();
+    act(() => {
+      opening = m.open(NOW_ROW, 'Court 1');
+    });
+    await act(() => exit.current.exit());
+    m.matchDay.release();
+    await act(() => opening);
+    await nothingWritten(m, go);
+    expect(m.sink.lines).toEqual([null]);
+    // Cancelled as the answer lands: the link is never even written.
+    expect(set).not.toHaveBeenCalledWith(scoringLinkKey(NOW_ROW.fixtureId), expect.anything());
+  });
+
+  it('an offline answer after Exit never opens the link already held', async () => {
+    const m = await mount();
+    await m.ports.kv.set(
+      scoringLinkKey(NOW_ROW.fixtureId),
+      JSON.stringify({
+        origin: `https://${HOST}`,
+        token: 'dl_madeUpTokenForOpenTests01',
+        sportKey: 'badminton',
+      }),
+    );
+    const exit = exitOf(m);
+    const go = vi.spyOn(m.navigation, 'go');
+    m.matchDay.answerOpen({ ok: false, offline: true });
+    m.matchDay.hold();
+    let opening: Promise<void> = Promise.resolve();
+    act(() => {
+      opening = m.open(NOW_ROW, 'Court 1');
+    });
+    await act(() => exit.current.exit());
+    m.matchDay.release();
+    await act(() => opening);
+    expect(await m.ports.matchDayStore.opened()).toEqual([]);
+    expect(m.ports.matchDayStore.openMatch() ?? null).toBeNull();
+    expect(go).not.toHaveBeenCalledWith('scoring');
+    expect(readRecord(m.record).some((l) => l.event === 'matchday.open')).toBe(false);
+  });
+
+  it('Exit while the link is being written: the link is taken back, and nothing opens', async () => {
+    const m = await mount();
+    const exit = exitOf(m);
+    const go = vi.spyOn(m.navigation, 'go');
+    const real = m.kv.set.bind(m.kv);
+    let land = (): void => undefined;
+    vi.spyOn(m.kv, 'set').mockImplementation(async (key: string, value: string) => {
+      if (key === scoringLinkKey(NOW_ROW.fixtureId))
+        await new Promise<void>((resolve) => {
+          land = resolve;
+        });
+      return real(key, value);
+    });
+    let opening: Promise<void> = Promise.resolve();
+    act(() => {
+      opening = m.open(NOW_ROW, 'Court 1');
+    });
+    await act(async () => {
+      for (let i = 0; i < 50; i += 1) await Promise.resolve();
+    });
+    await act(() => exit.current.exit());
+    land();
+    await act(() => opening);
+    await nothingWritten(m, go);
+    // Cancelled before Match Day noted it: the note is never even written.
+    expect(m.kv.set).not.toHaveBeenCalledWith('matchday.opened', expect.anything());
+  });
+
+  it('Exit while Match Day notes the match: the link and the open match are taken back, and the hub lets the match go', async () => {
+    const m = await mount();
+    const exit = exitOf(m);
+    const go = vi.spyOn(m.navigation, 'go');
+    const real = m.kv.set.bind(m.kv);
+    let land = (): void => undefined;
+    vi.spyOn(m.kv, 'set').mockImplementation(async (key: string, value: string) => {
+      if (key === 'matchday.open')
+        await new Promise<void>((resolve) => {
+          land = resolve;
+        });
+      return real(key, value);
+    });
+    let opening: Promise<void> = Promise.resolve();
+    act(() => {
+      opening = m.open(NOW_ROW, 'Court 1');
+    });
+    await act(async () => {
+      for (let i = 0; i < 200; i += 1) await Promise.resolve();
+    });
+    let left: Promise<void> = Promise.resolve();
+    act(() => {
+      left = exit.current.exit();
+    });
+    land();
+    await act(() => Promise.all([opening, left]));
+    // The note stays for the hub, which lets go of it with the day's other matches at the next resume.
+    await act(() => scoringHubOf(m.ports).resume());
+    await nothingWritten(m, go);
+  });
+
+  it('an open match written after Exit’s own clear of it is taken back by the open', async () => {
+    const m = await mount();
+    const exit = exitOf(m);
+    const go = vi.spyOn(m.navigation, 'go');
+    // Exit's clear of the open match landed first: modelled as one that changes nothing.
+    vi.spyOn(m.ports.matchDayStore, 'clearOpen').mockResolvedValueOnce(undefined);
+    const real = m.kv.set.bind(m.kv);
+    let land = (): void => undefined;
+    vi.spyOn(m.kv, 'set').mockImplementation(async (key: string, value: string) => {
+      if (key === 'matchday.open')
+        await new Promise<void>((resolve) => {
+          land = resolve;
+        });
+      return real(key, value);
+    });
+    let opening: Promise<void> = Promise.resolve();
+    act(() => {
+      opening = m.open(NOW_ROW, 'Court 1');
+    });
+    await act(async () => {
+      for (let i = 0; i < 200; i += 1) await Promise.resolve();
+    });
+    let left: Promise<void> = Promise.resolve();
+    act(() => {
+      left = exit.current.exit();
+    });
+    land();
+    await act(() => Promise.all([opening, left]));
+    await act(() => scoringHubOf(m.ports).resume());
+    await nothingWritten(m, go);
+  });
+
+  it('Exit while a held link is read offline: nothing is noted and the pad does not open', async () => {
+    const m = await mount();
+    await m.ports.kv.set(
+      scoringLinkKey(NOW_ROW.fixtureId),
+      JSON.stringify({
+        origin: `https://${HOST}`,
+        token: 'dl_madeUpTokenForOpenTests01',
+        sportKey: 'badminton',
+      }),
+    );
+    const exit = exitOf(m);
+    const go = vi.spyOn(m.navigation, 'go');
+    m.matchDay.answerOpen({ ok: false, offline: true });
+    const realGet = m.kv.get.bind(m.kv);
+    let land = (): void => undefined;
+    let held = false;
+    vi.spyOn(m.kv, 'get').mockImplementation(async (key: string) => {
+      if (key === scoringLinkKey(NOW_ROW.fixtureId) && !held) {
+        held = true;
+        await new Promise<void>((resolve) => {
+          land = resolve;
+        });
+      }
+      return realGet(key);
+    });
+    const set = vi.spyOn(m.kv, 'set');
+    let opening: Promise<void> = Promise.resolve();
+    act(() => {
+      opening = m.open(NOW_ROW, 'Court 1');
+    });
+    await act(async () => {
+      for (let i = 0; i < 50; i += 1) await Promise.resolve();
+    });
+    expect(held).toBe(true);
+    await act(() => exit.current.exit());
+    land();
+    await act(() => opening);
+    expect(set).not.toHaveBeenCalledWith('matchday.opened', expect.anything());
+    expect(m.ports.matchDayStore.openMatch() ?? null).toBeNull();
+    expect(go).not.toHaveBeenCalledWith('scoring');
+    expect(readRecord(m.record).some((l) => l.event === 'matchday.open')).toBe(false);
+  });
+
+  it('Exit while a held link is noted offline: the open match is taken back, and the hub lets the match go', async () => {
+    const m = await mount();
+    await m.ports.kv.set(
+      scoringLinkKey(NOW_ROW.fixtureId),
+      JSON.stringify({
+        origin: `https://${HOST}`,
+        token: 'dl_madeUpTokenForOpenTests01',
+        sportKey: 'badminton',
+      }),
+    );
+    const exit = exitOf(m);
+    const go = vi.spyOn(m.navigation, 'go');
+    // Exit's clear of the open match landed first: modelled as one that changes nothing.
+    vi.spyOn(m.ports.matchDayStore, 'clearOpen').mockResolvedValueOnce(undefined);
+    m.matchDay.answerOpen({ ok: false, offline: true });
+    const real = m.kv.set.bind(m.kv);
+    let land = (): void => undefined;
+    vi.spyOn(m.kv, 'set').mockImplementation(async (key: string, value: string) => {
+      if (key === 'matchday.open')
+        await new Promise<void>((resolve) => {
+          land = resolve;
+        });
+      return real(key, value);
+    });
+    let opening: Promise<void> = Promise.resolve();
+    act(() => {
+      opening = m.open(NOW_ROW, 'Court 1');
+    });
+    await act(async () => {
+      for (let i = 0; i < 200; i += 1) await Promise.resolve();
+    });
+    let left: Promise<void> = Promise.resolve();
+    act(() => {
+      left = exit.current.exit();
+    });
+    land();
+    await act(() => Promise.all([opening, left]));
+    await act(() => scoringHubOf(m.ports).resume());
+    expect((await stored(m, NOW_ROW.fixtureId)).kind).toBe('none');
+    expect(await m.ports.matchDayStore.opened()).toEqual([]);
+    expect(m.ports.matchDayStore.openMatch() ?? null).toBeNull();
+    expect(go).not.toHaveBeenCalledWith('scoring');
+    expect(readRecord(m.record).some((l) => l.event === 'matchday.open')).toBe(false);
+  });
+
+  it('a link already held, Exit passing while the open holds it: never left unnamed, the next resume lets it go', async () => {
+    const m = await mount();
+    await m.ports.kv.set(
+      scoringLinkKey(NOW_ROW.fixtureId),
+      JSON.stringify({
+        origin: `https://${HOST}`,
+        token: 'dl_madeUpTokenForOpenTests01',
+        sportKey: 'badminton',
+      }),
+    );
+    const exit = exitOf(m);
+    const go = vi.spyOn(m.navigation, 'go');
+    const real = m.kv.set.bind(m.kv);
+    let land = (): void => undefined;
+    vi.spyOn(m.kv, 'set').mockImplementation(async (key: string, value: string) => {
+      if (key === 'matchday.open')
+        await new Promise<void>((resolve) => {
+          land = resolve;
+        });
+      return real(key, value);
+    });
+    let opening: Promise<void> = Promise.resolve();
+    act(() => {
+      opening = m.open(NOW_ROW, 'Court 1');
+    });
+    await act(async () => {
+      for (let i = 0; i < 200; i += 1) await Promise.resolve();
+    });
+    let left: Promise<void> = Promise.resolve();
+    act(() => {
+      left = exit.current.exit();
+    });
+    // Exit's let-go passes while the open still claims the match, so it keeps the match on the list for a later pass.
+    await act(async () => {
+      for (let i = 0; i < 400; i += 1) await Promise.resolve();
+    });
+    land();
+    await act(() => Promise.all([opening, left]));
+    await act(() => scoringHubOf(m.ports).resume());
+    expect((await stored(m, NOW_ROW.fixtureId)).kind).toBe('none');
+    expect(await m.ports.matchDayStore.opened()).toEqual([]);
+    expect(m.ports.matchDayStore.openMatch() ?? null).toBeNull();
+    expect(go).not.toHaveBeenCalledWith('scoring');
+  });
+
+  it('an open started after a cancelled one goes through (Exit refused its forget: the day is still saved)', async () => {
+    const m = await mount();
+    const exit = exitOf(m);
+    vi.spyOn(m.ports.modeStore, 'forget').mockRejectedValue(new Error('keystore refused'));
+    m.matchDay.hold();
+    let opening: Promise<void> = Promise.resolve();
+    act(() => {
+      opening = m.open(NOW_ROW, 'Court 1');
+    });
+    await act(() => exit.current.exit());
+    m.matchDay.release();
+    await act(() => opening);
+    expect(await m.ports.matchDayStore.opened()).toEqual([]);
+    const go = vi.spyOn(m.navigation, 'go');
+    await tap(m.open);
+    expect(go).toHaveBeenCalledWith('scoring');
+    expect(await m.ports.matchDayStore.opened()).toEqual([NOW_ROW.fixtureId]);
   });
 });

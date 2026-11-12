@@ -1,5 +1,9 @@
 import { act, fireEvent, renderHook, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { NO_PICKS } from '@/domain/scoring/pendingPicks';
+import { SINGLES_SEED } from '@/services/fakeScoringPort';
+import { readScoringLink, saveScoringLink } from '@/services/scoringLinkStore';
+import { FAKE_SCORING_SECRET } from '../../../test/fakeScoringLinkPort';
 import type { MatchDay } from '@/domain/matchday/matchDay';
 import { decodeSavedCode, encodeSavedCode, type SavedCode } from '@/domain/mode/savedCode';
 import { useHome } from '@/hooks/useHome';
@@ -22,7 +26,7 @@ import { pairCode } from '../../../test/pairCode';
 import { refusingStore } from '../../../test/refusingStore';
 import { renderWithPorts, wrapperFor } from '../../../test/renderWithPorts';
 import { createMemoryQueueFiles } from '../../../test/memoryQueueFiles';
-import { FAKE_MATCH, RAW } from '../../../test/scoringHomeFixtures';
+import { FAKE_MATCH, queueHolding, RAW } from '../../../test/scoringHomeFixtures';
 
 async function renderHome(options?: Parameters<typeof renderWithPorts>[1]) {
   const home = renderWithPorts(<HomeScreen />, options);
@@ -659,6 +663,124 @@ describe('Home: a second day code while one is saved', () => {
     expect(home.navigation.current()).toBe('home');
     expect(dayCalls(home).map((call) => call.code)).toEqual([OTHER_DAY_CODE]);
     expect(savedCodeIn(home)?.raw).toBe(dayLink());
+  });
+});
+
+// Final review M2 (on I1's path): a different day code saved lets go of what the first one opened. A match viewed and
+// never tapped goes, link and boot cache; one with taps keeps its link for S2's tidy rule. The same code again, or one
+// that is refused, lets go of nothing.
+describe('Home: a different day code lets go of the first one’s opened matches (final review M2)', () => {
+  const VIEWED = SINGLES_SEED.fixtureId;
+  const TAPPED = 'fake-doubles';
+  const LINK = { origin: 'https://stg.seazn.club', token: FAKE_SCORING_SECRET };
+  const HOST = 'stg.seazn.club';
+
+  /** Saved code A, which opened VIEWED (link and boot cache, never tapped) and TAPPED (a tap held back). */
+  async function openedUnderA(): Promise<Home> {
+    const home = await renderHome(await savedDay({ active: false }));
+    for (const id of [VIEWED, TAPPED]) {
+      await saveScoringLink(home.kv, id, LINK, HOST, 'badminton');
+      await home.ports.matchDayStore.addOpened(id);
+    }
+    const read = await home.scoring.bootstrap(LINK);
+    if (read.kind !== 'ok') throw new Error('the fake serves the match');
+    await home.tapQueue.saveBoot(VIEWED, {
+      bootstrap: read.bootstrap,
+      toss: null,
+      picks: NO_PICKS,
+    });
+    await home.tapQueue.save(queueHolding(TAPPED, 1, { askedAbout: [`${TAPPED}-k0`] }));
+    return home;
+  }
+  const linkOf = async (home: FakePorts, id: string) =>
+    (await readScoringLink(home.kv, id, HOST)).kind;
+  const scanFromStream = async (home: Home, token: string) => {
+    home.scanner.queue({ outcome: 'scanned', raw: dayLink('stg.seazn.club', token) });
+    fireEvent.click(liveStreamTile());
+    fireEvent.click(await screen.findByRole('button', { name: 'Open Match Day' }));
+  };
+
+  it('code B opened: the match A viewed goes, link and boot cache; the one with taps keeps its link', async () => {
+    const home = await openedUnderA();
+    await scanFromStream(home, OTHER_TOKEN);
+    await waitFor(() => expect(home.navigation.current()).toBe('matchday'));
+    await waitFor(async () => expect(await linkOf(home, VIEWED)).toBe('none'));
+    expect(await home.tapQueue.loadBoot(VIEWED)).toBeNull();
+    expect(await linkOf(home, TAPPED)).toBe('link');
+    expect(await home.ports.matchDayStore.opened()).toEqual([]);
+  });
+
+  it('code B kept before its day: the same', async () => {
+    const home = await openedUnderA();
+    home.matchDay.answerDay({ ok: false, refusal: 'MD_NOT_OPEN', opensAt: OPENS_AT });
+    await scanFromStream(home, OTHER_TOKEN);
+    await screen.findByText('Match Day opens Sat 7 Nov');
+    await waitFor(async () => expect(await linkOf(home, VIEWED)).toBe('none'));
+    expect(await linkOf(home, TAPPED)).toBe('link');
+    expect(await home.ports.matchDayStore.opened()).toEqual([]);
+  });
+
+  it('code A scanned again lets go of nothing', async () => {
+    const home = await openedUnderA();
+    await scanFromStream(home, FIXTURE_DAY_TOKEN);
+    await waitFor(() => expect(home.navigation.current()).toBe('matchday'));
+    await act(async () => undefined);
+    expect(await linkOf(home, VIEWED)).toBe('link');
+    expect(await home.ports.matchDayStore.opened()).toEqual([VIEWED, TAPPED]);
+  });
+
+  it('code B refused lets go of nothing: A stays saved with its matches', async () => {
+    const home = await openedUnderA();
+    home.matchDay.answerDay({ ok: false, refusal: 'MD_WITHDRAWN' });
+    await scanFromStream(home, OTHER_TOKEN);
+    await screen.findByText('Match Day code withdrawn');
+    await act(async () => undefined);
+    expect(savedCodeIn(home)?.raw).toBe(dayLink());
+    expect(await linkOf(home, VIEWED)).toBe('link');
+    expect(await home.ports.matchDayStore.opened()).toEqual([VIEWED, TAPPED]);
+  });
+
+  it('code B left at A7’s Cancel lets go of nothing: A stays saved with its matches', async () => {
+    const { stream, seed } = pairedStream();
+    const home = await openedUnderA();
+    await home.kv.set(STORE_KEYS.code('stream'), seed[STORE_KEYS.code('stream')]);
+    await home.kv.set(STORE_KEYS.active, 'stream');
+    await act(() => home.ports.modeStore.load());
+    pairCode(home.engine, stream);
+    await scanFromStream(home, OTHER_TOKEN);
+    await screen.findByRole('button', { name: 'Unpair & open' });
+    const [, cancel] = screen.getAllByRole('button', { name: 'Cancel' });
+    if (cancel === undefined) throw new Error('the sheet has its own Cancel');
+    fireEvent.click(cancel);
+    await act(async () => undefined);
+    expect(savedCodeIn(home)?.raw).toBe(dayLink());
+    expect(await linkOf(home, VIEWED)).toBe('link');
+    expect(await home.ports.matchDayStore.opened()).toEqual([VIEWED, TAPPED]);
+  });
+
+  it('a first code with a list an Exit left behind (no code saved) lets go of it too', async () => {
+    const home = await openedUnderA();
+    await home.kv.delete(STORE_KEYS.code('matchday'));
+    await act(() => home.ports.modeStore.load());
+    scanDay(home);
+    await waitFor(() => expect(home.navigation.current()).toBe('matchday'));
+    await waitFor(async () => expect(await linkOf(home, VIEWED)).toBe('none'));
+    expect(await linkOf(home, TAPPED)).toBe('link');
+    expect(await home.ports.matchDayStore.opened()).toEqual([]);
+  });
+
+  it('a let-go the phone refuses is recorded, and code B still opens', async () => {
+    const home = await openedUnderA();
+    const refuse = vi
+      .spyOn(home.ports.matchDayStore, 'clearOpened')
+      .mockRejectedValue(new Error('refused'));
+    await scanFromStream(home, OTHER_TOKEN);
+    await waitFor(() => expect(home.navigation.current()).toBe('matchday'));
+    await waitFor(() =>
+      expect(readRecord(home.record).some((l) => l.event === 'matchday.let-go-refused')).toBe(true),
+    );
+    expect(savedCodeIn(home)?.raw).toBe(dayLink('stg.seazn.club', OTHER_TOKEN));
+    refuse.mockRestore();
   });
 });
 

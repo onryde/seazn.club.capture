@@ -302,6 +302,53 @@ describe('the day’s last good copy: a file of its own (`matchday/day.json`)', 
  * checked against the type by tsc; a field added to or taken from `MatchDay`, a court, a row or an approval fails it.
  * Bump `MATCHDAY_CACHE_VERSION` and these lists together, so a phone never misreads an older copy.
  */
+// Final review M3: the copy is read back through the day parser's full check. One that parses as JSON but is wrong inside
+// its lists is dropped: no copy, recorded as garbled, and a temp beside it that reads is the answer as before.
+describe('the copy is read back through the day parser’s full check (final review M3)', () => {
+  it.each([
+    ['a row status that is no status', '"status":"upcoming"', '"status":"bogus"'],
+    ['a row with no fixture', '"fixtureId":"8c3d4e5f-6a7b-4c8d-ae9f-1a2b3c4d5e6f",', ''],
+    ['a fixture id that is no id', '8c3d4e5f-6a7b-4c8d-ae9f-1a2b3c4d5e6f', 'not-an-id'],
+    ['a court state that is no state', '"state":"playing"', '"state":"busy"'],
+    ['a court with no name', '"courtName":"Court 1",', ''],
+    ['an approval round that is text', '"round":4', '"round":"4"'],
+    ['a scope kind that is no kind', '"kind":"venue"', '"kind":"hall"'],
+    ['a list item that is none', '"noCourt":[', '"noCourt":[null,'],
+  ])('%s: no copy, recorded', async (_, from, to) => {
+    const { store, files, record } = storeOver();
+    await store.writeCache(CODE, DAY, AT);
+    const good = files.files.get(COPY) ?? '';
+    expect(good).toContain(from);
+    files.files.set(COPY, good.replace(from, to));
+    expect(await store.readCache(CODE)).toBeNull();
+    expect(readRecord(record)).toContainEqual(
+      expect.objectContaining({
+        event: 'matchday.cache-unreadable',
+        fields: { problem: 'garbled' },
+      }),
+    );
+  });
+
+  it('a spoiled copy beside a temp that reads: the temp is the answer', async () => {
+    const { store, files } = storeOver();
+    await store.writeCache(CODE, DAY, AT);
+    const good = files.files.get(COPY) ?? '';
+    files.files.set(TEMP, good);
+    files.files.set(COPY, good.replace('"status":"upcoming"', '"status":"bogus"'));
+    expect(await store.readCache(CODE)).toEqual({ day: DAY, at: AT });
+  });
+
+  it('a copy that reads keeps no field the day has not got', async () => {
+    const { store, files } = storeOver();
+    await store.writeCache(CODE, DAY, AT);
+    const good = files.files.get(COPY) ?? '';
+    files.files.set(COPY, good.replace('"tz":', '"url":"https://example.invalid/x","tz":'));
+    const back = await store.readCache(CODE);
+    expect(back).toEqual({ day: DAY, at: AT });
+    expect(JSON.stringify(back)).not.toContain('example.invalid');
+  });
+});
+
 describe('the copy’s version follows the shape it was written in', () => {
   const AT_VERSION_1 = {
     day: {

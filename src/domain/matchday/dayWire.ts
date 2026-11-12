@@ -127,3 +127,68 @@ export function parseDay(body: unknown): Read<MatchDay> {
   const data = successData(body);
   return data.ok ? readDay(data.value) : data;
 }
+
+/**
+ * The day's copy as the phone stored it (`parseDay`'s camelCase output as JSON, its Dates as Dates or ISO text), read
+ * back through the same full check (final review M3): every row, court and approval, so a copy that parses but is wrong
+ * inside its lists is no day. The copy is turned back into the wire's spelling field by field, by name: a field the
+ * phone never writes is dropped (so read as missing), and a status or state that is not one of the phone's words is no
+ * word. Null for anything that does not read.
+ */
+export function readStoredDay(stored: unknown): MatchDay | null {
+  const wire = wireOf(stored, '');
+  const read = isSource(wire) ? readDay(wire) : null;
+  return read !== null && read.ok ? read.value : null;
+}
+
+/** The wire's name of every field `MatchDay` holds, at any depth. */
+const WIRE_NAME: ReadonlyMap<string, string> = new Map([
+  ...['competition', 'scope', 'day', 'tz', 'courts', 'online', 'approvals'].map(same),
+  ['opensAt', 'opens_at'],
+  ['expiresAt', 'expires_at'],
+  ['canApprove', 'can_approve'],
+  ['noCourt', 'no_court'],
+  ['courtId', 'court_id'],
+  ['courtName', 'court_name'],
+  ['venueName', 'venue_name'],
+  ...['state', 'now', 'next', 'finished', 'home', 'away', 'status', 'summary'].map(same),
+  ['fixtureId', 'fixture_id'],
+  ['sportKey', 'sport_key'],
+  ['divisionName', 'division_name'],
+  ['roundLabel', 'round_label'],
+  ['scheduledAt', 'scheduled_at'],
+  ...['kind', 'label', 'round', 'id', 'name'].map(same),
+  ['stageId', 'stage_id'],
+]);
+
+function same(name: string): readonly [string, string] {
+  return [name, name];
+}
+
+/** The phone's word for a status or a state, back in the wire's spelling. */
+const WIRE_WORD: ReadonlyMap<string, ReadonlyMap<string, string>> = new Map([
+  ['status', backwards(ROW_STATUS)],
+  ['state', backwards(COURT_STATE)],
+]);
+
+function backwards(words: ReadonlyMap<string, string>): ReadonlyMap<string, string> {
+  return new Map([...words].map(([wire, phone]) => [phone, wire]));
+}
+
+function isSource(value: unknown): value is Source {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function wireOf(value: unknown, key: string): unknown {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  if (Array.isArray(value)) return value.map((item) => wireOf(item, ''));
+  const words = WIRE_WORD.get(key);
+  if (words !== undefined && typeof value === 'string') return words.get(value) ?? null;
+  if (!isSource(value)) return value;
+  const out: Source = {};
+  for (const [name, item] of Object.entries(value)) {
+    const wireName = WIRE_NAME.get(name);
+    if (wireName !== undefined) out[wireName] = wireOf(item, name);
+  }
+  return out;
+}
