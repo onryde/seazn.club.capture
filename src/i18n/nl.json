@@ -1223,5 +1223,15 @@
   "matchday.approve.onWeb": "Keur het goed op de website",
   "matchday.approve.reviewAgain": "Opnieuw bekijken",
   "matchday.approve.staleSwiss": "Koppelingen gewijzigd — bekijk opnieuw",
-  "matchday.approve.approved": "Goedgekeurd"
+  "matchday.approve.approved": "Goedgekeurd",
+  "matchday.menu": "Meer",
+  "matchday.exit.title": "Speeldag verlaten?",
+  "matchday.exit.body": "Je moet opnieuw scannen.",
+  "matchday.exit.bodySending.one": "{count} tap wordt nog verstuurd — dat gaat door.",
+  "matchday.exit.bodySending.other": "{count} taps worden nog verstuurd — dat gaat door.",
+  "matchday.exit.bodyAtRisk": "Sommige taps zijn onleesbaar en lopen gevaar. Je moet opnieuw scannen.",
+  "matchday.exit.confirm": "Verlaten",
+  "matchday.exit.stay": "Blijven",
+  "matchday.sendingCard.one": "Verzenden: {count} tap · {name}",
+  "matchday.sendingCard.other": "Verzenden: {count} taps · {name}"
 }

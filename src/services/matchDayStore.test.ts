@@ -1,4 +1,4 @@
-import { describe, expect, expectTypeOf, it } from 'vitest';
+import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import type { Approval, Court, MatchDay, Row } from '@/domain/matchday/matchDay';
 import type { SavedDayCode } from '@/domain/mode/dayCode';
 import { createMemoryKeyValueStore, type KeyValueStore } from '@/services/KeyValueStore';
@@ -398,7 +398,11 @@ describe('the matches opened from Match Day (`matchday.opened`, in the secure st
   it('keeps the list under its key', async () => {
     const kv = createMemoryKeyValueStore();
     await storeOver({ kv }).store.addOpened(A);
-    expect(MATCHDAY_KEYS).toEqual({ opened: 'matchday.opened', open: 'matchday.open' });
+    expect(MATCHDAY_KEYS).toEqual({
+      opened: 'matchday.opened',
+      open: 'matchday.open',
+      sending: 'matchday.sending',
+    });
     expect(kv.entries.get('matchday.opened')).toBe(JSON.stringify([A]));
   });
 
@@ -583,5 +587,126 @@ describe('the opened list read for a delete, and a refused clear (MD-2 Task 5 fi
     await expect(store.clearOpen()).rejects.toThrow('keystore refused');
     expect(store.openMatch()).toBeNull();
     expect(told).toBe(1);
+  });
+});
+
+describe('Exit’s part of the store (MD-2 Task 7)', () => {
+  const A = '7b2c3d4e-5f6a-4b7c-9d8e-0f1a2b3c4d5e';
+  const B = '8c3d4e5f-6a7b-4c8d-ae9f-1a2b3c4d5e6f';
+  const refusing = (over: Partial<KeyValueStore>): KeyValueStore => ({
+    ...createMemoryKeyValueStore(),
+    ...over,
+  });
+
+  it('clearOpened empties the opened matches, leaves the open match and the copy, and is safe twice', async () => {
+    const { store, files } = storeOver();
+    await store.writeCache(CODE, DAY, AT);
+    await store.addOpened(A);
+    await store.addOpened(B);
+    await store.setOpen({ fixtureId: A, courtName: 'Court 1' });
+    await store.clearOpened();
+    expect(await store.opened()).toEqual([]);
+    expect(store.openMatch()).toEqual({ fixtureId: A, courtName: 'Court 1' });
+    expect([...files.files.keys()]).toEqual([COPY]);
+    await store.clearOpened();
+    expect(await store.opened()).toEqual([]);
+    // The list can be added to again afterwards: Exit does not break the next day's code.
+    await store.addOpened(B);
+    expect(await store.opened()).toEqual([B]);
+  });
+
+  it('a refused delete rejects its own caller and the next call still goes', async () => {
+    let refuse = true;
+    const memory = createMemoryKeyValueStore();
+    const kv = refusing({
+      get: memory.get,
+      set: memory.set,
+      delete: async (key) => {
+        if (refuse) throw new Error('keystore refused');
+        await memory.delete(key);
+      },
+    });
+    const { store } = storeOver({ kv });
+    await store.addOpened(A);
+    await expect(store.clearOpened()).rejects.toThrow('keystore refused');
+    expect(await store.opened()).toEqual([A]);
+    refuse = false;
+    await store.clearOpened();
+    expect(await store.opened()).toEqual([]);
+  });
+
+  it('keeps the courts of the matches still sending, merged, in a key of their own', async () => {
+    const kv = createMemoryKeyValueStore();
+    const { store } = storeOver({ kv });
+    expect([...(await store.sending())]).toEqual([]);
+    await store.addSending(new Map([[A, 'Court 2']]));
+    await store.addSending(new Map([[B, '']]));
+    expect([...(await store.sending())]).toEqual([
+      [A, 'Court 2'],
+      [B, ''],
+    ]);
+    await store.addSending(new Map([[A, 'Court 3']]));
+    expect((await store.sending()).get(A)).toBe('Court 3');
+    expect(kv.entries.get('matchday.sending')).toBe(JSON.stringify({ [A]: 'Court 3', [B]: '' }));
+  });
+
+  it('forgetting one leaves the rest, and the last takes the key away', async () => {
+    const kv = createMemoryKeyValueStore();
+    const { store } = storeOver({ kv });
+    await store.addSending(
+      new Map([
+        [A, 'Court 2'],
+        [B, ''],
+      ]),
+    );
+    await store.forgetSending(A);
+    expect([...(await store.sending())]).toEqual([[B, '']]);
+    await store.forgetSending(A);
+    await store.forgetSending(B);
+    expect(kv.entries.has('matchday.sending')).toBe(false);
+  });
+
+  it('forgetting a match that was never noted touches nothing', async () => {
+    const kv = createMemoryKeyValueStore();
+    const { store } = storeOver({ kv });
+    const del = vi.spyOn(kv, 'delete');
+    const set = vi.spyOn(kv, 'set');
+    await store.forgetSending(A);
+    await store.addSending(new Map([[B, '']]));
+    set.mockClear();
+    await store.forgetSending(A);
+    expect(del).not.toHaveBeenCalled();
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it('two at once both land', async () => {
+    const { store } = storeOver();
+    await Promise.all([
+      store.addSending(new Map([[A, 'Court 2']])),
+      store.addSending(new Map([[B, 'Court 3']])),
+    ]);
+    expect((await store.sending()).size).toBe(2);
+  });
+
+  it('a value that does not read is none, never a throw and never a half-read map', async () => {
+    for (const text of ['nope', '[1]', '"x"', 'null']) {
+      const kv = createMemoryKeyValueStore({ [MATCHDAY_KEYS.sending]: text });
+      expect((await storeOver({ kv }).store.sending()).size).toBe(0);
+    }
+    const mixed = createMemoryKeyValueStore({
+      [MATCHDAY_KEYS.sending]: JSON.stringify({ [A]: 'Court 1', [B]: 7 }),
+    });
+    expect([...(await storeOver({ kv: mixed }).store.sending())]).toEqual([[A, 'Court 1']]);
+  });
+
+  it('a refused read is none for the reader, and refuses the write (a list it cannot see is never written over)', async () => {
+    const kv = refusing({
+      get: async () => {
+        throw new Error('locked');
+      },
+    });
+    const { store } = storeOver({ kv });
+    expect((await store.sending()).size).toBe(0);
+    await expect(store.addSending(new Map([[A, 'Court 1']]))).rejects.toThrow('locked');
   });
 });

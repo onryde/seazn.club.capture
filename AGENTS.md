@@ -48,8 +48,8 @@ not obviously touch — an encode profile can starve a compositor two hops away
 
 ## 1. Scope lock
 
-The app is **three modes**: Live Stream, Remote Scoring and a tournament
-Dashboard. Only one runs at a time, and each is unlocked by its own QR code.
+The app is **three modes**: Live Stream, Remote Scoring and Match Day. Only
+one runs at a time, and each is unlocked by its own QR code.
 There is no login anywhere. See
 [the decision record](docs/specs/2026-09-29-multi-mode-app-decisions.md).
 
@@ -81,8 +81,10 @@ on the operator's tap (R3 of the D3 findings design; owner, 2026-10-11), not
 by itself (an automatic upload is out of scope). It posts to the web's record
 contract (vendored at web `f0feab16c`), behind `FEATURES.recordSend`, which is
 on: asked whether to turn Send record on with the endpoint on staging, the
-owner chose "On now (Recommended)" in the session on 2026-10-12. Push alerts go
-only to phones holding a Dashboard code (ruling 11).
+owner chose "On now (Recommended)" in the session on 2026-10-12. Push alerts
+would go only to phones holding a Match Day code (ruling 11 named Dashboard
+codes; the third mode was renamed, S4 design §2) and are deferred: none is
+built.
 
 **Remote Scoring** is a working mode (S2; design
 `docs/specs/2026-11-01-s2-remote-scoring-design.md`, plan S2-1). Its taps,
@@ -121,6 +123,28 @@ tie-breaks and a match tie-break, the set score (hidden once the match has a poi
 breaks. It asks Who serves first? at Start and sends the toss before the start (233), and shows Ace, Double fault, Winner and
 Error chips after a tap only behind a per-match Point details switch, off by default (234). It never sends a forfeit, a settle
 or an abandon: a retirement or default is the organiser's, and the pad names it (225, 237).
+
+**Match Day** is the third mode (S4; design
+`docs/specs/2026-11-07-s4-match-day-design.md`, plan MD-2). It replaces the
+tournament Dashboard of the decision record, keeping its approvals and
+deferring its push alerts (brainstormed with the owner, 2026-11-03 to
+2026-11-07). One code per person per day, minted on the web, lists every match
+of the day on the courts it covers, by court (owner, 2026-11-07: layout B);
+a tap on a match asks the server for that match's own scoring link and opens
+Remote Scoring on it exactly as a scan of its printed code would, and Back
+returns to the list (§6). It adds no pad, queue or sync of its own. On a code
+with "can approve draws" the list reviews a Swiss round's next pairings or a
+knockout draw read-only and approves it with a 3 s hold; the phone never
+computes or edits a pairing or a draw (decision record ruling 14). The code is
+kept until the operator taps Exit (⋯ on the list, which asks first), the day
+ends or the organiser withdraws it. **Exit never discards a tap**: each match
+opened from the day keeps its own link and queue, which go on sending, and the
+link goes once its queue is empty and nothing else holds the match; until then
+Home shows "Sending 3 taps · Court 2" (S4 design §4; owner, 2026-11-07: "yes
+and apply our rec"). A scoring link outlives its day code (S4 design §3). Its
+code's token is a credential, kept in the secure store and never in a record
+line, a log line, an error or a URL query. Match Day never finalizes a match,
+calls one to a court, edits, or streams.
 
 Adding a fourth mode, or a screen outside a mode, is a product decision, not
 an implementation detail. Raise it; don't build it.
@@ -177,10 +201,12 @@ app/               # Expo Router routes. Thin: they import ui, hooks and package
   index.tsx        # Home
   settings.tsx     # the app's Settings, from Home's gear (owner, 2026-11-02)
   stream/          # Live Stream (landscape)
-  scoring/         # Remote Scoring (portrait): the sport's pad screen, from a table; S4 adds dashboard/
+  scoring/         # Remote Scoring (portrait): the sport's pad screen, from a table
+  matchday/        # Match Day (portrait): the day's list, from Home's tile; its approval is an overlay on it
 src/
   domain/          # pure TS. No react, no react-native, no ui, no modules.
     mode/          # Mode, code recognition, saved codes, reopen and leave rules
+    matchday/      # Match Day: the day's wire shapes (one parser each), the list model, approvals, Exit
     orientation/   # how the phone is held, from accelerometer samples
     session/       # CaptureSession model, event projection, state types
     credentials/   # QR v2 and the waiting fields, parsed (anti-corruption); publish credentials are native's;
@@ -200,7 +226,10 @@ src/
                    # useReopenGate, useOrientationGate, useCaptureEngine, …
   services/        # ports (key-value store, device ports) + implementations; Remote Scoring's:
                    # the scoring port (the web's capture API), the tap queue store (a file per
-                   # match), the scoring link store (secure store) and the Realtime port
+                   # match), the scoring link store (secure store) and the Realtime port;
+                   # Match Day's: its port (the web's day, open and approval calls) and its store
+                   # (the day's last copy, a file at documentDirectory/matchday/day.json; the matches
+                   # it opened, `matchday.opened`, and the one open, `matchday.open`, in the secure store)
 modules/
   capture-engine/  # the engine port, the fake, and the native Expo module (StreamPack, Android)
   code-scanner/    # Expo Module. Google's code scanner (Android), iOS stub, fake.
@@ -495,7 +524,10 @@ Three rules travel with these tokens:
   extra-time period; owner ruling 160, 2026-11-11: "half time and full time, we
   need to hold for 3 seconds to confirm otherwise it just ending
   straightaway"): the same 3 s under the same fill (`useHold`, `HoldFill`),
-  its plate saying "Hold 3 s", and no other sport's tool is held.
+  its plate saying "Hold 3 s", and no other sport's tool is held. A fourth is
+  Match Day's approval of a Swiss round or a knockout draw (S4 design §7;
+  decision record ruling 14): the same 3 s under the same fill, its plate saying
+  "Hold 3 s".
 - Go Live enables only when _paired and ready_: camera running, the mic
   available (a silent room is ready; design follow-up §4), network reachable,
   phone held sideways, as native judges it. The pre-flight is the safety, for
@@ -772,7 +804,9 @@ android --no-install`, then `pnpm expo run:android --no-bundler` or
   permission is blocked in `app.json`); `expo-localization` for
   the phone's language. No AsyncStorage. `expo-file-system` for Remote
   Scoring's tap queue (write a `.tmp`, then move it over the file; on Android
-  the move deletes then renames, so a read promotes a lone `.tmp`), `@seazn/engine`
+  the move deletes then renames, so a read promotes a lone `.tmp`) and for
+  Match Day's day copy (the same pattern, in a folder of its own, since the tap
+  queue reads every file in its folder as a queue), `@seazn/engine`
   (pinned exactly, from GitHub Packages: the credential lives in the user
   config, never the project's `.npmrc`) for the fold, and
   `@supabase/realtime-js` (pinned) for the nudge.

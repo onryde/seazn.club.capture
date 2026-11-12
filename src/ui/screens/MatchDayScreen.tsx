@@ -20,13 +20,17 @@ import { usePorts } from '@/hooks/usePorts';
 import { useMatchDay, type MatchDayList } from '@/hooks/useMatchDay';
 import { useOpenFromMatchDay } from '@/hooks/useOpenFromMatchDay';
 import { usePullRefresh } from '@/hooks/usePullRefresh';
+import { useBackCloses } from '@/hooks/useBackCloses';
+import { useMatchDayExit } from '@/hooks/useMatchDayExit';
 import { useRowWords } from '@/hooks/useRowWords';
 import { useBackToHome } from '@/hooks/useStreamLinks';
 import type { MessageKey } from '@/i18n/messages';
 import { ApprovalScreen } from '@/ui/screens/ApprovalScreen';
 import { ApprovalBanner } from '@/ui/components/ApprovalBanner';
 import { CourtCard } from '@/ui/components/CourtCard';
+import { ExitMatchDaySheet } from '@/ui/components/ExitMatchDaySheet';
 import { GhostButton } from '@/ui/components/GhostButton';
+import { IconButton } from '@/ui/components/IconButton';
 import { MatchRow } from '@/ui/components/MatchRow';
 import { StakeLine } from '@/ui/components/StakeLine';
 import { SubScreenHeader } from '@/ui/components/SubScreenHeader';
@@ -38,21 +42,30 @@ import { colour, layout, radius, space } from '@/ui/theme/tokens';
  * code's scope and its day, the approval waiting, one card per court (filtered by venue on a competition code over two
  * venues), the matches on no court yet and the online boards. Offline, the last copy shows under the time it was read;
  * with none, "Offline" and Try again. A pull reads the day again. A tap on a court's match opens it in Remote Scoring
- * (Task 5; S4 design §6), and Back from there returns here, scrolled to that court. ⋯ comes with Exit (Task 7).
+ * (Task 5; S4 design §6), and Back from there returns here, scrolled to that court. ⋯ holds Exit (Task 7; design §4): it
+ * asks first, and never discards a tap.
  */
 export function MatchDayScreen() {
   const { t } = useT();
-  const home = useBackToHome();
+  const bounce = useBounce();
+  const { quiet } = bounce;
+  const home = useBackToHome(quiet);
   const list = useMatchDay();
   const [line, say] = useState<MessageKey | null>(null);
   const opening = useOpenFromMatchDay({ say, refresh: list.refresh });
   const cameBackTo = useCameBackFrom();
   const opened = useOpenedIds(list.updatedAt);
-  const { reviewing, review, closeReview, quiet, sent } = useReview();
+  const { reviewing, review, closeReview, sent } = useReview(bounce);
+  const exit = useMatchDayExit(bounce.note);
+  useBackCloses(exit.sheet !== null, exit.stay);
   // The overlay's Back sits where the list's does: a second tap of a double tap must not go Home.
   const toHome = useCallback(() => {
     if (!quiet()) home();
   }, [quiet, home]);
+  const askExit = useCallback(() => {
+    if (!quiet()) exit.ask();
+  }, [quiet, exit]);
+  const covered = reviewing !== null || exit.sheet !== null;
   // A touch that lands as the review closes is the finger's own bounce, and must not act on the list beneath it.
   const open = useCallback(
     (row: Row, courtName: string) => (quiet() ? Promise.resolve() : opening(row, courtName)),
@@ -63,8 +76,8 @@ export function MatchDayScreen() {
     <View testID="matchday-screen" style={styles.screen}>
       <View
         style={styles.screen}
-        aria-hidden={reviewing !== null}
-        importantForAccessibility={reviewing === null ? 'auto' : 'no-hide-descendants'}
+        aria-hidden={covered}
+        importantForAccessibility={covered ? 'no-hide-descendants' : 'auto'}
       >
         <View style={styles.bar}>
           <SubScreenHeader
@@ -72,6 +85,7 @@ export function MatchDayScreen() {
             onBack={toHome}
             plate={false}
             backLabel={t('stream.home')}
+            end={<IconButton glyph="more" label={t('matchday.menu')} onPress={askExit} />}
           />
         </View>
         <MatchDayBody {...body} />
@@ -84,24 +98,35 @@ export function MatchDayScreen() {
           sent={sent}
         />
       )}
+      {exit.sheet === null ? null : (
+        <ExitMatchDaySheet stake={exit.sheet} onStay={exit.stay} onExit={exit.exit} />
+      )}
     </View>
   );
 }
 
 /**
- * The approval under review, if any. Closing it notes the moment, and for `BOUNCE_MS` after it a press that is not
- * deliberate (a row, the banner's Review, the list's own Back) is ignored: the finger that pressed Back or Close can land again on whatever
- * the list shows beneath it (s2-3 saw a real Cancel then Swap mis-tap).
+ * The moment an overlay (the approval's review, Exit's question) last closed. For `BOUNCE_MS` after it a press that is
+ * not deliberate (a row, the banner's Review, ⋯, the list's own Back, Android's Back) is ignored: the finger that pressed
+ * Back, Stay or Close can land again on whatever the list shows beneath it (s2-3 saw a real Cancel then Swap mis-tap).
  */
-function useReview() {
+function useBounce() {
   const { clock } = usePorts();
-  const [reviewing, setReviewing] = useState<Approval | null>(null);
   const closedAt = useRef<number | null>(null);
-  const sent = useRef(new Set<string>()).current;
   const quiet = useCallback(
     () => closedAt.current !== null && isBounce(clock().getTime() - closedAt.current),
     [clock],
   );
+  const note = useCallback(() => {
+    closedAt.current = clock().getTime();
+  }, [clock]);
+  return useMemo(() => ({ quiet, note }), [quiet, note]);
+}
+
+/** The approval under review, if any; closing it opens the bounce window. */
+function useReview({ quiet, note }: ReturnType<typeof useBounce>) {
+  const [reviewing, setReviewing] = useState<Approval | null>(null);
+  const sent = useRef(new Set<string>()).current;
   const review = useCallback(
     (approval: Approval) => {
       if (!quiet()) setReviewing(approval);
@@ -109,10 +134,10 @@ function useReview() {
     [quiet],
   );
   const closeReview = useCallback(() => {
-    closedAt.current = clock().getTime();
+    note();
     setReviewing(null);
-  }, [clock]);
-  return { reviewing, review, closeReview, quiet, sent };
+  }, [note]);
+  return { reviewing, review, closeReview, sent };
 }
 
 /**

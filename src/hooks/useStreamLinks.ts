@@ -48,9 +48,11 @@ export function useHomeLinks(): { settings(): void } {
 /**
  * Back from Settings, or from Remote Scoring, returns Home; handled only while one of them is the route (M21). From a
  * match opened in Match Day it returns to the day's list instead (S4 design §6, `scoringOrigin`), and only from the
- * pad's own route: Match Day's list and the app's Settings, which share this hook, always go Home.
+ * pad's own route: Match Day's list and the app's Settings, which share this hook, always go Home. `swallow`, which
+ * only Match Day's list passes, is asked first on Android's Back: true means the press was a bounce (it came as an
+ * overlay closed, MD-2 Task 7) and is taken with nothing done. Left out, nothing changes for any other screen.
  */
-export function useBackToHome(): () => void {
+export function useBackToHome(swallow?: () => boolean): () => void {
   const { navigation, back } = usePorts();
   const origin = useScoringOrigin();
   const toList = origin.back === 'matchday';
@@ -62,10 +64,11 @@ export function useBackToHome(): () => void {
     () =>
       back.subscribe(() => {
         if (!isHomeSubRoute(navigation.current())) return false;
+        if (swallow?.() === true) return true;
         leave();
         return true;
       }),
-    [back, navigation, leave],
+    [back, navigation, leave, swallow],
   );
   return leave;
 }

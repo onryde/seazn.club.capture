@@ -1223,5 +1223,15 @@
   "matchday.approve.onWeb": "Approve it on the web desk",
   "matchday.approve.reviewAgain": "Review again",
   "matchday.approve.staleSwiss": "Pairings changed — review again",
-  "matchday.approve.approved": "Approved"
+  "matchday.approve.approved": "Approved",
+  "matchday.menu": "More",
+  "matchday.exit.title": "Exit Match Day?",
+  "matchday.exit.body": "You'll need to scan again.",
+  "matchday.exit.bodySending.one": "{count} tap still sending — it'll keep sending.",
+  "matchday.exit.bodySending.other": "{count} taps still sending — they'll keep sending.",
+  "matchday.exit.bodyAtRisk": "Some taps can't be read and are at risk. You'll need to scan again.",
+  "matchday.exit.confirm": "Exit",
+  "matchday.exit.stay": "Stay",
+  "matchday.sendingCard.one": "Sending {count} tap · {name}",
+  "matchday.sendingCard.other": "Sending {count} taps · {name}"
 }

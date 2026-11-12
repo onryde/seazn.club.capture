@@ -1223,5 +1223,15 @@
   "matchday.approve.onWeb": "Apruébalo en la web",
   "matchday.approve.reviewAgain": "Revisar de nuevo",
   "matchday.approve.staleSwiss": "Los emparejamientos cambiaron — revisa de nuevo",
-  "matchday.approve.approved": "Aprobado"
+  "matchday.approve.approved": "Aprobado",
+  "matchday.menu": "Más",
+  "matchday.exit.title": "¿Salir del Día de partidos?",
+  "matchday.exit.body": "Tendrás que escanear de nuevo.",
+  "matchday.exit.bodySending.one": "{count} toque aún se está enviando; se seguirá enviando.",
+  "matchday.exit.bodySending.other": "{count} toques aún se están enviando; se seguirán enviando.",
+  "matchday.exit.bodyAtRisk": "Algunos toques no se pueden leer y están en riesgo. Tendrás que escanear de nuevo.",
+  "matchday.exit.confirm": "Salir",
+  "matchday.exit.stay": "Quedarme",
+  "matchday.sendingCard.one": "Enviando {count} toque · {name}",
+  "matchday.sendingCard.other": "Enviando {count} toques · {name}"
 }

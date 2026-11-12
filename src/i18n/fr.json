@@ -1223,5 +1223,15 @@
   "matchday.approve.onWeb": "Approuvez-le sur le site web",
   "matchday.approve.reviewAgain": "Examiner à nouveau",
   "matchday.approve.staleSwiss": "Les appariements ont changé — examinez à nouveau",
-  "matchday.approve.approved": "Approuvé"
+  "matchday.approve.approved": "Approuvé",
+  "matchday.menu": "Plus",
+  "matchday.exit.title": "Quitter Jour de match ?",
+  "matchday.exit.body": "Vous devrez scanner à nouveau.",
+  "matchday.exit.bodySending.one": "{count} saisie en cours d'envoi — elle continuera d'être envoyée.",
+  "matchday.exit.bodySending.other": "{count} saisies en cours d'envoi — elles continueront d'être envoyées.",
+  "matchday.exit.bodyAtRisk": "Des saisies sont illisibles et en danger. Vous devrez scanner à nouveau.",
+  "matchday.exit.confirm": "Quitter",
+  "matchday.exit.stay": "Rester",
+  "matchday.sendingCard.one": "Envoi de {count} saisie · {name}",
+  "matchday.sendingCard.other": "Envoi de {count} saisies · {name}"
 }

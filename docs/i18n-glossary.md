@@ -939,6 +939,25 @@ this phone's own. The draw keeps the spec's "Draw changed — review again".
 
 Keys `matchday.approve.staleSwiss`, `matchday.approve.approved`.
 
+Added with Exit and the Sending card (MD-2 Task 7, 2026-11-12): ⋯'s name, Exit's question and the small card Home keeps for taps
+still sending. The spec's two sentences are verbatim (design §4, §4's "Sending 3 taps · Court 2"). _Taps_ is the word the
+rest of the app uses (es _toques_, fr _saisies_, nl _taps_).
+
+| English                                                             | Español                                                                            | Français                                                                 | Nederlands                                                             |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| More                                                                | Más                                                                                | Plus                                                                     | Meer                                                                   |
+| Exit Match Day?                                                     | ¿Salir del Día de partidos?                                                        | Quitter Jour de match ?                                                  | Speeldag verlaten?                                                     |
+| You'll need to scan again.                                          | Tendrás que escanear de nuevo.                                                     | Vous devrez scanner à nouveau.                                           | Je moet opnieuw scannen.                                               |
+| {count} taps still sending — they'll keep sending.                  | {count} toques aún se están enviando; se seguirán enviando.                        | {count} saisies en cours d'envoi — elles continueront d'être envoyées.   | {count} taps worden nog verstuurd — dat gaat door.                     |
+| Some taps can't be read and are at risk. You'll need to scan again. | Algunos toques no se pueden leer y están en riesgo. Tendrás que escanear de nuevo. | Des saisies sont illisibles et en danger. Vous devrez scanner à nouveau. | Sommige taps zijn onleesbaar en lopen gevaar. Je moet opnieuw scannen. |
+| Exit / Stay                                                         | Salir / Quedarme                                                                   | Quitter / Rester                                                         | Verlaten / Blijven                                                     |
+| Sending {count} taps · {name}                                       | Enviando {count} toques · {name}                                                   | Envoi de {count} saisies · {name}                                        | Verzenden: {count} taps · {name}                                       |
+
+Keys `matchday.menu` (⋯'s accessible name), `matchday.exit.title`, `matchday.exit.body`, `matchday.exit.bodySending` (`.one` says
+"{count} tap still sending — it'll keep sending."), `matchday.exit.bodyAtRisk` (a queue the phone cannot read: taps at risk, never the
+plain body), `matchday.exit.confirm`, `matchday.exit.stay`, `matchday.sendingCard` (`{name}` is the court, else the match, else
+_another match_; `.one` is the singular). fr: no-break space before `?`. The card's es/fr/nl follow `scoring.sync.sending.*`.
+
 ## Translation review
 
 - **New or changed English copy.** Add the key to es, fr and nl in the same

@@ -272,6 +272,7 @@ describe('MatchDayScreen: the day by court (S4 design §5)', () => {
       .map((one) => one.getAttribute('aria-label') ?? one.textContent);
     expect(names).toEqual([
       en['stream.home'],
+      en['matchday.menu'],
       'Now, Ng v Brown, 14-9',
       expect.stringMatching(/^Next, Patel v Okafor/),
     ]);
@@ -607,10 +608,10 @@ describe('MatchDayScreen: Sending N (S4 design §5)', () => {
 });
 
 describe('MatchDayScreen: the top bar', () => {
-  it('has a visible way back to Home (Task 3 review M6), and no ⋯ until it holds Exit (Task 7)', async () => {
+  it('has a visible way back to Home (Task 3 review M6), and ⋯ for Exit (Task 7)', async () => {
     const view = await openList();
-    // Back, and the court's two rows (Task 5): nothing else is a button until Exit brings ⋯.
-    expect(screen.getAllByRole('button')).toHaveLength(3);
+    // Back, ⋯ (Exit's), and the court's two rows (Task 5): nothing else is a button.
+    expect(screen.getAllByRole('button')).toHaveLength(4);
     fireEvent.click(screen.getByRole('button', { name: en['stream.home'] }));
     expect(view.navigation.current()).toBe('home');
   });
@@ -627,7 +628,7 @@ describe('MatchDayScreen: the top bar', () => {
 });
 
 describe('MatchDayScreen: what a thumb hits and what never grows', () => {
-  it('every pressable is at least 48 dp tall: Home and the venue chips', async () => {
+  it('every pressable is at least 48 dp tall: Home, ⋯ and the venue chips', async () => {
     const twoHalls = [court('c-1', 'Court 1'), court('c-2', 'Court 2', { venueName: 'Hall B' })];
     await openList({
       day: dayWith({ scope: { kind: 'competition', label: 'SAFE Open' }, courts: twoHalls }),
@@ -637,7 +638,7 @@ describe('MatchDayScreen: what a thumb hits and what never grows', () => {
       .map((one) =>
         Math.max(parseFloat(style(one).minHeight) || 0, parseFloat(style(one).height) || 0),
       );
-    expect(tall).toEqual([48, 48, 48, 48]);
+    expect(tall).toEqual([48, 48, 48, 48, 48]);
   });
 
   it('Try again is 48 dp tall too', async () => {

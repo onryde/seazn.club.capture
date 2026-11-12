@@ -120,7 +120,7 @@ async function openLink(
       match: { fixtureId: row.fixtureId, label: '' },
       sportKey: link.sportKey,
     });
-    await enter(ports, row.fixtureId, courtName);
+    await enter(ports, row.fixtureId, courtName, link.sportKey);
   } catch {
     // The link kept for a match that did not open is taken away again, as a refused scan's is.
     await kept?.undo().catch(() => ports.logger.warn('scoring.orphan-link-kept', {}));
@@ -149,15 +149,25 @@ async function openStored(
     return;
   }
   try {
-    await enter(ports, row.fixtureId, courtName);
+    await enter(ports, row.fixtureId, courtName, stored.sportKey);
   } catch {
     return sink.say('store.saveFailed');
   }
   ports.navigation.go('scoring');
 }
 
-/** Match Day holds the match (the hub's sweep spares it) and it is the one open, before anything shows it. */
-async function enter(ports: Ports, fixtureId: string, courtName: string): Promise<void> {
+/**
+ * Match Day holds the match (the hub's sweep spares it) and it is the one open, before anything shows it. The record
+ * gets one line, `matchday.open {kind}`, the match's sport (a closed word, `kind` is on the scrub allow-list and `sport`
+ * is not: it would read "***"), never the fixture, the link or the token.
+ */
+async function enter(
+  ports: Ports,
+  fixtureId: string,
+  courtName: string,
+  sportKey: string,
+): Promise<void> {
   await ports.matchDayStore.addOpened(fixtureId);
   await ports.matchDayStore.setOpen({ fixtureId, courtName });
+  ports.logger.info('matchday.open', { kind: sportKey });
 }

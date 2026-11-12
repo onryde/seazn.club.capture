@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type { CodeError } from '@/domain/credentials/waitingFields';
+import { sendingCards, type SendingCard } from '@/domain/matchday/exit';
 import { continueCard, type ContinueCopy, type MatchDayCopy } from '@/domain/mode/continueCard';
 import type { Mode, ModeCode } from '@/domain/mode/Mode';
 import { asksBeforeOpening } from '@/domain/mode/otherMode';
@@ -14,6 +15,7 @@ import {
 } from '@/domain/mode/savedCode';
 import { scanOutcome, type ScanOutcome } from '@/domain/mode/scanOutcome';
 import {
+  rowsKey,
   scoringHome,
   type MatchFinish,
   type QueueRow,
@@ -61,6 +63,7 @@ import {
   useDayCheck,
   useMatchDayCard,
   useOpenSavedDay,
+  useSendingCourts,
   type DayCode,
 } from '@/hooks/useMatchDayHome';
 import { usePorts, type Ports } from '@/hooks/usePorts';
@@ -126,6 +129,8 @@ export type HomeView = {
   readonly matchDay: MatchDayCopy | null;
   /** Remote Scoring's cards (design §5): the saved match, and every other match whose taps are still queued. */
   readonly scoring: ScoringHome;
+  /** The matches Exit left with taps still sending (S4 design §4), each a small card of its own; taken out of `scoring`. */
+  readonly sending: readonly SendingCard[];
 };
 
 export type HomeActions = {
@@ -485,7 +490,10 @@ function useHomeView(
   const panelTime = panel?.kind === 'expired' ? format(panel.at, null) : null;
   const continueCopy = useContinueCopy(continueCode);
   const match = ready?.saved.codes.scoring ?? null;
-  const scoring = useMemo(() => scoringHome(match, rows, finish), [match, rows, finish]);
+  const all = useMemo(() => scoringHome(match, rows, finish), [match, rows, finish]);
+  const courts = useSendingCourts(rowsKey(rows));
+  const { cards: sending, leftovers } = useMemo(() => sendingCards(courts, all), [courts, all]);
+  const scoring = useMemo(() => ({ current: all.current, leftovers }), [all, leftovers]);
   const matchDay = useMatchDayCard(ready?.saved.codes.matchday ?? null);
   return {
     statusText: statusText(ready, statusKey, t, { time: format, day: formatDay }),
@@ -495,6 +503,7 @@ function useHomeView(
     continueCopy,
     matchDay,
     scoring,
+    sending,
   };
 }
 

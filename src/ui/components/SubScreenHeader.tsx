@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useT } from '@/hooks/useLanguage';
 import { IconButton } from '@/ui/components/IconButton';
@@ -17,11 +17,14 @@ export const SubScreenHeader = memo(function SubScreenHeader({
   onBack,
   plate = true,
   backLabel,
+  end,
 }: {
   title: string;
   onBack: () => void;
   plate?: boolean;
   backLabel?: string;
+  /** A control at the far end of the bar (Match Day's ⋯); none on every other screen. */
+  end?: ReactNode;
 }) {
   const { t } = useT();
   return (
@@ -31,6 +34,7 @@ export const SubScreenHeader = memo(function SubScreenHeader({
       <Text variant="action" style={styles.title}>
         {title}
       </Text>
+      {end}
     </View>
   );
 });

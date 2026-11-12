@@ -157,6 +157,15 @@ function createScoringHub(ports: Ports): ScoringHub {
   };
 
   /**
+   * The match is gone, so is Exit's note that it was still sending (Home's Sending card, S4 design §4). A refusal is
+   * recorded and leaves the note, which says nothing once the queue it names is gone.
+   */
+  const letGoOfSending = (id: string): Promise<void> =>
+    ports.matchDayStore
+      .forgetSending(id)
+      .catch(() => ports.logger.warn('matchday.sending-refused'));
+
+  /**
    * An unwanted match goes with its link, queue, ledger and boot cache (Dismiss without the runner), keeping the ids of
    * this phone's own taps for a day (`leave`, owner ruling 46): the scorer has gone from it, not finished with it. A
    * refusal is recorded.
@@ -167,6 +176,7 @@ function createScoringHub(ports: Ports): ScoringHub {
       undoStarts.delete(id);
       await forgetScoringLink(ports.kv, id);
       await ports.tapQueue.leave(id, ports.clock().getTime());
+      await letGoOfSending(id);
     } catch {
       ports.logger.warn('scoring.tidy-refused', {});
     }
@@ -308,6 +318,7 @@ function createScoringHub(ports: Ports): ScoringHub {
     await forgetScoringLink(ports.kv, id);
     if (keepOwn) await ports.tapQueue.leave(id, ports.clock().getTime());
     else await ports.tapQueue.remove(id);
+    await letGoOfSending(id);
   };
 
   return { focus, resume, dismiss, leave, claim, settled };

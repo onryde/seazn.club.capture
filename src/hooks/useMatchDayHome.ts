@@ -259,3 +259,27 @@ export function useMatchDayCard(saved: SavedCode | null): MatchDayCopy | null {
   const copy = read !== null && read.of === saved ? read.copy : null;
   return useMemo(() => matchDayCard(copy, clock()), [copy, clock]);
 }
+
+const NO_COURTS: ReadonlyMap<string, string> = new Map();
+const sameCourts = (a: ReadonlyMap<string, string>, b: ReadonlyMap<string, string>): boolean =>
+  a.size === b.size && [...a].every(([id, court]) => b.get(id) === court);
+
+/**
+ * The matches Exit left sending, each with its court (S4 design §4), read when Home mounts and again whenever its queues
+ * read differently (`readKey`: a queue emptying is when the hub lets a match go and drops its note). Nothing until the
+ * first read; a read the phone refuses is none, and Home then shows the cards it always has.
+ */
+export function useSendingCourts(readKey: string): ReadonlyMap<string, string> {
+  const { matchDayStore } = usePorts();
+  const [held, setHeld] = useState(NO_COURTS);
+  useEffect(() => {
+    let live = true;
+    void matchDayStore.sending().then((now) => {
+      if (live) setHeld((was) => (sameCourts(was, now) ? was : now));
+    });
+    return () => {
+      live = false;
+    };
+  }, [matchDayStore, readKey]);
+  return held;
+}

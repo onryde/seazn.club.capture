@@ -12,7 +12,11 @@ import { useHomeLinks } from '@/hooks/useStreamLinks';
 import logo from '@/ui/assets/logo-wide-night.png';
 import { CodePanel } from '@/ui/components/CodePanel';
 import { ContinueCard } from '@/ui/components/ContinueCard';
-import { ScoringContinueCard, ScoringLeftoverCard } from '@/ui/components/ScoringCards';
+import {
+  ScoringContinueCard,
+  ScoringLeftoverCard,
+  SendingCard,
+} from '@/ui/components/ScoringCards';
 import type { CardShape } from '@/ui/components/cardShape';
 import { DevPaste } from '@/ui/components/DevPaste';
 import { DevProbe } from '@/ui/components/DevProbe';
@@ -113,6 +117,7 @@ function HomeContent({
       <ContinueSlot view={view} actions={actions} shape={shape} />
       <MatchDaySlot view={view} actions={actions} shape={shape} />
       <ScoringSlot view={view} actions={actions} shape={shape} />
+      <SendingSlot sending={view.sending} shape={shape} />
       <ModeTiles onPress={actions.tapTile} layout={layout} />
       {devTools ? <DevPaste onUse={actions.useRaw} /> : null}
       {devTools ? <DevProbe /> : null}
@@ -248,6 +253,17 @@ function ScoringSlot({
           layout={shape}
           onDismiss={actions.askDismiss}
         />
+      ))}
+    </>
+  );
+}
+
+/** The taps Match Day's Exit left sending (S4 design §4), a small card each, under the scoring cards, above the tiles. */
+function SendingSlot({ sending, shape }: { sending: HomeView['sending']; shape: CardShape }) {
+  return (
+    <>
+      {sending.map((one) => (
+        <SendingCard key={one.fixtureId} sending={one} layout={shape} />
       ))}
     </>
   );

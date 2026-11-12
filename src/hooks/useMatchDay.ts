@@ -189,7 +189,7 @@ async function readOnce(ports: Ports, code: SavedDayCode): Promise<Read> {
  * count, or null for a queue that cannot be read, whose taps are at risk (review I1: never silently nothing). A queue
  * with nothing in it is left out. With none opened, the disk is not read.
  */
-async function unsentOf(ports: Ports): Promise<ReadonlyMap<string, number | null>> {
+export async function unsentOf(ports: Ports): Promise<ReadonlyMap<string, number | null>> {
   const opened = new Set(await ports.matchDayStore.opened());
   if (opened.size === 0) return NONE_UNSENT;
   const counted = new Map<string, number | null>();

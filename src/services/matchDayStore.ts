@@ -7,7 +7,11 @@ import type { Logger } from '@/services/logger';
 import type { QueueFiles } from '@/services/tapQueueStore';
 
 /** What Match Day keeps in the secure store beside its code (`code.matchday`, the mode store's). */
-export const MATCHDAY_KEYS = { opened: 'matchday.opened', open: 'matchday.open' } as const;
+export const MATCHDAY_KEYS = {
+  opened: 'matchday.opened',
+  open: 'matchday.open',
+  sending: 'matchday.sending',
+} as const;
 
 /**
  * The match Match Day has open in Remote Scoring, with the court its row sat on (S4 design §6: the pad's Back reads
@@ -43,6 +47,17 @@ export type MatchDayStore = {
   openedKnown(): Promise<readonly string[] | null>;
   addOpened(fixtureId: string): Promise<void>;
   removeOpened(fixtureId: string): Promise<void>;
+  /** Exit (S4 design §4): Match Day lets go of every match it opened. Their own links and queues stay, by S2's rules. */
+  clearOpened(): Promise<void>;
+  /**
+   * The matches Exit left with taps still sending, each with the court it was opened from ('' for none): what Home's
+   * Sending card names it by. Court names only, never a link. A read the phone refuses is none, and the record says so.
+   */
+  sending(): Promise<ReadonlyMap<string, string>>;
+  /** Adds matches to the sending ones, keeping those already there. A refused write rejects its caller. */
+  addSending(courts: ReadonlyMap<string, string>): Promise<void>;
+  /** A match's queue has emptied and it is let go: its entry goes with it. A refused write rejects its caller. */
+  forgetSending(fixtureId: string): Promise<void>;
   /** Reads `matchday.open` into the held value (`openMatch`); never rejects. A reopen decides only after it. */
   loadOpen(): Promise<OpenMatch | null>;
   /** The open match as held now: undefined before `loadOpen` or a `setOpen`, null for none. Safe to read in render. */
@@ -95,6 +110,15 @@ export function createMatchDayStore(deps: {
       const ids = readOpened(await kv.get(MATCHDAY_KEYS.opened));
       await kv.set(MATCHDAY_KEYS.opened, JSON.stringify(change(ids)));
     });
+  const readSending = async (): Promise<ReadonlyMap<string, string>> =>
+    readCourts(await kv.get(MATCHDAY_KEYS.sending).catch(() => null));
+  const writeSending = (change: (held: Map<string, string>) => boolean | void) =>
+    serial(async () => {
+      const held = new Map(readCourts(await kv.get(MATCHDAY_KEYS.sending)));
+      if (change(held) === false) return;
+      if (held.size === 0) await kv.delete(MATCHDAY_KEYS.sending);
+      else await kv.set(MATCHDAY_KEYS.sending, JSON.stringify(Object.fromEntries(held)));
+    });
   return {
     readCache: (code) =>
       serial(async () => {
@@ -132,6 +156,13 @@ export function createMatchDayStore(deps: {
     addOpened: (fixtureId) =>
       writeOpened((ids) => (ids.includes(fixtureId) ? ids : [...ids, fixtureId])),
     removeOpened: (fixtureId) => writeOpened((ids) => ids.filter((id) => id !== fixtureId)),
+    clearOpened: () => serial(() => kv.delete(MATCHDAY_KEYS.opened)),
+    sending: readSending,
+    addSending: (courts) =>
+      writeSending((held) => {
+        for (const [id, court] of courts) held.set(id, court);
+      }),
+    forgetSending: (fixtureId) => writeSending((held) => held.delete(fixtureId)),
     loadOpen: () =>
       serial(async () => {
         const found = readOpen(await kv.get(MATCHDAY_KEYS.open).catch(() => null));
@@ -241,6 +272,20 @@ function readOpened(text: string | null): readonly string[] {
     return Array.isArray(ids) && ids.every((id) => typeof id === 'string') ? ids : [];
   } catch {
     return [];
+  }
+}
+
+function readCourts(text: string | null): ReadonlyMap<string, string> {
+  if (text === null) return new Map();
+  try {
+    const data: unknown = JSON.parse(text);
+    if (!isRecord(data)) return new Map();
+    const held = Object.entries(data).filter(
+      (entry): entry is [string, string] => typeof entry[1] === 'string',
+    );
+    return new Map(held);
+  } catch {
+    return new Map();
   }
 }
 

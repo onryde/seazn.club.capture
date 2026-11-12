@@ -335,6 +335,7 @@ describe('HomeScreen’s unpair sheet', () => {
         continueCopy: null,
         matchDay: null,
         scoring: { current: null, leftovers: [] },
+        sending: [],
       },
       actions: {
         tapTile: vi.fn(),
