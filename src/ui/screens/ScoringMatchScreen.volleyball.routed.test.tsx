@@ -20,7 +20,7 @@ const half = (side: 'first' | 'second') => screen.getByTestId(`half-${side}`);
 async function scanned(): Promise<LaunchedApp> {
   const app = await launchApp({ scoringSeed: SEED });
   app.scanner.queue({ outcome: 'scanned', raw: RAW });
-  act(() => screen.getByRole('button', { name: /Remote Scoring|Puntuación|Score|Scoren/ }).click());
+  act(() => screen.getByRole('button', { name: /^(Remote Scoring|Puntuación|Scoren)/ }).click());
   await flush(400);
   return app;
 }
