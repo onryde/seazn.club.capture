@@ -139,7 +139,7 @@ describe('a list with no day behind it spares nothing (Exit that died or was ref
     await fakes.kv.delete(STORE_KEYS.code('matchday'));
     await fakes.ports.modeStore.load();
     await fakes.ports.matchDayStore.addOpened(FIXTURE);
-    vi.spyOn(fakes.ports.matchDayStore, 'clearOpened').mockRejectedValue(new Error('refused'));
+    vi.spyOn(fakes.ports.matchDayStore, 'forgetOpened').mockRejectedValue(new Error('refused'));
     await scoringHubOf(fakes.ports).resume();
     expect((await readScoringLink(fakes.kv, FIXTURE, HOST)).kind).toBe('none');
     expect(readRecord(fakes.record).some((l) => l.event === 'matchday.heal-refused')).toBe(true);
@@ -400,5 +400,68 @@ describe('the heal lets go of a match Match Day opened that was never tapped (fi
     const text = JSON.stringify(readRecord(fakes.record));
     expect(text).not.toContain(FIXTURE);
     expect(text).not.toContain(FAKE_SCORING_SECRET);
+  });
+});
+
+// Final re-review N1: the pass reads the list once. A match opened after that read (a row tapped on day B while the
+// new-code pass runs) is not the pass's: its note and its link stay, and only the ids the pass read and let go leave
+// the list.
+describe('the pass lets go of only the opened ids it read (final re-review N1)', () => {
+  const B1 = 'fake-b1';
+
+  /**
+   * The pass's read of the list (after `before` other reads: the heal reads it once to decide), then B1 is opened (its
+   * link kept, its note added) before the pass goes on.
+   */
+  function openB1MidPass(fakes: FakePorts, before = 0): void {
+    const read = fakes.ports.matchDayStore.openedKnown.bind(fakes.ports.matchDayStore);
+    const spy = vi.spyOn(fakes.ports.matchDayStore, 'openedKnown');
+    for (let i = 0; i < before; i += 1) spy.mockImplementationOnce(read);
+    spy.mockImplementationOnce(async () => {
+      const seen = await read();
+      await saveScoringLink(fakes.kv, B1, LINK, HOST, 'badminton');
+      await fakes.ports.matchDayStore.addOpened(B1);
+      return seen;
+    });
+  }
+
+  it('B1 opened mid-pass keeps its link and its note; the untapped match the pass read goes', async () => {
+    const fakes = await viewed();
+    openB1MidPass(fakes);
+    await scoringHubOf(fakes.ports).letGoOfOpened();
+    expect(await goneAll(fakes)).toBe(true);
+    expect((await readScoringLink(fakes.kv, B1, HOST)).kind).toBe('link');
+    expect(await fakes.ports.matchDayStore.opened()).toEqual([B1]);
+  });
+
+  it('the same through the heal: B1 stays named, so a later pass still finds it', async () => {
+    const fakes = await viewed();
+    openB1MidPass(fakes, 1);
+    await scoringHubOf(fakes.ports).resume();
+    expect((await readScoringLink(fakes.kv, B1, HOST)).kind).toBe('link');
+    expect(await fakes.ports.matchDayStore.opened()).toEqual([B1]);
+  });
+
+  it('a match the pass read that a scan claims at let-go time is kept (holding is judged then, not at the read)', async () => {
+    const fakes = await viewed();
+    const hub = scoringHubOf(fakes.ports);
+    let release = (): void => undefined;
+    const list = fakes.tapQueue.listKnown.bind(fakes.tapQueue);
+    vi.spyOn(fakes.tapQueue, 'listKnown').mockImplementationOnce(async () => {
+      const seen = await list();
+      release = hub.claim(FIXTURE);
+      return seen;
+    });
+    await hub.letGoOfOpened();
+    expect((await readScoringLink(fakes.kv, FIXTURE, HOST)).kind).toBe('link');
+    expect(await fakes.ports.matchDayStore.opened()).toEqual([FIXTURE]);
+    release();
+  });
+
+  it('every id read and let go leaves, and the key goes with the last', async () => {
+    const fakes = await viewed();
+    await fakes.ports.matchDayStore.addOpened('left-by-a-dismiss');
+    await scoringHubOf(fakes.ports).letGoOfOpened();
+    expect(fakes.kv.entries.has('matchday.opened')).toBe(false);
   });
 });

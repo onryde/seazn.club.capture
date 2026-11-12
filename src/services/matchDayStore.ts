@@ -51,6 +51,11 @@ export type MatchDayStore = {
   /** Exit (S4 design §4): Match Day lets go of every match it opened. Their own links and queues stay, by S2's rules. */
   clearOpened(): Promise<void>;
   /**
+   * Takes exactly these ids off the list, as it stands when the write runs: an id added since the caller read the list
+   * stays (final re-review N1). The key goes with the last id. A refused read or write rejects its caller.
+   */
+  forgetOpened(fixtureIds: readonly string[]): Promise<void>;
+  /**
    * The matches Exit left with taps still sending, each with the court it was opened from ('' for none): what Home's
    * Sending card names it by. Court names only, never a link. A read the phone refuses is none, and the record says so.
    */
@@ -157,6 +162,14 @@ export function createMatchDayStore(deps: {
       writeOpened((ids) => (ids.includes(fixtureId) ? ids : [...ids, fixtureId])),
     removeOpened: (fixtureId) => writeOpened((ids) => ids.filter((id) => id !== fixtureId)),
     clearOpened: () => serial(() => kv.delete(MATCHDAY_KEYS.opened)),
+    forgetOpened: (fixtureIds) =>
+      serial(async () => {
+        const left = readOpened(await kv.get(MATCHDAY_KEYS.opened)).filter(
+          (id) => !fixtureIds.includes(id),
+        );
+        if (left.length === 0) await kv.delete(MATCHDAY_KEYS.opened);
+        else await kv.set(MATCHDAY_KEYS.opened, JSON.stringify(left));
+      }),
     sending: readSending,
     addSending: (courts) =>
       writeSending((held) => {

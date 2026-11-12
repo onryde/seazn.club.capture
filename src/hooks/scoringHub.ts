@@ -49,8 +49,8 @@ export type ScoringHub = {
    * Before Match Day lets go of its opened list (Exit, the heal, a new day code; MD-2 final review I1): each opened match
    * with no queue (viewed, never tapped) that nothing holds is left (`leave`: its link and boot cache go), since no sweep
    * would ever name it again. A match with a queue stays for S2's tidy rule. The list then loses every match it no longer
-   * needs to name: it is cleared, but for a match still held or one whose leave the phone refused (recorded), which stays
-   * for the next pass. Rejects, letting go of nothing, when the list or the queue folder cannot be read, and when the
+   * needs to name, and only the ones it read: a match still held, one whose leave the phone refused (recorded), and one
+   * opened after the read all stay. Rejects, letting go of nothing, when the list or the queue folder cannot be read, and when the
    * list's write is refused.
    */
   letGoOfOpened(): Promise<void>;
@@ -329,10 +329,11 @@ function createScoringHub(ports: Ports): ScoringHub {
     const queued = new Set(
       queues.map((e) => (e.kind === 'queue' ? e.queue.fixtureId : e.fixtureId)),
     );
-    const stays: string[] = [];
-    for (const id of opened) if (!queued.has(id) && !(await letGoUntapped(id))) stays.push(id);
-    if (stays.length === 0) return ports.matchDayStore.clearOpened();
-    for (const id of opened) if (!stays.includes(id)) await ports.matchDayStore.removeOpened(id);
+    // Only the ids read here leave the list: one opened since (a row tapped on a new day mid-pass) is not this pass's
+    // (final re-review N1). Holding is judged per id at its let-go (`letGoUntapped`), never from the read.
+    const gone: string[] = [];
+    for (const id of opened) if (queued.has(id) || (await letGoUntapped(id))) gone.push(id);
+    await ports.matchDayStore.forgetOpened(gone);
   };
 
   /** A match with no queue is left unless something holds it; false when it stays (held, or its leave was refused). */

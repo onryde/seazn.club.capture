@@ -349,6 +349,45 @@ describe('the copy is read back through the day parser’s full check (final rev
   });
 });
 
+describe('forgetOpened takes off exactly the ids it is given (final re-review N1)', () => {
+  const A = '7b2c3d4e-5f6a-4b7c-9d8e-0f1a2b3c4d5e';
+  const B = '8c3d4e5f-6a7b-4c8d-ae9f-1a2b3c4d5e6f';
+  const C = '9d4e5f6a-7b8c-4d9e-bf0a-2b3c4d5e6f7a';
+
+  it('an id added after the caller read the list stays; the others given go', async () => {
+    const { store } = storeOver();
+    await store.addOpened(A);
+    await store.addOpened(B);
+    const read = await store.opened();
+    await store.addOpened(C);
+    await store.forgetOpened(read);
+    expect(await store.opened()).toEqual([C]);
+  });
+
+  it('the last id taken takes the key; none given changes nothing', async () => {
+    const { store, kv } = storeOver();
+    await store.addOpened(A);
+    await store.forgetOpened([]);
+    expect(await store.opened()).toEqual([A]);
+    await store.forgetOpened([A, B]);
+    expect(
+      (kv as ReturnType<typeof createMemoryKeyValueStore>).entries.has(MATCHDAY_KEYS.opened),
+    ).toBe(false);
+  });
+
+  it('a refused write rejects its caller and leaves the list', async () => {
+    const memory = createMemoryKeyValueStore();
+    const kv: KeyValueStore = {
+      ...memory,
+      delete: () => Promise.reject(new Error('keystore refused')),
+    };
+    const { store } = storeOver({ kv });
+    await store.addOpened(A);
+    await expect(store.forgetOpened([A])).rejects.toThrow('keystore refused');
+    expect(await store.opened()).toEqual([A]);
+  });
+});
+
 describe('the copy’s version follows the shape it was written in', () => {
   const AT_VERSION_1 = {
     day: {

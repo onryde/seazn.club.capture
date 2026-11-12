@@ -473,7 +473,7 @@ describe('Exit clears the list and forgets the day BEFORE it nudges the hub (rev
       },
     });
     // Exit's own clear and the heal in the nudge it sends are both refused; the next launch's resume gets it.
-    vi.spyOn(view.ports.matchDayStore, 'clearOpened')
+    vi.spyOn(view.ports.matchDayStore, 'forgetOpened')
       .mockRejectedValueOnce(new Error('refused'))
       .mockRejectedValueOnce(new Error('refused'));
     await act(() => view.result.current.exit());
@@ -564,7 +564,7 @@ describe('a second call, an empty input and an interruption', () => {
 
   it('a refused clear of the opened ids is recorded and Exit still goes Home', async () => {
     const view = await mount({ taps: 1 });
-    vi.spyOn(view.ports.matchDayStore, 'clearOpened').mockRejectedValue(new Error('refused'));
+    vi.spyOn(view.ports.matchDayStore, 'forgetOpened').mockRejectedValue(new Error('refused'));
     await act(() => view.result.current.exit());
     expect(view.navigation.current()).toBe('home');
     expect(

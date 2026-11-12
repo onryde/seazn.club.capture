@@ -772,7 +772,7 @@ describe('Home: a different day code lets go of the first one’s opened matches
   it('a let-go the phone refuses is recorded, and code B still opens', async () => {
     const home = await openedUnderA();
     const refuse = vi
-      .spyOn(home.ports.matchDayStore, 'clearOpened')
+      .spyOn(home.ports.matchDayStore, 'forgetOpened')
       .mockRejectedValue(new Error('refused'));
     await scanFromStream(home, OTHER_TOKEN);
     await waitFor(() => expect(home.navigation.current()).toBe('matchday'));
