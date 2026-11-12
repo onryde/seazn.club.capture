@@ -137,10 +137,19 @@ function createScoringHub(ports: Ports): ScoringHub {
   };
 
   /**
-   * Nothing wants this match: no screen holds it, no scan is writing it and it is not the saved one. A store that has
-   * not loaded cannot say what is saved, so it is never unwanted; a later sweep decides.
+   * Nothing wants this match: no screen holds it, no scan is writing it, it is not the saved one and Match Day did not
+   * open it (S4 design §3, §6: its link goes by S2's rules once its queue is empty, but a match opened from the day is
+   * not let go of by a sweep while the day holds it). A store that has not loaded cannot say what is saved, so it is
+   * never unwanted; a later sweep decides. Match Day's list is read when asked (`opened` never rejects).
    */
-  const unwanted = (id: string): boolean => {
+  const unwanted = async (id: string): Promise<boolean> => {
+    if (!nobodyHolds(id)) return false;
+    if ((await ports.matchDayStore.opened()).includes(id)) return false;
+    // The list was read across an await: what a screen, a scan or a save took meanwhile still counts.
+    return nobodyHolds(id);
+  };
+
+  const nobodyHolds = (id: string): boolean => {
     const saved = savedMatchOf(ports);
     return saved !== undefined && saved !== id && !focused.has(id) && !claims.has(id);
   };
@@ -152,7 +161,7 @@ function createScoringHub(ports: Ports): ScoringHub {
    */
   const sweep = async (id: string): Promise<void> => {
     try {
-      if (!unwanted(id)) return;
+      if (!(await unwanted(id))) return;
       undoStarts.delete(id);
       await forgetScoringLink(ports.kv, id);
       await ports.tapQueue.leave(id, ports.clock().getTime());

@@ -7,7 +7,13 @@ import type { Logger } from '@/services/logger';
 import type { QueueFiles } from '@/services/tapQueueStore';
 
 /** What Match Day keeps in the secure store beside its code (`code.matchday`, the mode store's). */
-export const MATCHDAY_KEYS = { opened: 'matchday.opened' } as const;
+export const MATCHDAY_KEYS = { opened: 'matchday.opened', open: 'matchday.open' } as const;
+
+/**
+ * The match Match Day has open in Remote Scoring, with the court its row sat on (S4 design §6: the pad's Back reads
+ * "‹ Court 1"). No credential: the match's link is the scoring link store's.
+ */
+export type OpenMatch = { readonly fixtureId: string; readonly courtName: string };
 
 /** The day's last good copy, and when it was read (S4 design §5: "Offline · updated 10:42"). */
 export type CachedDay = { readonly day: MatchDay; readonly at: Date };
@@ -35,6 +41,15 @@ export type MatchDayStore = {
   opened(): Promise<readonly string[]>;
   addOpened(fixtureId: string): Promise<void>;
   removeOpened(fixtureId: string): Promise<void>;
+  /** Reads `matchday.open` into the held value (`openMatch`); never rejects. A reopen decides only after it. */
+  loadOpen(): Promise<OpenMatch | null>;
+  /** The open match as held now: undefined before `loadOpen` or a `setOpen`, null for none. Safe to read in render. */
+  openMatch(): OpenMatch | null | undefined;
+  subscribeOpen(listener: () => void): () => void;
+  /** Holds the match open, once the write has landed: a refused write rejects and changes nothing. */
+  setOpen(match: OpenMatch): Promise<void>;
+  /** Back on the list: the match is no longer open. A refused delete rejects and changes nothing. */
+  clearOpen(): Promise<void>;
 };
 
 /** Bumped whenever `MatchDay`'s shape changes: an older copy is then none, never misread (`matchDayStore.test.ts`). */
@@ -63,6 +78,12 @@ export function createMatchDayStore(deps: {
   const { kv, files, logger } = deps;
   const serial = oneAtATime();
   let leftover = true;
+  let held: OpenMatch | null | undefined;
+  const listeners = new Set<() => void>();
+  const hold = (next: OpenMatch | null): void => {
+    held = next;
+    for (const listener of listeners) listener();
+  };
   const unreadable: Unreadable = (problem) => logger.warn('matchday.cache-unreadable', { problem });
   const opened = async (): Promise<readonly string[]> =>
     readOpened(await kv.get(MATCHDAY_KEYS.opened).catch(() => null));
@@ -102,6 +123,29 @@ export function createMatchDayStore(deps: {
     addOpened: (fixtureId) =>
       writeOpened((ids) => (ids.includes(fixtureId) ? ids : [...ids, fixtureId])),
     removeOpened: (fixtureId) => writeOpened((ids) => ids.filter((id) => id !== fixtureId)),
+    loadOpen: () =>
+      serial(async () => {
+        const found = readOpen(await kv.get(MATCHDAY_KEYS.open).catch(() => null));
+        hold(found);
+        return found;
+      }),
+    openMatch: () => held,
+    subscribeOpen: (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    setOpen: (match) =>
+      serial(async () => {
+        await kv.set(MATCHDAY_KEYS.open, JSON.stringify(match));
+        hold(match);
+      }),
+    clearOpen: () =>
+      serial(async () => {
+        await kv.delete(MATCHDAY_KEYS.open);
+        hold(null);
+      }),
   };
 }
 
@@ -159,6 +203,19 @@ function parse(text: string): unknown {
       if (Number.isNaN(date.getTime())) throw new RangeError('not a date');
       return date;
     }) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+function readOpen(text: string | null): OpenMatch | null {
+  if (text === null) return null;
+  try {
+    const data: unknown = JSON.parse(text);
+    if (!isRecord(data) || typeof data.fixtureId !== 'string' || data.fixtureId === '') return null;
+    return typeof data.courtName === 'string'
+      ? { fixtureId: data.fixtureId, courtName: data.courtName }
+      : null;
   } catch {
     return null;
   }

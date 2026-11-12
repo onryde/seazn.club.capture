@@ -1,11 +1,27 @@
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { encodeSavedCode, type SavedCode } from '@/domain/mode/savedCode';
+import { dayLink } from '../../test/fixtures/dayCode';
 import { useScoringFixture } from '@/hooks/useScoringFixture';
 import { STORE_KEYS } from '@/services/modeStore';
 import { createFakePorts } from '../../test/fakePorts';
 import { savedStreamCode } from '../../test/fixtures/savedStream';
 import { wrapperFor } from '../../test/renderWithPorts';
+
+/** The day code that makes Match Day a mode that can be active (the store keeps `active` only for a saved code). */
+const DAY_CODE: SavedCode = {
+  mode: 'matchday',
+  raw: dayLink(),
+  slot: null,
+  savedAt: new Date('2026-11-12T09:00:00Z'),
+  expiresAt: null,
+  stream: null,
+  scoring: null,
+};
+const inMatchDay = {
+  [STORE_KEYS.active]: 'matchday',
+  [STORE_KEYS.code('matchday')]: encodeSavedCode(DAY_CODE),
+};
 
 const match = (fixtureId: string): SavedCode => ({
   mode: 'scoring',
@@ -85,5 +101,31 @@ describe('useScoringFixture, a match replaced while the screen lives', () => {
     expect(hook.result.current).toBe('fx-5');
     await act(() => forgetSaved(ports.modeStore));
     expect(hook.result.current).toBe('fx-5');
+  });
+
+  it('under Match Day it is the match Match Day opened, never a scoring code saved before it', async () => {
+    const { hook, ports } = await mounted({
+      ...inMatchDay,
+      [STORE_KEYS.code('scoring')]: encodeSavedCode(match('fx-scanned')),
+    });
+    expect(hook.result.current).toBeNull();
+    await act(() => ports.matchDayStore.setOpen({ fixtureId: 'fx-day', courtName: 'Court 1' }));
+    expect(hook.result.current).toBe('fx-day');
+  });
+
+  it('with another mode active a match Match Day left open is not the pad’s', async () => {
+    const { hook, ports } = await mounted({
+      [STORE_KEYS.active]: 'scoring',
+      [STORE_KEYS.code('scoring')]: encodeSavedCode(match('fx-scanned')),
+    });
+    await act(() => ports.matchDayStore.setOpen({ fixtureId: 'fx-day', courtName: 'Court 1' }));
+    expect(hook.result.current).toBe('fx-scanned');
+  });
+
+  it('keeps the Match Day match it has seen after the list clears it (Back)', async () => {
+    const { hook, ports } = await mounted(inMatchDay);
+    await act(() => ports.matchDayStore.setOpen({ fixtureId: 'fx-day', courtName: 'Court 1' }));
+    await act(() => ports.matchDayStore.clearOpen());
+    expect(hook.result.current).toBe('fx-day');
   });
 });

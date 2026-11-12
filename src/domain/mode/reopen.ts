@@ -54,6 +54,11 @@ export function reopenTarget(input: {
   scoring?: boolean;
   /** `reopensMatchDay` for this decision; left out, Match Day is not reopened. */
   matchday?: boolean;
+  /**
+   * A match was open from Match Day when the app was killed (`matchday.open`): with `matchday`, the app reopens into
+   * that match's pad rather than the list (S4 design §4). Alone it reopens nothing.
+   */
+  matchdayOpen?: boolean;
 }): ReopenTarget {
   const { engine, saved, now } = input;
   const code = saved.codes.stream;
@@ -61,7 +66,7 @@ export function reopenTarget(input: {
   if (engine === 'paired') return { go: code === undefined ? 'home' : 'stream' };
   if (input.resumed) return { go: 'stream' };
   if (input.scoring === true) return { go: 'scoring' };
-  if (input.matchday === true) return { go: 'matchday' };
+  if (input.matchday === true) return { go: input.matchdayOpen === true ? 'scoring' : 'matchday' };
   if (saved.active !== 'stream' || code === undefined) return { go: 'home' };
   if (code.expiresAt !== null && isExpired(code, now)) {
     return {

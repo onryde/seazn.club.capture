@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { usePorts } from '@/hooks/usePorts';
+import { useScoringOrigin } from '@/hooks/useScoringOrigin';
 import { isHomeSubRoute, isStreamSubRoute } from '@/services/devicePorts';
 
 /** The viewfinder's way into Settings (Diagnostics is a card in it, spec §6), open in every state (AGENTS §6). */
@@ -44,18 +45,27 @@ export function useHomeLinks(): { settings(): void } {
   return useMemo(() => ({ settings }), [settings]);
 }
 
-/** Back from Settings, or from Remote Scoring, returns Home; handled only while one of them is the route (M21). */
+/**
+ * Back from Settings, or from Remote Scoring, returns Home; handled only while one of them is the route (M21). From a
+ * match opened in Match Day it returns to the day's list instead (S4 design §6, `scoringOrigin`), and only from the
+ * pad's own route: Match Day's list and the app's Settings, which share this hook, always go Home.
+ */
 export function useBackToHome(): () => void {
   const { navigation, back } = usePorts();
-  const toHome = useCallback(() => navigation.go('home'), [navigation]);
+  const origin = useScoringOrigin();
+  const toList = origin.back === 'matchday';
+  const leave = useCallback(
+    () => navigation.go(toList && navigation.current() === 'scoring' ? 'matchday' : 'home'),
+    [navigation, toList],
+  );
   useEffect(
     () =>
       back.subscribe(() => {
         if (!isHomeSubRoute(navigation.current())) return false;
-        toHome();
+        leave();
         return true;
       }),
-    [back, navigation, toHome],
+    [back, navigation, leave],
   );
-  return toHome;
+  return leave;
 }

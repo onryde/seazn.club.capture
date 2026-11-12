@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import {
   bannerFor,
@@ -14,10 +14,13 @@ import {
 } from '@/domain/matchday/matchDay';
 import { useFormatDay, useFormatTime } from '@/hooks/useFormatTime';
 import { useT } from '@/hooks/useLanguage';
+import { usePorts } from '@/hooks/usePorts';
 import { useMatchDay, type MatchDayList } from '@/hooks/useMatchDay';
+import { useOpenFromMatchDay } from '@/hooks/useOpenFromMatchDay';
 import { usePullRefresh } from '@/hooks/usePullRefresh';
 import { useRowWords } from '@/hooks/useRowWords';
 import { useBackToHome } from '@/hooks/useStreamLinks';
+import type { MessageKey } from '@/i18n/messages';
 import { ApprovalBanner } from '@/ui/components/ApprovalBanner';
 import { CourtCard } from '@/ui/components/CourtCard';
 import { GhostButton } from '@/ui/components/GhostButton';
@@ -31,13 +34,17 @@ import { colour, layout, radius, space } from '@/ui/theme/tokens';
  * Match Day's list (MD-2 Task 4; S4 design §5, layout B), portrait: the way back to Home, then the competition, the
  * code's scope and its day, the approval waiting, one card per court (filtered by venue on a competition code over two
  * venues), the matches on no court yet and the online boards. Offline, the last copy shows under the time it was read;
- * with none, "Offline" and Try again. A pull reads the day again. Nothing here opens a match yet (Task 5), and ⋯ comes
- * with Exit (Task 7).
+ * with none, "Offline" and Try again. A pull reads the day again. A tap on a court's match opens it in Remote Scoring
+ * (Task 5; S4 design §6), and Back from there returns here, scrolled to that court. ⋯ comes with Exit (Task 7).
  */
 export function MatchDayScreen() {
   const { t } = useT();
   const toHome = useBackToHome();
   const list = useMatchDay();
+  const [line, say] = useState<MessageKey | null>(null);
+  const open = useOpenFromMatchDay({ say, refresh: list.refresh });
+  const cameBackTo = useCameBackFrom();
+  const body = { list, line, open, cameBackTo };
   return (
     <View testID="matchday-screen" style={styles.screen}>
       <View style={styles.bar}>
@@ -48,13 +55,35 @@ export function MatchDayScreen() {
           backLabel={t('stream.home')}
         />
       </View>
-      <MatchDayBody list={list} />
+      <MatchDayBody {...body} />
     </View>
   );
 }
 
-const MatchDayBody = memo(function MatchDayBody({ list }: { readonly list: MatchDayList }) {
-  if (list.day !== null) return <DayList list={list} day={list.day} />;
+/**
+ * The court of the match this list has come back from, read once as the list mounts, and the match is then no longer
+ * open (a kill on the list reopens the list, not the pad it left). Null when the list was not reached from a pad.
+ */
+function useCameBackFrom(): string | null {
+  const { matchDayStore, logger } = usePorts();
+  const [court] = useState(() => matchDayStore.openMatch()?.courtName ?? null);
+  useEffect(() => {
+    if (matchDayStore.openMatch() == null) return;
+    matchDayStore.clearOpen().catch(() => logger.warn('matchday.open-clear-refused'));
+  }, [matchDayStore, logger]);
+  return court;
+}
+
+type BodyProps = {
+  readonly list: MatchDayList;
+  readonly line: MessageKey | null;
+  readonly open: (row: Row, courtName: string) => Promise<void>;
+  readonly cameBackTo: string | null;
+};
+
+const MatchDayBody = memo(function MatchDayBody({ list, line, open, cameBackTo }: BodyProps) {
+  if (list.day !== null)
+    return <DayList list={list} day={list.day} line={line} open={open} cameBackTo={cameBackTo} />;
   if (list.state === 'offline') return <OfflineEmpty retry={list.refresh} reading={list.reading} />;
   return <Opening />;
 });
@@ -97,11 +126,18 @@ const REFRESH_COLOURS = [colour.lime];
 const DayList = memo(function DayList({
   list,
   day,
+  line,
+  open,
+  cameBackTo,
 }: {
   readonly list: MatchDayList;
   readonly day: MatchDay;
+  readonly line: MessageKey | null;
+  readonly open: BodyProps['open'];
+  readonly cameBackTo: string | null;
 }) {
   const { t } = useT();
+  const { scroller, onSlot } = useScrollToCourt(cameBackTo);
   const banner = useMemo(() => bannerFor(day), [day]);
   const offlineAt = list.state === 'offline' ? list.updatedAt : null;
   // react-native-web draws no pull and drops its props: the spinner is the device check's, its rule
@@ -117,10 +153,20 @@ const DayList = memo(function DayList({
     />
   );
   return (
-    <ScrollView style={styles.list} contentContainerStyle={styles.column} refreshControl={pull}>
+    <ScrollView
+      ref={scroller}
+      style={styles.list}
+      contentContainerStyle={styles.column}
+      refreshControl={pull}
+    >
       <DayHeader day={day} offlineAt={offlineAt} />
+      {line === null ? null : (
+        <Text variant="control" style={styles.offline}>
+          {t(line)}
+        </Text>
+      )}
       {banner === null ? null : <ApprovalBanner banner={banner} />}
-      <Courts day={day} unsent={list.unsent} />
+      <Courts day={day} unsent={list.unsent} open={open} onSlot={onSlot} />
       <RowSection
         title={`${t('matchday.noCourt')} · ${day.noCourt.length}`}
         rows={day.noCourt}
@@ -160,12 +206,35 @@ const DayHeader = memo(function DayHeader({
   );
 });
 
+/**
+ * Back from a pad scrolls the list to the court the match was opened from (S4 design §6), once, when that court's card
+ * has been laid out: a refresh, a poll or a venue chip never scrolls it again. A court no longer on the day scrolls
+ * nothing.
+ */
+function useScrollToCourt(court: string | null) {
+  const scroller = useRef<ScrollView>(null);
+  const done = useRef(false);
+  const onSlot = useCallback(
+    (name: string, y: number) => {
+      if (court === null || name !== court || done.current) return;
+      done.current = true;
+      scroller.current?.scrollTo({ y, animated: false });
+    },
+    [court],
+  );
+  return { scroller, onSlot };
+}
+
 const Courts = memo(function Courts({
   day,
   unsent,
+  open,
+  onSlot,
 }: {
   readonly day: MatchDay;
   readonly unsent: ReadonlyMap<string, number | null>;
+  readonly open: BodyProps['open'];
+  readonly onSlot: (courtName: string, y: number) => void;
 }) {
   const [venue, setVenue] = useState<string | null>(null);
   const venues = useMemo(() => venuesOf(day), [day]);
@@ -182,6 +251,8 @@ const Courts = memo(function Courts({
           card={card}
           stake={sending.get(card.courtId) ?? NO_STAKE}
           zone={day.tz}
+          onOpen={open}
+          onSlot={onSlot}
         />
       ))}
     </>

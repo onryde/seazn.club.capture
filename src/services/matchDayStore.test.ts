@@ -77,7 +77,7 @@ function storeOver(options: { files?: MemoryQueueFiles; kv?: KeyValueStore } = {
   const kv = options.kv ?? createMemoryKeyValueStore();
   const record = createRingRecord();
   const logger = createLogger({ record, now: () => 0 });
-  return { store: createMatchDayStore({ kv, files, logger }), files, record };
+  return { store: createMatchDayStore({ kv, files, logger }), files, record, kv };
 }
 
 describe('the day’s last good copy: a file of its own (`matchday/day.json`)', () => {
@@ -398,7 +398,7 @@ describe('the matches opened from Match Day (`matchday.opened`, in the secure st
   it('keeps the list under its key', async () => {
     const kv = createMemoryKeyValueStore();
     await storeOver({ kv }).store.addOpened(A);
-    expect(MATCHDAY_KEYS).toEqual({ opened: 'matchday.opened' });
+    expect(MATCHDAY_KEYS).toEqual({ opened: 'matchday.opened', open: 'matchday.open' });
     expect(kv.entries.get('matchday.opened')).toBe(JSON.stringify([A]));
   });
 
@@ -459,5 +459,93 @@ describe('the matches opened from Match Day (`matchday.opened`, in the secure st
     await store.writeCache(CODE, DAY, AT);
     await store.clearCache();
     expect(await store.opened()).toEqual([A]);
+  });
+});
+
+describe('the match open in Remote Scoring (MD-2 Task 5)', () => {
+  const A = '7b2c3d4e-5f6a-4b7c-9d8e-0f1a2b3c4d5e';
+  const OPEN = { fixtureId: A, courtName: 'Court 1' };
+
+  it('holds nothing known until it is read, and none when nothing is stored', async () => {
+    const { store } = storeOver();
+    expect(store.openMatch()).toBeUndefined();
+    expect(await store.loadOpen()).toBeNull();
+    expect(store.openMatch()).toBeNull();
+  });
+
+  it('a set open is held at once for a render, tells its listeners and survives a restart', async () => {
+    const { store, kv } = storeOver();
+    let told = 0;
+    store.subscribeOpen(() => (told += 1));
+    await store.setOpen(OPEN);
+    expect(store.openMatch()).toEqual(OPEN);
+    expect(told).toBe(1);
+    const again = storeOver({ kv }).store;
+    expect(await again.loadOpen()).toEqual(OPEN);
+  });
+
+  it('a refused write holds nothing, and the next one lands', async () => {
+    const memory = createMemoryKeyValueStore();
+    let refuse = true;
+    const kv: KeyValueStore = {
+      get: memory.get,
+      delete: memory.delete,
+      set: async (key, value) => {
+        if (refuse) throw new Error('keystore refused');
+        await memory.set(key, value);
+      },
+    };
+    const { store } = storeOver({ kv });
+    await expect(store.setOpen(OPEN)).rejects.toThrow('keystore refused');
+    expect(store.openMatch()).toBeUndefined();
+    refuse = false;
+    await store.setOpen(OPEN);
+    expect(store.openMatch()).toEqual(OPEN);
+  });
+
+  it('clearing deletes it, tells the listeners and leaves the opened matches', async () => {
+    const { store, kv } = storeOver();
+    await store.addOpened(A);
+    await store.setOpen(OPEN);
+    let told = 0;
+    store.subscribeOpen(() => (told += 1));
+    await store.clearOpen();
+    expect(store.openMatch()).toBeNull();
+    expect(told).toBe(1);
+    expect(await kv.get(MATCHDAY_KEYS.open)).toBeNull();
+    expect(await store.opened()).toEqual([A]);
+  });
+
+  it('an unsubscribed listener is not told', async () => {
+    const { store } = storeOver();
+    let told = 0;
+    const off = store.subscribeOpen(() => (told += 1));
+    off();
+    await store.setOpen(OPEN);
+    expect(told).toBe(0);
+  });
+
+  it.each([
+    ['garbage', 'not json'],
+    ['no court', JSON.stringify({ fixtureId: A })],
+    ['an empty fixture', JSON.stringify({ fixtureId: '', courtName: 'Court 1' })],
+    ['a number', '7'],
+  ])('a stored value that is %s reads as none', async (_name, text) => {
+    const { store } = storeOver({
+      kv: createMemoryKeyValueStore({ [MATCHDAY_KEYS.open]: text }),
+    });
+    expect(await store.loadOpen()).toBeNull();
+  });
+
+  it('a store that will not answer reads as none, never a rejection', async () => {
+    const kv: KeyValueStore = {
+      get: async () => {
+        throw new Error('locked');
+      },
+      set: async () => undefined,
+      delete: async () => undefined,
+    };
+    const { store } = storeOver({ kv });
+    expect(await store.loadOpen()).toBeNull();
   });
 });

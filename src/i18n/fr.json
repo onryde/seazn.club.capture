@@ -1204,5 +1204,6 @@
   "matchday.approve.webOnly": "{label} · appariez sur le site web",
   "matchday.approve.webOnly.swiss": "Tour {done} terminé · appariez sur le site web",
   "matchday.approve.webOnly.draw": "Poules terminées · {division} · tableau sur le site web",
-  "matchday.sending.atRisk": "Saisies en danger"
+  "matchday.sending.atRisk": "Saisies en danger",
+  "matchday.outOfScope": "Ce match n'est pas sur vos terrains"
 }

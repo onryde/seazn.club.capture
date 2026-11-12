@@ -207,6 +207,48 @@ describe('reopening Match Day', () => {
   });
 });
 
+/**
+ * Review Focus 2 (MD-2 Task 5): "If a match was open, into that match's pad, whose Back returns to the list" (S4 design
+ * §4). The pad is the match's own route; what makes its Back the list's is `scoringOrigin`.
+ */
+describe('reopening Match Day into the match that was open', () => {
+  const target = (over: Partial<Parameters<typeof reopenTarget>[0]> = {}) =>
+    reopenTarget({
+      engine: 'idle',
+      saved: inMatchDay,
+      now: NOW,
+      resumed: false,
+      matchday: true,
+      matchdayOpen: true,
+      ...over,
+    });
+
+  it('lands on the pad when Match Day reopens with a match open', () => {
+    expect(target()).toEqual({ go: 'scoring' });
+  });
+
+  it('lands on the list when none was open', () => {
+    expect(target({ matchdayOpen: false })).toEqual({ go: 'matchday' });
+    expect(target({ matchdayOpen: undefined })).toEqual({ go: 'matchday' });
+  });
+
+  it('a match open does not reopen anything of its own: a foreground stays where the operator is', () => {
+    expect(target({ matchday: false })).toEqual({ go: 'home' });
+    expect(target({ matchday: undefined })).toEqual({ go: 'home' });
+  });
+
+  it('yields to a held or paired broadcast, and to the cold-start re-pair', () => {
+    expect(target({ engine: 'live' })).toEqual({ go: 'stream' });
+    expect(
+      target({
+        engine: 'paired',
+        saved: { ...inMatchDay, codes: { ...inMatchDay.codes, stream: streamCode } },
+      }),
+    ).toEqual({ go: 'stream' });
+    expect(target({ resumed: true })).toEqual({ go: 'stream' });
+  });
+});
+
 describe('reopenTarget', () => {
   it('returns to Live Stream when the engine is live, whatever was saved', () => {
     expect(

@@ -261,15 +261,20 @@ describe('MatchDayScreen: the day by court (S4 design §5)', () => {
     expect(screen.queryByText(en['matchday.online'])).toBeNull();
   });
 
-  it('online rows are not pressable, and no row is in this task (opening is Task 5)', async () => {
+  it('a court’s rows open their match (Task 5); the matches on no court and the online boards are read-only', async () => {
     const online = [row('o-1', 'Novak', 'Haddad', { sportKey: 'boardgame' })];
     await openList({ day: dayWith({ noCourt: [row('x-1', 'Singh', 'Murphy')], online }) });
     expect(rows()).toHaveLength(4);
-    for (const one of rows()) expect(one.getAttribute('role')).not.toBe('button');
+    const pressable = rows().map((one) => one.getAttribute('role') === 'button');
+    expect(pressable).toEqual([true, true, false, false]);
     const names = screen
       .getAllByRole('button')
       .map((one) => one.getAttribute('aria-label') ?? one.textContent);
-    expect(names).toEqual([en['stream.home']]);
+    expect(names).toEqual([
+      en['stream.home'],
+      'Now, Ng v Brown, 14-9',
+      expect.stringMatching(/^Next, Patel v Okafor/),
+    ]);
   });
 
   it('says so when the code has no match today', async () => {
@@ -575,7 +580,8 @@ describe('MatchDayScreen: Sending N (S4 design §5)', () => {
 describe('MatchDayScreen: the top bar', () => {
   it('has a visible way back to Home (Task 3 review M6), and no ⋯ until it holds Exit (Task 7)', async () => {
     const view = await openList();
-    expect(screen.getAllByRole('button')).toHaveLength(1);
+    // Back, and the court's two rows (Task 5): nothing else is a button until Exit brings ⋯.
+    expect(screen.getAllByRole('button')).toHaveLength(3);
     fireEvent.click(screen.getByRole('button', { name: en['stream.home'] }));
     expect(view.navigation.current()).toBe('home');
   });

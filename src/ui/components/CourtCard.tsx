@@ -1,5 +1,5 @@
-import { memo } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { memo, useCallback } from 'react';
+import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import type {
   CourtCard as CourtCardModel,
   CourtState,
@@ -28,19 +28,33 @@ type CourtCardProps = {
   readonly stake: Stake;
   /** The venue's zone, for the planned times. */
   readonly zone: string;
+  /** A tap on one of the court's rows (Task 5): the match opens. Without it the rows are read-only. */
+  readonly onOpen?: (row: Row, courtName: string) => void;
+  /** Where the card sits in its column, once laid out: the list scrolls to the court it came back from. */
+  readonly onSlot?: (courtName: string, y: number) => void;
 };
 
 /**
  * One court on Match Day's list (S4 design §5, layout B): its name and its state in words, "Sending N" while taps of
- * its matches wait (or at risk, when a queue cannot be read), then Now, Next and Then, and its finished matches dimmed under their heading. Read-only here: Task 5
- * gives the rows their press.
+ * its matches wait (or at risk, when a queue cannot be read), then Now, Next and Then, and its finished matches dimmed under
+ * their heading. A row opens its match when `onOpen` is given (Task 5; S4 design §6).
  */
-export const CourtCard = memo(function CourtCard({ card, stake, zone }: CourtCardProps) {
+export const CourtCard = memo(function CourtCard({
+  card,
+  stake,
+  zone,
+  onOpen,
+  onSlot,
+}: CourtCardProps) {
   const { t } = useT();
   const words = useRowWords(zone);
   const state = t(STATE_WORD[card.state]);
+  const placed = useCallback(
+    (event: LayoutChangeEvent) => onSlot?.(card.name, event.nativeEvent.layout.y),
+    [onSlot, card.name],
+  );
   return (
-    <View testID="court-card" style={styles.card}>
+    <View testID="court-card" style={styles.card} onLayout={placed}>
       <View accessible accessibilityLabel={`${card.name}, ${state}`} style={styles.head}>
         <Text testID="court-name" variant="diagTitle" numberOfLines={1} style={styles.name}>
           {card.name}
@@ -48,18 +62,52 @@ export const CourtCard = memo(function CourtCard({ card, stake, zone }: CourtCar
         <StateChip state={card.state} word={state} />
       </View>
       <StakeLine stake={stake} />
-      <QueueRows card={card} words={words} />
-      <FinishedRows rows={card.finished} words={words} />
+      <QueueRows card={card} words={words} onOpen={onOpen} />
+      <FinishedRows court={card.name} rows={card.finished} words={words} onOpen={onOpen} />
     </View>
+  );
+});
+
+type Open = ((row: Row, courtName: string) => void) | undefined;
+
+/** One row of a court, opening its match on a tap when the card was given a way to. */
+const CourtRow = memo(function CourtRow({
+  row,
+  court,
+  words,
+  onOpen,
+  label,
+  spoken,
+  dim,
+}: {
+  readonly row: Row;
+  readonly court: string;
+  readonly words: (row: Row) => RowWords;
+  readonly onOpen: Open;
+  readonly label?: string;
+  readonly spoken?: string;
+  readonly dim?: boolean;
+}) {
+  const press = useCallback(() => onOpen?.(row, court), [onOpen, row, court]);
+  return (
+    <MatchRow
+      {...(label === undefined ? {} : { label })}
+      {...(spoken === undefined ? {} : { spoken })}
+      {...(dim === true ? { dim } : {})}
+      {...words(row)}
+      {...(onOpen === undefined ? {} : { onPress: press })}
+    />
   );
 });
 
 const QueueRows = memo(function QueueRows({
   card,
   words,
+  onOpen,
 }: {
   readonly card: CourtCardModel;
   readonly words: (row: Row) => RowWords;
+  readonly onOpen: Open;
 }) {
   const { t } = useT();
   const queue = [
@@ -68,16 +116,29 @@ const QueueRows = memo(function QueueRows({
     [card.then, t('matchday.row.then')],
   ] as const;
   return queue.map(([row, label]) =>
-    row === null ? null : <MatchRow key={row.fixtureId} label={label} {...words(row)} />,
+    row === null ? null : (
+      <CourtRow
+        key={row.fixtureId}
+        row={row}
+        court={card.name}
+        label={label}
+        words={words}
+        onOpen={onOpen}
+      />
+    ),
   );
 });
 
 const FinishedRows = memo(function FinishedRows({
+  court,
   rows,
   words,
+  onOpen,
 }: {
+  readonly court: string;
   readonly rows: readonly Row[];
   readonly words: (row: Row) => RowWords;
+  readonly onOpen: Open;
 }) {
   const { t } = useT();
   if (rows.length === 0) return null;
@@ -88,7 +149,15 @@ const FinishedRows = memo(function FinishedRows({
         {heading}
       </Text>
       {rows.map((row) => (
-        <MatchRow key={row.fixtureId} spoken={heading} dim {...words(row)} />
+        <CourtRow
+          key={row.fixtureId}
+          row={row}
+          court={court}
+          spoken={heading}
+          dim
+          words={words}
+          onOpen={onOpen}
+        />
       ))}
     </>
   );

@@ -898,6 +898,13 @@ without a `_review` marker.
 | Taps at risk             | Toques en riesgo                        | Saisies en danger                  | Taps in gevaar                 | `matchday.sending.atRisk`, in caution: a queue the phone cannot read. No count.         |
 | pair on the web desk     | empareja en la web                      | appariez sur le site web           | koppel op de website           | `matchday.approve.webOnly*`: a code that cannot approve says where it is done.          |
 
+Added with opening a match (MD-2 Task 5, 2026-11-12), the line on the list when the server says a match is not on the
+code's courts. Committed without a `_review` marker.
+
+| English                         | Español                            | Français                            | Nederlands                              | Notes                                                                                              |
+| ------------------------------- | ---------------------------------- | ----------------------------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| This match isn't on your courts | Este partido no está en tus pistas | Ce match n'est pas sur vos terrains | Deze wedstrijd staat niet op jouw banen | `matchday.outOfScope`: one line on the list; nothing opens. Courts as `matchday.noCourt` has them. |
+
 ## Translation review
 
 - **New or changed English copy.** Add the key to es, fr and nl in the same
