@@ -76,7 +76,7 @@ function useTennisPad(
   const [flash, setFlash] = useState<HalfFlash>(null);
   const [cardNote, setCardNote] = useState<MessageKey | null>(null);
   const settle = useSettle(sender.say);
-  const undoStart = useUndoWithToss(sender, pad?.display);
+  const undoStart = useUndoWithToss(sender, pad?.display, ports.logger);
   const driver = useMemo<PadTapDriver>(
     () => ({
       rally: (side) => sender.tap({ kind: 'point', side }),
@@ -119,20 +119,25 @@ function useTennisPad(
  * is, is the match's to judge as it is for every Undo (`undoTarget`): another scorer's toss is not this phone's to void, and
  * an Undo with nothing of ours to take back is refused and changes nothing.
  */
-function useUndoWithToss(sender: Sender, display: TennisDisplay | undefined): () => PadOutcome {
+function useUndoWithToss(
+  sender: Sender,
+  display: TennisDisplay | undefined,
+  logger: Ports['logger'],
+): () => PadOutcome {
   const startIsLast = display?.lastTap?.kind === 'start';
   const [owed, setOwed] = useState(false);
   const undo = useCallback((): PadOutcome => {
     const outcome = sender.undo();
-    if (startIsLast) setOwed(true);
+    // Owed only when the start's Undo was taken: a refused one (a race with another scorer's tap) leaves the toss alone.
+    if (startIsLast && outcome.ok) setOwed(true);
     return outcome;
   }, [sender, startIsLast]);
   const due = owed && display?.phase === 'notStarted';
   useEffect(() => {
     if (!due) return;
     setOwed(false);
-    sender.undo();
-  }, [due, sender]);
+    if (!sender.undo().ok) logger.warn('scoring.toss-undo-refused');
+  }, [due, sender, logger]);
   return undo;
 }
 

@@ -346,6 +346,30 @@ describe('the Start screen and the first point', () => {
     expect(queued(fakes, TENNIS_TOUR_SEED)).toEqual([]);
   });
 
+  it('a refused Undo of the start owes nothing: a later void of the start by another scorer leaves this phone’s toss alone', async () => {
+    const fakes = await rig();
+    const view = mount(fakes);
+    await flush();
+    act_(view, (actions) => actions.pickServer('second'));
+    await flush();
+    act_(view, (actions) => actions.start());
+    await wait(2_000);
+    const stale = pad(view).actions;
+    // Another scorer's point lands while the Undo button still says Undo of the start: the Undo is refused.
+    const other = fakes.scoring.addOtherScorerEvent('tennis.point', { by: HOME_ENTRANT });
+    fakes.realtime.ping();
+    await flush();
+    act(() => stale.undo());
+    await flush();
+    expect(queued(fakes, TENNIS_TOUR_SEED)).toEqual([]);
+    fakes.scoring.addConsoleEvent('core.void', { event_id: other.id });
+    fakes.scoring.addConsoleEvent('core.void', { event_id: 'fake-event-2' });
+    fakes.realtime.ping();
+    await wait(2_000);
+    expect(pad(view).view.start?.needsToss).toBe(false);
+    expect(queued(fakes, TENNIS_TOUR_SEED)).toEqual([]);
+  });
+
   it('a process death between the toss and the start loses neither: both are in the queue file and come back on a fresh mount', async () => {
     const fakes = await rig();
     const view = mount(fakes);
