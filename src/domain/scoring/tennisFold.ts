@@ -1,9 +1,4 @@
-import {
-  EngineError,
-  foldMatchWithStoppage,
-  type EventEnvelope,
-  type LineupPair,
-} from '@seazn/engine/core';
+import { foldMatchWithStoppage, type EventEnvelope, type LineupPair } from '@seazn/engine/core';
 import { tennisPadRules } from '@seazn/engine/pad';
 import { serveContext, type NestedState } from '@seazn/engine/sports/nested';
 import { tennis } from '@seazn/engine/sports/tennis';
@@ -142,9 +137,10 @@ function foldOf(
       },
     });
     return { state, facts };
-  } catch (error) {
-    if (EngineError.is(error)) return null;
-    throw error;
+  } catch {
+    // Any throw, the engine's own refusal or not: a ledger this build cannot replay is an unfoldable match, which the screen
+    // says in words (`ScoringStateCard`), never a throw out of a render (S2-7 B1 review carry; `tennisFold.malformed.test.ts`).
+    return null;
   }
 }
 
