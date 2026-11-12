@@ -1139,7 +1139,7 @@
   "scoring.tennis.undone.violation": "{level} deshecha: {person}",
   "scoring.tennis.undone.award": "Juego otorgado deshecho: {side}",
   "scoring.tennis.undone.break": "Pausa deshecha",
-  "scoring.tennis.setScore.title": "Fijar set · Set {set}",
+  "scoring.tennis.setScore.title": "Marcador del set · Set {set}",
   "scoring.tennis.setScore.games": "Juegos: {side}",
   "scoring.tennis.setScore.tiebreak": "Tie-break: {side}"
 }
