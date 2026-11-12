@@ -123,6 +123,17 @@ describe('tennis: the tool row at 320 and 360 in four languages', () => {
     expect(said(nl, `${TN}.tool.violationShort`)).toBe('Overtr');
   });
 
+  // The Spanish and French "Infrac." fitted a 48 dp cell by 0.1 dp, and Android rounds to whole px (B2 review): "Infr." has room.
+  it('draws "Infr." in Spanish and French, with at least 2 dp of margin in the 320 cell (the fit assertion kept)', () => {
+    for (const dictionary of [es, fr]) {
+      const drawn = said(dictionary, `${TN}.tool.violationShort`);
+      expect(drawn).toBe('Infr.');
+      expect(fits(drawn, toolRoom(320))).toBe(true);
+      expect(toolRoom(320) - toolWidth(drawn)).toBeGreaterThanOrEqual(2);
+    }
+    expect(toolRoom(320) - toolWidth('Infrac.')).toBeLessThan(2);
+  });
+
   it('would not hold the full Award game in French or Dutch, which is why they have a short word', () => {
     const wide = LANGUAGES.filter(
       ([, dictionary]) => !fits(said(dictionary, `${TN}.tool.award`), toolRoom(320)),
@@ -369,6 +380,66 @@ describe('tennis: the violation, award and break sheets at 320 and 360 in four l
   );
 });
 
+describe('tennis: History’s rows and the last-tap line at 320 and 360 in four languages', () => {
+  // As volleyball's: a row's sentence takes the column less the right column, in at most `padHistoryLines`.
+  const room = (width: number) => column(width) - space.sm - layout.padHistorySide;
+  const SIDES = ['Ana Ruiz', 'Ruiz / Vega', 'Springfield Tennis Club'] as const;
+  const sentences = (dictionary: Dictionary, side: string) => {
+    const longest = (keys: readonly string[]) =>
+      keys
+        .map((key) => said(dictionary, `${TN}.${key}`))
+        .reduce((a, b) => (controlWidth(b) > controlWidth(a) ? b : a));
+    const vars = {
+      side,
+      person: 'Ruiz / Vega h2',
+      level: longest(['level.warning', 'level.pointPenalty', 'level.gamePenalty', 'level.default']),
+      kind: longest([
+        'break.kind.medical',
+        'break.kind.toilet',
+        'break.kind.heat',
+        'break.kind.other',
+      ]),
+      set: '5',
+      score: '7–6(10)',
+    };
+    return Object.keys(dictionary)
+      .filter((key) => key.startsWith(`${TN}.last.`) || key.startsWith(`${TN}.undone.`))
+      .map((key) => ({ key, text: fill(said(dictionary, key), vars) }));
+  };
+
+  it('reads the last-tap vocabulary (anti-vacuity): ten last and five undone', () => {
+    for (const [, dictionary] of LANGUAGES)
+      expect(sentences(dictionary, 'Ana Ruiz')).toHaveLength(15);
+  });
+
+  it.each(LANGUAGES)(
+    '%s: every sentence in the two lines of a History row, no word broken, for a player, a pair and a club',
+    (lang, dictionary: Dictionary) => {
+      for (const side of SIDES)
+        for (const { key, text } of sentences(dictionary, side))
+          for (const width of WIDTHS) {
+            expect(
+              linesOf(text, room(width), controlWidth),
+              `${lang} ${key} ${side} @${width}`,
+            ).toBeLessThanOrEqual(layout.padHistoryLines);
+            expect(wordsFit(text, room(width), controlWidth), `${key} @${width}`).toBe(true);
+          }
+    },
+  );
+
+  const headingWidth = (text: string) =>
+    barlow700.width(text.toUpperCase(), typeScale.state.fontSize) +
+    typeScale.state.letterSpacing * [...text].length;
+
+  it.each(LANGUAGES)(
+    '%s: "Set 5" on one line in the cover’s column',
+    (_lang, dictionary: Dictionary) => {
+      const heading = fill(said(dictionary, `${TN}.setHeading`), { set: '5' });
+      for (const width of WIDTHS) expect(linesOf(heading, column(width), headingWidth)).toBe(1);
+    },
+  );
+});
+
 describe('tennis: every word it has is measured here (the sweep)', () => {
   // A key added to the dictionary must be named by a group above or below: a dead or unmeasured word fails here.
   const MEASURED: readonly RegExp[] = [
@@ -386,6 +457,9 @@ describe('tennis: every word it has is measured here (the sweep)', () => {
     /^violation\./,
     /^award\./,
     /^break\./,
+    /^last\./,
+    /^undone\./,
+    /^setHeading$/,
   ];
   /** Words the fit tests do not measure, each with the reason. */
   const ELSEWHERE: Readonly<Record<string, string>> = {
@@ -399,7 +473,9 @@ describe('tennis: every word it has is measured here (the sweep)', () => {
       'a level’s word: a screen reader, and the violation sheet’s choices (measured with the sheets)',
     'level.gamePenalty':
       'a level’s word: a screen reader, and the violation sheet’s choices (measured with the sheets)',
-    'level.default': 'a level’s word: a screen reader, and History (Task 8)',
+    'level.default':
+      'a level’s word: a screen reader, and History’s sentences (measured with the History group)',
+    player: 'a word standing for a name: measured inside the History sentences through the names',
   };
 
   it('every scoring.tennis key is in a measured group or has its reason', () => {

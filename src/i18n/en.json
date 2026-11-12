@@ -1121,5 +1121,22 @@
   "scoring.tennis.break.kind.toilet": "Toilet",
   "scoring.tennis.break.kind.heat": "Heat",
   "scoring.tennis.break.kind.other": "Other",
-  "scoring.tennis.break.both": "Both / none"
+  "scoring.tennis.break.both": "Both / none",
+  "scoring.tennis.setHeading": "Set {set}",
+  "scoring.tennis.player": "Player",
+  "scoring.tennis.last.start": "Match started",
+  "scoring.tennis.last.point": "Point recorded — {side}",
+  "scoring.tennis.last.game": "Point recorded — game to {side}",
+  "scoring.tennis.last.set": "Point recorded — set {set} to {side}",
+  "scoring.tennis.last.match": "Point recorded — match to {side}",
+  "scoring.tennis.last.setScore": "Score set — {score}",
+  "scoring.tennis.last.violation": "{level} recorded — {person}",
+  "scoring.tennis.last.award": "Game awarded — {side}",
+  "scoring.tennis.last.break": "Break · {kind}",
+  "scoring.tennis.last.breakFor": "Break · {kind} · {side}",
+  "scoring.tennis.undone.point": "Point undone — {side}",
+  "scoring.tennis.undone.setScore": "Score set undone",
+  "scoring.tennis.undone.violation": "{level} undone — {person}",
+  "scoring.tennis.undone.award": "Game award undone — {side}",
+  "scoring.tennis.undone.break": "Break undone"
 }

@@ -434,3 +434,67 @@ describe('a generic scoring file names no volleyball module either', { timeout: 
     );
   });
 });
+
+/**
+ * Tennis is held the same way (S2-7 plan Task 8): its modules are `tennis*` (domain, services) and `*Tennis*` (hooks,
+ * screens), both case spellings since the globs are case sensitive. Table tennis keeps its own globs (`*tableTennis*`:
+ * the pattern is lower-case `tennis`, which "tableTennis" does not contain, and the import patterns are case-blind).
+ */
+const TENNIS_VALUE =
+  "import { foldTennis } from '@/domain/scoring/tennisFold';\nexport const f = foldTennis;\n";
+const TENNIS_TYPE =
+  "import type { TennisDisplay } from '@/domain/scoring/tennisTypes';\nexport type D = TennisDisplay;\n";
+const TENNIS_CAPITAL =
+  "import { useTennisMatch } from '@/hooks/useTennisMatch';\nexport const h = useTennisMatch;\n";
+
+const TENNIS_OWN = [
+  'src/domain/scoring/tennisFold.ts',
+  'src/domain/scoring/tennisPad.ts',
+  'src/domain/scoring/tennisSport.ts',
+  'src/hooks/useTennisMatch.ts',
+  'src/hooks/useTennisSheets.ts',
+  'src/ui/screens/TennisPadScreen.tsx',
+  'src/services/fakeTennisPad.ts',
+  // held by `usePad*` and exempt only by `*Tennis*`
+  'src/hooks/usePadTennisProbe.ts',
+] as const;
+
+describe('a generic scoring file names no tennis module either', { timeout: 180_000 }, () => {
+  it('a generic file importing tennisFold fails lint, by value and by type, from a path of every glob', async () => {
+    const byValue = await Promise.all(
+      GENERIC.map(async (file) => (await refusals(TENNIS_VALUE, file)).length),
+    );
+    const byType = await Promise.all(
+      GENERIC.map(async (file) => (await refusals(TENNIS_TYPE, file)).length),
+    );
+    expect(byValue).toEqual(GENERIC.map(() => 1));
+    expect(byType).toEqual(GENERIC.map(() => 1));
+  });
+
+  it('refuses the capitalised spelling too (a hook or a screen)', async () => {
+    const counts = await Promise.all(
+      GENERIC.map(async (file) => (await refusals(TENNIS_CAPITAL, file)).length),
+    );
+    expect(counts).toEqual(GENERIC.map(() => 1));
+  });
+
+  it('refuses the sport module from a path of every glob, and from the lifted set-based fold', async () => {
+    const source =
+      "import { tennisSport } from '@/domain/scoring/tennisSport';\nexport const s = tennisSport;\n";
+    const paths = [...GENERIC, 'src/domain/scoring/setBasedFold.ts'];
+    const counts = await Promise.all(
+      paths.map(async (file) => (await refusals(source, file)).length),
+    );
+    expect(counts).toEqual(paths.map(() => 1));
+  });
+
+  it('stays silent in tennis’s own files, and in a test', async () => {
+    const own = await Promise.all(
+      TENNIS_OWN.flatMap((file) =>
+        [TENNIS_VALUE, TENNIS_CAPITAL].map(async (src) => (await refusals(src, file)).length),
+      ),
+    );
+    expect(own).toEqual(TENNIS_OWN.flatMap(() => [0, 0]));
+    expect(await refusals(TENNIS_VALUE, 'src/domain/scoring/tennisFold.test.ts')).toEqual([]);
+  });
+});

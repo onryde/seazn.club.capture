@@ -1,6 +1,7 @@
 import {
   withCard,
   type PadFoot,
+  type PadLastTap,
   type PadHalf,
   type PadMatchDetails,
   type PadServing,
@@ -13,16 +14,17 @@ import {
 } from '@/domain/scoring/padView';
 import { padMarks, setBasedTally, type PadCardMark } from '@/domain/scoring/setBasedPad';
 import { sideNames } from '@/domain/scoring/setBasedSides';
+import { doneSaid, endingSaid, whoWord } from '@/domain/scoring/tennisHistory';
 import { LEVEL_CARDS, levelWord } from '@/domain/scoring/tennisLevels';
 import { tennisRuleRows } from '@/domain/scoring/tennisRules';
 import { TENNIS_TOOL_SLOTS, takesTaps, tennisTools } from '@/domain/scoring/tennisTools';
-import type { TennisDisplay, TennisEnding, TennisPadKey } from '@/domain/scoring/tennisTypes';
+import type { TennisDisplay, TennisPadKey, TennisUndoneTap } from '@/domain/scoring/tennisTypes';
 
 /**
  * Tennis on the pad (S2-7 Task 6; spec §5, rulings 219, 222, 223, 225, 228, 230): the view that draws a `TennisDisplay`.
  * Whoever keeps the score (the engine, through `foldTennis`) decides every field, the call, the serve and the change of
  * ends included; the pad only draws them. Functions only: the types are `tennisTypes`, the tools `tennisTools`, the rules
- * `tennisRules`. The last-tap line is History's words (Task 8) and is wired with them.
+ * `tennisRules`, the words of History and the last-tap line `tennisHistory`.
  */
 
 type Text = PadText<TennisPadKey>;
@@ -46,7 +48,7 @@ export function tennisPad(display: TennisDisplay, sync: PadSync = SYNCED): PadVi
     details: tennisDetails(display),
     start: start(display),
     strip: strip(display),
-    lastTap: null,
+    lastTap: lastTap(display),
     sync,
     tools: tennisTools(display),
     toolSlots: TENNIS_TOOL_SLOTS,
@@ -157,16 +159,10 @@ function noteOf(display: TennisDisplay): Text | null {
 // The card over a finished match
 // ---------------------------------------------------------------------------------------------------------------
 
-/** "Retired · Bea Lund": the organiser's ending and the side at fault; with no side (an abandon), the word alone. */
+/** The organiser's ending and the side at fault, in words; none while the match is not over by one. */
 function endingText(display: TennisDisplay): Text | null {
   const { ending } = display;
-  if (ending === null) return null;
-  const word: Text = { key: `scoring.tennis.ending.${ending.kind}` };
-  if (ending.side === null) return word;
-  return {
-    key: 'scoring.tennis.ending.by',
-    vars: { ending: word, side: sideNames(display.sides[ending.side]) },
-  };
+  return ending === null ? null : endingSaid(ending.kind, display.sides, ending.side);
 }
 
 /**
@@ -186,4 +182,38 @@ function cardOf(display: TennisDisplay): PadStateCard<TennisPadKey> | null {
     vars: { side: sideNames(display.sides[winner]), sets },
   };
   return { kind: 'resultRecorded', undoLeft: null, title };
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The last tap
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The last tap's line; none before the start (no event stands then, so the fold has no last tap either). */
+function lastTap(display: TennisDisplay): PadLastTap<TennisPadKey> | null {
+  if (display.lastTap === null) return null;
+  const { lastTap: tap, sides } = display;
+  return {
+    text: tap.kind === 'undone' ? undoneSaid(display, tap.tap) : doneSaid(sides, tap),
+    undo: display.undoable,
+  };
+}
+
+/** What Undo took back, in the last-tap line's words ("Point undone — Ana Ruiz"). */
+function undoneSaid(display: TennisDisplay, tap: TennisUndoneTap): Text {
+  const { sides } = display;
+  switch (tap.kind) {
+    case 'point':
+      return { key: 'scoring.tennis.undone.point', vars: { side: sideNames(sides[tap.side]) } };
+    case 'setScore':
+      return { key: 'scoring.tennis.undone.setScore' };
+    case 'violation':
+      return {
+        key: 'scoring.tennis.undone.violation',
+        vars: { level: levelWord(tap.level), person: whoWord(sides, tap.side, tap.person) },
+      };
+    case 'award':
+      return { key: 'scoring.tennis.undone.award', vars: { side: sideNames(sides[tap.side]) } };
+    case 'break':
+      return { key: 'scoring.tennis.undone.break' };
+  }
 }

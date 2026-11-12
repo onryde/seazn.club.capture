@@ -1121,5 +1121,22 @@
   "scoring.tennis.break.kind.toilet": "Toilet",
   "scoring.tennis.break.kind.heat": "Hitte",
   "scoring.tennis.break.kind.other": "Overig",
-  "scoring.tennis.break.both": "Beide / geen"
+  "scoring.tennis.break.both": "Beide / geen",
+  "scoring.tennis.setHeading": "Set {set}",
+  "scoring.tennis.player": "Speler",
+  "scoring.tennis.last.start": "Gestart",
+  "scoring.tennis.last.point": "Punt vastgelegd: {side}",
+  "scoring.tennis.last.game": "Punt vastgelegd: game voor {side}",
+  "scoring.tennis.last.set": "Punt vastgelegd: set {set} voor {side}",
+  "scoring.tennis.last.match": "Punt vastgelegd: wedstrijd voor {side}",
+  "scoring.tennis.last.setScore": "Stand ingevoerd: {score}",
+  "scoring.tennis.last.violation": "{level} vastgelegd: {person}",
+  "scoring.tennis.last.award": "Game toegekend: {side}",
+  "scoring.tennis.last.break": "Pauze · {kind}",
+  "scoring.tennis.last.breakFor": "Pauze · {kind} · {side}",
+  "scoring.tennis.undone.point": "Punt ongedaan gemaakt: {side}",
+  "scoring.tennis.undone.setScore": "Stand ingevoerd ongedaan gemaakt",
+  "scoring.tennis.undone.violation": "{level} ongedaan gemaakt: {person}",
+  "scoring.tennis.undone.award": "Game ongedaan gemaakt: {side}",
+  "scoring.tennis.undone.break": "Pauze ongedaan gemaakt"
 }

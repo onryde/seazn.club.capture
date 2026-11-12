@@ -30,7 +30,13 @@ import {
   type TennisCfg,
   type TennisEngineMatch,
 } from '@/domain/scoring/tennisEngine';
-import { isSeenLevel, tennisDoneOf, type TennisFacts } from '@/domain/scoring/tennisLedgerHistory';
+import { tennisHistory, type TennisHistoryEntry } from '@/domain/scoring/tennisHistory';
+import {
+  endingKindOf,
+  isSeenLevel,
+  tennisDoneOf,
+  type TennisFacts,
+} from '@/domain/scoring/tennisLedgerHistory';
 import type {
   TennisDisplay,
   TennisDone,
@@ -101,12 +107,12 @@ export function foldTennis(input: SportFoldInput): SportFold<TennisTypes> {
   const undoable =
     undoTarget(input.ledger, legalTaps, input.ownEventIds, () => true).kind !== 'blocked';
   const recorded = recordedOf(match, cfg, stream, folded);
+  const display = displayOf(match, cfg, stream, folded, recorded, undoable);
   return {
     kind: 'folded',
-    display: displayOf(match, cfg, stream, folded, recorded, undoable),
+    display,
     legalQueued: stream.legal,
-    // History is Task 8's (tennisHistory over `voidedIn(stream.envelopes)` and the recorded rows).
-    history: [],
+    history: tennisHistory(rowsOf(stream, recorded), display.sides),
   };
 }
 
@@ -159,29 +165,67 @@ function factsOf(
   const gameWon = closedSet || state.games.home + state.games.away > before.games;
   const over = state.phase === 'done' || state.phase === 'final';
   const won = closedSet && over ? 'match' : closedSet ? 'set' : gameWon ? 'game' : 'none';
-  return { set: closedSet ? state.sets.length : state.sets.length + 1, won };
+  return {
+    set: closedSet ? state.sets.length : state.sets.length + 1,
+    won,
+    after: afterOf(state, gameWon, closedSet),
+  };
+}
+
+/** The board a point left: the games of the game or set it closed, else the game's call. */
+function afterOf(state: Readonly<NestedState>, gameWon: boolean, closedSet: boolean): string {
+  const closed = state.sets[state.sets.length - 1];
+  if (closedSet && closed !== undefined) return scoreText(pairOf(closed));
+  if (gameWon) return scoreText(pairOf(state.games));
+  const call = callsOf(state);
+  return `${call.first}–${call.second}`;
 }
 
 /**
- * What each event the pad has words for did, by envelope id: the standing ones from the fold, and each one a void takes
- * back from a fold of the stream up to it, so Undo's line keeps what the tap did.
+ * What each event the pad has words for did, with its facts, by envelope id: the standing ones from the fold, and each one
+ * a void takes back from a fold of the stream up to it, so Undo's line keeps what the tap did.
  */
 function recordedOf(
   match: Match,
   cfg: TennisCfg,
   stream: SetBasedStream,
   folded: Folded,
-): ReadonlyMap<string, TennisDone> {
+): ReadonlyMap<string, Recorded> {
   const voided = voidedIn(stream.envelopes);
-  const recorded = new Map<string, TennisDone>();
+  const recorded = new Map<string, Recorded>();
   stream.envelopes.forEach((envelope, at) => {
     const facts =
       folded.facts.get(envelope.id) ??
       (voided.has(envelope.id) ? prefixFacts(match, cfg, stream.envelopes, at) : undefined);
     const did = facts && tennisDoneOf(envelope, facts, match.names);
-    if (did) recorded.set(envelope.id, did);
+    if (facts && did) recorded.set(envelope.id, { did, facts });
   });
   return recorded;
+}
+
+/** One event the pad has words for: what it did, and the fold's facts of it. */
+type Recorded = { readonly did: TennisDone; readonly facts: TennisFacts };
+
+/** History's rows: one for each event the pad has words for, in the stream's order, an event a void takes back marked. */
+function rowsOf(
+  stream: SetBasedStream,
+  recorded: ReadonlyMap<string, Recorded>,
+): readonly TennisHistoryEntry[] {
+  const voided = voidedIn(stream.envelopes);
+  return stream.entries.flatMap((entry) => {
+    const event = recorded.get(entry.envelope.id);
+    if (event === undefined) return [];
+    return [
+      {
+        did: event.did,
+        set: event.facts.set,
+        after: event.facts.after,
+        own: entry.own,
+        undone: voided.has(entry.envelope.id),
+        sending: entry.sending,
+      },
+    ];
+  });
 }
 
 /** The facts of the event at `at`, from a fold of the stream up to it; none if that prefix will not replay. */
@@ -196,9 +240,9 @@ function prefixFacts(
   return target && prefix?.facts.get(target.id);
 }
 
-/** The tap Undo takes back, as the last-tap line names it, or null for the start (whose Undo shows no line). */
+/** The tap Undo takes back, as the last-tap line names it, or null for the start (whose Undo shows no line) or an ending. */
 export function undoneTap(did: TennisDone): TennisUndoneTap | null {
-  return did.kind === 'start' ? null : did;
+  return did.kind === 'start' || did.kind === 'ending' ? null : did;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -218,7 +262,7 @@ function displayOf(
   cfg: TennisCfg,
   stream: SetBasedStream,
   { state, facts }: Folded,
-  recorded: ReadonlyMap<string, TennisDone>,
+  recorded: ReadonlyMap<string, Recorded>,
   undoable: boolean,
 ): TennisDisplay {
   const ending = endingOf(state, match.names);
@@ -245,13 +289,10 @@ function displayOf(
     scoreEvents: standing(stream.envelopes, 'tennis.point', 'tennis.set_summary').length,
     ending,
     endingPending: phase === 'live' && defaultStands(stream.envelopes),
-    lastTap: lastTapOf(stream.envelopes, withDid(recorded), undoneTap),
+    lastTap: lastTapOf(stream.envelopes, recorded, undoneTap),
     undoable,
   };
 }
-
-const withDid = (recorded: ReadonlyMap<string, TennisDone>) =>
-  new Map([...recorded].map(([id, did]) => [id, { did }]));
 
 /** Each side's game call: 0, 15, 30, 40, AD in a standard game; a breaker's points as numbers. */
 function callsOf(state: Readonly<NestedState>): TennisDisplay['call'] {
@@ -304,23 +345,18 @@ function setLineOf(closed: NestedState['sets'][number]): TennisSetLine {
 // How the match stands: decided, ended by the organiser, or waiting for it
 // ---------------------------------------------------------------------------------------------------------------
 
-/** The five reasons the engine writes for a forfeit's award (`bye` is the system's, never a forfeit), in the pad's words. */
-const ENDING_KIND: Readonly<Record<string, TennisEnding['kind']>> = {
-  retired: 'retired',
-  disqualified: 'defaulted',
-  walkover: 'walkover',
-  withdrew: 'withdrew',
-};
-
-/** How the organiser ended the match, read from the engine's outcome: the side at fault is the award's loser. */
-function endingOf(state: Readonly<NestedState>, names: SetBasedNames): TennisEnding | null {
+/**
+ * How the organiser ended the match, read from the engine's outcome: the side at fault is the award's loser. Every award
+ * has an ending (`endingKindOf` falls back to a walkover for a reason it does not list): a match the engine took from
+ * the court never reads as decided with no word for how.
+ */
+export function endingOf(state: Readonly<NestedState>, names: SetBasedNames): TennisEnding | null {
   if (state.phase === 'abandoned') return { kind: 'abandoned', side: null };
   const { outcome } = state;
   if (outcome === null) return null;
   if (outcome.kind === 'double_walkover') return { kind: 'walkover', side: null };
   if (outcome.kind !== 'award') return null;
-  const kind = ENDING_KIND[outcome.reason];
-  if (kind === undefined) return null;
+  const kind = endingKindOf(outcome.reason);
   return { kind, side: outcome.loser === null ? null : sideOfEntrant(names, outcome.loser) };
 }
 

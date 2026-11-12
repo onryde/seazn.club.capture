@@ -69,13 +69,22 @@ export type TennisLastTap =
     }
   | { readonly kind: 'award'; readonly side: PadSide }
   | { readonly kind: 'break'; readonly breakKind: TennisBreakKind; readonly side: PadSide | null }
+  /** The organiser's forfeit or abandon, read off the web's ledger: the phone never sends it. */
+  | {
+      readonly kind: 'ending';
+      readonly ending: TennisEnding['kind'];
+      readonly side: PadSide | null;
+    }
   | { readonly kind: 'undone'; readonly tap: TennisUndoneTap };
 
 /** What a tap did when it was recorded: never an Undo. */
 export type TennisDone = Exclude<TennisLastTap, { readonly kind: 'undone' }>;
 
-/** A tap Undo took back, as the last-tap line names it: never the start, whose Undo returns to the Start screen. */
-export type TennisUndoneTap = Exclude<TennisDone, { readonly kind: 'start' }>;
+/**
+ * A tap Undo took back, as the last-tap line names it: never the start, whose Undo returns to the Start screen, and never
+ * an ending, which is the organiser's and no phone's Undo takes.
+ */
+export type TennisUndoneTap = Exclude<TennisDone, { readonly kind: 'start' | 'ending' }>;
 
 /**
  * A set over, as the engine banks it: the games each side won, the tie-break's points when it was a tie-break set, and
@@ -135,8 +144,7 @@ export type TennisDisplay = {
 
 /**
  * Every dictionary key the pad names (`MessageKey`s, so each must exist in en.json): the strip, the halves, the tool row, the
- * level words, the rules rows and the endings, and the violation, award and break steps' (Task 7). History's arrive with
- * its words (Task 8).
+ * level words, the rules rows and the endings, the violation, award and break steps' (Task 7) and History's words (Task 8).
  */
 export type TennisPadKey =
   | 'scoring.tennis.hint'
@@ -201,7 +209,24 @@ export type TennisPadKey =
   | 'scoring.tennis.break.kind.toilet'
   | 'scoring.tennis.break.kind.heat'
   | 'scoring.tennis.break.kind.other'
-  | 'scoring.tennis.break.both';
+  | 'scoring.tennis.break.both'
+  | 'scoring.tennis.setHeading'
+  | 'scoring.tennis.player'
+  | 'scoring.tennis.last.start'
+  | 'scoring.tennis.last.point'
+  | 'scoring.tennis.last.game'
+  | 'scoring.tennis.last.set'
+  | 'scoring.tennis.last.match'
+  | 'scoring.tennis.last.setScore'
+  | 'scoring.tennis.last.violation'
+  | 'scoring.tennis.last.award'
+  | 'scoring.tennis.last.break'
+  | 'scoring.tennis.last.breakFor'
+  | 'scoring.tennis.undone.point'
+  | 'scoring.tennis.undone.setScore'
+  | 'scoring.tennis.undone.violation'
+  | 'scoring.tennis.undone.award'
+  | 'scoring.tennis.undone.break';
 
 /** Tennis's pad types: what the match runtime is generic over (`SportTypes`). */
 export type TennisTypes = {
