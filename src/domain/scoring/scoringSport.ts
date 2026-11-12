@@ -113,6 +113,12 @@ export interface ScoringSport<S extends SportTypes> {
     copied: boolean,
     send: SportSendContext,
   ): unknown;
+  /**
+   * A line for the record when the payload a tap is sent with lost what the scorer gave it (`payloadForSend` dropped it:
+   * tennis's point details judged on a serve that no longer stands, S2-7 ruling 234), or null. Never the payload: a word.
+   * A sport with nothing to say has no `sendNote`.
+   */
+  sendNote?(queued: QueuedEvent, payload: unknown): SportLine | null;
 
   // A tap.
   /** The side a tap picks to serve first (the Start tap's), which the match keeps; null for every other tap. */

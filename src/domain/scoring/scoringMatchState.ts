@@ -148,7 +148,9 @@ export type MatchEffect =
    */
   | { readonly kind: 'dropped'; readonly code: string; readonly count: number }
   /** The sport withdrew the head at its send (`SendWithdrawal`): the runner says the sport's line in the record. */
-  | { readonly kind: 'withdrawn'; readonly line: SportLine };
+  | { readonly kind: 'withdrawn'; readonly line: SportLine }
+  /** The head is sent with less than the scorer gave it (`ScoringSport.sendNote`): the runner warns the sport's line. */
+  | { readonly kind: 'noted'; readonly line: SportLine };
 
 export type SaveEffect = {
   readonly kind: 'save';

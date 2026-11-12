@@ -90,19 +90,30 @@ describe('a held tap through the reducer', () => {
     expect(state.sync.queue.pending[1]).toMatchObject({ key: 'p2', holdUntil: NOW + HOLD });
   });
 
-  it('takes an amended payload and sends it at once, saved first, before the hold would have ended', () => {
+  it('takes an amended payload and sends it once its save lands, before the hold would have ended', () => {
     const amended = { side: 'first', note: 'ace' };
     const { state, steps } = drive(
       heldPoint().state,
-      [{ kind: 'amend', key: 'p1', payload: amended }],
+      [{ kind: 'amend', key: 'p1', payload: amended }, SAVED(2)],
       NOW + 1_000,
     );
     expect(steps[0].outcome).toEqual({ ok: true });
-    expect(kinds(steps[0].effects)).toEqual(['save', 'send']);
+    // The amend's step plans the save alone: the send waits for the save to land, as a tap's does.
+    expect(kinds(steps[0].effects)).toEqual(['save']);
     const [save] = steps[0].effects;
     expect(save.kind === 'save' && save.queue?.pending[0].payload).toMatchObject(amended);
-    expect(sendsOf(steps[0].effects)[0].body.payload).toMatchObject(amended);
+    expect(sendsOf(steps[1].effects)[0].body.payload).toMatchObject(amended);
     expect(state.sync.inFlight).toBe('p1');
+  });
+
+  it('sends nothing while the amended save is out, though the runner wakes', () => {
+    const amended = { side: 'first', note: 'ace' };
+    const { steps } = drive(
+      heldPoint().state,
+      [{ kind: 'amend', key: 'p1', payload: amended }, { kind: 'tick' }],
+      NOW + 1_000,
+    );
+    expect(steps.flatMap((made) => sendsOf(made.effects))).toEqual([]);
   });
 
   it('refuses an amend once the tap has gone, and changes nothing (a chip after the hold expired)', () => {
@@ -142,5 +153,28 @@ describe('a held tap through the reducer', () => {
     expect(steps[0].outcome).toEqual({ ok: true });
     expect(state.sync.queue.pending).toEqual([]);
     expect(steps.flatMap((one) => sendsOf(one.effects))).toEqual([]);
+  });
+});
+
+describe('a note on a send (ScoringSport.sendNote)', () => {
+  const LINE = { event: 'scoring.made-up-note', fields: { reason: 'madeUp' } };
+  /** First to 3, which sends every point without its `note` and says so. */
+  const noting: ScoringSport<FirstTo3> = {
+    ...firstTo3,
+    eventFor: (tap) => ({ type: 'first3.point', payload: { side: tap.side, note: 'x' } }),
+    payloadForSend: (queued) => ({ side: (queued.payload as { side: string }).side }),
+    sendNote: (queued, payload) => (payload === queued.payload ? null : LINE),
+  };
+
+  it('puts the sport’s line beside the send, before it', () => {
+    const { steps } = drive(readyMatch(noting), [point('p1'), SAVED(1)], NOW);
+    // The send's step saves the attempt first, as every send's does; the line goes before the send.
+    expect(kinds(steps[1].effects)).toEqual(['save', 'noted', 'send']);
+    expect(steps[1].effects[1]).toEqual({ kind: 'noted', line: LINE });
+  });
+
+  it('says nothing for a sport with no note', () => {
+    const { steps } = drive(readyMatch(firstTo3), [point('p1'), SAVED(1)], NOW);
+    expect(kinds(steps[1].effects)).toEqual(['save', 'send']);
   });
 });

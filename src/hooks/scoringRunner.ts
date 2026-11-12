@@ -226,6 +226,8 @@ export function createScoringRunner(ports: RunnerPorts, options: Options): Scori
         return sayDropped(effect);
       case 'withdrawn':
         return ports.logger.info(effect.line.event, effect.line.fields);
+      case 'noted':
+        return ports.logger.warn(effect.line.event, effect.line.fields);
     }
   };
 

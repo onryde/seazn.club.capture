@@ -636,9 +636,15 @@ describe('dismissing a match', () => {
     const forget = vi.spyOn(fakes.kv, 'delete');
     const remove = vi.spyOn(fakes.tapQueue, 'remove');
     await scoringHubOf(fakes.ports).dismiss(FIXTURE);
-    expect(forget).toHaveBeenCalledTimes(1);
+    // The link, then the switches set for the match (S2-7 ruling 234), all before the files.
+    expect(forget.mock.calls.map(([key]) => key)).toEqual([
+      `scoring.link.${FIXTURE}`,
+      `scoring.switch.pointDetails.${FIXTURE}`,
+    ]);
     expect(remove).toHaveBeenCalledTimes(1);
-    expect(forget.mock.invocationCallOrder[0]).toBeLessThan(remove.mock.invocationCallOrder[0]);
+    expect(Math.max(...forget.mock.invocationCallOrder)).toBeLessThan(
+      remove.mock.invocationCallOrder[0],
+    );
   });
 
   it('a match nobody runs is deleted too, and a second dismiss is no failure', async () => {
@@ -1168,9 +1174,15 @@ describe('leaving a match for good keeps this phone’s own tap ids for a day', 
     const forget = vi.spyOn(fakes.kv, 'delete');
     const leave = vi.spyOn(fakes.tapQueue, 'leave');
     await scoringHubOf(fakes.ports).leave(FIXTURE);
-    expect(forget).toHaveBeenCalledTimes(1);
+    // The link, then the switches set for the match (S2-7 ruling 234), all before the files.
+    expect(forget.mock.calls.map(([key]) => key)).toEqual([
+      `scoring.link.${FIXTURE}`,
+      `scoring.switch.pointDetails.${FIXTURE}`,
+    ]);
     expect(leave).toHaveBeenCalledWith(FIXTURE, nowOf(fakes));
-    expect(forget.mock.invocationCallOrder[0]).toBeLessThan(leave.mock.invocationCallOrder[0]);
+    expect(Math.max(...forget.mock.invocationCallOrder)).toBeLessThan(
+      leave.mock.invocationCallOrder[0],
+    );
   });
 
   it('a match nobody runs is left too, and a second leave is no failure', async () => {

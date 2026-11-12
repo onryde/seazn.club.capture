@@ -108,7 +108,7 @@ export function onAmend<S extends SportTypes>(
   const fold = foldOfState(next);
   if (fold === null || fold.kind !== 'folded' || !fold.legalQueued.includes(key))
     return refused(state, 'notNow');
-  return handled(part(next), { outcome: TAKEN });
+  return handled(part(next), { outcome: TAKEN, pump: false });
 }
 
 export function onPick<S extends SportTypes>(state: MatchState<S>, side: PadSide): Handled<S> {
