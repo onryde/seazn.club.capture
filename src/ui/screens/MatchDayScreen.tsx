@@ -8,10 +8,12 @@ import {
   noonOf,
   sendingByCourt,
   venuesOf,
+  type Approval,
   type MatchDay,
   type Row,
   type Stake,
 } from '@/domain/matchday/matchDay';
+import { isBounce } from '@/domain/scoring/bounce';
 import { useFormatDay, useFormatTime } from '@/hooks/useFormatTime';
 import { useT } from '@/hooks/useLanguage';
 import { usePorts } from '@/hooks/usePorts';
@@ -21,6 +23,7 @@ import { usePullRefresh } from '@/hooks/usePullRefresh';
 import { useRowWords } from '@/hooks/useRowWords';
 import { useBackToHome } from '@/hooks/useStreamLinks';
 import type { MessageKey } from '@/i18n/messages';
+import { ApprovalScreen } from '@/ui/screens/ApprovalScreen';
 import { ApprovalBanner } from '@/ui/components/ApprovalBanner';
 import { CourtCard } from '@/ui/components/CourtCard';
 import { GhostButton } from '@/ui/components/GhostButton';
@@ -42,23 +45,64 @@ export function MatchDayScreen() {
   const toHome = useBackToHome();
   const list = useMatchDay();
   const [line, say] = useState<MessageKey | null>(null);
-  const open = useOpenFromMatchDay({ say, refresh: list.refresh });
+  const opening = useOpenFromMatchDay({ say, refresh: list.refresh });
   const cameBackTo = useCameBackFrom();
   const opened = useOpenedIds(list.updatedAt);
-  const body = { list, line, open, cameBackTo, opened };
+  const { reviewing, review, closeReview, quiet } = useReview();
+  // A touch that lands as the review closes is the finger's own bounce, and must not act on the list beneath it.
+  const open = useCallback(
+    (row: Row, courtName: string) => (quiet() ? Promise.resolve() : opening(row, courtName)),
+    [opening, quiet],
+  );
+  const body = { list, line, open, cameBackTo, opened, review };
   return (
     <View testID="matchday-screen" style={styles.screen}>
-      <View style={styles.bar}>
-        <SubScreenHeader
-          title={t('mode.matchday')}
-          onBack={toHome}
-          plate={false}
-          backLabel={t('stream.home')}
-        />
+      <View
+        style={styles.screen}
+        aria-hidden={reviewing !== null}
+        importantForAccessibility={reviewing === null ? 'auto' : 'no-hide-descendants'}
+      >
+        <View style={styles.bar}>
+          <SubScreenHeader
+            title={t('mode.matchday')}
+            onBack={toHome}
+            plate={false}
+            backLabel={t('stream.home')}
+          />
+        </View>
+        <MatchDayBody {...body} />
       </View>
-      <MatchDayBody {...body} />
+      {reviewing === null ? null : (
+        <ApprovalScreen approval={reviewing} refresh={list.refresh} onClose={closeReview} />
+      )}
     </View>
   );
+}
+
+/**
+ * The approval under review, if any. Closing it notes the moment, and for `BOUNCE_MS` after it a press that is not
+ * deliberate (a row, the banner's Review) is ignored: the finger that pressed Back or Close can land again on whatever
+ * the list shows beneath it (s2-3 saw a real Cancel then Swap mis-tap).
+ */
+function useReview() {
+  const { clock } = usePorts();
+  const [reviewing, setReviewing] = useState<Approval | null>(null);
+  const closedAt = useRef<number | null>(null);
+  const quiet = useCallback(
+    () => closedAt.current !== null && isBounce(clock().getTime() - closedAt.current),
+    [clock],
+  );
+  const review = useCallback(
+    (approval: Approval) => {
+      if (!quiet()) setReviewing(approval);
+    },
+    [quiet],
+  );
+  const closeReview = useCallback(() => {
+    closedAt.current = clock().getTime();
+    setReviewing(null);
+  }, [clock]);
+  return { reviewing, review, closeReview, quiet };
 }
 
 /**
@@ -100,6 +144,7 @@ type BodyProps = {
   readonly open: (row: Row, courtName: string) => Promise<void>;
   readonly cameBackTo: string | null;
   readonly opened: ReadonlySet<string>;
+  readonly review: (approval: Approval) => void;
 };
 
 const MatchDayBody = memo(function MatchDayBody({
@@ -108,6 +153,7 @@ const MatchDayBody = memo(function MatchDayBody({
   open,
   cameBackTo,
   opened,
+  review,
 }: BodyProps) {
   if (list.day !== null)
     return (
@@ -118,6 +164,7 @@ const MatchDayBody = memo(function MatchDayBody({
         open={open}
         cameBackTo={cameBackTo}
         opened={opened}
+        review={review}
       />
     );
   if (list.state === 'offline') return <OfflineEmpty retry={list.refresh} reading={list.reading} />;
@@ -166,6 +213,7 @@ const DayList = memo(function DayList({
   open,
   cameBackTo,
   opened,
+  review,
 }: {
   readonly list: MatchDayList;
   readonly day: MatchDay;
@@ -173,6 +221,7 @@ const DayList = memo(function DayList({
   readonly open: BodyProps['open'];
   readonly cameBackTo: string | null;
   readonly opened: ReadonlySet<string>;
+  readonly review: BodyProps['review'];
 }) {
   const { t } = useT();
   const { scroller, onSlot } = useScrollToCourt(cameBackTo);
@@ -203,7 +252,7 @@ const DayList = memo(function DayList({
           {t(line)}
         </Text>
       )}
-      {banner === null ? null : <ApprovalBanner banner={banner} />}
+      {banner === null ? null : <ApprovalBanner banner={banner} onReview={review} />}
       <Courts day={day} unsent={list.unsent} open={open} onSlot={onSlot} opened={opened} />
       <RowSection
         title={`${t('matchday.noCourt')} · ${day.noCourt.length}`}

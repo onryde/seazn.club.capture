@@ -206,13 +206,34 @@ describe('what each call asks', () => {
     expect(JSON.parse(init.body ?? 'null')).toEqual(draw);
   });
 
-  it('puts a stage id in the path as one segment, whatever it holds', async () => {
+  // Task 2b review M1: the draw's review is its own route, asserted whole (a Swiss-only mutant survived).
+  it('review of a draw is a GET of the draw route, with the same bearer', async () => {
     const { port, calls } = portOver(answering(respond(200, REVIEW)));
-    await port.review(CODE, 'swiss', '../x?y#z');
-    await port.approve(CODE, 'draw', 'a/b', HASH, null);
+    await port.review(CODE, 'draw', STAGE);
+    const [url, init] = calls[0];
+    expect(url).toBe(`${DAY_URL}/approvals/draw/${STAGE}`);
+    expect(init.method).toBe('GET');
+    expect(init.headers).toMatchObject({ Authorization: `Bearer ${TOKEN}` });
+    expect(init).not.toHaveProperty('body');
+  });
+
+  // Task 2b review M3: a stage id is one path segment whatever it holds, for each call and each kind.
+  it.each([
+    ['review', 'swiss'],
+    ['review', 'draw'],
+    ['approve', 'swiss'],
+    ['approve', 'draw'],
+  ] as const)('%s of a %s puts a stage id in the path as one segment', async (op, kind) => {
+    const { port, calls } = portOver(answering(respond(200, op === 'review' ? REVIEW : APPROVED)));
+    const ask = (stage: string) =>
+      op === 'review'
+        ? port.review(CODE, kind, stage)
+        : port.approve(CODE, kind, stage, HASH, kind === 'swiss' ? 4 : null);
+    await ask('../x?y#z');
+    await ask('a/b');
     expect(calls.map(([url]) => url)).toEqual([
-      `${DAY_URL}/approvals/swiss/..%2Fx%3Fy%23z`,
-      `${DAY_URL}/approvals/draw/a%2Fb`,
+      `${DAY_URL}/approvals/${kind}/..%2Fx%3Fy%23z`,
+      `${DAY_URL}/approvals/${kind}/a%2Fb`,
     ]);
   });
 

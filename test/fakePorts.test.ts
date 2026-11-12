@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseOpen } from '@/domain/matchday/openWire';
 import { recognise } from '@/domain/mode/recognise';
-import { FAKE_DAY, FAKE_OPEN_URL } from '@/services/fakeMatchDayPort';
+import { FAKE_DAY, FAKE_OPEN_URL, FAKE_REVIEW } from '@/services/fakeMatchDayPort';
 import { TABLE_TENNIS_SINGLES_SEED } from '@/services/fakeTableTennisPad';
 import { createFakePorts, disposeFakePorts } from './fakePorts';
 import { FAKE_SCORING_SECRET, FAKE_SCORING_URL } from './fakeScoringLinkPort';
@@ -45,6 +45,38 @@ describe('fake Match Day', () => {
     });
     expect(matchDay.calls.map((call) => call.op)).toEqual(['day', 'open', 'review', 'approve']);
     expect(matchDay.calls[1]).toEqual({ op: 'open', code: CODE, fixtureId: 'f1' });
+  });
+
+  it('records the kind, stage, hash and round of a review and an approve (Task 6)', async () => {
+    const { matchDay } = createFakePorts();
+    await matchDay.review(CODE, 'draw', 's1');
+    await matchDay.approve(CODE, 'swiss', 's2', 'h2', 4);
+    await matchDay.approve(CODE, 'draw', 's3', 'h3', null);
+    expect(matchDay.calls).toEqual([
+      { op: 'review', code: CODE, kind: 'draw', stageId: 's1' },
+      { op: 'approve', code: CODE, kind: 'swiss', stageId: 's2', hash: 'h2', round: 4 },
+      { op: 'approve', code: CODE, kind: 'draw', stageId: 's3', hash: 'h3', round: null },
+    ]);
+  });
+
+  it('answers reviews and approves in the order told, the last standing, and a new telling replaces them', async () => {
+    const { matchDay } = createFakePorts();
+    const offline = { ok: false, offline: true } as const;
+    matchDay.answerReview(offline, { ok: true, value: FAKE_REVIEW });
+    expect(await matchDay.review(CODE, 'swiss', 's')).toEqual(offline);
+    expect(await matchDay.review(CODE, 'swiss', 's')).toEqual({ ok: true, value: FAKE_REVIEW });
+    expect(await matchDay.review(CODE, 'swiss', 's')).toEqual({ ok: true, value: FAKE_REVIEW });
+    matchDay.answerApprove({ ok: false, refusal: 'MD_STALE' }, { ok: true, value: { ok: true } });
+    expect(await matchDay.approve(CODE, 'swiss', 's', 'h', 4)).toEqual({
+      ok: false,
+      refusal: 'MD_STALE',
+    });
+    expect(await matchDay.approve(CODE, 'swiss', 's', 'h', 4)).toEqual({
+      ok: true,
+      value: { ok: true },
+    });
+    matchDay.answerReview(offline);
+    expect(await matchDay.review(CODE, 'swiss', 's')).toEqual(offline);
   });
 
   it('a held call answers what stands at release', async () => {

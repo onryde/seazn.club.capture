@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Approval, Court, MatchDay, Row } from '@/domain/matchday/matchDay';
 import { encodeSavedCode, type SavedCode } from '@/domain/mode/savedCode';
@@ -484,9 +484,38 @@ describe('MatchDayScreen: the approval banner (S4 design §7)', () => {
     expect(screen.queryByTestId('approval-banner')).toBeNull();
   });
 
-  it('has no button yet (Review is Task 6)', async () => {
+  it('has a Review button where the phone may approve and name a round', async () => {
     await openList({ day: dayWith({ approvals: [swiss], canApprove: true }) });
+    const banner = within(screen.getByTestId('approval-banner'));
+    expect(banner.getByRole('button', { name: en['matchday.approve.review'] })).toBeTruthy();
+    cleanup();
+    await openList({ day: dayWith({ approvals: [draw], canApprove: true }) });
+    expect(
+      within(screen.getByTestId('approval-banner')).getByRole('button', {
+        name: en['matchday.approve.review'],
+      }),
+    ).toBeTruthy();
+  });
+
+  it.each([
+    ['a code without approvals', [swiss], false],
+    ['a Swiss stage with no round', [{ ...swiss, round: null }], true],
+    ['a Swiss round 1', [{ ...swiss, round: 1 }], true],
+    ['a draw on a code without approvals', [draw], false],
+  ] as const)('%s: the banner is a line with no button', async (_what, approvals, canApprove) => {
+    await openList({ day: dayWith({ approvals, canApprove }) });
     expect(within(screen.getByTestId('approval-banner')).queryByRole('button')).toBeNull();
+  });
+
+  it('Review opens the approval screen for that stage, and reads its review once', async () => {
+    const view = await openList({ day: dayWith({ approvals: [swiss], canApprove: true }) });
+    view.matchDay.answerReview({ ok: false, offline: true });
+    fireEvent.click(screen.getByRole('button', { name: en['matchday.approve.review'] }));
+    await settle();
+    expect(screen.getByTestId('approval-screen')).toBeTruthy();
+    expect(view.matchDay.calls.filter((call) => call.op === 'review')).toEqual([
+      expect.objectContaining({ kind: 'swiss', stageId: swiss.stageId }),
+    ]);
   });
 });
 

@@ -907,6 +907,28 @@ code's courts. Committed without a `_review` marker.
 | Couldn't open this match        | No se pudo abrir este partido      | Impossible d'ouvrir ce match        | Kon deze wedstrijd niet openen          | `matchday.cantOpen`: one line on the list; nothing opens (no usable day code, or a link this build will not keep). |
 | Back to {court}                 | Volver a {court}                   | Retour à {court}                    | Terug naar {court}                      | `matchday.backTo`: the pad's Back, as its accessible name only (the chevron is drawn alone).                       |
 
+Added with approving a draw (MD-2 Task 6, 2026-11-12), the review and its hold. The first two rows' English is the
+spec's (S4 design §7), verbatim. Committed without a `_review` marker.
+
+| English                              | Español                                      | Français                                      | Nederlands                              |
+| ------------------------------------ | -------------------------------------------- | --------------------------------------------- | --------------------------------------- |
+| Review                               | Revisar                                      | Examiner                                      | Bekijken                                |
+| {division} · Round {round}           | {division} · Ronda {round}                   | {division} · Tour {round}                     | {division} · Ronde {round}              |
+| {division} · Knockout draw           | {division} · Cuadro eliminatorio             | {division} · Tableau final                    | {division} · Knock-outschema            |
+| To change a slot, use the web desk   | Para cambiar un puesto, usa la web           | Pour modifier une place, utilisez le site web | Wijzig een plek via de website          |
+| Approve                              | Aprobar                                      | Approuver                                     | Goedkeuren                              |
+| Hold 3 s                             | Mantén 3 s                                   | Maintenez 3 s                                 | Houd 3 s ingedrukt                      |
+| Approving…                           | Aprobando…                                   | Approbation…                                  | Goedkeuren…                             |
+| Loading the proposal…                | Cargando la propuesta…                       | Chargement de la proposition…                 | Voorstel laden…                         |
+| Bye                                  | Descansa                                     | Exempt                                        | Vrij                                    |
+| Already approved                     | Ya aprobado                                  | Déjà approuvé                                 | Al goedgekeurd                          |
+| Draw changed — review again          | El cuadro cambió — revisa de nuevo           | Le tableau a changé — examinez à nouveau      | Schema gewijzigd — bekijk opnieuw       |
+| Ties need a decision on the web desk | Los empates requieren una decisión en la web | Les égalités se décident sur le site web      | Gelijke standen beslis je op de website |
+| Approve it on the web desk           | Apruébalo en la web                          | Approuvez-le sur le site web                  | Keur het goed op de website             |
+| Review again                         | Revisar de nuevo                             | Examiner à nouveau                            | Opnieuw bekijken                        |
+
+Keys `matchday.approve.*`: review (the banner button and the screen), heading.swiss/draw, change, action, hold (the plate), approving, loading, bye (a Swiss seat with no opponent), already, stale, ties, onWeb, reviewAgain.
+
 ## Translation review
 
 - **New or changed English copy.** Add the key to es, fr and nl in the same

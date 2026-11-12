@@ -1207,5 +1207,19 @@
   "matchday.sending.atRisk": "Saisies en danger",
   "matchday.outOfScope": "Ce match n'est pas sur vos terrains",
   "matchday.cantOpen": "Impossible d'ouvrir ce match",
-  "matchday.backTo": "Retour à {court}"
+  "matchday.backTo": "Retour à {court}",
+  "matchday.approve.review": "Examiner",
+  "matchday.approve.heading.swiss": "{division} · Tour {round}",
+  "matchday.approve.heading.draw": "{division} · Tableau final",
+  "matchday.approve.change": "Pour modifier une place, utilisez le site web",
+  "matchday.approve.action": "Approuver",
+  "matchday.approve.hold": "Maintenez 3 s",
+  "matchday.approve.approving": "Approbation…",
+  "matchday.approve.loading": "Chargement de la proposition…",
+  "matchday.approve.bye": "Exempt",
+  "matchday.approve.already": "Déjà approuvé",
+  "matchday.approve.stale": "Le tableau a changé — examinez à nouveau",
+  "matchday.approve.ties": "Les égalités se décident sur le site web",
+  "matchday.approve.onWeb": "Approuvez-le sur le site web",
+  "matchday.approve.reviewAgain": "Examiner à nouveau"
 }

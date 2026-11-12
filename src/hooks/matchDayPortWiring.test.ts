@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import { matchDayPortFor } from '@/hooks/matchDayPortWiring';
 import type { ScoringFetch } from '@/services/fetchScoringPort';
@@ -54,5 +57,53 @@ describe('which host the composition root’s Match Day port trusts', () => {
     const answer = await port.day({ origin: 'https://stg.seazn.club', token: FIXTURE_DAY_TOKEN });
     expect(answer).toEqual({ ok: false, offline: true });
     expect(asked).toEqual([]);
+  });
+});
+
+/**
+ * Task 2b review M2: `createNativePorts` is run by no test, so the line that wires the REAL Match Day port into
+ * `Ports.matchDay` is read from its source: the property `matchDay` is `matchDayPortFor({ fetch, logger, hosts })`, built
+ * once, with the same `logger` and `hosts` the other ports are given, and never the fake or a stub.
+ */
+function wiringOf(source: string) {
+  const file = ts.createSourceFile('nativePorts.ts', source, ts.ScriptTarget.Latest, true);
+  const found: { callee: string; args: string[]; fetch: string }[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isPropertyAssignment(node) && node.name.getText(file) === 'matchDay') {
+      const call = node.initializer;
+      if (ts.isCallExpression(call)) {
+        const object = call.arguments[0];
+        const props =
+          object !== undefined && ts.isObjectLiteralExpression(object) ? object.properties : [];
+        const fetchProp = props.find((p) => p.name?.getText(file) === 'fetch');
+        found.push({
+          callee: call.expression.getText(file),
+          args: props.map((p) => p.getText(file)),
+          fetch: fetchProp === undefined ? '' : fetchProp.getText(file),
+        });
+      } else found.push({ callee: node.initializer.getText(file), args: [], fetch: '' });
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return found;
+}
+
+describe('the real createNativePorts wires the real Match Day port (review M2)', () => {
+  it('Ports.matchDay is matchDayPortFor over fetch, the logger and the hosts, once', () => {
+    const source = readFileSync(join(__dirname, 'nativePorts.ts'), 'utf8');
+    expect(wiringOf(source)).toEqual([
+      {
+        callee: 'matchDayPortFor',
+        args: ['fetch: (url, init) => fetch(url, init)', 'logger', 'hosts'],
+        fetch: 'fetch: (url, init) => fetch(url, init)',
+      },
+    ]);
+  });
+
+  it('the probe sees a fake wired in its place (the rule can fire)', () => {
+    expect(wiringOf('const p = { matchDay: createFakeMatchDayPort() };')).toEqual([
+      { callee: 'createFakeMatchDayPort', args: [], fetch: '' },
+    ]);
   });
 });

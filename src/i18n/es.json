@@ -1207,5 +1207,19 @@
   "matchday.sending.atRisk": "Toques en riesgo",
   "matchday.outOfScope": "Este partido no está en tus pistas",
   "matchday.cantOpen": "No se pudo abrir este partido",
-  "matchday.backTo": "Volver a {court}"
+  "matchday.backTo": "Volver a {court}",
+  "matchday.approve.review": "Revisar",
+  "matchday.approve.heading.swiss": "{division} · Ronda {round}",
+  "matchday.approve.heading.draw": "{division} · Cuadro eliminatorio",
+  "matchday.approve.change": "Para cambiar un puesto, usa la web",
+  "matchday.approve.action": "Aprobar",
+  "matchday.approve.hold": "Mantén 3 s",
+  "matchday.approve.approving": "Aprobando…",
+  "matchday.approve.loading": "Cargando la propuesta…",
+  "matchday.approve.bye": "Descansa",
+  "matchday.approve.already": "Ya aprobado",
+  "matchday.approve.stale": "El cuadro cambió — revisa de nuevo",
+  "matchday.approve.ties": "Los empates requieren una decisión en la web",
+  "matchday.approve.onWeb": "Apruébalo en la web",
+  "matchday.approve.reviewAgain": "Revisar de nuevo"
 }

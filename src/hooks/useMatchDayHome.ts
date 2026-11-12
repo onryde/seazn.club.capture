@@ -44,6 +44,15 @@ const STOP_LINE: Partial<Readonly<Record<MatchDayRefusal, MessageKey>>> = {
 
 function verdictOf(answer: PortAnswer<MatchDay>): Verdict {
   if (answer.ok) return { kind: 'open', day: answer.value };
+  return refusalVerdict(answer);
+}
+
+/**
+ * What a call that did not succeed comes to, for any of the code's routes (the day, or an approval's review and
+ * approve): the three words that end a code and MD_NOT_OPEN keep the code's own handling; the rest is no answer the
+ * phone can act on as the code's.
+ */
+export function refusalVerdict(answer: Extract<PortAnswer<never>, { ok: false }>): Verdict {
   if (!('refusal' in answer)) return OFFLINE;
   if (answer.refusal === 'MD_NOT_OPEN') {
     const { opensAt } = answer;

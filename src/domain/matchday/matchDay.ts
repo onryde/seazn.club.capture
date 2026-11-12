@@ -107,6 +107,15 @@ export type CourtCard = {
 /** The banner over the list: the first approval waiting. Without `canApprove` it has no button (`matchday.approve.webOnly`). */
 export type Banner = { readonly approval: Approval; readonly canApprove: boolean };
 
+/**
+ * Whether the banner offers Review (S4 design §7): a code that can approve, and a stage the phone can name a round
+ * for. A Swiss stage with no round, or a round of 1 (no round before it to call complete), is the web desk's.
+ */
+export function canReview({ approval, canApprove }: Banner): boolean {
+  if (!canApprove) return false;
+  return approval.kind === 'draw' || (approval.round !== null && approval.round > 1);
+}
+
 /** One card per court, in the server's order. Only the first two of a queue are shown. */
 export function courtCards(day: MatchDay): readonly CourtCard[] {
   return day.courts.map(cardOf);

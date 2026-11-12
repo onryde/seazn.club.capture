@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseDay } from '@/domain/matchday/dayWire';
 import {
   bannerFor,
+  canReview,
   courtCards,
   courtCardsAt,
   isEmptyDay,
@@ -395,5 +396,29 @@ describe('isEmptyDay (a day with nothing in the code’s scope)', () => {
     ['an online board', { online: [SINGH] }],
   ])('is not empty with %s', (_what, change: Partial<MatchDay>) => {
     expect(isEmptyDay(day(change))).toBe(false);
+  });
+});
+
+describe('canReview: the banner offers Review (S4 design §7)', () => {
+  const stage = '4c9d0e1f-2a3b-4c4d-8e5f-7a8b9c0d1e2f';
+  const swiss = (round: number | null): Approval => ({
+    kind: 'swiss',
+    stageId: stage,
+    divisionName: 'Open',
+    label: 'Swiss',
+    round,
+  });
+  const draw: Approval = { ...swiss(null), kind: 'draw' };
+
+  it.each([
+    ['a draw on a code with approvals', draw, true, true],
+    ['a draw on a code without', draw, false, false],
+    ['Swiss round 4', swiss(4), true, true],
+    ['Swiss round 2', swiss(2), true, true],
+    ['Swiss round 1, no round before it', swiss(1), true, false],
+    ['Swiss with no round', swiss(null), true, false],
+    ['Swiss round 4 on a code without approvals', swiss(4), false, false],
+  ] as const)('%s', (_what, approval, canApprove, offered) => {
+    expect(canReview({ approval, canApprove })).toBe(offered);
   });
 });

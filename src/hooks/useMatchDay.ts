@@ -238,7 +238,7 @@ function settle(ports: Ports, held: Held, read: Read, setShown: SetShown): void 
  * that is over is forgotten with its copy, and the list goes Home. A forget the phone refuses says so instead, and is
  * recorded (R19). A day not open yet keeps its code.
  */
-async function leaveDay(
+export async function leaveDay(
   ports: Ports,
   saved: SavedCode,
   verdict: Extract<Verdict, { kind: 'stop' | 'notYet' }>,

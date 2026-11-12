@@ -1,4 +1,5 @@
-import type { MatchDay, Row } from '@/domain/matchday/matchDay';
+import type { ApprovalReview, Approved } from '@/domain/matchday/approvalWire';
+import type { ApprovalKind, MatchDay, Row } from '@/domain/matchday/matchDay';
 import type { OpenAnswer } from '@/domain/matchday/openWire';
 import type { SavedDayCode } from '@/domain/mode/dayCode';
 import type { MatchDayPort, PortAnswer } from '@/services/matchDayPort';
@@ -63,10 +64,33 @@ export const FAKE_DAY: MatchDay = {
 export const FAKE_OPEN_URL =
   'https://stg.seazn.club/score/dl_Fake-Open_0123456789abcdefghijklmnopqrstuvw';
 
+/** A made-up Swiss stage and the proposal the fake's tests read: Round 4, the server's rows in its order, a bye last. */
+export const FAKE_STAGE = '6a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d';
+export const FAKE_HASH = 'fake-proposal-hash-0001';
+export const FAKE_REVIEW: ApprovalReview = {
+  kind: 'swiss',
+  stageId: FAKE_STAGE,
+  divisionName: "Men's singles",
+  round: 4,
+  rows: [
+    { label: 'R4 1', home: 'Ng', away: 'Brown' },
+    { label: 'R4 2', home: 'Patel', away: 'Okafor' },
+    { label: 'R4 3', home: 'Kim', away: null },
+  ],
+  hash: FAKE_HASH,
+  ties: false,
+};
+
 export type FakeMatchDayCall = {
   readonly op: 'day' | 'open' | 'review' | 'approve';
   readonly code: SavedDayCode;
   readonly fixtureId?: string;
+  /** Review and approve: the kind and stage asked for. */
+  readonly kind?: ApprovalKind;
+  readonly stageId?: string;
+  /** Approve: the hash and round it handed back. */
+  readonly hash?: string;
+  readonly round?: number | null;
 };
 
 export type FakeMatchDayPort = MatchDayPort & {
@@ -74,6 +98,13 @@ export type FakeMatchDayPort = MatchDayPort & {
   answerDay(answer: PortAnswer<MatchDay>): void;
   /** What every later `open` answers: a link to `FAKE_OPEN_URL`, a badminton match, until told otherwise. */
   answerOpen(answer: PortAnswer<OpenAnswer>): void;
+  /**
+   * What the next reviews answer, in order; the last one stands for every later review. With none given, offline, as
+   * before. A fresh call replaces the whole list.
+   */
+  answerReview(...answers: PortAnswer<ApprovalReview>[]): void;
+  /** The same for approves. */
+  answerApprove(...answers: PortAnswer<Approved>[]): void;
   /** Pends every later call until `release()`, which settles them with the answer standing then. */
   hold(): void;
   release(): void;
@@ -85,7 +116,21 @@ export type FakeMatchDayPort = MatchDayPort & {
 
 const OFFLINE = { ok: false, offline: true } as const;
 
-/** The Match Day API on a laptop: the day and the open answer what the test says; review and approve are offline. */
+/** A list of answers handed out in order, the last one standing; `none` when nothing was said. */
+function sequence<T>(none: T): { say(answers: T[]): void; next(): T } {
+  let held: T[] = [];
+  return {
+    say: (answers) => {
+      held = [...answers];
+    },
+    next: () => (held.length > 1 ? (held.shift() as T) : (held[0] ?? none)),
+  };
+}
+
+/**
+ * The Match Day API on a laptop: the day and the open answer what the test says; review and approve are offline until
+ * told otherwise.
+ */
 export function createFakeMatchDayPort(): FakeMatchDayPort {
   let day: PortAnswer<MatchDay> = { ok: true, value: FAKE_DAY };
   let open: PortAnswer<OpenAnswer> = {
@@ -95,6 +140,8 @@ export function createFakeMatchDayPort(): FakeMatchDayPort {
   let gate: Promise<void> | null = null;
   let lift = (): void => undefined;
   let throwing = false;
+  const reviews = sequence<PortAnswer<ApprovalReview>>(OFFLINE);
+  const approves = sequence<PortAnswer<Approved>>(OFFLINE);
   const calls: FakeMatchDayCall[] = [];
   const answer = async <T>(call: FakeMatchDayCall, read: () => T): Promise<T> => {
     calls.push(call);
@@ -108,8 +155,12 @@ export function createFakeMatchDayPort(): FakeMatchDayPort {
   return {
     day: (code) => answer({ op: 'day', code }, () => day),
     open: (code, fixtureId) => answer({ op: 'open', code, fixtureId }, () => open),
-    review: (code) => answer({ op: 'review', code }, () => OFFLINE),
-    approve: (code) => answer({ op: 'approve', code }, () => OFFLINE),
+    review: (code, kind, stageId) =>
+      answer({ op: 'review', code, kind, stageId }, () => reviews.next()),
+    approve: (code, kind, stageId, hash, round) =>
+      answer({ op: 'approve', code, kind, stageId, hash, round }, () => approves.next()),
+    answerReview: (...answers) => reviews.say(answers),
+    answerApprove: (...answers) => approves.say(answers),
     answerDay: (next) => {
       day = next;
     },

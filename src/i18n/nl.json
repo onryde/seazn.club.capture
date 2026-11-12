@@ -1207,5 +1207,19 @@
   "matchday.sending.atRisk": "Taps in gevaar",
   "matchday.outOfScope": "Deze wedstrijd staat niet op jouw banen",
   "matchday.cantOpen": "Kon deze wedstrijd niet openen",
-  "matchday.backTo": "Terug naar {court}"
+  "matchday.backTo": "Terug naar {court}",
+  "matchday.approve.review": "Bekijken",
+  "matchday.approve.heading.swiss": "{division} · Ronde {round}",
+  "matchday.approve.heading.draw": "{division} · Knock-outschema",
+  "matchday.approve.change": "Wijzig een plek via de website",
+  "matchday.approve.action": "Goedkeuren",
+  "matchday.approve.hold": "Houd 3 s ingedrukt",
+  "matchday.approve.approving": "Goedkeuren…",
+  "matchday.approve.loading": "Voorstel laden…",
+  "matchday.approve.bye": "Vrij",
+  "matchday.approve.already": "Al goedgekeurd",
+  "matchday.approve.stale": "Schema gewijzigd — bekijk opnieuw",
+  "matchday.approve.ties": "Gelijke standen beslis je op de website",
+  "matchday.approve.onWeb": "Keur het goed op de website",
+  "matchday.approve.reviewAgain": "Opnieuw bekijken"
 }

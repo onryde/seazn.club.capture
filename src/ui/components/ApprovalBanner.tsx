@@ -1,25 +1,35 @@
-import { memo } from 'react';
+import { memo, useCallback } from 'react';
 import { StyleSheet, View } from 'react-native';
-import type { Banner } from '@/domain/matchday/matchDay';
+import { canReview, type Banner } from '@/domain/matchday/matchDay';
 import { useT } from '@/hooks/useLanguage';
 import type { Translator } from '@/i18n/translate';
+import { GhostButton } from '@/ui/components/GhostButton';
 import { Text } from '@/ui/components/Text';
 import { colour, layout, radius, space } from '@/ui/theme/tokens';
 
 /**
  * The first approval waiting, over the list (S4 design §5, §7): a Swiss round's pairings or a knockout draw, said as the
  * organiser's desk says it. Without the right to approve on this code, the line says where it is done instead. Task 6
- * gives the banner its Review button; until then it is a line, never a control.
+ * gives the banner its Review button, only where the phone may approve and name a round; otherwise it is a line, never
+ * a control.
  */
 export const ApprovalBanner = memo(function ApprovalBanner({
   banner,
+  onReview,
 }: {
   readonly banner: Banner;
+  /** Opens the review of the stage this banner names. */
+  readonly onReview: (approval: Banner['approval']) => void;
 }) {
   const { t } = useT();
+  const { approval } = banner;
+  const review = useCallback(() => onReview(approval), [onReview, approval]);
   return (
     <View testID="approval-banner" style={styles.banner}>
       <Text variant="controlInk">{bannerLine(banner, t)}</Text>
+      {canReview(banner) ? (
+        <GhostButton label={t('matchday.approve.review')} onPress={review} />
+      ) : null}
     </View>
   );
 });

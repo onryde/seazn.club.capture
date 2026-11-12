@@ -63,7 +63,7 @@ export function useOpenFromMatchDay(
 }
 
 /** The saved day code, as this build can address it; none when none is saved. */
-function savedDayCode(ports: Ports): SavedDayCode | null {
+export function savedDayCode(ports: Ports): SavedDayCode | null {
   const snapshot = ports.modeStore.getSnapshot();
   const saved = snapshot.status === 'ready' ? snapshot.saved.codes.matchday : undefined;
   return saved === undefined ? null : dayCodeOf(saved.raw, ports.hosts);
