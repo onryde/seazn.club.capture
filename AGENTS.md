@@ -95,8 +95,9 @@ with sport conditions (S2 ruling 38; owner, 2026-11-02).
 
 The phone scores badminton (S2-1), table tennis (S2-2), chess (S2-3,
 `docs/specs/2026-11-04-s2-3-chess-design.md`, rulings 57–62), cricket (S2-4,
-`docs/specs/2026-11-07-s2-4-cricket-design.md`, rulings 64–85) and football (S2-5,
-`docs/specs/2026-11-07-s2-5-football-design.md`, rulings 100–169). Chess records one
+`docs/specs/2026-11-07-s2-4-cricket-design.md`, rulings 64–85) football (S2-5,
+`docs/specs/2026-11-07-s2-5-football-design.md`, rulings 100–169) and volleyball (S2-6,
+`docs/specs/2026-11-11-s2-6-volleyball-design.md`, rulings 170–189). Chess records one
 game's result only (57, 58), and for a drawn knockout game also its tie-break
 (ruling 63, `docs/specs/2026-11-05-s2-3b-chess-tiebreak-design.md`). Its key is the engine's shared `boardgame`, and
 every `boardgame` match is treated as chess (61). Forfeit, walkover, abandon
@@ -110,6 +111,10 @@ Football runs the match clock, shared with every screen on the ledger's own cloc
 (ruling 107), and records goals, cards and substitutions with the players on the team sheet, or the
 team alone when the fixture has none, for every variant, extra time and the shootout, and the
 extra-time substitution allowance (157). It never sends a forfeit, a settle or an abandon.
+Volleyball, indoor and beach, records the match rally by rally with the serve, asks Who serves first? once at the
+deciding set's 0-0 (180), counts timeouts and subs per set and never refuses one past FIVB's number (175), and records
+the FIVB sanction ladder (174, 185, 189). It has no libero yet (S2-6b), and never sends a forfeit, a settle, an abandon
+or a lineup replacement.
 
 Adding a fourth mode, or a screen outside a mode, is a product decision, not
 an implementation detail. Raise it; don't build it.
@@ -176,9 +181,9 @@ src/
                    # the record upload's credential, kept 24 h after its code goes (R4)
     policy/        # fallback strategy, degradation ladder
     scoring/       # Remote Scoring: wire shapes, the tap queue, sync, the match reducer, and one
-                   # module set per sport (`badminton*`, `tableTennis*`, `chess*`, `cricket*`, `football*`) behind `ScoringSport`
+                   # module set per sport (`badminton*`, `tableTennis*`, `chess*`, `cricket*`, `football*`, `volleyball*`) behind `ScoringSport`
                    # (`sportFor`, a table keyed by the bootstrap's `sport_key`: `badminton`, `tabletennis`,
-                   # `boardgame`, `cricket`, `football`). Generic files never import a sport's: lint (`SPORT_MODULES`,
+                   # `boardgame`, `cricket`, `football`, `volleyball`). Generic files never import a sport's: lint (`SPORT_MODULES`,
                    # `SPORT_OWN_FILES`, both casings) enforces it
   i18n/            # en/es/fr/nl dictionaries, t()/tp(), formatTime(). Pure.
   ui/
