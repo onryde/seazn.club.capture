@@ -1175,8 +1175,6 @@
   "matchday.unknown": "Speeldagcode niet herkend",
   "matchday.opens": "Speeldag opent {date}",
   "matchday.notOpen": "Speeldag is nog niet geopend",
-  "matchday.continue": "Speeldag · {competition} · {scope}",
-  "matchday.continueWhole": "Speeldag · {competition}",
   "matchday.loading.title": "Speeldag openen",
   "matchday.loading.body": "Wedstrijden van de dag ophalen bij Seazn.",
   "matchday.header": "{competition} · {scope} · {day}",

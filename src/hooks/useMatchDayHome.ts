@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MatchDay, MatchDayRefusal } from '@/domain/matchday/matchDay';
-import { dayHasEnded, matchDayCard, type MatchDayCopy } from '@/domain/mode/continueCard';
+import { dayHasEnded } from '@/domain/mode/continueCard';
 import { dayCodeOf, type SavedDayCode } from '@/domain/mode/dayCode';
 import type { ModeCode } from '@/domain/mode/Mode';
 import { recognise } from '@/domain/mode/recognise';
@@ -10,7 +10,6 @@ import type { OpenCode, SetPanel } from '@/hooks/useCodeCheck';
 import type { HomeNews, HomePanel, SaveFailed, SetStatusKey } from '@/hooks/useHome';
 import { usePorts, type Ports } from '@/hooks/usePorts';
 import type { MessageKey } from '@/i18n/messages';
-import type { CachedDay } from '@/services/matchDayStore';
 import type { PortAnswer } from '@/services/matchDayPort';
 
 export type DayCode = Extract<ModeCode, { mode: 'matchday' }>;
@@ -256,30 +255,6 @@ export async function forgetWithCopy(ports: Ports, saved: SavedCode): Promise<vo
   await ports.matchDayStore
     .clearCache()
     .catch(() => ports.logger.warn('matchday.cache-refused', { op: 'clear' }));
-}
-
-/**
- * The Match Day Continue card's words (S4 design §4): from the saved code's own copy of its day, read when the code
- * changes. No card without a copy, for another code's copy (`readCache` is tagged), or past the day's end.
- */
-export function useMatchDayCard(saved: SavedCode | null): MatchDayCopy | null {
-  const { matchDayStore, hosts, clock } = usePorts();
-  const [read, setRead] = useState<{ readonly of: SavedCode; readonly copy: CachedDay } | null>(
-    null,
-  );
-  useEffect(() => {
-    const code = saved === null ? null : dayCodeOf(saved.raw, hosts);
-    if (saved === null || code === null) return;
-    let live = true;
-    void matchDayStore.readCache(code).then((copy) => {
-      if (live) setRead(copy === null ? null : { of: saved, copy });
-    });
-    return () => {
-      live = false;
-    };
-  }, [saved, hosts, matchDayStore]);
-  const copy = read !== null && read.of === saved ? read.copy : null;
-  return useMemo(() => matchDayCard(copy, clock()), [copy, clock]);
 }
 
 const NO_COURTS: ReadonlyMap<string, string> = new Map();

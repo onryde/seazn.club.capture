@@ -333,7 +333,6 @@ describe('HomeScreen’s unpair sheet', () => {
         panelTime: null,
         continueCode: null,
         continueCopy: null,
-        matchDay: null,
         scoring: { current: null, leftovers: [] },
         sending: [],
       },
@@ -351,7 +350,6 @@ describe('HomeScreen’s unpair sheet', () => {
         dismissScoring: vi.fn(),
         askDismiss: vi.fn(),
         continueScoring: vi.fn(),
-        continueMatchDay: vi.fn(),
       },
     };
     const real = vi.mocked(useHome).getMockImplementation();

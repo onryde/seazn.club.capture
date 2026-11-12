@@ -1175,8 +1175,6 @@
   "matchday.unknown": "Código del Día de partidos no reconocido",
   "matchday.opens": "El Día de partidos se abre el {date}",
   "matchday.notOpen": "El Día de partidos aún no se ha abierto",
-  "matchday.continue": "Día de partidos · {competition} · {scope}",
-  "matchday.continueWhole": "Día de partidos · {competition}",
   "matchday.loading.title": "Abriendo el Día de partidos",
   "matchday.loading.body": "Cargando los partidos del día desde Seazn.",
   "matchday.header": "{competition} · {scope} · {day}",

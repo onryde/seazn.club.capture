@@ -784,65 +784,15 @@ describe('Home: a different day code lets go of the first one’s opened matches
   });
 });
 
-describe('Home: the Match Day Continue card', () => {
-  it('the Home Continue card reads "Match Day · SAFE Open · Hall A", and Continue opens the day with no scan', async () => {
+describe('Home: no Match Day Continue card (owner, 2026-11-12)', () => {
+  // The tile opens the saved day without a rescan, so a card for it is redundant: only the tile stands.
+  it('with a saved code and a cached day shows no card, and the tile opens the day with no scan', async () => {
     const home = await renderHome(await savedDay());
-    const card = await screen.findByTestId('continue-card');
-    expect(within(card).getByText('Match Day · SAFE Open · Hall A')).toBeTruthy();
-    // Exit is under ⋯ on the day's own bar, with a confirm (S4 design §4): the card has no Forget.
-    expect(within(card).queryByRole('button', { name: 'Forget' })).toBeNull();
-    fireEvent.click(within(card).getByRole('button', { name: 'Continue' }));
+    await act(async () => undefined);
+    expect(screen.queryByTestId('continue-card')).toBeNull();
+    expect(screen.queryByText(/Match Day · /)).toBeNull();
+    fireEvent.click(matchDayTile());
     await waitFor(() => expect(home.navigation.current()).toBe('matchday'));
     expect(home.scanner.scans).toBe(0);
-  });
-
-  it('a code for the whole competition names the competition alone', async () => {
-    const whole: MatchDay = { ...FAKE_DAY, scope: { kind: 'competition', label: 'SAFE Open' } };
-    await renderHome(await savedDay({ day: whole }));
-    const card = await screen.findByTestId('continue-card');
-    expect(within(card).getByText('Match Day · SAFE Open')).toBeTruthy();
-  });
-
-  // Question 2: nothing to say, no card. The day's copy belongs to its code: a new code never shows an old day.
-  it('shows no card with no code, no copy of its day, a copy of another code’s day, or a day that has ended', async () => {
-    const elsewhere = {
-      origin: DAY_CODE.origin,
-      token: 'md_Other-Day_0123456789abcdefghijklmnopqrstuv',
-    };
-    const cases: Seed[] = [
-      { kvSeed: {}, dayFilesSeed: {} },
-      await savedDay({ day: null }),
-      { ...(await savedDay({ day: null })), dayFilesSeed: await dayCopy(elsewhere) },
-      await savedDay({ day: { ...FAKE_DAY, expiresAt: TEST_NOW } }),
-    ];
-    for (const seed of cases) {
-      const home = await renderHome(seed);
-      await act(async () => undefined);
-      expect(screen.queryByTestId('continue-card')).toBeNull();
-      home.unmount();
-    }
-    expect(cases).toHaveLength(4);
-  });
-
-  it('goes with the code: a day the server ends forgets it, and the card leaves', async () => {
-    const home = await renderHome(await savedDay());
-    await screen.findByTestId('continue-card');
-    home.matchDay.answerDay({ ok: false, refusal: 'MD_ENDED' });
-    fireEvent.click(matchDayTile());
-    await screen.findByText('Match Day ended');
-    expect(screen.queryByTestId('continue-card')).toBeNull();
-  });
-
-  it.each<[Lang, string]>([
-    ['en', 'Match Day · SAFE Open · Hall A'],
-    ['es', 'Día de partidos · SAFE Open · Hall A'],
-    ['fr', 'Jour de match · SAFE Open · Hall A'],
-    ['nl', 'Speeldag · SAFE Open · Hall A'],
-  ])('reads in %s', async (lang, title) => {
-    await renderHome({ ...(await savedDay()), deviceLanguages: [lang] });
-    const card = await screen.findByTestId('continue-card');
-    expect(within(card).getByText(title)).toBeTruthy();
-    const open = word(lang, 'home.continue.open');
-    expect(within(card).getByRole('button', { name: open })).toBeTruthy();
   });
 });

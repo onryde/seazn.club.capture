@@ -102,8 +102,7 @@ _(owner, 2026-11-07)_
   forgets the code _(my call)_.
 - **The organiser withdraws the code** (the server refuses it): the same, with "Match Day code withdrawn"
   _(my call)_.
-- **The Continue card on Home** reads "Match Day · {competition} · {scope}" _(my call)_, for example
-  "Match Day · SAFE Open · Hall A".
+- **No Continue card on Home** (owner, 2026-11-12: drop it): the Match Day tile opens the saved day without a rescan.
 - **Reopen after a kill** (decision record ruling 3): into Match Day. If a match was open, into that match's pad,
   whose Back returns to the list _(my call)_.
 - **Another kind of code scanned while Match Day is saved:** decision record ruling 2 applies: the app offers to

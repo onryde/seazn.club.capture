@@ -1175,8 +1175,6 @@
   "matchday.unknown": "Match Day code not recognised",
   "matchday.opens": "Match Day opens {date}",
   "matchday.notOpen": "Match Day hasn't opened yet",
-  "matchday.continue": "Match Day · {competition} · {scope}",
-  "matchday.continueWhole": "Match Day · {competition}",
   "matchday.loading.title": "Opening Match Day",
   "matchday.loading.body": "Getting the day's matches from Seazn.",
   "matchday.header": "{competition} · {scope} · {day}",

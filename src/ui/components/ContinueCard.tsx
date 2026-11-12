@@ -13,10 +13,8 @@ import { colour, radius, space } from '@/ui/theme/tokens';
 
 /**
  * Shown only when a mode that was left still holds a valid code (decision 2).
- * What it says is `continueCard`'s (amendment §2, Home), or `matchDayCard`'s (S4 design §4). `row` is the landscape
- * card (spec §7, F15): the title and the detail on the left, the buttons at the end, in one row. Match Day's card is
- * its title and Continue alone: it has no detail line, and no Forget, since its Exit is under ⋯ on the day's own bar,
- * with a confirm (S4 design §4).
+ * What it says is `continueCard`'s (amendment §2, Home). `row` is the landscape card (spec §7, F15): the title and the
+ * detail on the left, the buttons at the end, in one row. Match Day has no card (S4 design §4; owner, 2026-11-12).
  */
 export const ContinueCard = memo(function ContinueCard(props: {
   mode: Mode;
@@ -67,14 +65,6 @@ function cardText(
   copy: ContinueCopy,
   t: Translator['t'],
 ): { title: string; detail: string | null } {
-  if (copy.kind === 'matchday') {
-    const { competition, scope } = copy;
-    const words =
-      scope === null
-        ? t('matchday.continueWhole', { competition })
-        : t('matchday.continue', { competition, scope });
-    return { title: words, detail: null };
-  }
   const title = t('home.continue.title', { mode: t(MODE_NAME[mode]) });
   // Review C5 I-4: in the stream screen's own words for Pairing.
   if (copy.kind === 'pairing') return { title, detail: t('stream.status.pairing') };

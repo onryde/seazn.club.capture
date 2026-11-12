@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type { CodeError } from '@/domain/credentials/waitingFields';
 import { sendingCards, type SendingCard } from '@/domain/matchday/exit';
-import { continueCard, type ContinueCopy, type MatchDayCopy } from '@/domain/mode/continueCard';
+import { continueCard, type ContinueCopy } from '@/domain/mode/continueCard';
 import type { Mode, ModeCode } from '@/domain/mode/Mode';
 import { asksBeforeOpening } from '@/domain/mode/otherMode';
 import { recognise } from '@/domain/mode/recognise';
@@ -61,7 +61,6 @@ import {
 } from '@/hooks/useScoringHome';
 import {
   useDayCheck,
-  useMatchDayCard,
   useOpenSavedDay,
   useSendingCourts,
   type DayCode,
@@ -126,7 +125,6 @@ export type HomeView = {
   /** What the Continue card says (amendment §2, Home); null with no card. */
   readonly continueCopy: ContinueCopy | null;
   /** The Match Day card (S4 design §4), from the saved code's copy of its day; null with no card. */
-  readonly matchDay: MatchDayCopy | null;
   /** Remote Scoring's cards (design §5): the saved match, and every other match whose taps are still queued. */
   readonly scoring: ScoringHome;
   /** The matches Exit left with taps still sending (S4 design §4), each a small card of its own; taken out of `scoring`. */
@@ -145,7 +143,6 @@ export type HomeActions = {
   /** The saved match's Continue: opens the pad (A7 first while Live Stream holds a pairing). */
   continueScoring(): void;
   /** The Match Day card's Continue: the Match Day tile's own tap, which opens the saved day. */
-  continueMatchDay(): void;
   /** Development builds only: a pasted code, handled as if scanned from Live Stream. */
   useRaw(raw: string): void;
   /** A7's sheet: unpair, forget the stream code, then open the other mode. */
@@ -218,7 +215,6 @@ export function useHome(): { view: HomeView; actions: HomeActions } {
   const dismissScoring = useDismissScoring(setPanel, saveFailed, refresh);
   const askDismiss = useAskDismiss(setPanel, dismissScoring);
   const continueScoring = useContinueScoring(setStatusKey, saveFailed, setPanel);
-  const continueMatchDay = useCallback(() => tapTile('matchday'), [tapTile]);
   const actions = {
     tapTile,
     ...panelActions,
@@ -231,7 +227,6 @@ export function useHome(): { view: HomeView; actions: HomeActions } {
     dismissScoring,
     askDismiss,
     continueScoring,
-    continueMatchDay,
   };
   return { view, actions };
 }
@@ -494,14 +489,12 @@ function useHomeView(
   const courts = useSendingCourts(rowsKey(rows));
   const { cards: sending, leftovers } = useMemo(() => sendingCards(courts, all), [courts, all]);
   const scoring = useMemo(() => ({ current: all.current, leftovers }), [all, leftovers]);
-  const matchDay = useMatchDayCard(ready?.saved.codes.matchday ?? null);
   return {
     statusText: statusText(ready, statusKey, t, { time: format, day: formatDay }),
     panel,
     panelTime,
     continueCode,
     continueCopy,
-    matchDay,
     scoring,
     sending,
   };
