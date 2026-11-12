@@ -878,13 +878,13 @@ _Pauze_ (the Break tool's words, a rest): a break of serve has its own word in e
 ## Match Day list (MD-2 Task 4, 2026-11-08)
 
 Match Day's list by court (S4 design §5, layout B). The court words are the web's court board's where it has them; a
-row's names are one line, cut with an ellipsis (`matchDayFit.test.ts` pins which are). Committed without a `_review`
-marker.
+row's names and its score are one line each, cut with an ellipsis (`matchDayFit.test.ts` pins which are). Committed
+without a `_review` marker.
 
 | English                  | Español                                 | Français                           | Nederlands                     | Notes                                                                                   |
 | ------------------------ | --------------------------------------- | ---------------------------------- | ------------------------------ | --------------------------------------------------------------------------------------- |
 | Playing                  | En juego                                | En jeu                             | Bezig                          | `matchday.court.playing`: a court state chip, read by a screen reader with the court.   |
-| Called                   | Convocado                               | Appelé                             | Opgeroepen                     | `matchday.court.called`. nl is the widest chip (80.6 dp): the court's name keeps 155.   |
+| Called                   | Convocado                               | Appelé                             | Opgeroepen                     | `matchday.court.called`. nl is the widest chip, 98.6 dp (word 80.6): name keeps 155.    |
 | Free                     | Libre                                   | Libre                              | Vrij                           | `matchday.court.free`.                                                                  |
 | In use                   | En uso                                  | Occupé                             | In gebruik                     | `matchday.court.inUseElsewhere`: by a match outside this code.                          |
 | Now / Next / Then        | Ahora / Siguiente / Después             | En cours / Suivant / Ensuite       | Nu / Volgende / Daarna         | `matchday.row.*`. es _Siguiente_ (56.5 dp) sets the label column, `matchDayRowLabel`.   |
@@ -894,7 +894,8 @@ marker.
 | Online                   | En línea                                | En ligne                           | Online                         | `matchday.online`: the online boards' section (chess). Read-only rows.                  |
 | All courts / All venues  | Todas las pistas / Todas las sedes      | Tous les terrains / Tous les lieux | Alle banen / Alle locaties     | `matchday.scope.competition`, `matchday.venues.all`.                                    |
 | Offline · updated {time} | Sin conexión · actualizado a las {time} | Hors ligne · mis à jour à {time}   | Offline · bijgewerkt om {time} | `matchday.offline`: over the last copy; `{time}` in the venue's zone.                   |
-| Sending {count}          | Enviando {count}                        | Envoi : {count}                    | Verzenden: {count}             | `matchday.sending.*`: a court's unsent taps. fr with a no-break space before the colon. |
+| Sending {count}          | Enviando {count}                        | Envoi : {count}                    | Verzenden: {count}             | `matchday.sending.*`: a court's (or no court's) unsent taps. fr: no-break space, colon. |
+| Taps at risk             | Toques en riesgo                        | Saisies en danger                  | Taps in gevaar                 | `matchday.sending.atRisk`, in caution: a queue the phone cannot read. No count.         |
 | pair on the web desk     | empareja en la web                      | appariez sur le site web           | koppel op de website           | `matchday.approve.webOnly*`: a code that cannot approve says where it is done.          |
 
 ## Translation review

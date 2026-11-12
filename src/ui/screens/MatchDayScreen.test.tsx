@@ -344,6 +344,25 @@ describe('MatchDayScreen: the copy, offline and loading', () => {
     expect(view.matchDay.calls.filter((call) => call.op === 'day')).toHaveLength(2);
   });
 
+  it('while Try again’s read is out, it waits and says the day is being fetched (review M4)', async () => {
+    const view = await openList({
+      prepare: (fakes) => fakes.matchDay.answerDay({ ok: false, offline: true }),
+    });
+    expect(screen.queryByText(en['matchday.loading.body'])).toBeNull();
+    view.matchDay.hold();
+    fireEvent.click(screen.getByRole('button', { name: en['panel.tryAgain'] }));
+    await settle();
+    expect(screen.getByText(en['matchday.loading.body'])).toBeTruthy();
+    const retry = screen.getByRole('button', { name: en['panel.tryAgain'] });
+    expect(retry.getAttribute('aria-disabled')).toBe('true');
+    view.matchDay.release();
+    await settle();
+    expect(screen.queryByText(en['matchday.loading.body'])).toBeNull();
+    expect(
+      screen.getByRole('button', { name: en['panel.tryAgain'] }).getAttribute('aria-disabled'),
+    ).not.toBe('true');
+  });
+
   it('shows the copy at once while the first read is out, with no Offline line', async () => {
     await openList({ copy: FAKE_DAY, prepare: (fakes) => fakes.matchDay.hold() });
     expect(screen.getByText('Ng v Brown')).toBeTruthy();
@@ -437,6 +456,13 @@ describe('MatchDayScreen: the approval banner (S4 design §7)', () => {
     ],
     ['a draw, web only', [draw], false, "Groups finished · Men's singles · draw on the web desk"],
     ['Swiss with no round', [{ ...swiss, round: null }], true, 'Swiss · pair on the web desk'],
+    ['Swiss round 1 (review M5)', [{ ...swiss, round: 1 }], true, 'Swiss · pair on the web desk'],
+    [
+      'Swiss round 2',
+      [{ ...swiss, round: 2 }],
+      true,
+      'Round 1 complete · Round 2 pairings are ready',
+    ],
     [
       'two waiting',
       [draw, swiss],
@@ -507,6 +533,42 @@ describe('MatchDayScreen: Sending N (S4 design §5)', () => {
       },
     });
     expect(screen.queryByText(/Sending/)).toBeNull();
+  });
+
+  it('a queue it cannot read says the court’s taps are at risk, in caution, on that court only (review I1)', async () => {
+    const lee = 'x-2';
+    const second = court('c-2', 'Court 2', { state: 'called', next: [row(lee, 'Lee', 'Tan')] });
+    await openList({
+      day: dayWith({ courts: [FAKE_DAY.courts[0] as Court, second] }),
+      kv: { [MATCHDAY_KEYS.opened]: JSON.stringify([ng, lee]) },
+      prepare: async (fakes) => {
+        fakes.queueFiles.files.set(`${ng}.json`, '{garbled');
+        await fakes.tapQueue.save(queueHolding(lee, 2));
+      },
+    });
+    const atRisk = cardAt(0).getByText(en['matchday.sending.atRisk']);
+    expect(style(atRisk).color).toBe(edgeOf(colour.caution));
+    expect(cardAt(0).queryByText(/Sending/)).toBeNull();
+    expect(cardAt(1).getByText(sending(2))).toBeTruthy();
+    expect(cardAt(1).queryByText(en['matchday.sending.atRisk'])).toBeNull();
+    expect(style(cardAt(1).getByText(sending(2))).color).toBe(edgeOf(colour.ink2));
+  });
+
+  it('the matches on no court say their unsent taps and their taps at risk too (review M2)', async () => {
+    const noCourt = [row('x-1', 'Singh', 'Murphy'), row('x-2', 'Ahmed', 'Ross')];
+    const view = await openList({
+      day: dayWith({ noCourt }),
+      kv: { [MATCHDAY_KEYS.opened]: JSON.stringify(['x-1', 'x-2']) },
+      prepare: async (fakes) => {
+        await fakes.tapQueue.save(queueHolding('x-1', 4));
+      },
+    });
+    const section = screen.getByText(`${en['matchday.noCourt']} · 2`).parentElement as HTMLElement;
+    expect(within(section).getByText(sending(4))).toBeTruthy();
+    expect(cards().every((card) => within(card).queryByText(/Sending/) === null)).toBe(true);
+    view.queueFiles.files.set('x-2.json', '{garbled');
+    await settle(MATCHDAY_POLL_MS);
+    expect(within(section).getByText(en['matchday.sending.atRisk'])).toBeTruthy();
   });
 });
 

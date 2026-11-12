@@ -1203,5 +1203,6 @@
   "matchday.approve.draw": "Grupos terminados · {division} · Cuadro eliminatorio listo",
   "matchday.approve.webOnly": "{label} · empareja en la web",
   "matchday.approve.webOnly.swiss": "Ronda {done} completada · empareja en la web",
-  "matchday.approve.webOnly.draw": "Grupos terminados · {division} · cuadro en la web"
+  "matchday.approve.webOnly.draw": "Grupos terminados · {division} · cuadro en la web",
+  "matchday.sending.atRisk": "Toques en riesgo"
 }

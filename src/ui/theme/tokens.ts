@@ -602,6 +602,12 @@ const base = {
    */
   matchDayCardPad: 12,
   matchDayRowLabel: 58,
+  /**
+   * A row's names never get less than this (review I2): the detail at the right takes what it needs up to what this
+   * leaves, then ends in an ellipsis. 100 leaves the detail 88 dp under a label at 320, so the web's short score
+   * ("0–1 · 12–10", 85.8) and a time with its zone stand whole while a full scoreboard headline is cut.
+   */
+  matchDayNamesMin: 100,
 } as const;
 
 /** The cells the controls half's width is made of (`base` holds the shipped ones). */

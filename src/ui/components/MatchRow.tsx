@@ -10,7 +10,11 @@ type MatchRowProps = {
   readonly spoken?: string;
   /** "Ng v Brown": one line, cut with an ellipsis, so a card never grows. */
   readonly names: string;
-  /** At the right, never cut: the planned time or the score; none when the server has neither. */
+  /**
+   * At the right: the planned time or the score; none when the server has neither. One line, as wide as it needs until
+   * the names are down to `matchDayNamesMin`, then cut with an ellipsis (review I2: the server's score can be the whole
+   * scoreboard headline).
+   */
   readonly detail: string | null;
   /** A finished match: drawn in the inert ink. */
   readonly dim?: boolean;
@@ -55,11 +59,11 @@ const RowBody = memo(function RowBody({ label, names, detail, dim = false }: Mat
           {label}
         </Text>
       )}
-      <Text variant="controlInk" numberOfLines={1} style={dim ? styles.namesDim : styles.names}>
+      <Text variant="rowNames" numberOfLines={1} style={dim ? styles.namesDim : styles.names}>
         {names}
       </Text>
       {detail === null ? null : (
-        <Text variant="diagValue" style={dim ? styles.detailDim : styles.detail}>
+        <Text variant="diagValue" numberOfLines={1} style={dim ? styles.detailDim : styles.detail}>
           {detail}
         </Text>
       )}
@@ -81,8 +85,8 @@ const styles = StyleSheet.create({
   },
   pressed: { backgroundColor: colour.pressFill },
   label: { width: layout.matchDayRowLabel, color: colour.ink2 },
-  names: { flex: 1, minWidth: 0, color: colour.ink },
-  namesDim: { flex: 1, minWidth: 0, color: colour.ink3 },
-  detail: { flexShrink: 0, color: colour.ink },
-  detailDim: { flexShrink: 0, color: colour.ink3 },
+  names: { flex: 1, minWidth: layout.matchDayNamesMin, color: colour.ink },
+  namesDim: { flex: 1, minWidth: layout.matchDayNamesMin, color: colour.ink3 },
+  detail: { flexShrink: 1, minWidth: 0, color: colour.ink },
+  detailDim: { flexShrink: 1, minWidth: 0, color: colour.ink3 },
 });

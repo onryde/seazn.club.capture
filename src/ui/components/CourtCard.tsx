@@ -1,10 +1,16 @@
 import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
-import type { CourtCard as CourtCardModel, CourtState, Row } from '@/domain/matchday/matchDay';
+import type {
+  CourtCard as CourtCardModel,
+  CourtState,
+  Row,
+  Stake,
+} from '@/domain/matchday/matchDay';
 import { useT } from '@/hooks/useLanguage';
 import { useRowWords, type RowWords } from '@/hooks/useRowWords';
 import type { MessageKey } from '@/i18n/messages';
 import { MatchRow } from '@/ui/components/MatchRow';
+import { StakeLine } from '@/ui/components/StakeLine';
 import { Text } from '@/ui/components/Text';
 import { colour, layout, plateInk, radius, space } from '@/ui/theme/tokens';
 
@@ -18,19 +24,19 @@ const STATE_WORD: Readonly<Record<CourtState, MessageKey>> = {
 
 type CourtCardProps = {
   readonly card: CourtCardModel;
-  /** The unsent taps of the matches on this court opened from Match Day; nothing is drawn at 0. */
-  readonly sending: number;
+  /** The unsent taps of the matches on this court opened from Match Day (`StakeLine`). */
+  readonly stake: Stake;
   /** The venue's zone, for the planned times. */
   readonly zone: string;
 };
 
 /**
  * One court on Match Day's list (S4 design §5, layout B): its name and its state in words, "Sending N" while taps of
- * its matches wait, then Now, Next and Then, and its finished matches dimmed under their heading. Read-only here: Task 5
+ * its matches wait (or at risk, when a queue cannot be read), then Now, Next and Then, and its finished matches dimmed under their heading. Read-only here: Task 5
  * gives the rows their press.
  */
-export const CourtCard = memo(function CourtCard({ card, sending, zone }: CourtCardProps) {
-  const { t, tp } = useT();
+export const CourtCard = memo(function CourtCard({ card, stake, zone }: CourtCardProps) {
+  const { t } = useT();
   const words = useRowWords(zone);
   const state = t(STATE_WORD[card.state]);
   return (
@@ -41,11 +47,7 @@ export const CourtCard = memo(function CourtCard({ card, sending, zone }: CourtC
         </Text>
         <StateChip state={card.state} word={state} />
       </View>
-      {sending > 0 ? (
-        <Text variant="controlSmall" style={styles.sending}>
-          {tp('matchday.sending', sending)}
-        </Text>
-      ) : null}
+      <StakeLine stake={stake} />
       <QueueRows card={card} words={words} />
       <FinishedRows rows={card.finished} words={words} />
     </View>
@@ -124,7 +126,6 @@ const styles = StyleSheet.create({
   },
   head: { minHeight: layout.touch, flexDirection: 'row', alignItems: 'center', gap: space.sm },
   name: { flex: 1, minWidth: 0 },
-  sending: { paddingBottom: space.xs },
   finished: { paddingTop: space.sm, color: colour.ink3 },
   chip: {
     flexShrink: 0,

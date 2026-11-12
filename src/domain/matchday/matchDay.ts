@@ -149,19 +149,50 @@ export function courtCardsAt(day: MatchDay, venue: string | null): readonly Cour
 }
 
 /**
- * "Sending N" (S4 design §5): each court's unsent taps, from the matches on it only (now, its whole queue and its
- * finished ones), keyed by court. `unsent` is a count per match.
+ * The unsent taps of a set of matches (S4 design §5 "Sending N"): how many wait, and whether a queue among them could
+ * not be read, so its taps are at risk and no count can be said for it (`atStake`'s null).
  */
-export function sendingByCourt(
-  day: MatchDay,
-  unsent: ReadonlyMap<string, number>,
-): ReadonlyMap<string, number> {
-  return new Map(day.courts.map((court) => [court.courtId, sendingOn(court, unsent)]));
+export type Stake = { readonly count: number; readonly unreadable: boolean };
+
+/**
+ * The stake of the matches `fixtureIds` names. `unsent` is a count per match opened from Match Day, null for a queue the
+ * phone cannot read; a match it does not name has nothing waiting.
+ */
+export function stakeOf(
+  fixtureIds: Iterable<string>,
+  unsent: ReadonlyMap<string, number | null>,
+): Stake {
+  const held = [...fixtureIds].map((id) => unsent.get(id));
+  return {
+    count: held.reduce<number>((sum, one) => sum + (one ?? 0), 0),
+    unreadable: held.includes(null),
+  };
 }
 
-function sendingOn(court: Court, unsent: ReadonlyMap<string, number>): number {
+/** Each court's stake, from the matches on it only (now, its whole queue and its finished ones), keyed by court. */
+export function sendingByCourt(
+  day: MatchDay,
+  unsent: ReadonlyMap<string, number | null>,
+): ReadonlyMap<string, Stake> {
+  return new Map(day.courts.map((court) => [court.courtId, stakeOf(idsOn(court), unsent)]));
+}
+
+function idsOn(court: Court): readonly string[] {
   const rows = [...(court.now === null ? [] : [court.now]), ...court.next, ...court.finished];
-  return rows.reduce((sum, row) => sum + (unsent.get(row.fixtureId) ?? 0), 0);
+  return rows.map((row) => row.fixtureId);
+}
+
+/** The stake of the matches on no court yet (review M2): they are opened and scored as a court's are. */
+export function noCourtStake(day: MatchDay, unsent: ReadonlyMap<string, number | null>): Stake {
+  return stakeOf(
+    day.noCourt.map((row) => row.fixtureId),
+    unsent,
+  );
+}
+
+/** Everything at stake on Exit (Task 7): every match opened from Match Day, on today's list or not. */
+export function totalStake(unsent: ReadonlyMap<string, number | null>): Stake {
+  return stakeOf(unsent.keys(), unsent);
 }
 
 /** What a row shows at its right: a match not started, its planned time; in play or over, its score. */

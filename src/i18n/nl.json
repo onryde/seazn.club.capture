@@ -1203,5 +1203,6 @@
   "matchday.approve.draw": "Groepen afgelopen · {division} · Knock-outschema staat klaar",
   "matchday.approve.webOnly": "{label} · koppel op de website",
   "matchday.approve.webOnly.swiss": "Ronde {done} voltooid · koppel op de website",
-  "matchday.approve.webOnly.draw": "Groepen afgelopen · {division} · schema op de website"
+  "matchday.approve.webOnly.draw": "Groepen afgelopen · {division} · schema op de website",
+  "matchday.sending.atRisk": "Taps in gevaar"
 }

@@ -7,7 +7,9 @@ import {
   isEmptyDay,
   noonOf,
   rowDetail,
+  noCourtStake,
   sendingByCourt,
+  totalStake,
   venuesOf,
   type Approval,
   type Court,
@@ -256,6 +258,7 @@ describe('courtCardsAt (the cards a venue chip leaves)', () => {
 
 describe('sendingByCourt (S4 design §5: "Sending N" on a court with unsent taps)', () => {
   const both = day({ courts: [C1, C2, C3] });
+  const none = { count: 0, unreadable: false };
 
   it('adds the unsent taps of the court’s own matches: now, its whole queue and its finished ones', () => {
     const unsent = new Map([
@@ -264,22 +267,85 @@ describe('sendingByCourt (S4 design §5: "Sending N" on a court with unsent taps
       [DONE.fixtureId, 1],
     ]);
     expect(Object.fromEntries(sendingByCourt(both, unsent))).toEqual({
-      [C1.courtId]: 2,
-      [C2.courtId]: 4,
-      [C3.courtId]: 0,
+      [C1.courtId]: { count: 2, unreadable: false },
+      [C2.courtId]: { count: 4, unreadable: false },
+      [C3.courtId]: none,
+    });
+  });
+
+  it('a queue it cannot read puts its court’s taps at risk, with the others still counted, and no other court', () => {
+    const unsent = new Map<string, number | null>([
+      [NG.fixtureId, null],
+      [LEE.fixtureId, 3],
+    ]);
+    expect(Object.fromEntries(sendingByCourt(both, unsent))).toEqual({
+      [C1.courtId]: { count: 0, unreadable: true },
+      [C2.courtId]: { count: 3, unreadable: false },
+      [C3.courtId]: none,
     });
   });
 
   it('counts nothing for a match on no court, and nothing at all with no unsent taps', () => {
     const unsent = new Map([[SINGH.fixtureId, 5]]);
     expect(Object.fromEntries(sendingByCourt(day({ courts: [C1, C2] }), unsent))).toEqual({
-      [C1.courtId]: 0,
-      [C2.courtId]: 0,
+      [C1.courtId]: none,
+      [C2.courtId]: none,
     });
     expect(Object.fromEntries(sendingByCourt(both, new Map()))).toEqual({
-      [C1.courtId]: 0,
-      [C2.courtId]: 0,
-      [C3.courtId]: 0,
+      [C1.courtId]: none,
+      [C2.courtId]: none,
+      [C3.courtId]: none,
+    });
+  });
+});
+
+describe('noCourtStake (review M2: the matches on no court queue taps too)', () => {
+  it('adds the unsent taps of the matches on no court only, and says a queue it cannot read', () => {
+    const noCourt = day({ courts: [C1], noCourt: [SINGH] });
+    expect(
+      noCourtStake(
+        noCourt,
+        new Map([
+          [SINGH.fixtureId, 5],
+          [NG.fixtureId, 2],
+        ]),
+      ),
+    ).toEqual({
+      count: 5,
+      unreadable: false,
+    });
+    expect(noCourtStake(noCourt, new Map([[SINGH.fixtureId, null]]))).toEqual({
+      count: 0,
+      unreadable: true,
+    });
+    expect(noCourtStake(noCourt, new Map([[NG.fixtureId, null]]))).toEqual({
+      count: 0,
+      unreadable: false,
+    });
+  });
+});
+
+describe('totalStake (what Exit puts at stake: every match opened from Match Day, listed today or not)', () => {
+  it('adds every count and says any queue it cannot read', () => {
+    expect(totalStake(new Map())).toEqual({ count: 0, unreadable: false });
+    expect(
+      totalStake(
+        new Map([
+          ['a', 2],
+          ['b', 3],
+        ]),
+      ),
+    ).toEqual({ count: 5, unreadable: false });
+    expect(
+      totalStake(
+        new Map<string, number | null>([
+          ['a', 2],
+          ['b', null],
+        ]),
+      ),
+    ).toEqual({
+      count: 2,
+      unreadable: true,
     });
   });
 });

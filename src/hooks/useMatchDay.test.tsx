@@ -107,8 +107,23 @@ describe('useMatchDay: the copy, then the server', () => {
     expect(view.result.current.refusal).toBeNull();
   });
 
-  it('asks the server only once the copy has been read, with the saved code', async () => {
-    const view = await mount();
+  it('asks the server only once the copy has been read, with the saved code (review M6)', async () => {
+    let copyRead: () => void = () => undefined;
+    const view = await mount({
+      prepare: (fakes) => {
+        const read = fakes.ports.matchDayStore.readCache;
+        vi.spyOn(fakes.ports.matchDayStore, 'readCache').mockImplementation(
+          (code) =>
+            new Promise((resolve) => {
+              copyRead = () => resolve(read(code));
+            }),
+        );
+      },
+    });
+    await settle(MATCHDAY_POLL_MS);
+    expect(dayCalls(view)).toEqual([]);
+    copyRead();
+    await settle();
     expect(dayCalls(view)).toEqual([{ op: 'day', code: DAY_CODE }]);
   });
 
@@ -247,6 +262,53 @@ describe('useMatchDay: polling (S4 design §5, every 15 s while on screen)', () 
   });
 });
 
+describe('useMatchDay: a read that rejects (review M3)', () => {
+  it('reads as offline, is recorded, keeps the copy, and the next read still goes', async () => {
+    const view = await mount({
+      prepare: (fakes) => {
+        vi.spyOn(fakes.ports.matchDayStore, 'opened').mockRejectedValueOnce(new Error('disk'));
+      },
+    });
+    expect(view.result.current.state).toBe('offline');
+    expect(firstCourt(view.result.current.day)).toBe('Court A');
+    expect(view.result.current.reading).toBe(false);
+    expect(readRecord(view.record).map((line) => line.event)).toContain('matchday.read-failed');
+    act(() => view.result.current.refresh());
+    await settle();
+    expect(view.result.current.state).toBe('ready');
+    await settle(MATCHDAY_POLL_MS);
+    expect(dayCalls(view).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('a move Home that throws is recorded, never left unhandled', async () => {
+    const opensAt = new Date('2026-10-04T07:00:00.000Z');
+    const view = await mount({
+      prepare: (fakes) => {
+        fakes.matchDay.answerDay({ ok: false, refusal: 'MD_NOT_OPEN', opensAt });
+        vi.spyOn(fakes.ports.navigation, 'go').mockImplementation(() => {
+          throw new Error('router');
+        });
+      },
+    });
+    expect(view.result.current.state).toBe('refused');
+    expect(readRecord(view.record).map((line) => line.event)).toContain('matchday.leave-failed');
+  });
+});
+
+describe('useMatchDay: reading (review M4)', () => {
+  it('is reading while a read is out, and not once it lands', async () => {
+    const view = await mount({ prepare: (fakes) => fakes.matchDay.hold() });
+    expect(view.result.current.reading).toBe(true);
+    view.matchDay.release();
+    await settle();
+    expect(view.result.current.reading).toBe(false);
+    act(() => view.result.current.refresh());
+    expect(view.result.current.reading).toBe(true);
+    await settle();
+    expect(view.result.current.reading).toBe(false);
+  });
+});
+
 describe('useMatchDay: a late answer (Review Focus 5)', () => {
   it('an answer after unmount is dropped: no copy is written', async () => {
     const view = await mount({ copy: false, prepare: (fakes) => fakes.matchDay.hold() });
@@ -265,6 +327,26 @@ describe('useMatchDay: a late answer (Review Focus 5)', () => {
     expect(view.result.current.day).toBeNull();
     expect(view.result.current.state).toBe('loading');
     expect(view.dayFiles.written).toEqual([]);
+  });
+
+  it('a read that rejects after Exit changes nothing: no Offline (review M3)', async () => {
+    let fail: (why: Error) => void = () => undefined;
+    const view = await mount({
+      copy: false,
+      prepare: (fakes) => {
+        vi.spyOn(fakes.ports.matchDayStore, 'opened').mockImplementationOnce(
+          () =>
+            new Promise((_resolve, reject) => {
+              fail = reject;
+            }),
+        );
+      },
+    });
+    await forgetSaved(view);
+    fail(new Error('disk'));
+    await settle();
+    expect(view.result.current.state).toBe('loading');
+    expect(view.result.current.reading).toBe(false);
   });
 
   it('a withdrawn answer after Exit forgets nothing more and leaves no news', async () => {
@@ -422,15 +504,17 @@ describe('useMatchDay: the taps still sending (S4 design §5 "Sending N")', () =
     expect(view.result.current.unsent.size).toBe(0);
   });
 
-  it('a queue it cannot read counts none, and the others still count', async () => {
+  it('a queue it cannot read is null, its taps at risk (review I1), and the others still count', async () => {
     const view = await mount({
-      kv: { [MATCHDAY_KEYS.opened]: JSON.stringify(['m-1', 'm-2']) },
+      kv: { [MATCHDAY_KEYS.opened]: JSON.stringify(['m-1', 'm-2', 'm-3']) },
       prepare: async (fakes) => {
         await fakes.tapQueue.save(queueHolding('m-1', 3));
         fakes.queueFiles.files.set('m-2.json', '{garbled');
+        // Not opened from Match Day: Home's card speaks for it, the list does not.
+        fakes.queueFiles.files.set('other.json', '{garbled');
       },
     });
-    expect(Object.fromEntries(view.result.current.unsent)).toEqual({ 'm-1': 3 });
+    expect(Object.fromEntries(view.result.current.unsent)).toEqual({ 'm-1': 3, 'm-2': null });
   });
 
   it('a listing the phone refuses counts none, and the day still shows', async () => {

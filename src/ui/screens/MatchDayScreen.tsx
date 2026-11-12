@@ -4,21 +4,25 @@ import {
   bannerFor,
   courtCardsAt,
   isEmptyDay,
+  noCourtStake,
   noonOf,
   sendingByCourt,
   venuesOf,
   type MatchDay,
   type Row,
+  type Stake,
 } from '@/domain/matchday/matchDay';
 import { useFormatDay, useFormatTime } from '@/hooks/useFormatTime';
 import { useT } from '@/hooks/useLanguage';
 import { useMatchDay, type MatchDayList } from '@/hooks/useMatchDay';
+import { usePullRefresh } from '@/hooks/usePullRefresh';
 import { useRowWords } from '@/hooks/useRowWords';
 import { useBackToHome } from '@/hooks/useStreamLinks';
 import { ApprovalBanner } from '@/ui/components/ApprovalBanner';
 import { CourtCard } from '@/ui/components/CourtCard';
 import { GhostButton } from '@/ui/components/GhostButton';
 import { MatchRow } from '@/ui/components/MatchRow';
+import { StakeLine } from '@/ui/components/StakeLine';
 import { SubScreenHeader } from '@/ui/components/SubScreenHeader';
 import { Text } from '@/ui/components/Text';
 import { colour, layout, radius, space } from '@/ui/theme/tokens';
@@ -51,7 +55,7 @@ export function MatchDayScreen() {
 
 const MatchDayBody = memo(function MatchDayBody({ list }: { readonly list: MatchDayList }) {
   if (list.day !== null) return <DayList list={list} day={list.day} />;
-  if (list.state === 'offline') return <OfflineEmpty retry={list.refresh} />;
+  if (list.state === 'offline') return <OfflineEmpty retry={list.refresh} reading={list.reading} />;
   return <Opening />;
 });
 
@@ -66,13 +70,24 @@ const Opening = memo(function Opening() {
   );
 });
 
-/** A saved code with no copy and no connection (the dispatch's ruling 1): no list, and a way to ask again. */
-const OfflineEmpty = memo(function OfflineEmpty({ retry }: { readonly retry: () => void }) {
+/**
+ * A saved code with no copy and no connection (the dispatch's ruling 1): no list, and a way to ask again. While a read
+ * is out (Try again's, or the poll's) it says the day is being fetched and Try again waits (review M4): never a tap that
+ * shows nothing for 8 s.
+ */
+const OfflineEmpty = memo(function OfflineEmpty({
+  retry,
+  reading,
+}: {
+  readonly retry: () => void;
+  readonly reading: boolean;
+}) {
   const { t } = useT();
   return (
     <View style={styles.middle}>
       <Text variant="title">{t('matchday.offlineEmpty')}</Text>
-      <GhostButton label={t('panel.tryAgain')} onPress={retry} />
+      {reading ? <Text variant="body">{t('matchday.loading.body')}</Text> : null}
+      <GhostButton label={t('panel.tryAgain')} onPress={retry} disabled={reading} />
     </View>
   );
 });
@@ -89,12 +104,13 @@ const DayList = memo(function DayList({
   const { t } = useT();
   const banner = useMemo(() => bannerFor(day), [day]);
   const offlineAt = list.state === 'offline' ? list.updatedAt : null;
-  // react-native-web draws no pull and drops `onRefresh`: the pull is the device check's. Try again and the poll
-  // call the same `refresh`.
+  // react-native-web draws no pull and drops its props: the spinner is the device check's, its rule
+  // `usePullRefresh`'s (tested). Try again and the poll call the same `refresh`.
+  const { refreshing, onRefresh } = usePullRefresh(list.refresh, list.reading);
   const pull = (
     <RefreshControl
-      refreshing={false}
-      onRefresh={list.refresh}
+      refreshing={refreshing}
+      onRefresh={onRefresh}
       tintColor={colour.lime}
       colors={REFRESH_COLOURS}
       progressBackgroundColor={colour.surface}
@@ -109,6 +125,7 @@ const DayList = memo(function DayList({
         title={`${t('matchday.noCourt')} · ${day.noCourt.length}`}
         rows={day.noCourt}
         zone={day.tz}
+        stake={noCourtStake(day, list.unsent)}
       />
       <RowSection title={t('matchday.online')} rows={day.online} zone={day.tz} />
       {isEmptyDay(day) ? <Text variant="body">{t('matchday.empty')}</Text> : null}
@@ -148,7 +165,7 @@ const Courts = memo(function Courts({
   unsent,
 }: {
   readonly day: MatchDay;
-  readonly unsent: ReadonlyMap<string, number>;
+  readonly unsent: ReadonlyMap<string, number | null>;
 }) {
   const [venue, setVenue] = useState<string | null>(null);
   const venues = useMemo(() => venuesOf(day), [day]);
@@ -163,13 +180,15 @@ const Courts = memo(function Courts({
         <CourtCard
           key={card.courtId}
           card={card}
-          sending={sending.get(card.courtId) ?? 0}
+          stake={sending.get(card.courtId) ?? NO_STAKE}
           zone={day.tz}
         />
       ))}
     </>
   );
 });
+
+const NO_STAKE: Stake = { count: 0, unreadable: false };
 
 type Pick = (venue: string | null) => void;
 
@@ -225,21 +244,27 @@ const VenueChip = memo(function VenueChip({
   );
 });
 
-/** The matches on no court yet, or the online boards: a heading and read-only rows (online rows never open). */
+/**
+ * The matches on no court yet, or the online boards: a heading and read-only rows (online rows never open). The matches
+ * on no court say what they still hold unsent, as a court does (review M2); online boards are never scored here.
+ */
 const RowSection = memo(function RowSection({
   title,
   rows,
   zone,
+  stake,
 }: {
   readonly title: string;
   readonly rows: readonly Row[];
   readonly zone: string;
+  readonly stake?: Stake;
 }) {
   const words = useRowWords(zone);
   if (rows.length === 0) return null;
   return (
     <View style={styles.section}>
       <Text variant="diagSection">{title}</Text>
+      {stake === undefined ? null : <StakeLine stake={stake} />}
       <View style={styles.sectionRows}>
         {rows.map((row) => (
           <MatchRow key={row.fixtureId} {...words(row)} />

@@ -232,6 +232,17 @@ export const typeScale = {
     color: colour.ink,
   },
   /**
+   * A match's names on Match Day's list (review M1 of MD-2 Task 4): the house face for player names (AGENTS §5), Barlow
+   * Condensed 600, mixed case as typed, at 16 on an 18 dp line. Condensed holds a doubles pair on one line beside a time
+   * at 320 dp where Geist at 14 cut it (matchDayFit.test.ts).
+   */
+  rowNames: {
+    fontFamily: font.displaySemibold,
+    fontSize: 16,
+    lineHeight: 18,
+    color: colour.ink,
+  },
+  /**
    * The sides in Match details (owner, 2026-11-01, option A: "we need a proper format"): the match label's face, mixed
    * case as typed, a step up, since the card is read at arm's length before the match and has the room. Partners wrap,
    * never cut; the doubles sample is one line at 320 in the card (padFit.test.ts).

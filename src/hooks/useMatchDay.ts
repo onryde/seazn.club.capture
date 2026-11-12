@@ -29,21 +29,27 @@ type Shown = {
   readonly day: MatchDay | null;
   readonly updatedAt: Date | null;
   readonly refusal: MatchDayRefusal | null;
-  /** The unsent taps of each match opened from Match Day (`matchDayStore.opened()`), read with each read of the day. */
-  readonly unsent: ReadonlyMap<string, number>;
+  /**
+   * The unsent taps of each match opened from Match Day (`matchDayStore.opened()`), read with each read of the day: a
+   * count, or null for a queue the phone cannot read (its taps are at risk, as `atStake` says). A match with nothing
+   * waiting is not in it. Exit (Task 7) reads the same map (`totalStake`).
+   */
+  readonly unsent: ReadonlyMap<string, number | null>;
 };
 
 export type MatchDayList = Shown & {
   /** Reads the day now (pull to refresh, Try again); nothing while a read is out. */
   readonly refresh: () => void;
+  /** A read is out: a pull's spinner and Try again's wait show it (review M4). */
+  readonly reading: boolean;
 };
 
 type SetShown = Dispatch<SetStateAction<Shown>>;
 /** The saved day code, and the origin and token this build reads from it. */
 type Held = { readonly saved: SavedCode; readonly code: SavedDayCode };
-type Read = { readonly verdict: Verdict; readonly unsent: ReadonlyMap<string, number> };
+type Read = { readonly verdict: Verdict; readonly unsent: ReadonlyMap<string, number | null> };
 
-const NONE_UNSENT: ReadonlyMap<string, number> = new Map();
+const NONE_UNSENT: ReadonlyMap<string, number | null> = new Map();
 const LOADING: Shown = {
   state: 'loading',
   day: null,
@@ -65,9 +71,9 @@ export function useMatchDay(): MatchDayList {
   const [shown, setShown] = useState<Shown>(LOADING);
   useNoDayGoesHome(ready, held);
   const primed = useLastCopy(held, setShown);
-  const ask = useAsk(held, setShown);
+  const { ask, reading } = useAsk(held, setShown);
   usePoll(primed && held !== null, ask);
-  return useMemo(() => ({ ...shown, refresh: ask }), [shown, ask]);
+  return useMemo(() => ({ ...shown, refresh: ask, reading }), [shown, ask, reading]);
 }
 
 /** The saved day code as the store holds it now, when this build can address it. */
@@ -109,21 +115,34 @@ function useLastCopy(held: Held | null, setShown: SetShown): boolean {
   return primed;
 }
 
-/** One read of the day (and of the unsent taps) at a time; its answer counts only while the list and its code stand. */
-function useAsk(held: Held | null, setShown: SetShown): () => void {
+/**
+ * One read of the day (and of the unsent taps) at a time; its answer counts only while the list and its code stand. A
+ * read that rejects (none should: each part says it never does) reads as offline and is recorded, and the next read
+ * still goes (review M3: a flag left up would stop the poll and Try again for good).
+ */
+function useAsk(held: Held | null, setShown: SetShown): { ask: () => void; reading: boolean } {
   const ports = usePorts();
   const flying = useRef(false);
+  const [reading, setReading] = useState(false);
   const mounted = useMounted();
-  return useCallback(() => {
+  const ask = useCallback(() => {
     if (held === null || flying.current) return;
     flying.current = true;
-    void readOnce(ports, held.code).then((read) => {
-      flying.current = false;
-      // Review Focus 5: after the list has gone, or after Exit forgot its code, an answer changes nothing.
-      if (!mounted.current || !stillSaved(ports, held.saved)) return;
-      settle(ports, held, read, setShown);
-    });
+    setReading(true);
+    // Review Focus 5: after the list has gone, or after Exit forgot its code, an answer changes nothing.
+    const stands = () => mounted.current && stillSaved(ports, held.saved);
+    void readOnce(ports, held.code)
+      .then((read) => (stands() ? settle(ports, held, read, setShown) : undefined))
+      .catch(() => {
+        ports.logger.warn('matchday.read-failed');
+        if (stands()) setShown((now) => ({ ...now, state: 'offline' }));
+      })
+      .finally(() => {
+        flying.current = false;
+        setReading(false);
+      });
   }, [ports, held, mounted, setShown]);
+  return { ask, reading };
 }
 
 function useMounted(): { readonly current: boolean } {
@@ -166,19 +185,19 @@ async function readOnce(ports: Ports, code: SavedDayCode): Promise<Read> {
 }
 
 /**
- * The unsent taps of each match opened from Match Day, from one listing of the tap queues: with none opened, the disk is
- * not read. Neither read rejects (`opened`, and `list`, which reads a refused folder as empty). A queue with nothing in
- * it counts none; one that cannot be read counts none too, as the list cannot say how many it holds (Home's card for
- * that match says it cannot be read).
+ * The unsent taps of each match opened from Match Day, from one listing of the tap queues, with `atStake`'s meaning: a
+ * count, or null for a queue that cannot be read, whose taps are at risk (review I1: never silently nothing). A queue
+ * with nothing in it is left out. With none opened, the disk is not read.
  */
-async function unsentOf(ports: Ports): Promise<ReadonlyMap<string, number>> {
+async function unsentOf(ports: Ports): Promise<ReadonlyMap<string, number | null>> {
   const opened = new Set(await ports.matchDayStore.opened());
   if (opened.size === 0) return NONE_UNSENT;
-  const counted = new Map<string, number>();
+  const counted = new Map<string, number | null>();
   for (const entry of await ports.tapQueue.list()) {
-    if (entry.kind !== 'queue' || !opened.has(entry.queue.fixtureId)) continue;
-    const unsent = entry.queue.pending.length;
-    if (unsent > 0) counted.set(entry.queue.fixtureId, unsent);
+    const id = entry.kind === 'queue' ? entry.queue.fixtureId : entry.fixtureId;
+    if (!opened.has(id)) continue;
+    const unsent = entry.kind === 'queue' ? entry.queue.pending.length : null;
+    if (unsent !== 0) counted.set(id, unsent);
   }
   return counted;
 }
@@ -207,7 +226,10 @@ function settle(ports: Ports, held: Held, read: Read, setShown: SetShown): void 
     case 'stop':
     case 'notYet':
       setShown((now) => ({ ...now, state: 'refused', refusal: verdict.refusal, unsent }));
-      void leaveDay(ports, held.saved, verdict);
+      // Review M3: a move Home that throws (the router's own fault) is recorded, never left unhandled.
+      void leaveDay(ports, held.saved, verdict).catch(() =>
+        ports.logger.warn('matchday.leave-failed'),
+      );
   }
 }
 

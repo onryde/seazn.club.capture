@@ -62,11 +62,18 @@ const column = (width: number) => width - 2 * space.md;
 /** Inside a court card (and the sections' cards): the column less the card's border and its padding. */
 const cardInner = (width: number) =>
   column(width) - 2 * layout.cardBorder - 2 * layout.matchDayCardPad;
-/** A row's names take what the label column, the detail and their gaps leave. */
+/** What a row's names and detail share: the card less the label column (when it has one) and the gaps. */
+const rowRoom = (width: number, labelled: boolean) =>
+  cardInner(width) - (labelled ? layout.matchDayRowLabel + GAP : 0) - GAP;
+/** The most the detail is given (review I2): whatever leaves the names `matchDayNamesMin`. Beyond it, an ellipsis. */
+const detailCap = (width: number, labelled: boolean) =>
+  rowRoom(width, labelled) - layout.matchDayNamesMin;
+/** The names take what the detail, as drawn (whole, or cut at its cap), leaves. */
 const namesRoom = (width: number, labelled: boolean, shown: string | null) =>
-  cardInner(width) -
-  (labelled ? layout.matchDayRowLabel + GAP : 0) -
-  (shown === null ? 0 : GAP + detail(shown));
+  rowRoom(width, labelled) +
+  (shown === null ? GAP : -Math.min(detail(shown), detailCap(width, labelled)));
+/** `rowNames`: the house face for player names (AGENTS §5), Barlow Condensed 600 at 16, mixed case. */
+const names = (text: string): number => barlow600.width(text, typeScale.rowNames.fontSize);
 const fits = (width: number, room: number): 'fits' | 'cut' => (width <= room ? 'fits' : 'cut');
 
 /** The day header's day word as each language's `Intl` writes Saturday 3 October (formatDay). */
@@ -82,10 +89,91 @@ const NAMES = {
   doubles: 'Lee / Tan v Ashok / Ravi',
   long: 'Christopher Fairweather-Smith v Maximilian Oyelaran-Brooks',
 } as const;
-/** A row's detail: a planned time, the venue's time named from a phone in another zone, a game, two, three. */
-const DETAILS = ['14:40', '14:40 BST', '14-9', '21-15 21-18', '21-19 18-21 14-9'] as const;
+/**
+ * A row's detail: a planned time, the venue's time named from a phone in another zone, the short score the web will
+ * send (the desk's), and the scoreboard headlines it sends today (the engine's `summary().headline`: set-based with a
+ * game in play, mid-match and finished; cricket's), the longest kinds a row can be handed.
+ */
+const DETAILS = [
+  '14:40',
+  '14:40 BST',
+  '0–1 · 12–10',
+  '1 — 0 · 21–15 (14–11)',
+  '1 — 1 · 21–15, 18–21 (14–9)',
+  '2 — 1 · 21–15, 18–21, 21–19',
+  '187/6 (20) — 154/9 (18.3)',
+] as const;
 
-describe('a match row: names one line with an ellipsis, the detail never cut', () => {
+/** The details cut at their cap: every scoreboard headline but a game in play with no label at 360. */
+const CUT_DETAILS = [
+  '320 label | 1 — 0 · 21–15 (14–11)',
+  '320 label | 1 — 1 · 21–15, 18–21 (14–9)',
+  '320 label | 2 — 1 · 21–15, 18–21, 21–19',
+  '320 label | 187/6 (20) — 154/9 (18.3)',
+  '320 none | 1 — 0 · 21–15 (14–11)',
+  '320 none | 1 — 1 · 21–15, 18–21 (14–9)',
+  '320 none | 2 — 1 · 21–15, 18–21, 21–19',
+  '320 none | 187/6 (20) — 154/9 (18.3)',
+  '360 label | 1 — 0 · 21–15 (14–11)',
+  '360 label | 1 — 1 · 21–15, 18–21 (14–9)',
+  '360 label | 2 — 1 · 21–15, 18–21, 21–19',
+  '360 label | 187/6 (20) — 154/9 (18.3)',
+  '360 none | 1 — 1 · 21–15, 18–21 (14–9)',
+  '360 none | 2 — 1 · 21–15, 18–21, 21–19',
+  '360 none | 187/6 (20) — 154/9 (18.3)',
+];
+/** Under a label, the names cut: a doubles pair at 320 beside all but a local time, at 360 beside a headline; the long
+ * pair everywhere. */
+const CUT_LABELLED = [
+  '320 doubles | 14:40 BST',
+  '320 doubles | 0–1 · 12–10',
+  '320 doubles | 1 — 0 · 21–15 (14–11)',
+  '320 doubles | 1 — 1 · 21–15, 18–21 (14–9)',
+  '320 doubles | 2 — 1 · 21–15, 18–21, 21–19',
+  '320 doubles | 187/6 (20) — 154/9 (18.3)',
+  '320 long | 14:40',
+  '320 long | 14:40 BST',
+  '320 long | 0–1 · 12–10',
+  '320 long | 1 — 0 · 21–15 (14–11)',
+  '320 long | 1 — 1 · 21–15, 18–21 (14–9)',
+  '320 long | 2 — 1 · 21–15, 18–21, 21–19',
+  '320 long | 187/6 (20) — 154/9 (18.3)',
+  '360 doubles | 1 — 0 · 21–15 (14–11)',
+  '360 doubles | 1 — 1 · 21–15, 18–21 (14–9)',
+  '360 doubles | 2 — 1 · 21–15, 18–21, 21–19',
+  '360 doubles | 187/6 (20) — 154/9 (18.3)',
+  '360 long | 14:40',
+  '360 long | 14:40 BST',
+  '360 long | 0–1 · 12–10',
+  '360 long | 1 — 0 · 21–15 (14–11)',
+  '360 long | 1 — 1 · 21–15, 18–21 (14–9)',
+  '360 long | 2 — 1 · 21–15, 18–21, 21–19',
+  '360 long | 187/6 (20) — 154/9 (18.3)',
+];
+/** With no label, the doubles pair is cut only beside a scoreboard headline. */
+const CUT_UNLABELLED = [
+  '320 | 1 — 0 · 21–15 (14–11)',
+  '320 | 1 — 1 · 21–15, 18–21 (14–9)',
+  '320 | 2 — 1 · 21–15, 18–21, 21–19',
+  '320 | 187/6 (20) — 154/9 (18.3)',
+  '360 | 1 — 0 · 21–15 (14–11)',
+  '360 | 1 — 1 · 21–15, 18–21 (14–9)',
+  '360 | 2 — 1 · 21–15, 18–21, 21–19',
+  '360 | 187/6 (20) — 154/9 (18.3)',
+];
+/** Two open seats beside a time, under a label: whole at 360; at 320 only in Spanish. */
+const TBD: Readonly<Record<string, string>> = {
+  '320 en': 'cut',
+  '320 es': 'fits',
+  '320 fr': 'cut',
+  '320 nl': 'cut',
+  '360 en': 'fits',
+  '360 es': 'fits',
+  '360 fr': 'fits',
+  '360 nl': 'fits',
+};
+
+describe('a match row: names one line with an ellipsis, the detail whole up to its cap (review I2)', () => {
   it('every Now / Next / Then label fits its column, the widest within 2 dp of it (no slack to hide a longer word)', () => {
     const widths = LANGS.flatMap((lang) =>
       ['matchday.row.now', 'matchday.row.next', 'matchday.row.then'].map((key) =>
@@ -96,101 +184,80 @@ describe('a match row: names one line with an ellipsis, the detail never cut', (
     expect(Math.max(...widths)).toBeGreaterThan(layout.matchDayRowLabel - 2);
   });
 
-  it('under a label: which names fit beside which detail at 320 and 360 (the rest are cut)', () => {
+  it('the detail’s cap: 88 dp under a label at 320, so the short score and a zoned time stand whole', () => {
+    expect(Math.round(detailCap(320, true))).toBe(88);
+    expect(detail('0–1 · 12–10')).toBeLessThanOrEqual(detailCap(320, true));
+    expect(detail('14:40 BST')).toBeLessThanOrEqual(detailCap(320, true));
+    // Anti-vacuity: 3 dp more names floor would cut the short score at 320.
+    expect(detail('0–1 · 12–10')).toBeGreaterThan(detailCap(320, true) - 3);
+  });
+
+  it('which details are cut with an ellipsis, under a label and not, at 320 and 360 (the rest are whole)', () => {
     const measured: Record<string, string> = {};
     for (const width of WIDTHS)
-      for (const [name, names] of Object.entries(NAMES))
+      for (const labelled of [true, false])
         for (const shown of DETAILS)
-          measured[`${width} ${name} | ${shown}`] = fits(
-            geist('controlInk')(names),
-            namesRoom(width, true, shown),
+          measured[`${width} ${labelled ? 'label' : 'none'} | ${shown}`] = fits(
+            detail(shown),
+            detailCap(width, labelled),
           );
-    dump('labelled', measured);
-    expect(measured).toEqual({
-      '320 singles | 14:40': 'fits',
-      '320 singles | 14:40 BST': 'fits',
-      '320 singles | 14-9': 'fits',
-      '320 singles | 21-15 21-18': 'fits',
-      '320 singles | 21-19 18-21 14-9': 'cut',
-      '320 doubles | 14:40': 'cut',
-      '320 doubles | 14:40 BST': 'cut',
-      '320 doubles | 14-9': 'cut',
-      '320 doubles | 21-15 21-18': 'cut',
-      '320 doubles | 21-19 18-21 14-9': 'cut',
-      '320 long | 14:40': 'cut',
-      '320 long | 14:40 BST': 'cut',
-      '320 long | 14-9': 'cut',
-      '320 long | 21-15 21-18': 'cut',
-      '320 long | 21-19 18-21 14-9': 'cut',
-      '360 singles | 14:40': 'fits',
-      '360 singles | 14:40 BST': 'fits',
-      '360 singles | 14-9': 'fits',
-      '360 singles | 21-15 21-18': 'fits',
-      '360 singles | 21-19 18-21 14-9': 'fits',
-      '360 doubles | 14:40': 'fits',
-      '360 doubles | 14:40 BST': 'cut',
-      '360 doubles | 14-9': 'fits',
-      '360 doubles | 21-15 21-18': 'cut',
-      '360 doubles | 21-19 18-21 14-9': 'cut',
-      '360 long | 14:40': 'cut',
-      '360 long | 14:40 BST': 'cut',
-      '360 long | 14-9': 'cut',
-      '360 long | 21-15 21-18': 'cut',
-      '360 long | 21-19 18-21 14-9': 'cut',
-    });
+    dump('details', measured);
+    const cut = Object.entries(measured)
+      .filter(([, verdict]) => verdict === 'cut')
+      .map(([at]) => at);
+    expect(cut).toEqual(CUT_DETAILS);
   });
 
-  it('the names keep room beside the widest detail at 320: the detail never pushes them out', () => {
-    const room = namesRoom(320, true, '21-19 18-21 14-9');
-    expect(room).toBeGreaterThan(48);
-    expect(Math.round(room)).toBe(63);
+  it('the names floor holds a singles pair whole, beside the longest headline', () => {
+    expect(names(NAMES.singles)).toBeLessThanOrEqual(layout.matchDayNamesMin);
+    expect(namesRoom(320, true, '2 — 1 · 21–15, 18–21, 21–19')).toBe(layout.matchDayNamesMin);
   });
 
-  it('two seats not decided yet, beside a time: cut in every language at 320, whole in Spanish and French at 360', () => {
+  it('two seats not decided yet, beside a time, under a label: which languages fit at 320 and 360', () => {
     const measured: Record<string, string> = {};
     for (const width of WIDTHS)
       for (const lang of LANGS) {
         const open = said(lang, 'matchday.seat.tbd');
-        const names = said(lang, 'matchday.row.match', { home: open, away: open });
-        measured[`${width} ${lang}`] = fits(
-          geist('controlInk')(names),
-          namesRoom(width, true, '14:40'),
-        );
+        const seats = said(lang, 'matchday.row.match', { home: open, away: open });
+        measured[`${width} ${lang}`] = fits(names(seats), namesRoom(width, true, '14:40'));
       }
     dump('tbd', measured);
-    expect(measured).toEqual({
-      '320 en': 'cut',
-      '320 es': 'cut',
-      '320 fr': 'cut',
-      '320 nl': 'cut',
-      '360 en': 'cut',
-      '360 es': 'fits',
-      '360 fr': 'fits',
-      '360 nl': 'cut',
-    });
+    expect(measured).toEqual(TBD);
   });
 
-  it('with no label (finished, no court, online): doubles fit beside every detail at 360, and all but three games at 320', () => {
+  it('under a label: which names fit beside which detail at 320 and 360 (the rest are cut)', () => {
+    const measured: Record<string, string> = {};
+    for (const width of WIDTHS)
+      for (const [name, text] of Object.entries(NAMES))
+        for (const shown of DETAILS)
+          measured[`${width} ${name} | ${shown}`] = fits(
+            names(text),
+            namesRoom(width, true, shown),
+          );
+    dump('labelled', measured);
+    const cut = Object.entries(measured)
+      .filter(([, verdict]) => verdict === 'cut')
+      .map(([at]) => at);
+    expect(cut).toEqual(CUT_LABELLED);
+  });
+
+  it('a doubles pair beside a time fits under a label at 320 (review M1)', () => {
+    expect(names(NAMES.doubles)).toBeLessThanOrEqual(namesRoom(320, true, '14:40'));
+  });
+
+  it('with no label (finished, no court, online): which details cut the doubles pair, at 320 and 360', () => {
     const measured: Record<string, string> = {};
     for (const width of WIDTHS)
       for (const shown of DETAILS)
         measured[`${width} | ${shown}`] = fits(
-          geist('controlInk')(NAMES.doubles),
+          names(NAMES.doubles),
           namesRoom(width, false, shown),
         );
     dump('unlabelled', measured);
-    expect(measured).toEqual({
-      '320 | 14:40': 'fits',
-      '320 | 14:40 BST': 'fits',
-      '320 | 14-9': 'fits',
-      '320 | 21-15 21-18': 'fits',
-      '320 | 21-19 18-21 14-9': 'cut',
-      '360 | 14:40': 'fits',
-      '360 | 14:40 BST': 'fits',
-      '360 | 14-9': 'fits',
-      '360 | 21-15 21-18': 'fits',
-      '360 | 21-19 18-21 14-9': 'fits',
-    });
+    const cut = Object.entries(measured)
+      .filter(([, verdict]) => verdict === 'cut')
+      .map(([at]) => at);
+    expect(cut).toEqual(CUT_UNLABELLED);
   });
 });
 
@@ -248,6 +315,23 @@ describe('a court card’s head: the name one line, the state chip whole', () =>
             geist('controlSmall'),
           ),
         ).toBe(1);
+  });
+
+  it('"Taps at risk" is one line in the card in every language, at 320 (review I1)', () => {
+    const measured: Record<string, number> = {};
+    for (const lang of LANGS)
+      measured[lang] = linesOf(
+        said(lang, 'matchday.sending.atRisk'),
+        cardInner(320),
+        geist('controlSmall'),
+      );
+    expect(measured).toEqual({ en: 1, es: 1, fr: 1, nl: 1 });
+    // Anti-vacuity: an empty word is one line too, so each must measure as words.
+    expect(
+      Math.min(
+        ...LANGS.map((lang) => geist('controlSmall')(said(lang, 'matchday.sending.atRisk'))),
+      ),
+    ).toBeGreaterThan(50);
   });
 
   it('"Finished" is one line in the card in every language, at 320', () => {
@@ -398,7 +482,7 @@ describe('the list’s head, banner, chips and sections', () => {
 });
 
 describe('what a thumb hits (the dispatch’s ruling 6)', () => {
-  it('every pressable on the list is 48 dp: Home’s button, a venue chip, Try again, a match row', () => {
+  it('the tokens the list’s pressables are sized from are 48 dp (the screen test reads each one back)', () => {
     expect(layout.touch).toBe(48);
     expect(layout.iconButton).toBe(48);
   });

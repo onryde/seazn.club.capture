@@ -24,13 +24,17 @@ export const ApprovalBanner = memo(function ApprovalBanner({
   );
 });
 
-/** A Swiss stage with no round to name has no round line: it gets the generic web-desk line with its own label. */
+/**
+ * A Swiss stage with no round to name has no round line: it gets the generic web-desk line with its own label. So does
+ * a round of 1, which has no round before it to call complete (review M5: never "Round 0 complete").
+ */
 function bannerLine({ approval, canApprove }: Banner, t: Translator['t']): string {
   if (approval.kind === 'draw') {
     const division = approval.divisionName;
     return t(canApprove ? 'matchday.approve.draw' : 'matchday.approve.webOnly.draw', { division });
   }
-  if (approval.round === null) return t('matchday.approve.webOnly', { label: approval.label });
+  if (approval.round === null || approval.round <= 1)
+    return t('matchday.approve.webOnly', { label: approval.label });
   const done = String(approval.round - 1);
   if (!canApprove) return t('matchday.approve.webOnly.swiss', { done });
   return t('matchday.approve.swiss', { done, round: String(approval.round) });
