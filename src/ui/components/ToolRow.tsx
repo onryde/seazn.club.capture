@@ -57,13 +57,24 @@ export const ToolRow = memo(function ToolRow({
   const empty = tools.length === 0 || slots === undefined ? 0 : Math.max(0, slots - tools.length);
   return (
     <View testID={testID} style={styles.row}>
-      {tools.map((tool) =>
-        tool.id === holdTool ? (
-          <HeldToolButton key={tool.id} tool={tool} onTool={onTool} brightInk={brightInk} />
+      {tools.map((tool) => {
+        const button =
+          tool.id === holdTool ? (
+            <HeldToolButton key={tool.id} tool={tool} onTool={onTool} brightInk={brightInk} />
+          ) : (
+            <ToolButton key={tool.id} tool={tool} onTool={onTool} brightInk={brightInk} />
+          );
+        // A fixed row wraps every tool in the same bare slot as an empty one: the cell's padding and border then sit
+        // inside a slot whose share of the row is the empty slot's, so a tool keeps its place and width when another
+        // goes (device recheck, build 1098: flex shares counted the padding and the cells moved up to 27 px).
+        return slots === undefined ? (
+          button
         ) : (
-          <ToolButton key={tool.id} tool={tool} onTool={onTool} brightInk={brightInk} />
-        ),
-      )}
+          <View key={tool.id} testID={`tool-slot-${tool.id}`} style={styles.slot}>
+            {button}
+          </View>
+        );
+      })}
       {Array.from({ length: empty }, (_, i) => (
         <View key={`empty-${i}`} style={styles.slot} />
       ))}
@@ -152,7 +163,7 @@ const HeldToolButton = memo(function HeldToolButton({
 const styles = StyleSheet.create({
   held: { overflow: 'hidden' },
   row: { flexDirection: 'row', gap: space.sm },
-  slot: { flex: 1, minWidth: 0 },
+  slot: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0 },
   cell: {
     flex: 1,
     minWidth: 0,

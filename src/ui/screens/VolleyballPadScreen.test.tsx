@@ -172,12 +172,14 @@ describe.each(['en', 'fr', 'nl'] as const)('layout A, indoor, in %s', (lang) => 
   it('keeps four slots when Set score goes after the first rally: Timeout, Sub and More stay as they were', async () => {
     const app = await started(VOLLEYBALL_INDOOR_SEED, lang);
     const row = () => [...screen.getByTestId('tool-row').children];
-    const roleOf = () => row().map((child) => child.getAttribute('role'));
+    const holds = () => row().map((child) => child.querySelector('[role="button"]') !== null);
     const before = drawn();
-    expect(roleOf()).toEqual(['button', 'button', 'button', 'button']);
+    expect(holds()).toEqual([true, true, true, true]);
     await rally(app, 'first');
     expect(row()).toHaveLength(4);
-    expect(roleOf()).toEqual(['button', 'button', 'button', null]);
+    expect(holds()).toEqual([true, true, true, false]);
+    // every cell is the same bare slot, a tool's and the empty one (device recheck, build 1098)
+    expect(new Set(row().map((child) => child.className)).size).toBe(1);
     expect(drawn()).toEqual(before.slice(0, 3));
   });
 

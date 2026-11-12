@@ -99,10 +99,26 @@ describe('ToolRow with fixed slots', () => {
     rerender(<ToolRow tools={three} slots={4} onTool={vi.fn()} />);
     expect(screen.getByTestId('tool-row').children).toHaveLength(4);
     expect(screen.getAllByRole('button')).toHaveLength(3);
-    // the three that stay are the first three cells, in order, and the fourth child is not a button
+    // the three that stay are in the first three cells, in order, and the fourth cell holds no button
     expect(
-      [...screen.getByTestId('tool-row').children].map((child) => child.getAttribute('role')),
-    ).toEqual(['button', 'button', 'button', null]);
+      [...screen.getByTestId('tool-row').children].map(
+        (child) => child.querySelector('[role="button"]') !== null,
+      ),
+    ).toEqual([true, true, true, false]);
+  });
+
+  // Device recheck, build 1098: a button's padding and border counted in its flex share, so the bare empty slot was
+  // narrower and the buttons moved up to 27 px. Every cell of a fixed row is now the same bare slot, the button inside it.
+  it('draws every cell, a tool’s and the empty one, as the same bare slot', () => {
+    renderWithPorts(<ToolRow tools={three} slots={4} onTool={vi.fn()} />);
+    const cells = [...screen.getByTestId('tool-row').children];
+    expect(cells.map((one) => one.getAttribute('role'))).toEqual([null, null, null, null]);
+    expect(new Set(cells.map((one) => one.className)).size).toBe(1);
+    expect(cells.slice(0, 3).map((one) => one.getAttribute('data-testid'))).toEqual([
+      'tool-slot-a',
+      'tool-slot-b',
+      'tool-slot-c',
+    ]);
   });
 
   it('without slots the row is only the tools offered, as every other sport’s', () => {
