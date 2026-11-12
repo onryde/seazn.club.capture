@@ -1,6 +1,6 @@
 # S2-7 — Remote Scoring, tennis: design
 
-Status: **draft, 2026-11-12.** The owner chose tennis as the next sport ("tennis?", 2026-11-12), skipped the
+Status: **approved by the owner, 2026-11-12** ("approve"). The owner chose tennis as the next sport ("tennis?", 2026-11-12), skipped the
 brainstorm's questions and asked for it to be designed "like volleyball, badminton, crickets", taking the earlier
 sports' "findings, pros, cons" (2026-11-12). Every ruling below is therefore _the controller's_, applying the
 recommendation the controller would give as product owner (standing instruction of 2026-11-08,
