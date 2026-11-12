@@ -121,8 +121,8 @@ function start(display: TennisDisplay): PadView<TennisPadKey>['start'] {
 // The strip
 // ---------------------------------------------------------------------------------------------------------------
 
-/** What a waiting default or an ending says in the strip: three lines, in the room of two slots. */
-const SAID_LINES = 3;
+/** What a waiting default or an ending says in the strip: two lines, in the room of two slots. */
+const SAID_LINES = 2;
 
 /**
  * "Set 2 of 3", then the breaker or the note, then "Change ends": three slots, always the same, so no fact coming or going

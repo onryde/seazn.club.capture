@@ -261,13 +261,13 @@ describe('the strip', () => {
       expect(padOf(specs).strip.map((item) => item.slot)).toEqual(['set', 'note', 'ends']);
   });
 
-  it('says a default is waiting for the organiser, over the note slot, in three lines', () => {
+  it('says a default is waiting for the organiser, over the note slot, in two lines', () => {
     const view = padOf([start(), sanction('A', 'default')]);
     expect(view.strip.map((item) => item.slot)).toEqual(['set', 'note']);
     expect(slot(view, 'note')).toEqual({
       slot: 'note',
       text: { key: `${T}endingPending` },
-      lines: 3,
+      lines: 2,
     });
   });
 });
@@ -282,7 +282,7 @@ describe('the match’s end', () => {
       vars: { ending: { key: `${T}ending.retired` }, side: AWAY_NAME },
     };
     expect(view.card).toEqual({ kind: 'resultRecorded', undoLeft: null, title });
-    expect(slot(view, 'note')).toEqual({ slot: 'note', text: title, lines: 3 });
+    expect(slot(view, 'note')).toEqual({ slot: 'note', text: title, lines: 2 });
     expect(view.halves.map((half) => half.tappable)).toEqual([false, false]);
     expect(view.tools).toEqual([]);
   });

@@ -114,11 +114,13 @@ describe('tennis: the tool row at 320 and 360 in four languages', () => {
   );
 
   // Anti-vacuity: the full Violation does not fit in any language but one that has a short word of its own, so the short
-  // form is needed; the owner's Dutch "Overtr." (51.5 dp) is wider than the 48 dp cell, and "Overtreding" far wider.
+  // form is needed; the Dutch "Overtr." (51.5 dp) is wider than the 48 dp cell and "Overtr" (47.6, the owner's ruling 236) is not.
   it('would not hold the full Violation in a cell at 320 in any language, which is why every language has a short word', () => {
     for (const [lang, dictionary] of LANGUAGES)
       expect(fits(said(dictionary, `${TN}.tool.violation`), toolRoom(320)), lang).toBe(false);
     expect(fits('Overtr.', toolRoom(320))).toBe(false);
+    expect(fits('Overtr', toolRoom(320))).toBe(true);
+    expect(said(nl, `${TN}.tool.violationShort`)).toBe('Overtr');
   });
 
   it('would not hold the full Award game in French or Dutch, which is why they have a short word', () => {
@@ -156,9 +158,10 @@ describe('tennis: the strip at 320 and 360 in four languages', () => {
 
   // A default waiting, or an ending, takes the two slots' room for itself: two lines, no word broken, with the longest
   // staging name the organiser can type on the side (the cut is an ellipsis, never a broken word).
+  const SAID_LINES = 2;
   const LONG = 'Springfield Tennis Club';
   it.each(LANGUAGES)(
-    '%s: the waiting default and every ending in three lines of a two-slot strip, no word broken',
+    '%s: the waiting default and every ending in two lines of a two-slot strip, no word broken, inside the strip’s reserved height',
     (_lang, dictionary: Dictionary) => {
       const word = (kind: string) => said(dictionary, `${TN}.ending.${kind}`);
       const texts = [
@@ -174,8 +177,31 @@ describe('tennis: the strip at 320 and 360 in four languages', () => {
           expect(
             linesOf(text, stripHalf(width), unitWidth),
             `${text} @${width}`,
-          ).toBeLessThanOrEqual(3);
+          ).toBeLessThanOrEqual(SAID_LINES);
+          // The reserved height: SAID_LINES strip lines, one line of which the strip always holds.
+          expect(
+            linesOf(text, stripHalf(width), unitWidth) * typeScale.metricUnit.lineHeight,
+            `${text} @${width}`,
+          ).toBeLessThanOrEqual(SAID_LINES * typeScale.metricUnit.lineHeight);
         }
+    },
+  );
+});
+
+describe('tennis: the serve plate at 320 and 360 in four languages', () => {
+  const plateWidth = (text: string) =>
+    barlow700.width(text.toUpperCase(), typeScale.state.fontSize) +
+    typeScale.state.letterSpacing * [...text].length;
+
+  // The plate shares a half's head with the names: it takes at most two fifths of the inner width (volleyball ships the same words), with its padding.
+  it.each(LANGUAGES)(
+    '%s: "Serving" in two fifths of a half’s head',
+    (lang, dictionary: Dictionary) => {
+      for (const width of WIDTHS)
+        expect(
+          plateWidth(said(dictionary, `${TN}.serving`)) + 2 * space.sm,
+          `${lang} @${width}`,
+        ).toBeLessThanOrEqual((halfInner(width) * 2) / 5);
     },
   );
 });
@@ -364,7 +390,7 @@ describe('tennis: every word it has is measured here (the sweep)', () => {
   /** Words the fit tests do not measure, each with the reason. */
   const ELSEWHERE: Readonly<Record<string, string>> = {
     hint: 'the half’s spoken hint: never drawn (the kit draws the word Tap)',
-    serving: 'the plate’s word: the kit’s serving plate fit (padFit, a half)',
+    serving: 'the plate’s word: the serve plate group above',
     setsTally: 'said to a screen reader only',
     'foot.gamesSaid': 'said to a screen reader only',
     'level.warning':
