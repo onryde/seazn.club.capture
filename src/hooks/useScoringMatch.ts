@@ -60,6 +60,15 @@ export function useScoringMatch<S extends SportTypes, Pad>(
   );
   // A decided match's Undo is open for 45 s from this phone's own deciding tap (owner, 2026-11-03: the pad's `decidedAt`,
   // dated by the reducer and kept by the hub); the sport's pad hook is handed the pad with that window applied.
+  const unfoldable = view?.kind === 'unfoldable' ? view : null;
+  const detail = unfoldable?.detail;
+  const reason = unfoldable?.reason;
+  const { logger } = ports;
+  // A match that cannot be folded says so in words; why it cannot goes in the record, once per cause (never a console).
+  useEffect(() => {
+    if (detail !== undefined && reason !== undefined)
+      logger.warn('scoring.unfoldable', { reason, cause: detail });
+  }, [logger, reason, detail]);
   const windowed = useUndoWindow(ports, view?.kind === 'pad' ? view : null);
   const pad = usePad(ports, runner, windowed);
   return resolved(snapshot, view, pad);

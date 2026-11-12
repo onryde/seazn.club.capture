@@ -1,4 +1,9 @@
-import { foldMatchWithStoppage, type EventEnvelope, type LineupPair } from '@seazn/engine/core';
+import {
+  EngineError,
+  foldMatchWithStoppage,
+  type EventEnvelope,
+  type LineupPair,
+} from '@seazn/engine/core';
 import { tennisPadRules } from '@seazn/engine/pad';
 import { serveContext, type NestedState } from '@seazn/engine/sports/nested';
 import { tennis } from '@seazn/engine/sports/tennis';
@@ -97,7 +102,7 @@ export function foldTennis(input: SportFoldInput): SportFold<TennisTypes> {
     mayAppend(match, before, next),
   );
   const folded = foldOf(cfg, lineups, stream.envelopes);
-  if (folded === null) return { kind: 'unfoldable', reason: 'ledger' };
+  if (typeof folded === 'string') return { kind: 'unfoldable', reason: 'ledger', detail: folded };
   const legalTaps = input.queued.filter((tap) => stream.legal.includes(tap.key));
   const undoable =
     undoTarget(input.ledger, legalTaps, input.ownEventIds, () => true).kind !== 'blocked';
@@ -114,35 +119,54 @@ export function foldTennis(input: SportFoldInput): SportFold<TennisTypes> {
 /** Whether the server would append `next` after `before`: the web's own refusal of a double undo, then the engine's. */
 function mayAppend(match: Match, before: readonly EventEnvelope[], next: EventEnvelope): boolean {
   if (voidsAgain(before, next)) return false;
-  return tennisRefusalOf(match.engine, [...before, next]) === null;
+  try {
+    return tennisRefusalOf(match.engine, [...before, next]) === null;
+  } catch {
+    // The engine choked on the server's own bytes with something that is not its refusal (damaged data): no queued tap is
+    // judged legal on top of them. `foldOf` meets the same bytes next and says why the match is unfoldable.
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------------------------------------------
 // The fold, and what it says of each event
 // ---------------------------------------------------------------------------------------------------------------
 
-/** The read path's tolerant fold with each standing event's facts; null for a stream the engine will not replay. */
+/**
+ * The read path's tolerant fold with each standing event's facts, or the detail of why the stream cannot be replayed: the
+ * engine's refusal (`engine:<code>`) or damaged server data that made the engine throw something of its own
+ * (`damaged:<name>`). A throw from OUR callback (`factsOf`, `tally`) is a bug in this build, not the ledger's, and is rethrown
+ * as the sibling folds rethrow what is not the engine's, never dressed up as "can't be worked out".
+ */
 function foldOf(
   cfg: TennisCfg,
   lineups: LineupPair,
   envelopes: readonly EventEnvelope[],
-): Folded | null {
+): Folded | string {
   const facts = new Map<string, TennisFacts>();
   let before = { sets: 0, games: 0 };
+  let ours: { readonly error: unknown } | null = null;
   try {
     const { state } = foldMatchWithStoppage(tennis, cfg, lineups, envelopes, {
       onFolded: (after, event) => {
-        facts.set(event.id, factsOf(before, after));
-        before = tally(after);
+        try {
+          facts.set(event.id, factsOf(before, after));
+          before = tally(after);
+        } catch (error) {
+          ours = { error };
+          throw error;
+        }
       },
     });
     return { state, facts };
-  } catch {
-    // Any throw, the engine's own refusal or not: a ledger this build cannot replay is an unfoldable match, which the screen
-    // says in words (`ScoringStateCard`), never a throw out of a render (S2-7 B1 review carry; `tennisFold.malformed.test.ts`).
-    return null;
+  } catch (error) {
+    if (ours !== null) throw (ours as { readonly error: unknown }).error;
+    return EngineError.is(error) ? `engine:${error.code}` : `damaged:${nameOf(error)}`;
   }
 }
+
+/** The name of a thrown value, never its message (which can quote the server's bytes). */
+const nameOf = (error: unknown): string => (error instanceof Error ? error.name : typeof error);
 
 const tally = (state: Readonly<NestedState>) => ({
   sets: state.sets.length,
@@ -233,7 +257,7 @@ function prefixFacts(
 ): TennisFacts | undefined {
   const target = envelopes[at];
   const prefix = foldOf(cfg, match.engine.lineups, envelopes.slice(0, at + 1));
-  return target && prefix?.facts.get(target.id);
+  return target && typeof prefix !== 'string' ? prefix.facts.get(target.id) : undefined;
 }
 
 /** The tap Undo takes back, as the last-tap line names it, or null for the start (whose Undo shows no line) or an ending. */

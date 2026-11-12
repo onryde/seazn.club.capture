@@ -46,7 +46,7 @@ export type MatchView<S extends SportTypes = SportTypes> =
   /** The ledger is over the read's size cap: the phone cannot know where the match stands. */
   | { readonly kind: 'tooLarge' }
   /** The match cannot be folded (a seat with no entrant, a config or a ledger the engine refuses). */
-  | { readonly kind: 'unfoldable'; readonly reason: Unfoldable }
+  | { readonly kind: 'unfoldable'; readonly reason: Unfoldable; readonly detail?: string }
   /** The server needs a newer app, and the match cannot be folded to show behind the banner. */
   | { readonly kind: 'outdated'; readonly unsent: number }
   | MatchPad<S>;
@@ -91,7 +91,10 @@ export function viewOf<S extends SportTypes>(state: MatchState<S>): MatchView<S>
   if (fold === null || fold.kind === 'unfoldable') {
     const unsent = state.sync.queue.pending.length;
     if (isOutdated(state)) return { kind: 'outdated', unsent };
-    return { kind: 'unfoldable', reason: fold === null ? 'cfg' : fold.reason };
+    if (fold === null) return { kind: 'unfoldable', reason: 'cfg' };
+    return fold.detail === undefined
+      ? { kind: 'unfoldable', reason: fold.reason }
+      : { kind: 'unfoldable', reason: fold.reason, detail: fold.detail };
   }
   return padOf(state, fold);
 }

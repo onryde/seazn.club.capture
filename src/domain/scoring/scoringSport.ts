@@ -55,7 +55,12 @@ export type SportFold<S extends SportTypes> =
       readonly legalQueued: readonly string[];
       readonly history: readonly PadHistoryGroup<S['padKey']>[];
     }
-  | { readonly kind: 'unfoldable'; readonly reason: Unfoldable };
+  | {
+      readonly kind: 'unfoldable';
+      readonly reason: Unfoldable;
+      /** Why, for the record and never for the screen: a code or an error's name, no message and no payload. */
+      readonly detail?: string;
+    };
 
 /**
  * A tap as the event the server records. `base` is optional and a sport's to set: a count its payload was made at (table

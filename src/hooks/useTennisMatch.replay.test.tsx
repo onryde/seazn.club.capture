@@ -224,7 +224,7 @@ describe('the Australian Open 2022 men’s final: Nadal 3-2 Medvedev', () => {
   );
 });
 
-describe('the Tokyo 2020 Olympic men’s doubles final: Mektic / Pavic 2-1 Cilic / Dodig', () => {
+describe('a no-ad doubles match with a match tie-break, on the set scores of the Tokyo 2020 final: 6-4 3-6 [10-6]', () => {
   it(
     'a no-ad game ends on its deciding point at 40-40, and the match tie-break is [10-6]',
     async () => {
