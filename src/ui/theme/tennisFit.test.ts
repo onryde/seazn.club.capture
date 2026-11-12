@@ -412,12 +412,12 @@ describe('tennis: the worst live scoreboard fits a half’s height (arithmetic; 
   );
   const DOT = layout.padDot + layout.padDotGap;
   /** Lines of the row beside `sets` finished-set boxes and twelve dots, as the width model of the row above counts them. */
-  const linesOf12 = (width: number, dictionary: Dictionary, sets: number) => {
+  const linesOfDots = (width: number, dictionary: Dictionary, sets: number, dots: number) => {
     const room = halfInner(width) - space.sm - unitWidth(said(dictionary, 'scoring.pad.tap'));
     const lead =
       labelWidth(said(dictionary, `${TN}.board.sets`)) + space.xs + sets * (boxWidth + space.xs);
     const first = Math.max(0, Math.floor((room - lead + layout.padDotGap) / DOT));
-    return 1 + Math.ceil(Math.max(0, 12 - first) / Math.floor((room + layout.padDotGap) / DOT));
+    return 1 + Math.ceil(Math.max(0, dots - first) / Math.floor((room + layout.padDotGap) / DOT));
   };
   const rowHeight = (lines: number) => 22 + (lines - 1) * (layout.padDot + layout.padDotGap);
   const content = (lines: number, server: boolean) =>
@@ -437,31 +437,46 @@ describe('tennis: the worst live scoreboard fits a half’s height (arithmetic; 
   it.each(LANGUAGES)(
     '%s: best of 5 (four sets over) with twelve dots, doubles’ server line included, fits the half at 360 × 724',
     (lang, dictionary: Dictionary) => {
-      const lines = linesOf12(360, dictionary, 4);
+      const lines = linesOfDots(360, dictionary, 4, 6);
       expect(content(lines, true), `${lang} ${lines} lines`).toBeLessThanOrEqual(halfAt(724));
     },
   );
 
-  // At 320 × 640 the half is 201: the call at its smallest, the names and the server's line leave 39 dp, which holds the
-  // row's first line and one wrapped line only when the names or the server's line take less than they are budgeted. The
-  // worst board (four sets over, twelve dots) overflows that budget by these dp, pinned so it cannot grow unseen; the
-  // overflow lands in the half's 16 dp padding first, and the device check judges the rest.
+  // Round 2 (coordinator): dots are the games THIS side won, and a side wins at most six in a set that ends or goes to a
+  // tie-break (6-6 is six dots each), so the realistic worst is four sets over and six dots with two-digit labels (2, 4, 6, 8,
+  // 10, 12) in a doubles half, es/fr. At 320 × 640 the half is 201.
+  it('draws a two-digit game number inside the 20 dp dot', () => {
+    expect(barlow700.width('12', typeScale.dotNumber.fontSize)).toBeLessThanOrEqual(layout.padDot);
+  });
+
+  it.each(LANGUAGES)(
+    '%s: four sets over and six dots take two lines: a singles half fits at 320 × 640, a doubles half is over by 5 dp',
+    (lang, dictionary: Dictionary) => {
+      const lines = linesOfDots(320, dictionary, 4, 6);
+      expect(lines, lang).toBe(2);
+      expect(content(lines, false), lang).toBeLessThanOrEqual(halfAt(640));
+      expect(content(lines, true) - halfAt(640), lang).toBe(5);
+    },
+  );
+
+  // DEVICE-ONLY known overflow: an advantage set (no tie-break, where the cfg allows) can pass six games won; twelve dots
+  // beside four sets over take a third line in es/fr. Pinned (doubles) so it cannot grow unseen; the overflow lands in the
+  // half's padding first.
   it.each([
-    ['en', en, 5, 0],
-    ['es', es, 27, 9],
-    ['fr', fr, 27, 9],
-    ['nl', nl, 5, 0],
+    ['en', en, 5],
+    ['es', es, 27],
+    ['fr', fr, 27],
+    ['nl', nl, 5],
   ] as const)(
-    '%s: at 320 × 640 the worst board is over the budget by %i dp with the doubles’ server line, %i dp without',
-    (lang, dictionary: Dictionary, doubles, singles) => {
-      const lines = linesOf12(320, dictionary, 4);
-      expect(Math.max(0, content(lines, true) - halfAt(640)), lang).toBe(doubles);
-      expect(Math.max(0, content(lines, false) - halfAt(640)), lang).toBe(singles);
+    '%s: twelve dots (an advantage set) beside four sets over, doubles, are over the 320 × 640 budget by %i dp',
+    (lang, dictionary: Dictionary, over) => {
+      const lines = linesOfDots(320, dictionary, 4, 12);
+      expect(Math.max(0, content(lines, true) - halfAt(640)), lang).toBe(over);
     },
   );
 
   it('two dot lines (twelve dots beside two set boxes) fit a singles half at 320 × 640', () => {
-    expect(content(linesOf12(320, en, 2), false)).toBeLessThanOrEqual(halfAt(640));
+    expect(content(linesOfDots(320, en, 2, 12), false)).toBeLessThanOrEqual(halfAt(640));
   });
 });
 
