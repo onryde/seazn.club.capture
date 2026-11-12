@@ -34,16 +34,17 @@ describe('a volleyball match from the scan to History', () => {
     press(en['scoring.start.confirm']);
     app.setNow(TEST_NOW);
     await flush(200);
-    // The pad is volleyball's: its tool row, not another sport's.
+    // The pad is volleyball's: its tool row, not another sport's. Set score is last, so the others keep their place when
+    // it goes after a set's first rally (F3, device exit bar).
     expect(
       within(screen.getByTestId('tool-row'))
         .getAllByRole('button')
         .map((button) => button.getAttribute('aria-label')),
     ).toEqual([
-      en['scoring.volleyball.tool.setScore'],
       en['scoring.volleyball.tool.timeout'],
       en['scoring.volleyball.sheet.sub'],
       en['scoring.volleyball.tool.more'],
+      en['scoring.volleyball.tool.setScore'],
     ]);
     app.setNow(new Date(TEST_NOW.getTime() + 2_000));
     act(() => fireEvent.click(half('second')));
