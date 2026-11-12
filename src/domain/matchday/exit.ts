@@ -51,16 +51,14 @@ export type SendingCard = {
  * queue still holds taps it can send. A queue that cannot send (dead, held for the scorer's answer) or be read keeps the
  * card Home already has for it, with its Dismiss and its orange words, so it is never told as "sending". A match whose
  * queue has emptied has no card. The leftover cards of the matches that got one are taken out, so no match is counted
- * twice.
+ * twice. The saved Remote Scoring match is not one of them: it says what is unsent on its own Continue card (owner
+ * ruling T7 c1), so it gets no second card.
  */
 export function sendingCards(
   courts: ReadonlyMap<string, string>,
   home: ScoringHome,
 ): { readonly cards: readonly SendingCard[]; readonly leftovers: readonly ScoringLeftover[] } {
   const cards: SendingCard[] = [];
-  const { current } = home;
-  if (current !== null && current.state === 'live' && current.finished === null)
-    add(cards, courts, current.fixtureId, current.label, current.unsent);
   const leftovers = home.leftovers.filter((one) => {
     if (one.kind !== 'live' || !courts.has(one.fixtureId)) return true;
     add(cards, courts, one.fixtureId, one.label, one.unsent);

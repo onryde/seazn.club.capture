@@ -146,9 +146,37 @@ function createScoringHub(ports: Ports): ScoringHub {
     if (!nobodyHolds(id)) return false;
     // Fails closed: a list the phone will not read spares the match this round, never deletes it.
     const opened = await ports.matchDayStore.openedKnown();
-    if (opened === null || opened.includes(id)) return false;
+    if (opened === null || (opened.includes(id) && dayHeld())) return false;
     // The list was read across an await: what a screen, a scan or a save took meanwhile still counts.
     return nobodyHolds(id);
+  };
+
+  /**
+   * Match Day holds its opened matches only while a day code is saved. With none (an Exit that died or was refused
+   * between its steps, or a code that ended) a list is stale and spares nothing. A store that has not loaded says
+   * nothing, so the list stands.
+   */
+  const dayHeld = (): boolean => {
+    const snapshot = ports.modeStore.getSnapshot();
+    return snapshot.status !== 'ready' || snapshot.saved.codes.matchday !== undefined;
+  };
+
+  /** Clears what a day that is gone left behind: its opened list, and notes of matches no longer sending. Refusals are recorded. */
+  const healDay = async (): Promise<void> => {
+    try {
+      if (!dayHeld() && ((await ports.matchDayStore.openedKnown()) ?? []).length > 0)
+        await ports.matchDayStore.clearOpened();
+      const queues = new Map<string, number>();
+      for (const entry of await ports.tapQueue.list())
+        queues.set(
+          entry.kind === 'queue' ? entry.queue.fixtureId : entry.fixtureId,
+          entry.kind === 'queue' ? entry.queue.pending.length : 1,
+        );
+      for (const id of await ports.matchDayStore.sending())
+        if ((queues.get(id[0]) ?? 0) === 0) await letGoOfSending(id[0]);
+    } catch {
+      ports.logger.warn('matchday.heal-refused');
+    }
   };
 
   const nobodyHolds = (id: string): boolean => {
@@ -223,6 +251,7 @@ function createScoringHub(ports: Ports): ScoringHub {
 
   const resume = async (): Promise<void> => {
     await expireKept();
+    await healDay();
     for (const entry of await ports.tapQueue.list()) {
       if (entry.kind !== 'queue') continue;
       const { fixtureId, pending, dead } = entry.queue;

@@ -166,14 +166,16 @@ describe('Home after Exit: the Sending card', () => {
     expect(screen.getByText(en['home.scoring.unreadable'])).toBeTruthy();
   });
 
-  it('the saved match is a Sending card too, beside its Continue card', async () => {
+  it('the saved match keeps its Continue card and its unsent line, and gets no Sending card', async () => {
     await homeWith(
       { [FAKE_MATCH]: 'Court 1' },
       (fakes) => leave(fakes, queueHolding(FAKE_MATCH, 3), LINK),
       { kvSeed: inMatch() },
     );
-    expect(screen.getByText('Sending 3 taps · Court 1')).toBeTruthy();
+    expect(cards()).toHaveLength(0);
+    expect(screen.queryByText(/Sending/)).toBeNull();
     expect(screen.getByTestId('scoring-continue')).toBeTruthy();
+    expect(screen.getByText('3 taps not sent yet')).toBeTruthy();
   });
 
   it('with nothing noted, or a note the phone cannot read, Home is exactly as it was', async () => {

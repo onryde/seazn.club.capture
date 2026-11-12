@@ -132,7 +132,7 @@ deferring its push alerts (brainstormed with the owner, 2026-11-03 to
 of the day on the courts it covers, by court (owner, 2026-11-07: layout B);
 a tap on a match asks the server for that match's own scoring link and opens
 Remote Scoring on it exactly as a scan of its printed code would, and Back
-returns to the list (§6). It adds no pad, queue or sync of its own. On a code
+returns to the list (S4 design §6). It adds no pad, queue or sync of its own. On a code
 with "can approve draws" the list reviews a Swiss round's next pairings or a
 knockout draw read-only and approves it with a 3 s hold; the phone never
 computes or edits a pairing or a draw (decision record ruling 14). The code is
@@ -229,7 +229,7 @@ src/
                    # match), the scoring link store (secure store) and the Realtime port;
                    # Match Day's: its port (the web's day, open and approval calls) and its store
                    # (the day's last copy, a file at documentDirectory/matchday/day.json; the matches
-                   # it opened, `matchday.opened`, and the one open, `matchday.open`, in the secure store)
+                   # it opened, `matchday.opened`, and the one open, `matchday.open`, and the matches Exit left sending, `matchday.sending`, court names only, in the secure store)
 modules/
   capture-engine/  # the engine port, the fake, and the native Expo module (StreamPack, Android)
   code-scanner/    # Expo Module. Google's code scanner (Android), iOS stub, fake.
@@ -742,7 +742,7 @@ thermal member. Only transport trouble degrades a session.
   3. **After an interruption** — background → foreground, process death and
      cold start, a refused write, the engine failing or ending mid-flow.
   4. **Another mode, orientation or language** — stream / scoring /
-     dashboard, portrait / landscape / flat, en / es / fr / nl.
+     matchday, portrait / landscape / flat, en / es / fr / nl.
 - **Mutate every guard once** and watch a test fail. A guard nothing kills
   is decoration; two guards covering for each other are each untested.
 - **No expected value derived from the code under test.** Copy comes from

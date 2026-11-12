@@ -57,7 +57,8 @@ export function useMatchDayExit(note: () => void = noNote): {
       });
   }, [ports]);
   const stay = useCallback(() => {
-    if (!shown.current) return;
+    // Back while Exit is leaving is ignored: Exit finishes and goes Home, and no bounce is noted for a screen it left.
+    if (!shown.current || exiting.current) return;
     shown.current = false;
     setSheet(null);
     note();
@@ -94,12 +95,16 @@ async function readStake(
 async function leave(ports: Ports): Promise<void> {
   const { stake, unsent } = await readStake(ports);
   ports.logger.info('matchday.exit', { unsent: exitRecorded(stake) });
+  // The courts come from the day's copy, so they are noted before the copy goes. The list is let go of BEFORE the code
+  // is forgotten (a death between the two leaves a code and no list, which is harmless: no token is stranded), and the
+  // hub is nudged last, so its sweep sees neither the list nor the day (review I1, I2). A queue with taps keeps its link
+  // by the hub's own tidy rule, so nothing is lost by clearing first.
   await noteSending(ports, unsent);
+  await letGo(ports);
+  await forgetDay(ports);
   scoringHubOf(ports)
     .resume()
     .catch(() => ports.logger.warn('matchday.exit-send-refused'));
-  await forgetDay(ports);
-  await letGo(ports);
   ports.navigation.go('home');
 }
 

@@ -116,7 +116,7 @@ describe('sendingCards: Home after Exit', () => {
     expect(sendingCards(new Map(), home([live('a', 3)])).cards).toEqual([]);
   });
 
-  it('the saved match is a card too, while it is live with taps to send', () => {
+  it('the saved match gets no card, noted or not: its Continue card says what is unsent', () => {
     const current: ScoringCurrent = {
       fixtureId: 'a',
       label: 'Ng v Brown',
@@ -124,13 +124,9 @@ describe('sendingCards: Home after Exit', () => {
       state: 'live',
       finished: null,
     };
-    expect(sendingCards(courts, home([], current)).cards).toEqual([
-      { fixtureId: 'a', name: 'Court 2', unsent: 3 },
-    ]);
-    expect(sendingCards(courts, home([], { ...current, state: 'dead' })).cards).toEqual([]);
-    expect(
-      sendingCards(courts, home([], { ...current, finished: { score: '21-5' } })).cards,
-    ).toEqual([]);
+    const out = sendingCards(courts, home([], current));
+    expect(out.cards).toEqual([]);
+    expect(out.leftovers).toEqual([]);
   });
 
   it('no court named for any match, no cards', () => {

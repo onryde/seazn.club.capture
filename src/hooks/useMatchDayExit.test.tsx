@@ -372,6 +372,152 @@ describe('the hub lets go of a match Exit left sending', () => {
   });
 });
 
+/** A kv whose deletes land late, as a secure store's do: what a sweep sees meanwhile is what is left. */
+function delayDeletes(fakes: FakePorts, ms = 50): void {
+  const real = fakes.kv.delete.bind(fakes.kv);
+  vi.spyOn(fakes.kv, 'delete').mockImplementation(async (key: string) => {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+    return real(key);
+  });
+}
+
+describe('Exit clears the list and forgets the day BEFORE it nudges the hub (review I1, I2)', () => {
+  it('the hub is nudged when opened and the day code are already gone', async () => {
+    const view = await mount({ taps: 1 });
+    let seen: { opened: readonly string[]; saved: boolean } | null = null;
+    vi.spyOn(scoringHubOf(view.ports), 'resume').mockImplementation(async () => {
+      seen = { opened: await view.ports.matchDayStore.opened(), saved: savedCode(view) !== null };
+    });
+    await act(() => view.result.current.exit());
+    expect(seen).toEqual({ opened: [], saved: false });
+  });
+
+  it('the list is cleared before the day code is forgotten', async () => {
+    const view = await mount({ taps: 1 });
+    let openedAtForget: readonly string[] | null = null;
+    const real = view.ports.modeStore.forget.bind(view.ports.modeStore);
+    vi.spyOn(view.ports.modeStore, 'forget').mockImplementation(async (...args) => {
+      openedAtForget = await view.ports.matchDayStore.opened();
+      return real(...args);
+    });
+    await act(() => view.result.current.exit());
+    expect(openedAtForget).toEqual([]);
+  });
+
+  it('with deletes landing late, a match whose queue is empty is let go by the nudge, link and all', async () => {
+    const view = await mount({
+      opened: [FIXTURE],
+      prepare: async (fakes) => {
+        await fakes.tapQueue.save(queueHolding(FIXTURE, 0));
+      },
+    });
+    delayDeletes(view);
+    await act(async () => {
+      const left = view.result.current.exit();
+      await vi.advanceTimersByTimeAsync(2_000);
+      await left;
+    });
+    await settle(2_000);
+    expect(await hasLink(view)).toBe(false);
+    expect(await view.ports.matchDayStore.opened()).toEqual([]);
+  });
+
+  it('with deletes landing late, 3 unsent taps are still sent, and the link goes only once the queue is empty', async () => {
+    const view = await mount({ taps: 3 });
+    delayDeletes(view);
+    await act(async () => {
+      const left = view.result.current.exit();
+      await vi.advanceTimersByTimeAsync(2_000);
+      await left;
+    });
+    await settle(2_000);
+    expect(view.navigation.current()).toBe('home');
+    expect((await view.tapQueue.load(FIXTURE))?.pending).toHaveLength(3);
+    expect(await hasLink(view)).toBe(true);
+    view.scoring.goOffline(false);
+    await settle(60_000);
+    expect(await view.tapQueue.load(FIXTURE)).toBeNull();
+    expect(await hasLink(view)).toBe(false);
+  });
+
+  it('Stay is ignored while Exit is leaving: no bounce noted, the sheet closes with the leave', async () => {
+    const view = await mount({ taps: 1 });
+    act(() => view.result.current.ask());
+    await settle();
+    let left: Promise<void> = Promise.resolve();
+    act(() => {
+      left = view.result.current.exit();
+      view.result.current.stay();
+    });
+    expect(view.note).not.toHaveBeenCalled();
+    expect(view.result.current.sheet).not.toBeNull();
+    await act(() => left);
+    expect(view.result.current.sheet).toBeNull();
+    expect(view.note).not.toHaveBeenCalled();
+  });
+
+  it('a refused clear of the opened list leaves it, and the next resume clears it, with the match let go', async () => {
+    const view = await mount({
+      opened: [FIXTURE],
+      prepare: async (fakes) => {
+        await fakes.tapQueue.save(queueHolding(FIXTURE, 0));
+      },
+    });
+    // Exit's own clear and the heal in the nudge it sends are both refused; the next launch's resume gets it.
+    vi.spyOn(view.ports.matchDayStore, 'clearOpened')
+      .mockRejectedValueOnce(new Error('refused'))
+      .mockRejectedValueOnce(new Error('refused'));
+    await act(() => view.result.current.exit());
+    await settle(2_000);
+    expect(savedCode(view)).toBeNull();
+    expect(await view.ports.matchDayStore.opened()).toEqual([FIXTURE]);
+    expect(await hasLink(view)).toBe(false);
+    await act(() => scoringHubOf(view.ports).resume());
+    await settle(2_000);
+    expect(await view.ports.matchDayStore.opened()).toEqual([]);
+  });
+
+  it('a process that died after the forget (no code, opened ids, a note) heals at the next launch', async () => {
+    const view = await mount({
+      saved: false,
+      opened: [FIXTURE],
+      prepare: async (fakes) => {
+        await fakes.tapQueue.save(queueHolding(FIXTURE, 0));
+        await fakes.ports.matchDayStore.addSending(new Map([[FIXTURE, 'Court 2']]));
+      },
+    });
+    expect(await view.ports.matchDayStore.opened()).toEqual([FIXTURE]);
+    await act(() => scoringHubOf(view.ports).resume());
+    await settle(2_000);
+    expect(await view.ports.matchDayStore.opened()).toEqual([]);
+    expect((await view.ports.matchDayStore.sending()).size).toBe(0);
+    expect(await hasLink(view)).toBe(false);
+  });
+
+  it('a day still saved keeps its opened list: the heal never fires on a live day', async () => {
+    const view = await mount({
+      opened: [FIXTURE],
+      prepare: async (fakes) => {
+        await fakes.tapQueue.save(queueHolding(FIXTURE, 0));
+      },
+    });
+    await act(() => scoringHubOf(view.ports).resume());
+    await settle(2_000);
+    expect(await view.ports.matchDayStore.opened()).toEqual([FIXTURE]);
+    expect(await hasLink(view)).toBe(true);
+  });
+
+  it('a refused clear of the open match is recorded and Exit still goes Home', async () => {
+    const view = await mount({ taps: 1 });
+    vi.spyOn(view.ports.matchDayStore, 'clearOpen').mockRejectedValue(new Error('refused'));
+    await act(() => view.result.current.exit());
+    expect(view.navigation.current()).toBe('home');
+    expect(readRecord(view.record).some((l) => l.event === 'matchday.open-clear-refused')).toBe(
+      true,
+    );
+  });
+});
+
 describe('a second call, an empty input and an interruption', () => {
   it('a second Exit while the first is out leaves once: one record line, one nudge', async () => {
     const view = await mount({ taps: 1 });
