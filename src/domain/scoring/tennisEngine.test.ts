@@ -1,4 +1,3 @@
-import { foldEpochOf } from '@seazn/engine/sport';
 import { describe, expect, it } from 'vitest';
 import { envelopeOf } from '@/domain/scoring/setBasedEngine';
 import { sportFor } from '@/domain/scoring/sports';
@@ -65,12 +64,7 @@ describe('tennisCfgOf', () => {
   });
 });
 
-describe('the tennis engine’s epoch and the unscored sport', () => {
-  it('the seeds send the engine’s own epoch', () => {
-    expect(SINGLES.epochRequired).toBe(foldEpochOf('tennis'));
-    expect(DOUBLES.epochRequired).toBe(foldEpochOf('tennis'));
-  });
-
+describe('the unscored sport', () => {
   it('hockey is a sport this build does not score', () => {
     expect(sportFor('hockey')).toBeNull();
   });

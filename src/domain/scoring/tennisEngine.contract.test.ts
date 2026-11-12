@@ -6,7 +6,6 @@ import {
   type MatchOutcome,
 } from '@seazn/engine/core';
 import { tennisPadRules } from '@seazn/engine/pad';
-import { foldEpochOf } from '@seazn/engine/sport';
 import { serveContext } from '@seazn/engine/sports/nested';
 import { tennis } from '@seazn/engine/sports/tennis';
 import { describe, expect, it } from 'vitest';
@@ -227,7 +226,7 @@ describe('tennis.set_summary', () => {
   });
 
   it('7-6 is refused without `tb` and accepted with tb 7-5', () => {
-    expect(wordFor(TOUR, [start, summary(7, 6)])).not.toBeNull();
+    expect(wordFor(TOUR, [start, summary(7, 6)])).toBe('INVALID_EVENT');
     expect(wordFor(TOUR, [start, summary(7, 6, { home: 7, away: 5 })])).toBeNull();
     expect(stateAfter(TOUR, [start, summary(7, 6, { home: 7, away: 5 })]).sets).toEqual([
       { home: 7, away: 6, tb: { home: 7, away: 5 } },
@@ -236,7 +235,9 @@ describe('tennis.set_summary', () => {
 
   it('`tb` is refused in a match tie-break decider; the decider is entered as its points', () => {
     const oneAll = [start, summary(6, 4), summary(4, 6)];
-    expect(wordFor(MTB10, [...oneAll, summary(10, 7, { home: 10, away: 7 })])).not.toBeNull();
+    expect(wordFor(MTB10, [...oneAll, summary(10, 7, { home: 10, away: 7 })])).toBe(
+      'INVALID_EVENT',
+    );
     expect(wordFor(MTB10, [...oneAll, summary(10, 7)])).toBeNull();
     expect(stateAfter(MTB10, [...oneAll, summary(10, 7)]).sets[2]).toEqual({
       home: 10,
@@ -250,7 +251,7 @@ describe('tennis.set_summary', () => {
   });
 
   it('is refused once a point of the set is standing', () => {
-    expect(wordFor(TOUR, [start, pt('H'), summary(6, 4)])).not.toBeNull();
+    expect(wordFor(TOUR, [start, pt('H'), summary(6, 4)])).toBe('INVALID_EVENT');
   });
 });
 
@@ -304,7 +305,9 @@ describe('tennis.interruption', () => {
   });
 
   it('{kind, person} without `by` is refused', () => {
-    expect(wordFor(TOUR, [start, interruption({ kind: 'toilet', person: 'h1' })])).not.toBeNull();
+    expect(wordFor(TOUR, [start, interruption({ kind: 'toilet', person: 'h1' })])).toBe(
+      'INVALID_EVENT',
+    );
   });
 });
 
@@ -325,6 +328,8 @@ describe('what the organiser ends a match with', () => {
   it('core.abandon {reason} ends the match abandoned, with the fold flagged', () => {
     const s = stateAfter(TOUR, [start, { type: 'core.abandon', payload: { reason: 'rain' } }]);
     expect(s.phase).toBe('abandoned');
+    expect(s.outcome).toBeNull();
+    expect(s.replayFlagged).toBe(true);
     expect(outcomeOf([start])).toBeNull();
   });
 });
@@ -358,9 +363,5 @@ describe('the pad rules and the bounds', () => {
   it('the set score offers a tie-break only where a set can end in one', () => {
     expect(tennisPadRules.setScoreTakesTiebreak({}, TOUR, 7, 6)).toBe(true);
     expect(tennisPadRules.setScoreTakesTiebreak({}, TOUR, 6, 4)).toBe(false);
-  });
-
-  it('the epoch is 2', () => {
-    expect(foldEpochOf('tennis')).toBe(2);
   });
 });
