@@ -39,6 +39,7 @@ import type {
   VolleyballRecords,
   VolleyballRules,
   VolleyballSanctionLevel,
+  VolleyballSwap,
   VolleyballTypes,
   VolleyballUndoneTap,
 } from '@/domain/scoring/volleyballTypes';
@@ -139,6 +140,7 @@ function displayOf(folding: SetBasedFolding<VolleyballDone>): VolleyballDisplay 
     scoreEvents: scoreEventsIn(stream.envelopes),
     note: R.deuceNote(state, match.rawCfg),
     counts: countsOf(folding, board.game),
+    swaps: swapsOf(folding),
     caps: capsOf(beach),
     heaviest: heaviestOf(folding, board.game),
     records: recordsOf(match),
@@ -273,6 +275,27 @@ function countsOf(
     timeouts: count('volleyball.timeout', side),
     subs: count('volleyball.sub', side),
   });
+  return { first: of('first'), second: of('second') };
+}
+
+/**
+ * Each side's substitutions that name both players, in the stream's order, over the whole match: the standing events
+ * only (a voided one has no facts). A sub with only the side is skipped: it moves nobody the phone can name.
+ */
+function swapsOf(
+  folding: SetBasedFolding<VolleyballDone>,
+): Readonly<Record<PadSide, readonly VolleyballSwap[]>> {
+  const { names } = folding.match;
+  const { stream, folded } = folding;
+  const named = stream.envelopes.flatMap((envelope) => {
+    const { payload } = envelope;
+    if (envelope.type !== 'volleyball.sub' || !folded.facts.has(envelope.id)) return [];
+    if (!isRecord(payload) || typeof payload.off !== 'string' || typeof payload.on !== 'string')
+      return [];
+    return [{ side: sideOfEntrant(names, payload.by), off: payload.off, on: payload.on }];
+  });
+  const of = (side: PadSide): readonly VolleyballSwap[] =>
+    named.filter((one) => one.side === side).map(({ off, on }) => ({ off, on }));
   return { first: of('first'), second: of('second') };
 }
 

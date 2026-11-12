@@ -53,8 +53,8 @@ describe('volleyballSanction: level, then person', () => {
   it('lists officials alone for a side with only officials', () => {
     const only: VolleyballPeople = {
       first: [
-        { personId: 'c1', name: 'C1', official: true },
-        { personId: 's1', name: 'S1', official: true },
+        { personId: 'c1', name: 'C1', official: true, slot: null },
+        { personId: 's1', name: 'S1', official: true, slot: null },
       ],
       second: [],
     };
@@ -86,7 +86,7 @@ describe('volleyballSanction: level, then person', () => {
 
   it('one person on the sheet is the sanction’s at once; none records the side alone (ruling 187)', () => {
     const lone: VolleyballPeople = {
-      first: [{ personId: 'x', name: 'X', official: false }],
+      first: [{ personId: 'x', name: 'X', official: false, slot: null }],
       second: [],
     };
     expect(chooseSanction(level, 'warning', lone)).toEqual({

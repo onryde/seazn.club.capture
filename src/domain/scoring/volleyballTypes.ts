@@ -118,6 +118,9 @@ export type VolleyballNote = 'setting' | 'goldenPoint' | null;
 /** A side's timeouts and substitutions in the set under way (ruling 175), from the stream. */
 export type VolleyballCounts = { readonly timeouts: number; readonly subs: number };
 
+/** One substitution that named both players: who came off and who came on (a team-only sub names neither). */
+export type VolleyballSwap = { readonly off: string; readonly on: string };
+
 /** FIVB's numbers for the match's variant: timeouts and substitutions a set (beach: one, none). */
 export type VolleyballCaps = { readonly timeouts: 2 | 1; readonly subs: 6 | 0 };
 
@@ -161,6 +164,11 @@ export type VolleyballDisplay = {
   readonly scoreEvents: number;
   readonly note: VolleyballNote;
   readonly counts: Readonly<Record<PadSide, VolleyballCounts>>;
+  /**
+   * Each side's named substitutions in the ledger's order across the WHOLE match, not the set (F4, ruling 182's note): the
+   * pad works out who is on court from the lineup's starters and these. A voided sub is not in it.
+   */
+  readonly swaps: Readonly<Record<PadSide, readonly VolleyballSwap[]>>;
   readonly caps: VolleyballCaps;
   /** The heaviest sanction each side holds in the set under way (a per-set walk; an undone one is not counted). */
   readonly heaviest: Readonly<Record<PadSide, VolleyballSanctionLevel | null>>;

@@ -503,19 +503,39 @@ describe('Timeout and Sub: a side choice (ruling 178)', () => {
       kind: 'sub',
       sheet: { title: { key: 'scoring.volleyball.sheet.off' } },
     });
+    // F4: off lists the six starters; on lists the bench player.
     expect(optionIds(pad(view).sheet)).toEqual(
-      [1, 2, 3, 4, 5, 6, 7].map((n) => `${HOME_ENTRANT}-p${n}`),
+      [1, 2, 3, 4, 5, 6].map((n) => `${HOME_ENTRANT}-p${n}`),
     );
     await choose(view, `${HOME_ENTRANT}-p1`);
     expect(pad(view).sheet).toMatchObject({
       kind: 'sub',
       sheet: { title: { key: 'scoring.volleyball.sheet.on' } },
     });
+    expect(optionIds(pad(view).sheet)).toEqual([`${HOME_ENTRANT}-p7`]);
     await choose(view, `${HOME_ENTRANT}-p7`);
     expect(pad(view).sheet).toBeNull();
     expect(queuedOf(fakes, VOLLEYBALL_INDOOR_SEED, 'volleyball.sub')).toEqual([
       { by: HOME_ENTRANT, off: `${HOME_ENTRANT}-p1`, on: `${HOME_ENTRANT}-p7` },
     ]);
+  });
+
+  it('the next Sub offers who is on court now: p7 may go off, p1 may come back on (F4)', async () => {
+    const fakes = await rig();
+    const view = await started(fakes);
+    fakes.scoring.goOffline(true);
+    await press(view, 'sub');
+    await choose(view, 'first');
+    await choose(view, `${HOME_ENTRANT}-p1`);
+    await choose(view, `${HOME_ENTRANT}-p7`);
+    await wait();
+    await press(view, 'sub');
+    await choose(view, 'first');
+    expect(optionIds(pad(view).sheet)).toEqual(
+      [2, 3, 4, 5, 6, 7].map((n) => `${HOME_ENTRANT}-p${n}`),
+    );
+    await choose(view, `${HOME_ENTRANT}-p2`);
+    expect(optionIds(pad(view).sheet)).toEqual([`${HOME_ENTRANT}-p1`]);
   });
 
   it('a fixture with no team sheet records the sub for the side alone', async () => {
@@ -630,6 +650,7 @@ describe('the people sheets read the teams again (ruling 181)', () => {
     await press(view, 'sub');
     await flush();
     await choose(view, 'first');
+    await choose(view, `${HOME_ENTRANT}-p1`);
     expect(optionIds(pad(view).sheet)).toContain(`${HOME_ENTRANT}-new`);
   });
 

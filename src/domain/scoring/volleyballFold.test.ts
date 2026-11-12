@@ -105,6 +105,7 @@ describe('foldVolleyball: before the start', () => {
       scoreEvents: 0,
       note: null,
       counts: { first: { timeouts: 0, subs: 0 }, second: { timeouts: 0, subs: 0 } },
+      swaps: { first: [], second: [] },
       caps: { timeouts: 2, subs: 6 },
       heaviest: { first: null, second: null },
       records: { timeouts: true, sanctions: true, substitutions: true },
@@ -293,6 +294,34 @@ describe('foldVolleyball: substitutions, per set (indoor)', () => {
     });
     expect(result.legalQueued).toEqual([]);
     expect(result.display.counts.first.subs).toBe(0);
+  });
+});
+
+describe('foldVolleyball: who has swapped, across the whole match (F4)', () => {
+  const live = [start(), rally({ wonBy: 'H', serving: 'H' })];
+
+  it('lists each side’s named swaps in order, across sets; a team-only sub and a voided one are not in it', () => {
+    const shown = display([
+      ...live,
+      sub('H', { off: 'h1', on: 'h7' }),
+      sub('H'),
+      sub('A', { off: 'a2', on: 'a7' }),
+      ...wonSet('H').slice(1),
+      sub('H', { off: 'h2', on: 'h1' }),
+    ]);
+    expect(shown.swaps.first).toEqual([
+      { off: 'h1', on: 'h7' },
+      { off: 'h2', on: 'h1' },
+    ]);
+    expect(shown.swaps.second).toEqual([{ off: 'a2', on: 'a7' }]);
+    const seq = live.length + 1;
+    const undone = display([...live, sub('H', { off: 'h1', on: 'h7' }), voiding(seq)]);
+    expect(undone.swaps).toEqual({ first: [], second: [] });
+  });
+
+  it('a legal queued sub of this phone is in it too', () => {
+    const result = folded(live, { queued: [queuedOf('q1', sub('H', { off: 'h3', on: 'h7' }))] });
+    expect(result.display.swaps.first).toEqual([{ off: 'h3', on: 'h7' }]);
   });
 });
 

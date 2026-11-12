@@ -205,7 +205,7 @@ function useChoose(parts: ChooseParts) {
         case 'side':
           return chooseSide(sheet.for, id, people, setSheet, record, pad);
         case 'sub':
-          return chooseOnSub(sheet.step, id, people, setSheet, record, pad);
+          return chooseOnSub(sheet.step, id, people, display.swaps, setSheet, record, pad);
         case 'more':
           return chooseOnMore(id, display, setSheet);
         case 'sanction':
@@ -257,11 +257,12 @@ function chooseOnSub(
   step: SubStep,
   id: string,
   people: VolleyballPeople,
+  swaps: VolleyballDisplay['swaps'],
   setSheet: SetSheet,
   record: Recording,
   pad: VolleyballSheetDriver,
 ): void {
-  const move = chooseSub(step, id, people);
+  const move = chooseSub(step, id, people, swaps);
   if (move.kind === 'step') return setSheet({ kind: 'sub', step: move.step });
   setSheet(null);
   record('sub', () => pad.sub(move.tap));
@@ -381,7 +382,7 @@ function sheetView(
     case 'side':
       return { kind: 'side', sheet: sideSheet(sheet.for, display) };
     case 'sub':
-      return { kind: 'sub', sheet: subSheet(sheet.step, people, display.sides) };
+      return { kind: 'sub', sheet: subSheet(sheet.step, people, display.sides, display.swaps) };
     case 'more':
       return { kind: 'more', sheet: moreSheet(display) };
     case 'sanction':
