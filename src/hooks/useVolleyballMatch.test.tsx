@@ -135,10 +135,10 @@ describe('the Start screen and the first rally', () => {
 
   it('indoor offers Set score, Timeout, Sub and More; beach has no Sub', async () => {
     const indoor = await started(await rig());
-    expect(toolIds(pad(indoor).view)).toEqual(['setScore', 'timeout', 'sub', 'more']);
+    expect(toolIds(pad(indoor).view)).toEqual(['timeout', 'sub', 'more', 'setScore']);
     const fakes = await rig(VOLLEYBALL_BEACH_SEED);
     const beach = await started(fakes, VOLLEYBALL_BEACH_SEED);
-    expect(toolIds(pad(beach).view)).toEqual(['setScore', 'timeout', 'more']);
+    expect(toolIds(pad(beach).view)).toEqual(['timeout', 'more', 'setScore']);
   });
 });
 

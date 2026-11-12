@@ -79,6 +79,43 @@ describe('ToolRow', () => {
   });
 });
 
+// F3 (volleyball's device exit bar): a sport that keeps its slots fixed leaves the slot of a tool it stops offering empty, so
+// the others keep their place and width. jsdom cannot measure a width: these assert the row's STRUCTURE (one flex cell per
+// slot, the empty one last and silent); the widths themselves are `flex: 1` cells in an unchanged count, a device claim.
+describe('ToolRow with fixed slots', () => {
+  const cell = (id: string): PadTool<MessageKey> => ({
+    ...setScore,
+    id,
+    label: { key: 'scoring.badminton.tool.setScore' },
+  });
+  const three = [cell('a'), cell('b'), cell('c')];
+  const four = [...three, cell('d')];
+
+  it('keeps one cell per slot: the same count with a tool offered or gone, the empty slot last', () => {
+    const { rerender } = renderWithPorts(<ToolRow tools={four} slots={4} onTool={vi.fn()} />);
+    const row = screen.getByTestId('tool-row');
+    expect(row.children).toHaveLength(4);
+    expect(screen.getAllByRole('button')).toHaveLength(4);
+    rerender(<ToolRow tools={three} slots={4} onTool={vi.fn()} />);
+    expect(screen.getByTestId('tool-row').children).toHaveLength(4);
+    expect(screen.getAllByRole('button')).toHaveLength(3);
+    // the three that stay are the first three cells, in order, and the fourth child is not a button
+    expect(
+      [...screen.getByTestId('tool-row').children].map((child) => child.getAttribute('role')),
+    ).toEqual(['button', 'button', 'button', null]);
+  });
+
+  it('without slots the row is only the tools offered, as every other sport’s', () => {
+    renderWithPorts(<ToolRow tools={three} onTool={vi.fn()} />);
+    expect(screen.getByTestId('tool-row').children).toHaveLength(3);
+  });
+
+  it('draws no empty slots when there are no tools: a card is up', () => {
+    renderWithPorts(<ToolRow tools={[]} slots={4} onTool={vi.fn()} />);
+    expect(screen.getByTestId('tool-row').children).toHaveLength(0);
+  });
+});
+
 // Owner ruling 160: one tool is held 3 s, not tapped; every other tool in the row stays a tap.
 describe('ToolRow with a held tool', () => {
   beforeEach(() => vi.useFakeTimers());

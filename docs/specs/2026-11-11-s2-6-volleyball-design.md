@@ -151,7 +151,9 @@ checked by `padFit.test.ts` and exit item 5, not by the mockup.
 - **Strip:** "Set 4 of 5", "to 25" (or the deciding set's 15), and the deuce note from
   `volleyballPadRules.deuceNote` when it applies.
 - **Last-tap line:** the last record and Undo, as every set-based pad.
-- **Tools row:** Set score (before a set's first rally only) · Timeout · Sub (indoor only) · More. Timeout and
+- **Tools row:** Timeout · Sub (indoor only) · More · Set score (before a set's first rally only). Set score is LAST and
+  its slot stays when it goes (indoor four slots, beach three; Who serves? mid-set takes the same last slot), so the
+  other cells never move or change width under the scorer's thumb (F3, device exit bar, 2026-11-12). Timeout and
   Sub open a two-choice side sheet (then, for Sub, off and on); More holds Sanction for each side.
 
 ## 6. The app's side

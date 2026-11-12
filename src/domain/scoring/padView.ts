@@ -334,6 +334,12 @@ export type PadView<K extends string> = {
   readonly lastTap: PadLastTap<K> | null;
   readonly sync: PadSync;
   readonly tools: readonly PadTool<K>[];
+  /**
+   * How many cells the tool row is divided into when a sport keeps them fixed (volleyball's Set score goes after a set's
+   * first rally without moving the others): a tool the pad stops offering leaves its slot empty at the end. None: the row
+   * shares its width among the tools offered.
+   */
+  readonly toolSlots?: number;
   readonly card: PadStateCard<K> | null;
 };
 

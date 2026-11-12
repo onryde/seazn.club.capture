@@ -134,20 +134,20 @@ async function started(
 describe.each(['en', 'fr', 'nl'] as const)('layout A, indoor, in %s', (lang) => {
   const words = DICTIONARIES[lang];
 
-  it('the tool row is Set score, Timeout, Sub and More, and each half’s foot counts its timeouts and subs', async () => {
+  it('the tool row is Timeout, Sub, More and Set score last, and each half’s foot counts its timeouts and subs', async () => {
     await started(VOLLEYBALL_INDOOR_SEED, lang);
     expect(tools()).toEqual([
-      words['scoring.volleyball.tool.setScore'],
       words['scoring.volleyball.tool.timeout'],
       words['scoring.volleyball.sheet.sub'],
       words['scoring.volleyball.tool.more'],
+      words['scoring.volleyball.tool.setScore'],
     ]);
     // A row of four draws Timeout and Sub in their short words; the full words are spoken.
     expect(drawn()).toEqual([
-      words['scoring.volleyball.tool.setScore'],
       words['scoring.volleyball.tool.timeoutShort'],
       words['scoring.volleyball.tool.sub'],
       words['scoring.volleyball.tool.more'],
+      words['scoring.volleyball.tool.setScore'],
     ]);
     const foot = fill(words['scoring.volleyball.foot.indoor'], {
       timeouts: 0,
@@ -165,6 +165,20 @@ describe.each(['en', 'fr', 'nl'] as const)('layout A, indoor, in %s', (lang) => 
     });
     expect(half('first').getAttribute('aria-label')).toContain(spoken);
     expect(half('first').getAttribute('aria-label')).not.toContain(foot);
+  });
+
+  // F3. jsdom cannot measure a width: this is the row's structure. Four slots before and after the first rally, the cells
+  // that stay in the same places, and Set score the only one to go, from the last slot. Device: they do not move.
+  it('keeps four slots when Set score goes after the first rally: Timeout, Sub and More stay as they were', async () => {
+    const app = await started(VOLLEYBALL_INDOOR_SEED, lang);
+    const row = () => [...screen.getByTestId('tool-row').children];
+    const roleOf = () => row().map((child) => child.getAttribute('role'));
+    const before = drawn();
+    expect(roleOf()).toEqual(['button', 'button', 'button', 'button']);
+    await rally(app, 'first');
+    expect(row()).toHaveLength(4);
+    expect(roleOf()).toEqual(['button', 'button', 'button', null]);
+    expect(drawn()).toEqual(before.slice(0, 3));
   });
 
   it('a timeout counts on the side’s foot, and at the FIVB number the foot turns caution', async () => {
@@ -312,9 +326,9 @@ describe('Sub, indoors only', () => {
     const seed = beachSeed({ fixtureId: 'screen-beach' });
     await started(seed);
     expect(tools()).toEqual([
-      en['scoring.volleyball.tool.setScore'],
       en['scoring.volleyball.tool.timeout'],
       en['scoring.volleyball.tool.more'],
+      en['scoring.volleyball.tool.setScore'],
     ]);
     expect(counts('first')).toBe(
       fill(en['scoring.volleyball.foot.beach'], { timeouts: 0, timeoutCap: 1 }),

@@ -32,6 +32,11 @@ type ToolRowProps = {
    * End of period, owner ruling 160). Default none: other sports' tools are taps.
    */
   readonly holdTool?: string;
+  /**
+   * How many cells the row is divided into, when a sport keeps them fixed (volleyball): the slots a tool is not offered in
+   * are empty, after the tools, so the others keep their place and width. Default none: the tools share the row.
+   */
+  readonly slots?: number;
 };
 
 /**
@@ -47,7 +52,9 @@ export const ToolRow = memo(function ToolRow({
   testID = 'tool-row',
   brightInk = false,
   holdTool,
+  slots,
 }: ToolRowProps) {
+  const empty = tools.length === 0 || slots === undefined ? 0 : Math.max(0, slots - tools.length);
   return (
     <View testID={testID} style={styles.row}>
       {tools.map((tool) =>
@@ -57,6 +64,9 @@ export const ToolRow = memo(function ToolRow({
           <ToolButton key={tool.id} tool={tool} onTool={onTool} brightInk={brightInk} />
         ),
       )}
+      {Array.from({ length: empty }, (_, i) => (
+        <View key={`empty-${i}`} style={styles.slot} />
+      ))}
     </View>
   );
 });
@@ -142,6 +152,7 @@ const HeldToolButton = memo(function HeldToolButton({
 const styles = StyleSheet.create({
   held: { overflow: 'hidden' },
   row: { flexDirection: 'row', gap: space.sm },
+  slot: { flex: 1, minWidth: 0 },
   cell: {
     flex: 1,
     minWidth: 0,

@@ -5,7 +5,9 @@ import type { VolleyballDisplay, VolleyballPadKey } from '@/domain/scoring/volle
 /**
  * Volleyball's tool row and More sheet (S2-6 Task 6; ruling 178, layout A), split from `volleyballPad` before it grew past
  * 500 lines: the cells, in order, are Set score (before a set's first rally only), Who serves? (only where a lost pick
- * must be asked for mid-set), Timeout, Sub (indoor only) and More (the sanctions), at most four.
+ * must be asked for mid-set), Timeout, Sub (indoor only) and More (the sanctions), at most four. Set score (or Who serves?)
+ * is LAST and its slot stays when it goes (`volleyballToolSlots`): the other cells keep their place and width under the
+ * scorer's thumb after a set's first rally (F3, device exit bar).
  */
 
 type Text = PadText<VolleyballPadKey>;
@@ -29,29 +31,37 @@ export const volleyballSetScoreOffered = (display: VolleyballDisplay): boolean =
   takesTaps(display) && (display.phase === 'pre' || display.phase === 'betweenGames');
 
 /**
- * A row of this many cells leaves each cell's text 48 dp at 320 (`volleyballFit.test.ts`); three or fewer leave 72.67 or
+ * A row of this many slots leaves each cell's text 48 dp at 320 (`volleyballFit.test.ts`); three or fewer leave 72.67 or
  * more. Only here do the full words of Timeout not fit.
  */
 const CROWDED_ROW = 4;
 
 /**
- * The cells, in order. Who serves? stands only mid-set (`anchorNeeded` with a rally standing is a lost pick, `phase`
+ * How many cells the row is divided into, whether or not each is taken: indoor four (Timeout, Sub, More, and Set score or
+ * Who serves? last), beach three (no Sub). It follows the variant alone, so no cell moves or changes width while the match
+ * goes on (F3).
+ */
+export const volleyballToolSlots = (display: VolleyballDisplay): number =>
+  display.records.substitutions ? CROWDED_ROW : CROWDED_ROW - 1;
+
+/**
+ * The cells, in order (Set score and Who serves? never stand together, so they share the last slot). Who serves? stands only mid-set (`anchorNeeded` with a rally standing is a lost pick, `phase`
  * live): at a set's 0-0 the first tap asks (ruling 180), so no cell stands for it and no row ever holds five. A row of four
- * draws Timeout in its short word (`crowded`).
+ * slots draws Timeout in its short word (`crowded`).
  */
 export function volleyballTools(display: VolleyballDisplay): readonly Tool[] {
   if (display.phase === 'notStarted') return [];
   const cells = [
-    ...setScoreTool(display),
-    ...servingTool(display),
     ...timeoutTool(display),
     ...subTool(display),
     ...moreTool(display),
+    ...setScoreTool(display),
+    ...servingTool(display),
   ];
-  return cells.length < CROWDED_ROW ? cells : cells.map(crowded);
+  return volleyballToolSlots(display) < CROWDED_ROW ? cells : cells.map(crowded);
 }
 
-/** A cell in a row of four: Timeout's short word drawn, and the full word spoken, so a screen reader hears one name. */
+/** A cell in a row of four slots: Timeout's short word drawn, and the full word spoken, so a screen reader hears one name. */
 function crowded(tool: Tool): Tool {
   if (tool.id !== TIMEOUT) return tool;
   return {

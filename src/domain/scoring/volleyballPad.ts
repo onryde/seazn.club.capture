@@ -25,7 +25,7 @@ import {
 import { sideNames } from '@/domain/scoring/setBasedSides';
 import { doneSaid, levelWord, personWord } from '@/domain/scoring/volleyballHistory';
 import { volleyballRuleRows } from '@/domain/scoring/volleyballRules';
-import { takesTaps, volleyballTools } from '@/domain/scoring/volleyballTools';
+import { takesTaps, volleyballToolSlots, volleyballTools } from '@/domain/scoring/volleyballTools';
 import type {
   VolleyballDisplay,
   VolleyballPadKey,
@@ -73,6 +73,7 @@ export function volleyballPad(
     lastTap: lastTap(display),
     sync,
     tools: volleyballTools(display),
+    toolSlots: volleyballToolSlots(display),
     card: null,
   };
   return withCard(view, resultCardOf(display.phase));
