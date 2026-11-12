@@ -1,8 +1,9 @@
+import type { PadSide } from '@/domain/scoring/padView';
 import type { QueuedEvent } from '@/domain/scoring/queue';
 import type { SportEvent, SportEventContext } from '@/domain/scoring/scoringSport';
 import { seatsOf } from '@/domain/scoring/setBasedSides';
 import { isBreakKind, isSeenLevel } from '@/domain/scoring/tennisLedgerHistory';
-import type { TennisTap, TennisTypes } from '@/domain/scoring/tennisTypes';
+import type { TennisDisplay, TennisTap, TennisTypes } from '@/domain/scoring/tennisTypes';
 import type { BootstrapSide, LedgerEvent } from '@/domain/scoring/wire';
 
 /**
@@ -21,12 +22,14 @@ type Seats = NonNullable<ReturnType<typeof seatsOf>>;
 /** The levels a phone sends: the engine's ladder without `default`, which is the organiser's (ruling 218). */
 const isSentLevel = (level: unknown): boolean => isSeenLevel(level) && level !== 'default';
 
-export function tennisEventFor(tap: TennisTap, { bootstrap }: Context): SportEvent | null {
+export function tennisEventFor(tap: TennisTap, { bootstrap, display }: Context): SportEvent | null {
   const seats = seatsOf(bootstrap);
   if (seats === null) return null;
   switch (tap.kind) {
     case 'start':
       return { type: 'core.start', payload: {} };
+    case 'toss':
+      return tossEvent(seats, tap.side, display);
     case 'point':
       return { type: 'tennis.point', payload: { by: seats[tap.side].entrantId } };
     case 'setScore':
@@ -38,6 +41,16 @@ export function tennisEventFor(tap: TennisTap, { bootstrap }: Context): SportEve
     case 'break':
       return breakEvent(seats, tap);
   }
+}
+
+/**
+ * Who serves first, `{serving}` and nothing else (engine 8.0.0, ruling 233). Only at the Start screen, on a match with no
+ * toss held: the engine would take a late toss and re-seat every serve already played, which is the organiser's call and
+ * never the phone's (the controller's ruling 2), and a second pick over another scorer's would be refused anyway.
+ */
+function tossEvent(seats: Seats, side: PadSide, display: TennisDisplay): SportEvent | null {
+  if (display.phase !== 'notStarted' || display.toss !== null) return null;
+  return { type: 'tennis.toss', payload: { serving: seats[side].entrantId } };
 }
 
 /** A set's games, and the tie-break's points only for a set that had one. */

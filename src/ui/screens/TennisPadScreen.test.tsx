@@ -114,6 +114,8 @@ async function started(
   });
   await flush(200);
   app.setNow(new Date(TEST_NOW.getTime() - 60_000));
+  // Who serves first (ruling 233): the top side, then Start match.
+  act(() => fireEvent.click(screen.getAllByRole('radio')[0]!));
   act(() =>
     fireEvent.click(
       screen.getByRole('button', { name: DICTIONARIES[lang]['scoring.start.confirm'] }),
@@ -142,15 +144,31 @@ const TIEBREAK_EVENTS = Array.from({ length: 12 }, (_, at) =>
   gameEvents(at % 2 === 0 ? 'first' : 'second'),
 ).flat();
 
-describe('the Start screen', () => {
-  it('has no serve to pick: no choice rows, and one Start match that starts it', async () => {
-    const app = await launchApp({
-      scoringSeed: TENNIS_TOUR_SEED,
-      kvSeed: inMatch(TENNIS_TOUR_SEED),
-    });
+describe('the Start screen (ruling 233)', () => {
+  const launched = (seed: FakeMatchSeed, lang: Lang = 'en') =>
+    launchApp({ scoringSeed: seed, kvSeed: inMatch(seed), deviceLanguages: [lang] });
+  const radios = () => screen.getAllByRole('radio');
+
+  it('asks who serves first with the two names, and Start match waits for the pick', async () => {
+    await launched(TENNIS_TOUR_SEED);
     await flush(200);
     expect(screen.getByTestId('start-screen')).toBeTruthy();
-    expect(screen.queryAllByRole('radio')).toHaveLength(0);
+    expect(screen.getByText(en['scoring.tennis.start.ask'])).toBeTruthy();
+    expect(radios().map((side) => side.textContent)).toEqual(['Ana Ruiz', 'Bea Lund']);
+    const start = screen.getByRole('button', { name: en['scoring.start.confirm'] });
+    expect(start.getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it.each(['en', 'es', 'fr', 'nl'] as const)('asks in %s as the dictionary says', async (lang) => {
+    await launched(TENNIS_TOUR_SEED, lang);
+    await flush(200);
+    expect(screen.getByText(DICTIONARIES[lang]['scoring.tennis.start.ask'], PLAIN)).toBeTruthy();
+  });
+
+  it('Start match records the toss and then the start, once however often it is pressed, and the tossed side serves', async () => {
+    const app = await launched(TENNIS_TOUR_SEED);
+    await flush(200);
+    act(() => fireEvent.click(screen.getByRole('radio', { name: 'Bea Lund' })));
     app.setNow(new Date(TEST_NOW.getTime() - 60_000));
     press(en['scoring.start.confirm']);
     // A second press while it goes through starts nothing twice.
@@ -159,9 +177,44 @@ describe('the Start screen', () => {
     await flush(200);
     expect(screen.queryByTestId('start-screen')).toBeNull();
     const events = await app.scoring.events(LINK, TENNIS_TOUR_SEED.fixtureId, 0);
-    expect(
-      Array.isArray(events) ? events.filter((e) => e.type === 'core.start') : null,
-    ).toHaveLength(1);
+    expect(Array.isArray(events) ? events.map((e) => e.type) : null).toEqual([
+      'tennis.toss',
+      'core.start',
+    ]);
+    expect(within(half('second')).queryByText(en['scoring.tennis.serving'])).toBeTruthy();
+    expect(within(half('first')).queryByText(en['scoring.tennis.serving'])).toBeNull();
+  });
+
+  it('is not shown for a match another scorer started with no toss: the pad is up and home serves', async () => {
+    await opened(under('fx-tn-nobody'));
+    expect(screen.queryByTestId('start-screen')).toBeNull();
+    expect(within(half('first')).queryByText(en['scoring.tennis.serving'])).toBeTruthy();
+  });
+});
+
+describe('a doubles server’s name (ruling 235)', () => {
+  const DOUBLES_SEED = doublesSeed({ fixtureId: 'fx-tn-d' });
+  const SERVER_ONE = 'Ana Ruiz';
+  const OTHER_SIDE = 'Bea Lund';
+
+  it.each(['en', 'es', 'fr', 'nl'] as const)(
+    'is on the serving half in %s, in the language’s words, and on the other half none',
+    async (lang) => {
+      await opened({ ...DOUBLES_SEED, events: [START] }, lang);
+      const line = fill(DICTIONARIES[lang]['scoring.tennis.serverPerson'], {
+        person: SERVER_ONE,
+      });
+      expect(within(half('first')).getByText(line, PLAIN)).toBeTruthy();
+      const other = fill(DICTIONARIES[lang]['scoring.tennis.serverPerson'], { person: OTHER_SIDE });
+      expect(within(half('second')).queryByText(other, PLAIN)).toBeNull();
+    },
+  );
+
+  it('is not drawn in a tie-break: the plate names the side alone', async () => {
+    await opened({ ...DOUBLES_SEED, events: [START, ...TIEBREAK_EVENTS] });
+    const line = fill(en['scoring.tennis.serverPerson'], { person: SERVER_ONE });
+    expect(within(half('first')).queryByText(line)).toBeNull();
+    expect(screen.getAllByText(en['scoring.tennis.serving']).length).toBeGreaterThan(0);
   });
 });
 

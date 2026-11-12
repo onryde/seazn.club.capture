@@ -15,6 +15,7 @@ import {
   withCfg,
   award,
   interruption,
+  toss,
 } from '../../../test/tennisLedger';
 
 // S2-7 Task 4 (rulings 216, 222-225, 229; G1): the pad's display is the server's ledger folded through @seazn/engine with
@@ -348,5 +349,119 @@ describe('a config the engine reads or does not', () => {
     const cfg = { bestOf: 1, finalSet: { matchTiebreakTo: 10 } };
     const shown = display([start(), ...gamesOf('HH')], { bootstrap: withCfg(SINGLES, cfg) });
     expect(shown.games).toEqual({ first: 2, second: 0 });
+  });
+});
+
+// S2-7 Task 16 (rulings 233, 235): the toss, and the doubles server's name. Expected values are the ITF's (Rule 9: the
+// toss winner chooses to serve or receive; the pair serves its first game in the order its players name, the opponents their
+// first game in theirs, and a tie-break's serve is not the turn's partner) and the spec, never read from the fold.
+describe('the toss (ruling 233)', () => {
+  it('a match with no toss holds none, and home serves first', () => {
+    const shown = display([start()]);
+    expect(shown.toss).toBeNull();
+    expect(shown.serving).toBe('first');
+  });
+
+  it('a toss naming away makes away the server before and after the start, and is held', () => {
+    expect(display([toss('A')]).toss).toBe('second');
+    expect(display([toss('A')]).serving).toBe('second');
+    const shown = display([toss('A'), start()]);
+    expect(shown.serving).toBe('second');
+    expect(shown.toss).toBe('second');
+  });
+
+  it('a toss naming home is held as home, and the serve is home’s', () => {
+    const shown = display([toss('H'), start()]);
+    expect(shown.toss).toBe('first');
+    expect(shown.serving).toBe('first');
+  });
+
+  it('the serve then alternates by game from the tossed side: away, home', () => {
+    expect(display([toss('A'), start(), ...gamesOf('A')]).serving).toBe('first');
+  });
+
+  it('a toss a void took back is no toss: none is held and home serves again', () => {
+    const shown = display([toss('A'), voiding(1), start()]);
+    expect(shown.toss).toBeNull();
+    expect(shown.serving).toBe('first');
+  });
+
+  it('a toss queued by this phone is held at once, before it has gone', () => {
+    const shown = display([], { queued: [queuedOf('k1', toss('A')), queuedOf('k2', start())] });
+    expect(shown.toss).toBe('second');
+  });
+
+  it('the toss queued before the start is judged legal, and so is the start after it', () => {
+    const queued = [queuedOf('k1', toss('A')), queuedOf('k2', start())];
+    expect(folded([], { queued }).legalQueued).toEqual(['k1', 'k2']);
+  });
+
+  it('a toss queued after a toss is already held is not legal (the engine takes one)', () => {
+    const queued = [queuedOf('k1', toss('A'))];
+    expect(folded([toss('H')], { queued }).legalQueued).toEqual([]);
+  });
+
+  it('the toss has a History row, in the stream’s order, before the start’s', () => {
+    const group = folded([toss('A'), start()]).history[0];
+    expect(group?.rows.map((row) => row.said.key)).toEqual([
+      'scoring.tennis.last.start',
+      'scoring.tennis.last.toss',
+    ]);
+    expect(group?.rows[1]?.said.vars).toEqual({ side: 'Bea Lund' });
+  });
+
+  it('Undo of the toss is no line of its own: the start screen asks again', () => {
+    const shown = display([toss('A'), voiding(1)]);
+    expect(shown.lastTap).toBeNull();
+    expect(shown.toss).toBeNull();
+  });
+});
+
+describe('the doubles server’s name (ruling 235)', () => {
+  const doubles = { bootstrap: DOUBLES };
+
+  it('names the first server of the pair that serves first, by pair order', () => {
+    expect(display([start()], doubles).servingPerson).toBe('Ruiz / Vega h1');
+  });
+
+  it('follows the toss: away’s first player serves the first game after a toss to away', () => {
+    expect(display([toss('A'), start()], doubles).servingPerson).toBe('Lund / Berg a1');
+  });
+
+  it('follows the order: each side’s second player serves its second game', () => {
+    expect(display([start(), ...gamesOf('HA')], doubles).servingPerson).toBe('Ruiz / Vega h2');
+  });
+
+  it('names nobody in a tie-break: the serve there is not the turn’s partner', () => {
+    const tiebreak = display([start(), ...gamesOf('HAHAHAHAHAHA')], doubles);
+    expect(tiebreak.breaker).toBe('tiebreak');
+    expect(tiebreak.servingPerson).toBeNull();
+    expect(tiebreak.serving).not.toBeNull();
+  });
+
+  it('names nobody when the engine cannot name the order (a set score of nine games, F1): the plate is gone too', () => {
+    const shown = display([start(), summary(6, 3)], doubles);
+    expect(shown.serving).toBeNull();
+    expect(shown.servingPerson).toBeNull();
+  });
+
+  it('names nobody in singles: the side is the player', () => {
+    expect(display([start()]).servingPerson).toBeNull();
+  });
+
+  it('names nobody when the pair order is not declared: the side stands alone', () => {
+    const undeclared = {
+      ...DOUBLES,
+      sides: {
+        home: {
+          ...DOUBLES.sides.home!,
+          lineup: DOUBLES.sides.home!.lineup.map((row) => ({ ...row, pairOrder: null })),
+        },
+        away: DOUBLES.sides.away,
+      },
+    };
+    const shown = display([start()], { bootstrap: undeclared });
+    expect(shown.servingPerson).toBeNull();
+    expect(shown.serving).toBe('first');
   });
 });

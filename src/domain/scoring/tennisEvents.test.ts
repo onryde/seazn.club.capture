@@ -11,6 +11,7 @@ import {
   ledgerOf,
   queuedOf,
   start,
+  toss,
 } from '../../../test/tennisLedger';
 
 // S2-7 Task 5 (rulings 215, 217-221): each tap as the event the server records. Every payload below is written out
@@ -202,5 +203,35 @@ describe('the payload a queued tap is sent with', () => {
   it('keeps a set score and a break as queued', () => {
     const score = queuedOf('k2', { type: 'tennis.set_summary', payload: { home: 6, away: 2 } });
     expect(tennisPayloadForSend(score, [], false, SEND)).toEqual({ home: 6, away: 2 });
+  });
+});
+
+describe('the toss (S2-7 Task 16, rulings 233, 235)', () => {
+  const beforeStart = (bootstrap: Bootstrap = SINGLES) => display([], { bootstrap });
+  const tossFor = (tap: TennisTap, shown = beforeStart(), bootstrap: Bootstrap = SINGLES) =>
+    tennisEventFor(tap, { bootstrap, display: shown });
+
+  it('is tennis.toss with the serving entrant and nothing else, top side first', () => {
+    expect(tossFor({ kind: 'toss', side: 'first' })).toEqual({
+      type: 'tennis.toss',
+      payload: { serving: HOME },
+    });
+    expect(tossFor({ kind: 'toss', side: 'second' })).toEqual({
+      type: 'tennis.toss',
+      payload: { serving: AWAY },
+    });
+  });
+
+  it('is refused once the match has started: the phone has no toss control mid-match (controller ruling 2)', () => {
+    expect(tossFor({ kind: 'toss', side: 'second' }, display([start()]))).toBeNull();
+  });
+
+  it('is refused when a toss is already held: a second scorer’s pick is never sent over the first', () => {
+    expect(tossFor({ kind: 'toss', side: 'second' }, display([toss('H')]))).toBeNull();
+  });
+
+  it('sends the same payload as queued (nothing in a toss can go stale)', () => {
+    const queued = queuedOf('k', toss('A'));
+    expect(tennisPayloadForSend(queued, ledgerOf([]), false, SEND)).toEqual({ serving: AWAY });
   });
 });

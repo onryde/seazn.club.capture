@@ -74,6 +74,8 @@ export function doneSaid(sides: TennisDisplay['sides'], tap: TennisDone): Text {
   switch (tap.kind) {
     case 'start':
       return { key: 'scoring.tennis.last.start' };
+    case 'toss':
+      return { key: 'scoring.tennis.last.toss', vars: { side: side(tap.side) } };
     case 'point':
       return pointSaid(side(tap.side), tap);
     case 'setScore':

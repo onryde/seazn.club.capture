@@ -18,8 +18,8 @@ export const tennisSport: ScoringSport<TennisTypes> = {
   fold: memoFold(foldTennis),
   eventFor: tennisEventFor,
   payloadForSend: tennisPayloadForSend,
-  /** Who serves first is the engine's to name; Start match carries no pick (ruling 216). */
-  tossOf: () => null,
+  /** The side the toss tap names (ruling 233): the Start screen's pick, which the match keeps until the start. */
+  tossOf: (tap) => (tap.kind === 'toss' ? tap.side : null),
   /** A set score the match cannot reach is an invalid score; any other tap is not now. */
   refusalFor: (tap) => (tap.kind === 'setScore' ? 'invalidScore' : 'notNow'),
   notStarted: (display) => display.phase === 'notStarted',

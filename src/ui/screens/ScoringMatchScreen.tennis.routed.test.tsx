@@ -29,6 +29,8 @@ describe('a tennis match from the scan to History', () => {
   it('a scanned link opens tennis’s Start screen; Start, a point and History show the point', async () => {
     const app = await scanned();
     expect(app.nav.current()).toBe('scoring');
+    // Who serves first: the top side, then Start match.
+    act(() => fireEvent.click(screen.getAllByRole('radio')[0]!));
     app.setNow(new Date(TEST_NOW.getTime() - 60_000));
     press(en['scoring.start.confirm']);
     app.setNow(TEST_NOW);

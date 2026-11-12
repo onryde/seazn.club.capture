@@ -114,6 +114,8 @@ async function opened(seed: FakeMatchSeed): Promise<Scorer> {
   await flush();
   await wait(1_000);
   const scorer = new Scorer(fakes, view, seed);
+  // Who serves first (ruling 233): the first side, which is the home-first order the published scores were played in.
+  await scorer.press((a) => a.pickServer('first'));
   await scorer.press((a) => a.start());
   return scorer;
 }

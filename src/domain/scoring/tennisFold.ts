@@ -262,7 +262,7 @@ function prefixFacts(
 
 /** The tap Undo takes back, as the last-tap line names it, or null for the start (whose Undo shows no line) or an ending. */
 export function undoneTap(did: TennisDone): TennisUndoneTap | null {
-  return did.kind === 'start' || did.kind === 'ending' ? null : did;
+  return did.kind === 'start' || did.kind === 'toss' || did.kind === 'ending' ? null : did;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -303,6 +303,8 @@ function displayOf(
     note: noteOf(state, cfg),
     endsChanged: guarded(() => R.endsChanged(state), false),
     serving: servingOf(state),
+    servingPerson: servingPersonOf(state, match.names),
+    toss: state.opener === undefined ? null : sideOf(state.opener),
     setsWon: pairOf(state.setsWon),
     finished: state.sets.map((closed) => setLineOf(closed)),
     heaviest: heaviestOf(match, stream, set, facts),
@@ -341,6 +343,19 @@ const DEUCE_POINTS = 3;
 function servingOf(state: Readonly<NestedState>): PadSide | null {
   const serve = serveContext(state);
   return serve.serveOrderKnown ? sideOf(serve.side) : null;
+}
+
+/**
+ * The doubles server's name (ruling 235): the engine's `personId` (null whenever it cannot name the order: kernel.d.ts, `serveContext`) when no breaker is in force (a
+ * tie-break's serve is not the partner who opened the turn), by the name the sheet gives; none for any other case, a singles
+ * match included (its one player is the side).
+ */
+function servingPersonOf(state: Readonly<NestedState>, names: SetBasedNames): string | null {
+  const serve = serveContext(state);
+  if (serve.personId === null) return null;
+  if (guarded(() => R.breakerInForce(state), true)) return null;
+  const members = names.members[sideOf(serve.side)];
+  return members.find((one) => one.personId === serve.personId)?.fullName ?? null;
 }
 
 function setLineOf(closed: NestedState['sets'][number]): TennisSetLine {

@@ -24,6 +24,8 @@ export type TennisBreakKind = 'medical' | 'toilet' | 'heat' | 'other';
  */
 export type TennisTap =
   | { readonly kind: 'start' }
+  /** Who serves the first game, asked at Start and queued before it (ruling 233); `side` is the pad's top or bottom half. */
+  | { readonly kind: 'toss'; readonly side: PadSide }
   | { readonly kind: 'point'; readonly side: PadSide }
   | {
       readonly kind: 'setScore';
@@ -49,6 +51,7 @@ export type TennisPerson = { readonly name: string | null };
 /** What the last tap did; `undone` names the tap Undo took back. */
 export type TennisLastTap =
   | { readonly kind: 'start' }
+  | { readonly kind: 'toss'; readonly side: PadSide }
   | {
       readonly kind: 'point';
       readonly side: PadSide;
@@ -81,10 +84,10 @@ export type TennisLastTap =
 export type TennisDone = Exclude<TennisLastTap, { readonly kind: 'undone' }>;
 
 /**
- * A tap Undo took back, as the last-tap line names it: never the start, whose Undo returns to the Start screen, and never
- * an ending, which is the organiser's and no phone's Undo takes.
+ * A tap Undo took back, as the last-tap line names it: never the start, whose Undo returns to the Start screen (taking its
+ * toss with it), nor the toss itself, and never an ending, which is the organiser's and no phone's Undo takes.
  */
-export type TennisUndoneTap = Exclude<TennisDone, { readonly kind: 'start' | 'ending' }>;
+export type TennisUndoneTap = Exclude<TennisDone, { readonly kind: 'start' | 'toss' | 'ending' }>;
 
 /**
  * A set over, as the engine banks it: the games each side won, the tie-break's points when it was a tie-break set, and
@@ -128,6 +131,13 @@ export type TennisDisplay = {
   readonly endsChanged: boolean;
   /** The engine's serving side, or null when it cannot name one (`serveContext.serveOrderKnown` false, F1). */
   readonly serving: PadSide | null;
+  /**
+   * The doubles server's name, only when the engine names the order and the player and no breaker is in force (ruling 235:
+   * `serveOrderKnown && personId && !breakerInForce`); else none, and the side's plate stands alone. Singles has none.
+   */
+  readonly servingPerson: string | null;
+  /** The side the match's toss named to serve first (the engine's `opener`), or null while no toss is held (ruling 233). */
+  readonly toss: PadSide | null;
   readonly setsWon: Readonly<Record<PadSide, number>>;
   readonly finished: readonly TennisSetLine[];
   /** The heaviest violation each side holds in the set under way (a per-set walk; an undone one is not counted). */
@@ -158,6 +168,7 @@ export type TennisPadKey =
   | 'scoring.tennis.endsChange'
   | 'scoring.tennis.endingPending'
   | 'scoring.tennis.serving'
+  | 'scoring.tennis.serverPerson'
   | 'scoring.tennis.foot.games'
   | 'scoring.tennis.foot.gamesSaid'
   | 'scoring.tennis.tool.violation'
@@ -213,6 +224,7 @@ export type TennisPadKey =
   | 'scoring.tennis.setHeading'
   | 'scoring.tennis.player'
   | 'scoring.tennis.last.start'
+  | 'scoring.tennis.last.toss'
   | 'scoring.tennis.last.point'
   | 'scoring.tennis.last.game'
   | 'scoring.tennis.last.set'

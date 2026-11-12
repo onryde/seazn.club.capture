@@ -108,6 +108,8 @@ async function save(view: Match, first: string, second: string) {
   await wait(300);
 }
 
+const TOSS_AWAY: FakeSeedEvent = { type: 'tennis.toss', payload: { serving: AWAY_ENTRANT } };
+
 const summary = (home: number, away: number): FakeSeedEvent => ({
   type: 'tennis.set_summary',
   payload: { home, away },
@@ -123,15 +125,26 @@ afterEach(() => {
 });
 
 describe('the Start screen and the first point', () => {
-  it('Start match is one tap with no serve to pick, and the first point carries the side only', async () => {
+  it('Start match waits for the pick, queues the toss BEFORE the start, and the first point carries the side only (ruling 233)', async () => {
     const fakes = await rig();
     const view = mount(fakes);
     await flush();
-    expect(pad(view).view.start?.needsToss).toBe(false);
+    expect(pad(view).view.start?.needsToss).toBe(true);
     fakes.scoring.goOffline(true);
     act_(view, (actions) => actions.start());
     await flush();
-    expect(queued(fakes, TENNIS_TOUR_SEED)).toEqual([{ type: 'core.start', payload: {} }]);
+    expect(queued(fakes, TENNIS_TOUR_SEED)).toEqual([]);
+    act_(view, (actions) => actions.pickServer('second'));
+    await flush();
+    expect(pad(view).toss).toBe('second');
+    act_(view, (actions) => actions.start());
+    await flush();
+    expect(queued(fakes, TENNIS_TOUR_SEED)).toEqual([
+      { type: 'tennis.toss', payload: { serving: AWAY_ENTRANT } },
+      { type: 'core.start', payload: {} },
+    ]);
+    expect(pad(view).view.halves[1].serving).not.toBeNull();
+    expect(pad(view).view.halves[0].serving).toBeNull();
     await wait();
     act_(view, (actions) => actions.tapHalf('second'));
     await flush();
@@ -139,17 +152,218 @@ describe('the Start screen and the first point', () => {
     expect(pad(view).view.halves[1].value).toBe('15');
   });
 
-  it('a second press of Start match within the bounce window starts once', async () => {
+  it('the pick for home queues a toss naming home (a toss is recorded for either side)', async () => {
     const fakes = await rig();
     const view = mount(fakes);
     await flush();
     fakes.scoring.goOffline(true);
+    act_(view, (actions) => actions.pickServer('first'));
+    await flush();
+    act_(view, (actions) => actions.start());
+    await flush();
+    expect(queuedOf(fakes, TENNIS_TOUR_SEED, 'tennis.toss')).toEqual([{ serving: HOME_ENTRANT }]);
+  });
+
+  it('the toss and the start reach the server in that order and the match stands started with the toss held', async () => {
+    const fakes = await rig();
+    const view = mount(fakes);
+    await flush();
+    act_(view, (actions) => actions.pickServer('second'));
+    await flush();
+    act_(view, (actions) => actions.start());
+    await wait(2_000);
+    expect(queued(fakes, TENNIS_TOUR_SEED)).toEqual([]);
+    expect(pad(view).view.start).toBeNull();
+    expect(pad(view).view.halves[1].serving).not.toBeNull();
+  });
+
+  it('a second press of Start match, inside the window and after the screen has left, sends one toss and one start', async () => {
+    const fakes = await rig();
+    const view = mount(fakes);
+    await flush();
+    fakes.scoring.goOffline(true);
+    act_(view, (actions) => actions.pickServer('second'));
+    await flush();
+    const stale = pad(view).actions;
     act(() => {
-      pad(view).actions.start();
-      pad(view).actions.start();
+      stale.start();
+      stale.start();
     });
     await flush();
+    await wait(1_000);
+    act(() => stale.start());
+    await flush();
+    expect(queuedOf(fakes, TENNIS_TOUR_SEED, 'tennis.toss')).toHaveLength(1);
     expect(queuedOf(fakes, TENNIS_TOUR_SEED, 'core.start')).toHaveLength(1);
+  });
+
+  it('a match another scorer started without a toss keeps working: no question, no toss sent, home serves', async () => {
+    const { fakes, view } = await opened();
+    expect(pad(view).view.start).toBeNull();
+    expect(pad(view).view.halves[0].serving).not.toBeNull();
+    act_(view, (actions) => actions.tapHalf('first'));
+    await flush();
+    expect(queued(fakes, TENNIS_STARTED_SEED).map((tap) => tap.type)).toEqual(['tennis.point']);
+  });
+
+  it('a toss already held at the Start screen is not asked again: Start match sends the start alone', async () => {
+    const seed = { ...TENNIS_TOUR_SEED, events: [TOSS_AWAY] };
+    const fakes = await rig(seed);
+    const view = mount(fakes, seed);
+    await flush();
+    expect(pad(view).view.start?.needsToss).toBe(false);
+    fakes.scoring.goOffline(true);
+    act_(view, (actions) => actions.start());
+    await flush();
+    expect(queued(fakes, seed)).toEqual([{ type: 'core.start', payload: {} }]);
+  });
+
+  it('another scorer started while this phone was on the Start screen: the toss is refused, nothing re-seats the match', async () => {
+    const fakes = await rig();
+    const view = mount(fakes);
+    await flush();
+    act_(view, (actions) => actions.pickServer('second'));
+    await flush();
+    const stale = pad(view).actions;
+    fakes.scoring.goOffline(true);
+    fakes.scoring.addConsoleEvent('core.start', {});
+    fakes.scoring.goOffline(false);
+    fakes.realtime.ping();
+    await flush();
+    act(() => stale.start());
+    await flush();
+    expect(queuedOf(fakes, TENNIS_TOUR_SEED, 'tennis.toss')).toEqual([]);
+  });
+
+  it('Undo of the start takes the toss with it once the start’s void has landed, so the screen asks who serves first again', async () => {
+    const fakes = await rig();
+    const view = mount(fakes);
+    await flush();
+    fakes.scoring.goOffline(true);
+    act_(view, (actions) => actions.pickServer('second'));
+    await flush();
+    act_(view, (actions) => actions.start());
+    await flush();
+    await wait();
+    act_(view, (actions) => actions.undo());
+    await flush();
+    // The start's fate is unknown while offline, so its void waits for the answer, and the toss is not voided before it.
+    expect(queued(fakes, TENNIS_TOUR_SEED).map((tap) => tap.type)).toEqual([
+      'tennis.toss',
+      'core.void',
+    ]);
+    fakes.scoring.goOffline(false);
+    fakes.realtime.ping();
+    await wait(5_000);
+    expect(queued(fakes, TENNIS_TOUR_SEED)).toEqual([]);
+    expect(pad(view).view.start?.needsToss).toBe(true);
+    expect(pad(view).toss).toBeNull();
+    const events = await fakes.scoring.events(LINK, TENNIS_TOUR_SEED.fixtureId, 0);
+    // The start never reached the server (offline), so only the toss did, and it was voided: nothing of the match stands.
+    expect(Array.isArray(events) ? events.map((event) => [event.type, event.voids]) : null).toEqual(
+      [
+        ['tennis.toss', null],
+        ['core.void', 'fake-event-1'],
+      ],
+    );
+  });
+
+  it('Undo of a start the server holds, with this phone’s toss, voids the start and then the toss', async () => {
+    const fakes = await rig();
+    const view = mount(fakes);
+    await flush();
+    act_(view, (actions) => actions.pickServer('second'));
+    await flush();
+    act_(view, (actions) => actions.start());
+    await wait(2_000);
+    fakes.scoring.goOffline(true);
+    act_(view, (actions) => actions.undo());
+    await flush();
+    expect(queued(fakes, TENNIS_TOUR_SEED).map((tap) => tap.type)).toEqual([
+      'core.void',
+      'core.void',
+    ]);
+    expect(pad(view).view.start?.needsToss).toBe(true);
+  });
+
+  it('Undo of the start leaves a toss that is another scorer’s alone: the start screen does not ask again', async () => {
+    const seed = { ...TENNIS_TOUR_SEED, events: [TOSS_AWAY] };
+    const fakes = await rig(seed);
+    const view = mount(fakes, seed);
+    await flush();
+    act_(view, (actions) => actions.start());
+    await wait(2_000);
+    fakes.scoring.goOffline(true);
+    act_(view, (actions) => actions.undo());
+    await flush();
+    expect(queued(fakes, seed).map((tap) => tap.type)).toEqual(['core.void']);
+    expect(pad(view).view.start?.needsToss).toBe(false);
+  });
+
+  it('an Undo of a point is no Undo of the start: when the organiser later voids the start, this phone’s toss is left held and not voided', async () => {
+    const fakes = await rig();
+    const view = mount(fakes);
+    await flush();
+    act_(view, (actions) => actions.pickServer('second'));
+    await flush();
+    act_(view, (actions) => actions.start());
+    await wait(2_000);
+    act_(view, (actions) => actions.tapHalf('first'));
+    await wait(2_000);
+    act_(view, (actions) => actions.undo());
+    await wait(2_000);
+    fakes.scoring.addConsoleEvent('core.void', { event_id: 'fake-event-2' });
+    fakes.realtime.ping();
+    await wait(2_000);
+    expect(pad(view).view.start?.needsToss).toBe(false);
+    expect(pad(view).view.start?.sides.map((side) => side.plate)).toEqual([
+      null,
+      { key: 'scoring.tennis.serving' },
+    ]);
+    expect(queued(fakes, TENNIS_TOUR_SEED)).toEqual([]);
+  });
+
+  it('the Undo owed to a toss is paid once: a second round’s toss is not voided when the organiser later voids its start', async () => {
+    const fakes = await rig();
+    const view = mount(fakes);
+    await flush();
+    act_(view, (actions) => actions.pickServer('second'));
+    await flush();
+    act_(view, (actions) => actions.start());
+    await wait(2_000);
+    act_(view, (actions) => actions.undo());
+    await wait(5_000);
+    expect(pad(view).view.start?.needsToss).toBe(true);
+    act_(view, (actions) => actions.pickServer('first'));
+    await flush();
+    act_(view, (actions) => actions.start());
+    await wait(2_000);
+    // The ledger: toss, start, void, void, toss, start (seq 1-6); the organiser voids the second start.
+    fakes.scoring.addConsoleEvent('core.void', { event_id: 'fake-event-6' });
+    fakes.realtime.ping();
+    await wait(2_000);
+    expect(pad(view).view.start?.needsToss).toBe(false);
+    expect(queued(fakes, TENNIS_TOUR_SEED)).toEqual([]);
+  });
+
+  it('a process death between the toss and the start loses neither: both are in the queue file and come back on a fresh mount', async () => {
+    const fakes = await rig();
+    const view = mount(fakes);
+    await flush();
+    fakes.scoring.goOffline(true);
+    act_(view, (actions) => actions.pickServer('second'));
+    await flush();
+    act_(view, (actions) => actions.start());
+    await flush();
+    view.unmount();
+    const again = mount(fakes);
+    await flush();
+    expect(queued(fakes, TENNIS_TOUR_SEED).map((tap) => tap.type)).toEqual([
+      'tennis.toss',
+      'core.start',
+    ]);
+    expect(pad(again).view.start).toBeNull();
+    expect(pad(again).view.halves[1].serving).not.toBeNull();
   });
 
   it('offers Violation, Break, Award game and Set score, in that order, once the match is on', async () => {

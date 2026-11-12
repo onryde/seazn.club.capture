@@ -127,6 +127,12 @@ const entrant = (side: Seat): string => (side === 'H' ? HOME : AWAY);
 
 export const start = (): Spec => ({ type: 'core.start', payload: {} });
 
+/** The toss (engine 8.0.0, ruling 233): which entrant serves the first game, `{serving}` and nothing else. */
+export const toss = (seat: Seat): Spec => ({
+  type: 'tennis.toss',
+  payload: { serving: entrant(seat) },
+});
+
 /** A point for `seat`: `{by}` only, as the pad sends it (ruling 217). */
 export const point = (seat: Seat): Spec => ({
   type: 'tennis.point',

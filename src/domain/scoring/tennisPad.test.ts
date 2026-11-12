@@ -18,6 +18,7 @@ import {
   points,
   sanction,
   start,
+  toss,
   summary,
   withCfg,
 } from '../../../test/tennisLedger';
@@ -46,11 +47,21 @@ describe('the halves', () => {
     expect(view.halves[0].hint).toEqual({ key: `${T}hint` });
   });
 
-  it('name both partners of a doubles side with " / " between, and never a serving person', () => {
+  it('name both partners of a doubles side with " / " between, and the server only on the serving half (ruling 235)', () => {
     const view = padOf([start()], { bootstrap: DOUBLES });
     expect(view.halves[0].label).toBe('Ruiz / Vega h1 / Ruiz / Vega h2');
-    expect(view.halves[0].sub).toBeNull();
+    expect(view.halves[0].sub).toEqual({
+      key: 'scoring.tennis.serverPerson',
+      vars: { person: 'Ruiz / Vega h1' },
+    });
     expect(view.halves[1].sub).toBeNull();
+  });
+
+  it('name no server in singles, in a tie-break or while the order is undeclared: the plate stands alone', () => {
+    expect(padOf([start()]).halves.map((half) => half.sub)).toEqual([null, null]);
+    const tiebreak = padOf([start(), ...gamesOf('HAHAHAHAHAHA')], { bootstrap: DOUBLES });
+    expect(tiebreak.halves.map((half) => half.sub)).toEqual([null, null]);
+    expect(tiebreak.halves.map((half) => half.serving !== null)).toContain(true);
   });
 
   it('read AD for the side that has it and 40 for the other, and back to 40-40', () => {
@@ -349,16 +360,11 @@ describe('the match’s end', () => {
 });
 
 describe('the Start screen and the match details', () => {
-  it('asks no serve question: the kit draws the names and Start match is ready', () => {
+  it('asks who serves first before the start (ruling 233): the names, no tools, four slots reserved', () => {
     const view = padOf([]);
-    expect(view.start).toEqual({
-      ask: { key: `${T}start.ask` },
-      needsToss: false,
-      sides: [
-        { side: 'first', label: HOME_NAME },
-        { side: 'second', label: AWAY_NAME },
-      ],
-    });
+    expect(view.start?.ask).toEqual({ key: `${T}start.ask` });
+    expect(view.start?.needsToss).toBe(true);
+    expect(view.start?.sides.map((side) => side.label)).toEqual([HOME_NAME, AWAY_NAME]);
     expect(view.tools).toEqual([]);
     expect(view.toolSlots).toBe(4);
   });
@@ -410,5 +416,29 @@ describe('the tally and the tools', () => {
       'award',
       'setScore',
     ]);
+  });
+});
+
+describe('the Start screen (ruling 233)', () => {
+  it('asks who serves first, with the two names top first and no plate, when no toss is held', () => {
+    const view = padOf([]);
+    expect(view.start).toEqual({
+      ask: { key: `${T}start.ask` },
+      needsToss: true,
+      sides: [
+        { side: 'first', label: 'Ana Ruiz', plate: null },
+        { side: 'second', label: 'Bea Lund', plate: null },
+      ],
+    });
+  });
+
+  it('does not ask again once a toss is held: Start match is ready and the tossed side carries the plate', () => {
+    const view = padOf([toss('A')]);
+    expect(view.start?.needsToss).toBe(false);
+    expect(view.start?.sides.map((side) => side.plate)).toEqual([null, { key: `${T}serving` }]);
+  });
+
+  it('is none once the match has started', () => {
+    expect(padOf([toss('A'), start()]).start).toBeNull();
   });
 });

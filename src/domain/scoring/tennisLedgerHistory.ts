@@ -80,6 +80,10 @@ export function tennisDoneOf(
   switch (envelope.type) {
     case 'core.start':
       return { kind: 'start' };
+    case 'tennis.toss': {
+      const side = sideOfEntrant(names, field(payload, 'serving'));
+      return side === null ? null : { kind: 'toss', side };
+    }
     case 'tennis.point': {
       const side = sideOfEntrant(names, field(payload, 'by'));
       return side === null ? null : { kind: 'point', side, set: facts.set, won: facts.won };

@@ -39,7 +39,7 @@ const TALLY = 'scoring.tennis.setsTally';
  * the serving side, the heaviest violation of the set as a card and its games in the set at the foot; the set of how many,
  * the breaker or the note and "Change ends" in the strip; and the four tools. A match over is the recorded result's card
  * (the winner and the sets, or how the organiser ended it) over the final score. Before the start, the Start screen with
- * no serve question (ruling 216), and no tools.
+ * the serve question (ruling 233), and no tools.
  */
 export function tennisPad(display: TennisDisplay, sync: PadSync = SYNCED): PadView<TennisPadKey> {
   const view: PadView<TennisPadKey> = {
@@ -69,8 +69,8 @@ function half(display: TennisDisplay, side: PadSide): PadHalf<TennisPadKey> {
     label: sideNames(display.sides[side]),
     value: display.call[side],
     periods: null,
-    // The serve ball marks the side, never a person: the phone sends no server (rulings 217, 223).
-    sub: null,
+    // The doubles server's name when the engine names it (ruling 235); the plate marks the side alone otherwise.
+    sub: plate === null ? null : servingPerson(display),
     marks: padMarks(violationCard(display, side), null),
     serving: plate,
     plate: null,
@@ -87,6 +87,13 @@ const serving = (): PadServing<TennisPadKey> => ({
   shown: { key: 'scoring.tennis.serving' },
   said: { key: 'scoring.tennis.serving' },
 });
+
+/** The doubles server the engine names, by name (ruling 235); else nobody. */
+function servingPerson(display: TennisDisplay): Text | null {
+  return display.servingPerson === null
+    ? null
+    : { key: 'scoring.tennis.serverPerson', vars: { person: display.servingPerson } };
+}
 
 /** The side's games in the set, "Games 4"; none in a match tie-break (it has none), before the start or once the match is over. */
 function foot(display: TennisDisplay, side: PadSide): PadFoot<TennisPadKey> | null {
@@ -106,15 +113,20 @@ function violationCard(display: TennisDisplay, side: PadSide): PadCardMark<Tenni
   return level === null ? null : { cards: LEVEL_CARDS[level], said: levelWord(level) };
 }
 
-/** Before the match starts: the two names, top first. No serve to pick (ruling 216), so Start match is ready at once. */
+/**
+ * Before the match starts: who serves first (ruling 233), the two names top first. A toss already held (another scorer's, or
+ * this phone's after Undo took the start back and left it) is not asked again, since the engine takes one: Start match is
+ * ready at once and the serving side carries its plate, as the halves will.
+ */
 function start(display: TennisDisplay): PadView<TennisPadKey>['start'] {
   if (display.phase !== 'notStarted') return null;
+  const plate = (side: PadSide) => (display.toss === side ? serving().shown : null);
   return {
     ask: { key: 'scoring.tennis.start.ask' },
-    needsToss: false,
+    needsToss: display.toss === null,
     sides: [
-      { side: 'first', label: sideNames(display.sides.first) },
-      { side: 'second', label: sideNames(display.sides.second) },
+      { side: 'first', label: sideNames(display.sides.first), plate: plate('first') },
+      { side: 'second', label: sideNames(display.sides.second), plate: plate('second') },
     ],
   };
 }

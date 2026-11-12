@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { holdsScreen } from '@/domain/scoring/padView';
 import type { TennisPadActions, TennisPadModel } from '@/hooks/useTennisMatch';
@@ -6,7 +6,7 @@ import type { TennisSheetView } from '@/hooks/useTennisSheets';
 import { useT } from '@/hooks/useLanguage';
 import { AskSheet } from '@/ui/components/AskSheet';
 import { KeepScreenOn } from '@/ui/components/KeepScreenOn';
-import { PadContent, type PadContentModel } from '@/ui/components/PadContent';
+import { PadContent } from '@/ui/components/PadContent';
 import {
   DiscardAsk,
   MatchDetailsView,
@@ -21,30 +21,18 @@ import { colour } from '@/ui/theme/tokens';
  * `useTennisMatch`. Its layout is the set-based sports' (`PadContent`): the top bar, the strip (Set N of M, the note and
  * Change ends), the two halves with the serve ball and the side's card, the last-tap line with the one Undo, and the four
  * tools that always fill the row (Violation, Break, Award game, Set score: rulings 228, 231, 232). What is tennis's here: that
- * the screen is held on while the pad is (`holdsScreen`), the Start screen's one place (`contentOf`) and its sheets.
+ * the screen is held on while the pad is (`holdsScreen`) and its sheets. The Start screen is the kit's, with the serve question
+ * (ruling 233): the hook's Start turns the pick into the toss and the start.
  */
 export function TennisPadScreen({ model }: { readonly model: TennisPadModel }) {
   const { view, sheet, actions } = model;
-  const content = useMemo(() => contentOf(model), [model]);
   return (
     <View style={styles.screen}>
       {holdsScreen(view.card) ? <KeepScreenOn /> : null}
-      <PadContent model={content} covered={sheet !== null} />
+      <PadContent model={model} covered={sheet !== null} />
       <PadSheet sheet={sheet} actions={actions} />
     </View>
   );
-}
-
-/** Nothing to pick on a pick-less Start screen (`needsToss` is false, so the kit never asks). */
-const NO_PICK = () => undefined;
-
-/**
- * The model as the kit's content draws it. This is the one place the Start screen is tennis's: it has no pick of who serves
- * first (ruling 216, the engine names the server), so `toss` is none and `pickServer` is never called. A toss step added
- * later (Batch E) is added here and in the hook's Start, and nowhere else.
- */
-function contentOf(model: TennisPadModel): PadContentModel {
-  return { ...model, toss: null, actions: { ...model.actions, pickServer: NO_PICK } };
 }
 
 /**

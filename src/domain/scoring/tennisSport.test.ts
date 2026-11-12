@@ -61,7 +61,9 @@ describe('tennisSport', () => {
     expect(result).toEqual({ kind: 'unfoldable', reason: 'sides' });
   });
 
-  it('carries no Start pick: the engine names the server', () => {
+  it('keeps the side a toss names as the Start pick, and no other tap carries one (ruling 233)', () => {
+    expect(tennisSport.tossOf({ kind: 'toss', side: 'second' })).toBe('second');
+    expect(tennisSport.tossOf({ kind: 'toss', side: 'first' })).toBe('first');
     expect(tennisSport.tossOf({ kind: 'start' })).toBeNull();
     expect(tennisSport.tossOf({ kind: 'point', side: 'first' })).toBeNull();
   });

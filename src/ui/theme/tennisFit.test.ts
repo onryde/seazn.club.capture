@@ -142,6 +142,31 @@ describe('tennis: the tool row at 320 and 360 in four languages', () => {
   });
 });
 
+describe('tennis: the doubles server’s line beside the half’s foot at 320 and 360 in four languages', () => {
+  // Ruling 235: "Ana Ruiz serves" in the half's bottom row, which `HalfFoot` never cuts (the counts and the hint give way
+  // before it), so it must be whole in the half's inner width. The names are the longest a sheet gives a player here.
+  const NAMES = ['Ana Ruiz', 'Eva Vega', 'Alexandra Wickenhauser'] as const;
+  const line = (dictionary: Dictionary, person: string) =>
+    controlWidth(fill(said(dictionary, `${TN}.serverPerson`), { person }));
+
+  it.each(LANGUAGES)(
+    '%s: the line is whole in the half’s inner width, for every sample name',
+    (_lang, dictionary: Dictionary) => {
+      for (const person of NAMES)
+        for (const width of WIDTHS)
+          expect(line(dictionary, person), `${person} @${width}`).toBeLessThanOrEqual(
+            halfInner(width),
+          );
+    },
+  );
+
+  it('is measured against something real (anti-vacuity): a name twice as long does not fit at 320', () => {
+    expect(line(en, 'Alexandra Wickenhauser Alexandra Wickenhauser')).toBeGreaterThan(
+      halfInner(320),
+    );
+  });
+});
+
 describe('tennis: the strip at 320 and 360 in four languages', () => {
   const facts = (dictionary: Dictionary) => [
     fill(said(dictionary, `${TN}.setOf`), { set: '5', bestOf: '5' }),
@@ -292,7 +317,7 @@ describe('tennis: the rules rows and the result card at 320 and 360 in four lang
   );
 
   it.each(LANGUAGES)(
-    '%s: "Players ready?" in the Start screen’s column',
+    '%s: "Who serves first?" in the Start screen’s column',
     (_lang, dictionary: Dictionary) => {
       for (const width of WIDTHS)
         expect(wordsFit(said(dictionary, `${TN}.start.ask`), column(width), panelWidth)).toBe(true);
@@ -407,9 +432,9 @@ describe('tennis: History’s rows and the last-tap line at 320 and 360 in four 
       .map((key) => ({ key, text: fill(said(dictionary, key), vars) }));
   };
 
-  it('reads the last-tap vocabulary (anti-vacuity): ten last and five undone', () => {
+  it('reads the last-tap vocabulary (anti-vacuity): eleven last (the toss one of them) and five undone', () => {
     for (const [, dictionary] of LANGUAGES)
-      expect(sentences(dictionary, 'Ana Ruiz')).toHaveLength(15);
+      expect(sentences(dictionary, 'Ana Ruiz')).toHaveLength(16);
   });
 
   it.each(LANGUAGES)(
@@ -489,6 +514,7 @@ describe('tennis: every word it has is measured here (the sweep)', () => {
     /^ending\./,
     /^result$/,
     /^start\.ask$/,
+    /^serverPerson$/,
     /^violation\./,
     /^award\./,
     /^break\./,

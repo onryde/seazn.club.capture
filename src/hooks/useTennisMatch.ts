@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useState, useSyncExternalStore } from 'react';
-import { refusalLine } from '@/domain/scoring/padLine';
-import type { PadView } from '@/domain/scoring/padView';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { refusalLine, type PadOutcome } from '@/domain/scoring/padLine';
+import type { PadSide, PadView } from '@/domain/scoring/padView';
 import type { MatchPad } from '@/domain/scoring/scoringMatchView';
 import type { HalfFlash } from '@/domain/scoring/tapFlash';
 import { tennisPeopleOf, violationDone, type TennisPeople } from '@/domain/scoring/tennisSanction';
@@ -9,13 +9,14 @@ import type { TennisDisplay, TennisPadKey, TennisTypes } from '@/domain/scoring/
 import type { PadActions, PadScreenModel, ScoringMatch } from '@/hooks/padScreenModel';
 import type { RunnerSnapshot, ScoringRunner } from '@/hooks/scoringRunner';
 import { useBackCloses } from '@/hooks/useBackCloses';
+import { useAskActions, useClosedByDeadLink, usePeopleSheet } from '@/hooks/usePadMatchParts';
 import {
-  useAskActions,
-  useClosedByDeadLink,
-  usePeopleSheet,
-  useStartActions,
-} from '@/hooks/usePadMatchParts';
-import { useGuardedTool, useSettle, useTaps, type PadTapDriver } from '@/hooks/usePadTaps';
+  START_TAP,
+  useGuardedTool,
+  useSettle,
+  useTaps,
+  type PadTapDriver,
+} from '@/hooks/usePadTaps';
 import type { Ports } from '@/hooks/usePorts';
 import { useLinks, useScoringMatch, useSender, type MatchSender } from '@/hooks/useScoringMatch';
 import { useBackToHome } from '@/hooks/useStreamLinks';
@@ -29,8 +30,8 @@ import type { MessageKey } from '@/i18n/messages';
 
 /**
  * A tennis match on the pad screen (S2-7 Task 9): the generic match (`useScoringMatch`) with tennis's pad hook, as
- * `useVolleyballMatch` is volleyball's. What is tennis's here: a half is a point, with nothing to ask first (the engine names
- * the server, ruling 216); Violation, Break, Award game and Set score open sheets (`useTennisSheets`), and a sheet that lists
+ * `useVolleyballMatch` is volleyball's. What is tennis's here: a half is a point, and Start asks who serves first (ruling 233)
+ * and queues the toss before the start; Violation, Break, Award game and Set score open sheets (`useTennisSheets`), and a sheet that lists
  * people asks the match to read its teams again; a violation's consequence (the point or the game the scorer taps next) is
  * said in the last-tap line (ruling 218). There is no ending prompt: the organiser's endings are the web's (ruling 225).
  */
@@ -43,7 +44,8 @@ export type TennisPadActions = PadActions & {
   readonly back: () => void;
   /** Set score's Save: the games, then (for a tie-break set) the tie-break's points. */
   readonly saveScore: (first: string, second: string) => void;
-  /** The Start screen: Start match, a tap (there is no serve to pick, ruling 216). */
+  /** The Start screen: the pick of who serves first (ruling 233), then Start match, which queues the toss before the start. */
+  readonly pickServer: (side: PadSide) => void;
   readonly start: () => void;
   /** The reconnect question (owner ruling 43): Send my taps, Discard them (which asks again) and its confirm's Discard. */
   readonly sendTaps: () => void;
@@ -53,6 +55,8 @@ export type TennisPadActions = PadActions & {
 
 /** What the tennis pad screen is drawn from. */
 export type TennisPadModel = PadScreenModel<TennisPadKey, TennisSheetView> & {
+  /** The Start screen's pick of who serves first; none until the scorer picks, and none once the match starts. */
+  readonly toss: PadSide | null;
   readonly actions: TennisPadActions;
 };
 
@@ -72,12 +76,13 @@ function useTennisPad(
   const [flash, setFlash] = useState<HalfFlash>(null);
   const [cardNote, setCardNote] = useState<MessageKey | null>(null);
   const settle = useSettle(sender.say);
+  const undoStart = useUndoWithToss(sender, pad?.display);
   const driver = useMemo<PadTapDriver>(
     () => ({
       rally: (side) => sender.tap({ kind: 'point', side }),
-      undo: () => sender.undo(),
+      undo: undoStart,
     }),
-    [sender],
+    [sender, undoStart],
   );
   const taps = useTaps(driver, settle, sender.say, setFlash);
   const people = usePeople(runner);
@@ -92,9 +97,43 @@ function useTennisPad(
     () =>
       pad === null || view === null
         ? null
-        : { kind: 'pad', view, sheet: sheets.view, line: pad.line, cardNote, flash, actions },
+        : {
+            kind: 'pad',
+            view,
+            sheet: sheets.view,
+            line: pad.line,
+            cardNote,
+            flash,
+            toss: pad.toss,
+            actions,
+          },
     [pad, view, sheets.view, cardNote, flash, actions],
   );
+}
+
+/**
+ * Undo, which takes the toss under the start with it (ruling 233): the Start screen then asks who serves first again. A toss
+ * left held would stay, since the engine takes one and the Start screen has no Undo, so the scorer who picked the wrong side
+ * could never pick again. The toss's Undo follows once the start's has taken effect (the match shows the Start screen), never
+ * in the same breath: a start whose fate is unknown is voided when its answer comes, and the toss waits for that. Whose toss it
+ * is, is the match's to judge as it is for every Undo (`undoTarget`): another scorer's toss is not this phone's to void, and
+ * an Undo with nothing of ours to take back is refused and changes nothing.
+ */
+function useUndoWithToss(sender: Sender, display: TennisDisplay | undefined): () => PadOutcome {
+  const startIsLast = display?.lastTap?.kind === 'start';
+  const [owed, setOwed] = useState(false);
+  const undo = useCallback((): PadOutcome => {
+    const outcome = sender.undo();
+    if (startIsLast) setOwed(true);
+    return outcome;
+  }, [sender, startIsLast]);
+  const due = owed && display?.phase === 'notStarted';
+  useEffect(() => {
+    if (!due) return;
+    setOwed(false);
+    sender.undo();
+  }, [due, sender]);
+  return undo;
 }
 
 /**
@@ -188,8 +227,7 @@ type Parts = {
 function useActions(parts: Parts): TennisPadActions {
   const { taps, sheets, sender, runner, pad } = parts;
   const home = useBackToHome();
-  const startWith = useCallback(() => sender.tap({ kind: 'start' }), [sender]);
-  const { start } = useStartActions(runner, pad?.toss ?? null, startWith, taps.opening, false);
+  const { pickServer, start } = useStart(runner, sender, pad, taps.opening);
   const asked = useAskActions(
     sender.answer,
     taps.opening,
@@ -200,7 +238,49 @@ function useActions(parts: Parts): TennisPadActions {
   const tool = useGuardedTool(taps.secondTouch, sheets.actions.tool);
   const { tapHalf, undo } = taps;
   return useMemo(
-    () => ({ home, tapHalf, undo, ...sheets.actions, tool, ...asked, ...links, start }),
-    [home, tapHalf, undo, tool, sheets.actions, asked, links, start],
+    () => ({
+      home,
+      tapHalf,
+      undo,
+      ...sheets.actions,
+      tool,
+      ...asked,
+      ...links,
+      pickServer,
+      start,
+    }),
+    [home, tapHalf, undo, tool, sheets.actions, asked, links, pickServer, start],
   );
+}
+
+/**
+ * The Start screen's actions (ruling 233; the controller's rulings 1 and 3). With a serve to pick, Start match waits for the
+ * pick and then queues `tennis.toss` BEFORE `core.start`, both from the one action: a toss queued after the start with
+ * nothing scored would count as play (ruling 112) and block a walkover. With a toss already held (another scorer's, or
+ * this phone's), there is nothing to ask and Start match sends the start alone. The toss is judged against the match as it
+ * is when the tap lands (`tennisEventFor`), so a match another scorer started meanwhile refuses it and takes nothing over.
+ */
+function useStart(
+  runner: ScoringRunner | null,
+  sender: Sender,
+  pad: PadFacts | null,
+  opening: ReturnType<typeof useTaps>['opening'],
+) {
+  const toss = pad?.toss ?? null;
+  const needsToss = pad?.view.start?.needsToss ?? false;
+  const pickServer = useCallback(
+    (side: PadSide) => void runner?.dispatch({ kind: 'pickServer', side }),
+    [runner],
+  );
+  const start = useCallback(() => {
+    if (!needsToss) opening(START_TAP, () => startWith(sender));
+    else if (toss !== null) opening(START_TAP, () => startWith(sender, toss));
+  }, [opening, sender, toss, needsToss]);
+  return useMemo(() => ({ pickServer, start }), [pickServer, start]);
+}
+
+/** The toss (when there is a side) and then the start, as two taps of one action: the start's answer is the action's. */
+function startWith(sender: Sender, server?: PadSide): PadOutcome {
+  if (server !== undefined) sender.tap({ kind: 'toss', side: server });
+  return sender.tap({ kind: 'start' });
 }
