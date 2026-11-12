@@ -204,7 +204,11 @@ export type MatchEvent<S extends SportTypes = SportTypes> =
   | { readonly kind: 'bootSaved'; readonly boot: BootCache }
   | { readonly kind: 'say'; readonly words: PadLineWords }
   /** The scorer's answer to the reconnect question (`scoringMatchAsk.ts`): send the queued taps, or discard them. */
-  | { readonly kind: 'answerAsk'; readonly answer: 'send' | 'discard' };
+  | { readonly kind: 'answerAsk'; readonly answer: 'send' | 'discard' }
+  /** A held tap's payload, amended by the scorer before it is sent (S2-7 ruling 234; `amendQueued`). */
+  | { readonly kind: 'amend'; readonly key: string; readonly payload: unknown }
+  /** Every held tap let go, to be sent now (the sport's details turned off; `releaseHeld`). */
+  | { readonly kind: 'release' };
 
 /** What is held when a match opens: the queue and ledger from disk, and what the boot cache kept. */
 export type MatchHeld<S extends SportTypes = SportTypes> = {

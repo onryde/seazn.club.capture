@@ -1,4 +1,5 @@
 import {
+  isHeld,
   resultStands,
   type MatchQueue,
   type QueueDead,
@@ -210,13 +211,14 @@ export function openSync(held: {
  * The head of the queue as the server reads it, at the tip, or null: nothing queued, one already in flight, Update
  * needed, a dead queue, a fetch or a revalidation still owed (`hold`), or a wait not over (`now` is the caller's
  * clock, in the unit `notBefore` was set in). An Undo that waits for its tap's answer (`voidsKey`) names no event yet
- * and is never the body: its tap is ahead of it in the queue.
+ * and is never the body: its tap is ahead of it in the queue. A head held by its sport (`QueuedEvent.holdUntil`, on the
+ * same clock) waits for its hold to end.
  */
 export function nextSend(state: SyncState, now: number): AppendBody | null {
   const head = state.queue.pending[0];
   if (head === undefined || state.queue.dead !== null || !SENDABLE.has(state.status)) return null;
   if (state.hold !== null || now < state.notBefore || isAsking(state)) return null;
-  if (head.voidsKey !== undefined) return null;
+  if (head.voidsKey !== undefined || isHeld(head, now)) return null;
   return {
     expected_seq: state.tip,
     type: head.type,

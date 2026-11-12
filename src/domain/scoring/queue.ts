@@ -54,7 +54,18 @@ export type QueuedEvent = {
    * queue file written before it existed (the payload's stamp then stands).
    */
   readonly reading?: TapReading;
+  /**
+   * Held unsent until this time, on the runner's clock (S2-7 ruling 234: a sport's tap kept back a moment so the scorer can
+   * add a detail to it, `amendQueued`). It is folded at once like any tap; only its send waits. Never written to the queue
+   * file (`tapQueueStore` writes the fields it names), so a tap read back after a kill or a reopen is never held and goes
+   * as it stands. Absent on every tap of a sport that holds none.
+   */
+  readonly holdUntil?: number;
 };
+
+/** Whether `tap` is held unsent at `now` (the runner's clock): it has a hold, and the hold has not run out. */
+export const isHeld = (tap: QueuedEvent, now: number): boolean =>
+  tap.holdUntil !== undefined && now < tap.holdUntil;
 
 /** A clock reading: seconds into a period, as the engine's `GameTime` (`{ period, elapsed }`). */
 export type TapReading = { readonly period: string; readonly elapsed: number };

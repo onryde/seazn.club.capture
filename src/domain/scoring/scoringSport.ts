@@ -67,13 +67,15 @@ export type SportFold<S extends SportTypes> =
  * tennis: the score's; football's clock taps: the ledger's tip), which the runtime keeps on the queued tap
  * (`QueuedEvent.base`) for the sport's `payloadForSend` to read. `reading` likewise: the phone's own clock reading
  * behind a stamp the payload carries instead (football: a sub that joined a stoppage), kept on the queued tap
- * (`QueuedEvent.reading`) and never sent.
+ * (`QueuedEvent.reading`) and never sent. `hold` (ms) keeps the tap unsent that long after it is made, so the scorer can
+ * add a detail to it (`QueuedEvent.holdUntil`, `amendQueued`; S2-7 ruling 234: tennis's point chips); none: sent at once.
  */
 export type SportEvent = {
   readonly type: string;
   readonly payload: unknown;
   readonly base?: number;
   readonly reading?: TapReading;
+  readonly hold?: number;
 };
 
 /**
