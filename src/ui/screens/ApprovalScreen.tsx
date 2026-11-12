@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import type { ApprovalReview } from '@/domain/matchday/approvalWire';
 import type { Approval } from '@/domain/matchday/matchDay';
@@ -20,11 +20,14 @@ type ApprovalScreenProps = {
   readonly refresh: () => void;
   /** Closes the review, back to the list. */
   readonly onClose: () => void;
+  /** The list's record of the approves this phone has sent (`ApprovalSink.sent`). */
+  readonly sent: Set<string>;
 };
 
 const REFUSAL_LINE: Readonly<Record<ApprovalRefusal, MessageKey>> = {
   stale: 'matchday.approve.stale',
   already: 'matchday.approve.already',
+  own: 'matchday.approve.approved',
   ties: 'matchday.approve.ties',
   onWeb: 'matchday.approve.onWeb',
   offline: 'matchday.offlineEmpty',
@@ -40,9 +43,10 @@ export const ApprovalScreen = memo(function ApprovalScreen({
   approval,
   refresh,
   onClose,
+  sent,
 }: ApprovalScreenProps) {
   const { t } = useT();
-  const sink = useMemo(() => ({ refresh, close: onClose }), [refresh, onClose]);
+  const sink = useMemo(() => ({ refresh, close: onClose, sent }), [refresh, onClose, sent]);
   const view = useApproval(approval.kind, approval.stageId, sink);
   useBackCloses(true, onClose);
   return (
@@ -96,7 +100,11 @@ const Proposal = memo(function Proposal({
       </Text>
       {refusal === null ? null : (
         <Text variant="control" testID="approval-line" style={styles.line}>
-          {t(REFUSAL_LINE[refusal])}
+          {t(
+            refusal === 'stale' && approval.kind === 'swiss'
+              ? 'matchday.approve.staleSwiss'
+              : REFUSAL_LINE[refusal],
+          )}
         </Text>
       )}
       {state === 'loading' ? <Text variant="body">{t('matchday.approve.loading')}</Text> : null}
@@ -135,14 +143,13 @@ const Footer = memo(function Footer({
 }) {
   const { t } = useT();
   const { review, state, approve, reviewAgain } = view;
-  const reread = useCallback(() => reviewAgain(), [reviewAgain]);
   if (state === 'offline')
     return (
       <>
         <Text variant="control" style={styles.line}>
           {t('matchday.offlineEmpty')}
         </Text>
-        <GhostButton label={t('matchday.approve.reviewAgain')} onPress={reread} />
+        <GhostButton label={t('matchday.approve.reviewAgain')} onPress={reviewAgain} />
       </>
     );
   if (state === 'ready' || state === 'approving') {

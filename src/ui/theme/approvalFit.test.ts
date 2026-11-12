@@ -77,6 +77,8 @@ describe('the approval screen’s words fit (320 and 360 dp, four languages)', (
         'matchday.approve.ties',
         'matchday.approve.already',
         'matchday.approve.stale',
+        'matchday.approve.staleSwiss',
+        'matchday.approve.approved',
         'matchday.approve.onWeb',
         'matchday.approve.loading',
       ]) {

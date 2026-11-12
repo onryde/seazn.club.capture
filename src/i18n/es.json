@@ -1221,5 +1221,7 @@
   "matchday.approve.stale": "El cuadro cambió — revisa de nuevo",
   "matchday.approve.ties": "Los empates requieren una decisión en la web",
   "matchday.approve.onWeb": "Apruébalo en la web",
-  "matchday.approve.reviewAgain": "Revisar de nuevo"
+  "matchday.approve.reviewAgain": "Revisar de nuevo",
+  "matchday.approve.staleSwiss": "Los emparejamientos cambiaron — revisa de nuevo",
+  "matchday.approve.approved": "Aprobado"
 }

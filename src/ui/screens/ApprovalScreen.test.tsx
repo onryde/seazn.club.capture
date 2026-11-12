@@ -297,13 +297,13 @@ describe('ApprovalScreen: what the server says to an approve', () => {
     expect(calls(view, 'day').length).toBe(before + 1);
   });
 
-  it('MD_STALE: "Draw changed — review again", the review is read again, and the hold is back', async () => {
+  it('MD_STALE on a Swiss round: "Pairings changed — review again", the review is read again, and the hold is back', async () => {
     const view = await openReview({
       prepare: (fakes) => fakes.matchDay.answerApprove(refused('MD_STALE')),
     });
     await hold(view);
     await settle();
-    expect(review().getByText('Draw changed — review again')).toBeTruthy();
+    expect(review().getByText('Pairings changed — review again')).toBeTruthy();
     expect(calls(view, 'review')).toHaveLength(2);
     expect(holdButton()).toBeTruthy();
   });
@@ -341,6 +341,47 @@ describe('ApprovalScreen: what the server says to an approve', () => {
   });
 });
 
+describe('ApprovalScreen: a draw says Draw changed', () => {
+  it('MD_STALE on a draw is the spec’s verbatim line', async () => {
+    const view = await openReview({
+      approval: DRAW,
+      prepare: (fakes) => fakes.matchDay.answerApprove(refused('MD_STALE')),
+    });
+    const button = holdButton();
+    pressIn(button);
+    await settle(HOLD_MS);
+    pressOut(button);
+    await settle();
+    expect(review().getByText('Draw changed — review again')).toBeTruthy();
+    expect(calls(view, 'review')).toHaveLength(2);
+  });
+});
+
+describe('ApprovalScreen: Back mid-approve, then Review again (fix round 1, M2)', () => {
+  it('the second approve answered MD_ALREADY reads Approved, not Already approved', async () => {
+    const view = await openReview({
+      prepare: (fakes) => fakes.matchDay.answerApprove(APPROVED, refused('MD_ALREADY')),
+    });
+    view.matchDay.hold();
+    const button = holdButton();
+    pressIn(button);
+    await settle(HOLD_MS);
+    pressOut(button);
+    fireEvent.click(review().getByRole('button', { name: en['mode.matchday'] }));
+    view.matchDay.release();
+    await settle(300);
+    fireEvent.click(screen.getByRole('button', { name: en['matchday.approve.review'] }));
+    await settle();
+    const again = holdButton();
+    pressIn(again);
+    await settle(HOLD_MS);
+    pressOut(again);
+    expect(review().getByText('Approved')).toBeTruthy();
+    expect(screen.queryByText('Already approved')).toBeNull();
+    expect(calls(view, 'approve')).toHaveLength(2);
+  });
+});
+
 describe('ApprovalScreen: the list beneath (a touch within 250 ms of closing)', () => {
   const pressNow = () => fireEvent.click(screen.getByRole('button', { name: /^Now, Ng v Brown/ }));
   const close = () => fireEvent.click(review().getByRole('button', { name: en['mode.matchday'] }));
@@ -361,6 +402,19 @@ describe('ApprovalScreen: the list beneath (a touch within 250 ms of closing)', 
     pressNow();
     await settle();
     expect(calls(view, 'open')).toHaveLength(1);
+  });
+
+  it('a double tap on the overlay’s Back does not go Home through the list’s Back', async () => {
+    const view = await openReview();
+    close();
+    await settle(80);
+    fireEvent.click(screen.getByRole('button', { name: en['stream.home'] }));
+    await settle();
+    expect(view.navigation.current()).toBe('matchday');
+    await settle(250);
+    fireEvent.click(screen.getByRole('button', { name: en['stream.home'] }));
+    await settle();
+    expect(view.navigation.current()).toBe('home');
   });
 
   it('nor does it open the review again within 250 ms', async () => {
@@ -408,7 +462,7 @@ describe('ApprovalScreen: the four languages', () => {
     await settle(HOLD_MS);
     pressOut(first);
     await settle();
-    expect(review().getByText(word(lang, 'matchday.approve.stale'))).toBeTruthy();
+    expect(review().getByText(word(lang, 'matchday.approve.staleSwiss'))).toBeTruthy();
     pressIn(holdButton(lang));
     await settle(HOLD_MS);
     await settle();

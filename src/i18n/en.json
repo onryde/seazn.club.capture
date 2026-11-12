@@ -1221,5 +1221,7 @@
   "matchday.approve.stale": "Draw changed — review again",
   "matchday.approve.ties": "Ties need a decision on the web desk",
   "matchday.approve.onWeb": "Approve it on the web desk",
-  "matchday.approve.reviewAgain": "Review again"
+  "matchday.approve.reviewAgain": "Review again",
+  "matchday.approve.staleSwiss": "Pairings changed — review again",
+  "matchday.approve.approved": "Approved"
 }

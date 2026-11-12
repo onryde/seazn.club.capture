@@ -20,11 +20,12 @@ export type ApprovalState = 'loading' | 'ready' | 'approving' | 'done' | 'refuse
 
 /**
  * What the screen says besides the rows: `stale` (the proposal changed; the review was read again), `already` (another
- * phone approved first), `ties` (only the web desk decides them), `onWeb` (the phone cannot take this one: refused
+ * phone approved first), `own` (MD_ALREADY for a proposal this phone had already sent an approve for: it is this
+ * phone's own approval, which landed), `ties` (only the web desk decides them), `onWeb` (the phone cannot take this one: refused
  * twice as stale, or the code may not approve it) and `offline` (an approve that did not get through, the day read
  * again and the stage still waiting).
  */
-export type ApprovalRefusal = 'stale' | 'already' | 'ties' | 'onWeb' | 'offline';
+export type ApprovalRefusal = 'stale' | 'already' | 'own' | 'ties' | 'onWeb' | 'offline';
 
 export type ApprovalView = {
   readonly review: ApprovalReview | null;
@@ -39,7 +40,15 @@ export type ApprovalView = {
 };
 
 /** What the approval needs of the list beneath: read the day again, and close the review. */
-export type ApprovalSink = { readonly refresh: () => void; readonly close: () => void };
+export type ApprovalSink = {
+  readonly refresh: () => void;
+  readonly close: () => void;
+  /**
+   * The approves this phone has sent, as `stage:hash`, for the list's life (it outlives a review that was closed with
+   * an approve out): an MD_ALREADY for a hash in it is this phone's own approval, said "Approved".
+   */
+  readonly sent: Set<string>;
+};
 
 type Shown = {
   readonly state: ApprovalState;
@@ -80,7 +89,7 @@ export function isHoldable(review: ApprovalReview | null): review is ApprovalRev
  * review is read again once; a second stale straight after that fresh review sends the arbiter to the web desk, never a
  * loop), MD_TIES, any other refusal (the web desk), or offline, which may still have landed: the day is read again, and
  * the hold is offered only while the stage still waits. A code that has ended or been withdrawn is forgotten as the
- * day's read forgets it. The record gets `matchday.approve {kind, stage, outcome}`, never a token or a hash.
+ * day's read forgets it. The record gets `matchday.approve {kind, sid, result}` (`sid` the stage id, the allow-list's own word), never a token or a hash.
  */
 export function useApproval(kind: ApprovalKind, stageId: string, sink: ApprovalSink): ApprovalView {
   const ports = usePorts();
@@ -100,7 +109,7 @@ export function useApproval(kind: ApprovalKind, stageId: string, sink: ApprovalS
   });
   const asks = useAsks({ ports, kind, stageId, flags, mounted, sinkRef, setShown });
   useEffect(() => {
-    void asks.load(null);
+    void asks.load(null).catch(asks.failed);
   }, [asks]);
   const { approveFrom, reviewAgain } = asks;
   const approve = useCallback(() => approveFrom(latest.current), [approveFrom]);
@@ -131,8 +140,12 @@ function useAsks(deps: Deps) {
       if (flags.current.reading) return;
       flags.current.reading = true;
       setShown({ state: 'loading', review: null, refusal: notice });
-      const answer = await readReview(ports, held.code, kind, stageId, mounted);
-      flags.current.reading = false;
+      let answer: PortAnswer<ApprovalReview>;
+      try {
+        answer = await readReview(ports, held.code, kind, stageId, mounted);
+      } finally {
+        flags.current.reading = false;
+      }
       if (mounted.current) settleReview(ports, held, answer, notice, setShown);
     };
     const all: Approving = { ports, kind, stageId, flags, mounted, sinkRef, setShown, load };
@@ -140,14 +153,26 @@ function useAsks(deps: Deps) {
       if (flags.current.approving || now.state !== 'ready' || !isHoldable(now.review)) return;
       flags.current.approving = true;
       setShown({ ...now, state: 'approving' });
-      void doApprove(all, now.review).finally(() => {
-        flags.current.approving = false;
-      });
+      // A throw nobody expected (the list's refresh, the store) leaves "Approving…" for good unless it is caught: it
+      // reads as offline, and the approve may have landed, so Review again reads the day first.
+      void doApprove(all, now.review)
+        .catch(() => {
+          ports.logger.warn('matchday.approve-failed');
+          flags.current.recheck = true;
+          if (mounted.current) setShown({ state: 'offline', review: now.review, refusal: null });
+        })
+        .finally(() => {
+          flags.current.approving = false;
+        });
+    };
+    const failed = () => {
+      ports.logger.warn('matchday.review-failed');
+      if (mounted.current) setShown({ state: 'offline', review: null, refusal: null });
     };
     const reviewAgain = () => {
-      void (flags.current.recheck ? recheckThenRead(all) : load(null));
+      void (flags.current.recheck ? recheckThenRead(all) : load(null)).catch(failed);
     };
-    return { load, approveFrom, reviewAgain };
+    return { load, approveFrom, reviewAgain, failed };
   }, [ports, kind, stageId, flags, mounted, sinkRef, setShown]);
 }
 
@@ -251,14 +276,19 @@ async function doApprove(deps: Approving, review: ApprovalReview): Promise<void>
   if (held === null) return setShown({ state: 'offline', review, refusal: null });
   // A draw has no round; a Swiss review's is the one the approve hands back (isHoldable has seen it is there).
   const round = kind === 'swiss' ? review.round : null;
+  // Whether this phone had sent an approve for this very proposal before this one (a review closed with one out).
+  const sentKey = `${stageId}:${review.hash}`;
+  const sentBefore = deps.sinkRef.current.sent.has(sentKey);
+  deps.sinkRef.current.sent.add(sentKey);
   const answer = await askApprove(ports, held.code, { kind, stageId, hash: review.hash, round });
   // The word is recorded whether or not the screen is still there: the approve may have landed.
-  const outcome = outcomeOf(answer);
+  const own = sentBefore && !answer.ok && 'refusal' in answer && answer.refusal === 'MD_ALREADY';
+  const outcome = own ? 'own' : outcomeOf(answer);
   // `sid` and `result` are the allow-list's own words (`scrub.ts`, shared with native and the web's record contract): a
   // string under a key it does not list is masked, so `stage` and `outcome` would read "***". The stage id is a plain word.
   ports.logger.info('matchday.approve', { kind, sid: stageId, result: outcome });
   if (answer.ok) return approved(deps);
-  const meaning = meaningOf(answer, true);
+  const meaning = own ? 'own' : meaningOf(answer, true);
   // The answer says the code is over, whether or not the review is still open: it is forgotten as the day read forgets it.
   if (meaning === 'leave') return leave(ports, held, answer, setShown);
   if ('offline' in answer) return recheckAfterOffline(deps, review);

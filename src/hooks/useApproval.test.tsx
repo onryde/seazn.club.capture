@@ -54,6 +54,9 @@ type Setup = {
   readonly kind?: 'swiss' | 'draw';
   readonly saved?: SavedCode | null;
   readonly prepare?: (fakes: FakePorts) => void;
+  /** The list's `sent` set, to share it between two screens of one list. */
+  readonly sent?: Set<string>;
+  readonly refresh?: () => void;
 };
 
 /** The hook on the fake ports with the day code saved and active: the screen has just opened. */
@@ -72,7 +75,11 @@ async function mount(setup: Setup = {}) {
   fakes.matchDay.answerApprove(APPROVED);
   fakes.matchDay.answerDay({ ok: true, value: dayWaiting([waiting(FAKE_STAGE, kind)]) });
   setup.prepare?.(fakes);
-  const sink: ApprovalSink = { refresh: vi.fn(), close: vi.fn() };
+  const sink: ApprovalSink = {
+    refresh: setup.refresh ?? vi.fn(),
+    close: vi.fn(),
+    sent: setup.sent ?? new Set(),
+  };
   const stage = kind === 'swiss' ? FAKE_STAGE : DRAW_STAGE;
   const view = renderHook(() => useApproval(kind, stage, sink), { wrapper: wrapperFor(fakes) });
   await settle();
@@ -417,6 +424,129 @@ describe('useApproval: the approve', () => {
       expect(view.sink.close).not.toHaveBeenCalled();
     },
   );
+});
+
+describe('useApproval: a throw nobody expected (fix round 1, M1)', () => {
+  const warns = (fakes: FakePorts) => readRecord(fakes.record).map((line) => line.event);
+
+  it('a refresh that throws leaves Approving: offline with the review, logged, and Review again reads the day first', async () => {
+    const refresh = vi.fn(() => {
+      throw new Error('the list broke');
+    });
+    const view = await mount({ refresh });
+    act(() => view.result.current.approve());
+    await settle();
+    expect(view.result.current.state).toBe('offline');
+    expect(view.result.current.review).toEqual(FAKE_REVIEW);
+    expect(view.result.current.holdable).toBe(false);
+    expect(warns(view)).toContain('matchday.approve-failed');
+    act(() => view.result.current.reviewAgain());
+    await settle();
+    expect(callsOf(view, 'day')).toHaveLength(1);
+  });
+
+  it('the approve flag is down again after it: a later approve is not locked out', async () => {
+    let throwing = true;
+    const refresh = vi.fn(() => {
+      if (throwing) throw new Error('the list broke');
+    });
+    const view = await mount({ refresh });
+    act(() => view.result.current.approve());
+    await settle();
+    throwing = false;
+    view.matchDay.answerDay({ ok: true, value: dayWaiting([waiting(FAKE_STAGE)]) });
+    act(() => view.result.current.reviewAgain());
+    await settle();
+    expect(view.result.current.state).toBe('ready');
+    act(() => view.result.current.approve());
+    await settle();
+    expect(callsOf(view, 'approve')).toHaveLength(2);
+  });
+
+  it('a read that throws as the screen opens is offline and logged, not an unhandled rejection', async () => {
+    const view = await mount({
+      prepare: (fakes) => {
+        const real = fakes.ports.modeStore.getSnapshot.bind(fakes.ports.modeStore);
+        let first = true;
+        vi.spyOn(fakes.ports.modeStore, 'getSnapshot').mockImplementation(() => {
+          if (first && new Error().stack?.includes('heldCode')) {
+            first = false;
+            throw new Error('the store broke');
+          }
+          return real();
+        });
+      },
+    });
+    expect(view.result.current.state).toBe('offline');
+    expect(warns(view)).toContain('matchday.review-failed');
+  });
+
+  it('Review again that throws is caught too, and the next one still reads', async () => {
+    const view = await mount({ prepare: (fakes) => fakes.matchDay.answerReview(OFFLINE) });
+    await settle(REVIEW_RETRY_MS);
+    const real = view.ports.modeStore.getSnapshot.bind(view.ports.modeStore);
+    vi.spyOn(view.ports.modeStore, 'getSnapshot').mockImplementationOnce(() => {
+      throw new Error('the store broke');
+    });
+    void real;
+    act(() => view.result.current.reviewAgain());
+    await settle();
+    expect(warns(view)).toContain('matchday.review-failed');
+    view.matchDay.answerReview(ok(FAKE_REVIEW));
+    act(() => view.result.current.reviewAgain());
+    await settle();
+    expect(view.result.current.state).toBe('ready');
+  });
+});
+
+describe('useApproval: an approve this phone sent and left (fix round 1, M2)', () => {
+  it('a later MD_ALREADY for the same proposal reads own, not already', async () => {
+    const sent = new Set<string>();
+    const first = await mount({ sent, prepare: (fakes) => fakes.matchDay.answerApprove(OFFLINE) });
+    first.matchDay.answerDay(OFFLINE);
+    act(() => first.result.current.approve());
+    await settle();
+    first.unmount();
+    const again = await mount({
+      sent,
+      prepare: (fakes) => fakes.matchDay.answerApprove(refused('MD_ALREADY')),
+    });
+    act(() => again.result.current.approve());
+    await settle();
+    expect(again.result.current.refusal).toBe('own');
+    expect(
+      readRecord(again.record).filter((line) => line.event === 'matchday.approve')[0]?.fields,
+    ).toEqual({ kind: 'swiss', sid: FAKE_STAGE, result: 'own' });
+  });
+
+  it('with nothing sent before, the same answer is Already approved', async () => {
+    const view = await mount({
+      sent: new Set(),
+      prepare: (fakes) => fakes.matchDay.answerApprove(refused('MD_ALREADY')),
+    });
+    act(() => view.result.current.approve());
+    await settle();
+    expect(view.result.current.refusal).toBe('already');
+  });
+
+  it('another proposal (a fresh hash) of the same stage is not this phone’s', async () => {
+    const sent = new Set([`${FAKE_STAGE}:some-older-hash`]);
+    const view = await mount({
+      sent,
+      prepare: (fakes) => fakes.matchDay.answerApprove(refused('MD_ALREADY')),
+    });
+    act(() => view.result.current.approve());
+    await settle();
+    expect(view.result.current.refusal).toBe('already');
+  });
+
+  it('records the approve it sends, keyed by stage and hash', async () => {
+    const sent = new Set<string>();
+    const view = await mount({ sent });
+    act(() => view.result.current.approve());
+    await settle();
+    expect([...sent]).toEqual([`${FAKE_STAGE}:${FAKE_HASH}`]);
+  });
 });
 
 describe('useApproval: an approve that answered offline (ruling 5)', () => {

@@ -42,13 +42,17 @@ import { colour, layout, radius, space } from '@/ui/theme/tokens';
  */
 export function MatchDayScreen() {
   const { t } = useT();
-  const toHome = useBackToHome();
+  const home = useBackToHome();
   const list = useMatchDay();
   const [line, say] = useState<MessageKey | null>(null);
   const opening = useOpenFromMatchDay({ say, refresh: list.refresh });
   const cameBackTo = useCameBackFrom();
   const opened = useOpenedIds(list.updatedAt);
-  const { reviewing, review, closeReview, quiet } = useReview();
+  const { reviewing, review, closeReview, quiet, sent } = useReview();
+  // The overlay's Back sits where the list's does: a second tap of a double tap must not go Home.
+  const toHome = useCallback(() => {
+    if (!quiet()) home();
+  }, [quiet, home]);
   // A touch that lands as the review closes is the finger's own bounce, and must not act on the list beneath it.
   const open = useCallback(
     (row: Row, courtName: string) => (quiet() ? Promise.resolve() : opening(row, courtName)),
@@ -73,7 +77,12 @@ export function MatchDayScreen() {
         <MatchDayBody {...body} />
       </View>
       {reviewing === null ? null : (
-        <ApprovalScreen approval={reviewing} refresh={list.refresh} onClose={closeReview} />
+        <ApprovalScreen
+          approval={reviewing}
+          refresh={list.refresh}
+          onClose={closeReview}
+          sent={sent}
+        />
       )}
     </View>
   );
@@ -81,13 +90,14 @@ export function MatchDayScreen() {
 
 /**
  * The approval under review, if any. Closing it notes the moment, and for `BOUNCE_MS` after it a press that is not
- * deliberate (a row, the banner's Review) is ignored: the finger that pressed Back or Close can land again on whatever
+ * deliberate (a row, the banner's Review, the list's own Back) is ignored: the finger that pressed Back or Close can land again on whatever
  * the list shows beneath it (s2-3 saw a real Cancel then Swap mis-tap).
  */
 function useReview() {
   const { clock } = usePorts();
   const [reviewing, setReviewing] = useState<Approval | null>(null);
   const closedAt = useRef<number | null>(null);
+  const sent = useRef(new Set<string>()).current;
   const quiet = useCallback(
     () => closedAt.current !== null && isBounce(clock().getTime() - closedAt.current),
     [clock],
@@ -102,7 +112,7 @@ function useReview() {
     closedAt.current = clock().getTime();
     setReviewing(null);
   }, [clock]);
-  return { reviewing, review, closeReview, quiet };
+  return { reviewing, review, closeReview, quiet, sent };
 }
 
 /**

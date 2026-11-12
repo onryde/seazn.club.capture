@@ -1221,5 +1221,7 @@
   "matchday.approve.stale": "Le tableau a changé — examinez à nouveau",
   "matchday.approve.ties": "Les égalités se décident sur le site web",
   "matchday.approve.onWeb": "Approuvez-le sur le site web",
-  "matchday.approve.reviewAgain": "Examiner à nouveau"
+  "matchday.approve.reviewAgain": "Examiner à nouveau",
+  "matchday.approve.staleSwiss": "Les appariements ont changé — examinez à nouveau",
+  "matchday.approve.approved": "Approuvé"
 }

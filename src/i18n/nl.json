@@ -1221,5 +1221,7 @@
   "matchday.approve.stale": "Schema gewijzigd — bekijk opnieuw",
   "matchday.approve.ties": "Gelijke standen beslis je op de website",
   "matchday.approve.onWeb": "Keur het goed op de website",
-  "matchday.approve.reviewAgain": "Opnieuw bekijken"
+  "matchday.approve.reviewAgain": "Opnieuw bekijken",
+  "matchday.approve.staleSwiss": "Koppelingen gewijzigd — bekijk opnieuw",
+  "matchday.approve.approved": "Goedgekeurd"
 }

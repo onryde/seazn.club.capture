@@ -929,6 +929,16 @@ spec's (S4 design §7), verbatim. Committed without a `_review` marker.
 
 Keys `matchday.approve.*`: review (the banner button and the screen), heading.swiss/draw, change, action, hold (the plate), approving, loading, bye (a Swiss seat with no opponent), already, stale, ties, onWeb, reviewAgain.
 
+Added with the approval's fix round 1 (MD-2 Task 6, 2026-11-12): a Swiss round's stale line, and an approve that was
+this phone's own. The draw keeps the spec's "Draw changed — review again".
+
+| English                         | Español                                         | Français                                         | Nederlands                             |
+| ------------------------------- | ----------------------------------------------- | ------------------------------------------------ | -------------------------------------- |
+| Pairings changed — review again | Los emparejamientos cambiaron — revisa de nuevo | Les appariements ont changé — examinez à nouveau | Koppelingen gewijzigd — bekijk opnieuw |
+| Approved                        | Aprobado                                        | Approuvé                                         | Goedgekeurd                            |
+
+Keys `matchday.approve.staleSwiss`, `matchday.approve.approved`.
+
 ## Translation review
 
 - **New or changed English copy.** Add the key to es, fr and nl in the same
