@@ -88,6 +88,8 @@ All _the controller's_, 2026-11-12, open to the owner's correction.
 | 228 | Layout: volleyball's layout A (ruling 178, the owner's) carried over: halves, strip, last-tap line, four fixed tool slots. Tools: Violation · Break · Award game · Set score. No More: every tool fits the row. A mockup at 390 × 844 and 320 × 640 is shown to the owner with this design, before the screen batch.                                                                                                                                                                                                                                    |
 | 229 | Undo takes back this phone's own last event, as every set-based pad: a point, a set score, a violation, an award, a break.                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | 230 | Start: match details with the format's facts read from the config (best of, games to, tie-break at, no-ad, final set: "match tie-break to 10" or "tie-break at 6–6 to 10"), and Start match. No serve question (ruling 216).                                                                                                                                                                                                                                                                                                                            |
+| 231 | **The owner's** ("try to use full space?", then "approve", 2026-11-12, on the mockup): the four tool cells always fill the row. Set score stays, disabled, once a set has a point, instead of leaving an empty slot (volleyball's ruling 208); Award game stays disabled in a breaker. Nothing moves or changes width (volleyball F3).                                                                                                                                                                                                                  |
+| 232 | **The owner's** (the Dutch mockup at 320 dp, then "approve", 2026-11-12): a tool label wider than its cell at 320 dp takes a short form with the full word for screen readers, as volleyball's "T/O" (ruling 212): nl "Overtr." (said "Overtreding"), "Game geven"; the fit test decides the other languages.                                                                                                                                                                                                                                           |
 
 ## 4. How a scorer meets it
 
@@ -117,9 +119,10 @@ item 5, not by the mockup.
   side's games in the set ("Games 4").
 - **Strip:** "Set 2 of 3", then the breaker or the deuce note and "Change ends" (ruling 222).
 - **Last-tap line:** the last record and Undo, as every set-based pad.
-- **Tools row:** four fixed slots, Violation · Break · Award game · Set score. Set score is LAST and its slot stays when
-  it goes; Award game stays disabled in a breaker. No cell moves or changes width under the scorer's thumb (volleyball
-  F3; the bare slot of `ToolRow slots`).
+- **Tools row:** four cells that always fill the row, Violation · Break · Award game · Set score (ruling 231). Set score
+  is LAST and stays, disabled, once a set has a point; Award game stays disabled in a breaker. No cell moves or changes
+  width under the scorer's thumb (volleyball F3). A label wider than its cell at 320 dp takes a short form with the
+  full word for screen readers (ruling 232).
 
 ## 6. The app's side
 
