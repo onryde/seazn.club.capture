@@ -33,6 +33,8 @@ import type { Arm } from '@/hooks/usePadTaps';
 
 /** What a sheet's last step asks the match to do, and what it came to at once. */
 export type FootballSheetDriver = {
+  /** A step sheet opened, which lists people: the match reads its team sheets again (`usePeopleSheet`). */
+  readonly peopleSheet: () => void;
   readonly tap: (made: FootballTap) => PadOutcome;
   /** Correct's Set: the clock set to `elapsed`, running or stopped as it is. */
   readonly correct: (elapsed: number) => PadOutcome;
@@ -188,6 +190,7 @@ function opened(
 ): PadOutcome {
   if (move.kind === 'tap') return driver.tap(move.tap);
   if (move.kind !== 'flow') return NOT_NOW;
+  driver.peopleSheet();
   setSheet({ kind: 'step', flow: move.flow, phase: snapshot.display.enginePhase, column });
   return TAKEN;
 }

@@ -957,21 +957,23 @@ describe('Undo', () => {
 });
 
 // ---------------------------------------------------------------------------------------------------------------
-// The queue file names its match (Task 10: Home's Continue card says "4 taps from Match 4")
+// The queue file names its match (Task 10: Home's Continue card says "4 taps from A. Sharma v L. Chen · Match 4")
 // ---------------------------------------------------------------------------------------------------------------
 
 describe('the queue file names its match', () => {
   const tapSaved = (from: MatchState) => savesOf(tappedOnce(from).steps[0].effects)[0];
 
   it('a queue saved while the bootstrap is held carries the match as Home calls it', () => {
-    expect(tapSaved(ready({ queue: queueOf({ label: '' }) })).queue?.label).toBe('Match 4');
+    expect(tapSaved(ready({ queue: queueOf({ label: '' }) })).queue?.label).toBe(
+      'A. Sharma v L. Chen · Match 4',
+    );
   });
 
   it('follows the organiser: the label is the held bootstrap’s at the time of the save', () => {
     const renamed = { ...SINGLES, context: { ...SINGLES.context, match: 'Match 9' } };
     expect(
       tapSaved(ready({ queue: queueOf({ label: 'Match 4' }), bootstrap: renamed })).queue?.label,
-    ).toBe('Match 9');
+    ).toBe('A. Sharma v L. Chen · Match 9');
   });
 
   it('a sender with no bootstrap keeps the label the file had', () => {
@@ -1003,7 +1005,7 @@ describe('the queue file names its match', () => {
       { kind: 'saveFailed', key: 'k1' },
       NOW,
     );
-    expect(savesOf(failed.effects)[0].queue?.label).toBe('Match 4');
+    expect(savesOf(failed.effects)[0].queue?.label).toBe('A. Sharma v L. Chen · Match 4');
   });
 });
 

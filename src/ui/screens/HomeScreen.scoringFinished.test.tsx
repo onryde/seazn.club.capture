@@ -69,11 +69,13 @@ async function overOnDisk(fakes: FakePorts, taps = 0): Promise<void> {
 
 const card = () => screen.getByTestId('scoring-continue');
 const closeButton = () => screen.getByRole('button', { name: `Close ${FAKE_LABEL}` });
+/** The visible way in (owner, 2026-11-12: the card's words did not look pressable). */
+const viewButton = () => screen.getByRole('button', { name: `View result of ${FAKE_LABEL}` });
 /** The words of the card, which are its body: a press target that opens the match. */
 const body = () => within(card()).getByRole('button', { name: new RegExp(`^${FINISHED}`) });
 
 describe('a finished match on Home', () => {
-  it('says Finished with the final score and the match, and offers Close alone', async () => {
+  it('says Finished with the final score and the match, and offers View result and Close', async () => {
     await homeWith(overOnDisk, { kvSeed: inMatch() });
     expect(within(card()).getByText(FINISHED)).toBeTruthy();
     expect(within(card()).getByText(FAKE_LABEL)).toBeTruthy();
@@ -81,7 +83,11 @@ describe('a finished match on Home', () => {
     const names = within(card())
       .getAllByRole('button')
       .map((button) => button.getAttribute('aria-label') ?? button.textContent);
-    expect(names).toEqual([`${FINISHED}${FAKE_LABEL}`, `Close ${FAKE_LABEL}`]);
+    expect(names).toEqual([
+      `${FINISHED}${FAKE_LABEL}`,
+      `View result of ${FAKE_LABEL}`,
+      `Close ${FAKE_LABEL}`,
+    ]);
     expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Forget' })).toBeNull();
     expect(screen.queryByRole('button', { name: /^Dismiss/ })).toBeNull();
@@ -90,6 +96,41 @@ describe('a finished match on Home', () => {
   it('draws the word Close, the match in its name for a screen reader', async () => {
     await homeWith(overOnDisk, { kvSeed: inMatch() });
     expect(closeButton().textContent).toBe('Close');
+  });
+
+  it('draws the words View result before Close, the match in its name for a screen reader', async () => {
+    await homeWith(overOnDisk, { kvSeed: inMatch() });
+    expect(viewButton().textContent).toBe('View result');
+    const drawn = within(card())
+      .getAllByRole('button')
+      .map((button) => button.textContent);
+    expect(drawn.slice(-2)).toEqual(['View result', 'Close']);
+  });
+
+  it.each([
+    ['en', en['home.scoring.view'], en['home.scoring.viewMatch'], 'View result'],
+    ['es', es['home.scoring.view'], es['home.scoring.viewMatch'], 'Ver resultado'],
+    ['fr', fr['home.scoring.view'], fr['home.scoring.viewMatch'], 'Voir le résultat'],
+    ['nl', nl['home.scoring.view'], nl['home.scoring.viewMatch'], 'Bekijk uitslag'],
+  ])('%s: the label and the name are the dictionary’s', (_lang, view, viewMatch, word) => {
+    expect(view).toBe(word);
+    expect(viewMatch.replace('{match}', '')).toContain(word);
+    expect(viewMatch).toContain('{match}');
+  });
+
+  it('View result opens the match as the words do, once however fast it is tapped', async () => {
+    const home = await homeWith(overOnDisk, {
+      kvSeed: { ...inMatch(), [STORE_KEYS.active]: 'stream' },
+    });
+    act(() => {
+      viewButton().click();
+      viewButton().click();
+    });
+    await waitFor(() => expect(home.navigation.current()).toBe('scoring'));
+    expect(home.navigation.history).toEqual(['scoring']);
+    expect(home.kv.entries.get(STORE_KEYS.active)).toBe('scoring');
+    expect(home.kv.entries.has(STORE_KEYS.code('scoring'))).toBe(true);
+    expect(screen.queryByRole('button', { name: `Close ${FAKE_LABEL}` })).not.toBeNull();
   });
 
   it('says only Finished for a match the organiser finalized before any game was over', async () => {
@@ -243,6 +284,7 @@ describe('a decided match whose taps are not all sent', () => {
     expect(within(card()).getByText('Continue Remote Scoring')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Continue' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /^Close/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^View result/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Forget' })).toBeNull();
     expect(screen.queryByText(/Finished/)).toBeNull();
   });

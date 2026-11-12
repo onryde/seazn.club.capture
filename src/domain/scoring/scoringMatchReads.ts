@@ -30,16 +30,36 @@ import {
 /**
  * A ping, a poll, a return to the foreground: the ledger again. The bootstrap goes with it at once while the screen is
  * not the pad (a card, or none held yet), and, paced, when the match is decided: the ledger cannot say it was finalized.
+ * A return to the foreground (`people`) asks it paced for a match in play too, so a lineup saved on the web meanwhile
+ * reaches the people lists (S2-6 ruling 181); a ping never does, since Realtime nudges those and the sheets ask on open.
  */
-export function wanting<S extends SportTypes>(state: MatchState<S>, now: number): Part<S> {
+export function wanting<S extends SportTypes>(
+  state: MatchState<S>,
+  now: number,
+  people = false,
+): Part<S> {
   if (state.sync.status === 'tooLarge' || deadOf(state) !== null) return part(state);
   const fetch: MatchEffect = { kind: 'fetch', since: state.sync.tip };
   if (state.judge !== 'fold') return part(state, [fetch]);
   if (showsNoPad(state)) return asking(state, now, [fetch]);
-  if (!isDecided(state)) return part(state, [fetch]);
+  if (!isDecided(state)) {
+    return people && paced(state, now) ? asking(state, now, [fetch]) : part(state, [fetch]);
+  }
   return paced(state, now)
     ? asking(state, now, [fetch])
     : part({ ...state, bootstrapOwed: true }, [fetch]);
+}
+
+/**
+ * A sheet listing the match's people opened: the bootstrap again if the last read is 15 s back, else owed for when it is; no ledger fetch. Only the
+ * foreground folding runner reads it, and a dead or too large match has nothing it could change.
+ */
+export function askedForPeople<S extends SportTypes>(state: MatchState<S>, now: number): Part<S> {
+  if (state.judge !== 'fold' || state.sync.status === 'tooLarge' || deadOf(state) !== null) {
+    return part(state);
+  }
+  // Inside the pace nothing is read, but the read is owed: it goes when the pace allows (review M4).
+  return paced(state, now) ? asking(state, now) : part({ ...state, bootstrapOwed: true });
 }
 
 /** No bootstrap is held, or the server's screen is a card in place of the pad. */

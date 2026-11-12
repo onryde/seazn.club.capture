@@ -8,7 +8,7 @@ import {
 import { boardgame } from '@seazn/engine/sports/boardgame';
 import { cricket } from '@seazn/engine/sports/cricket';
 import { football } from '@seazn/engine/sports/football';
-import { badminton, tabletennis } from '@seazn/engine/sports/setbased';
+import { badminton, tabletennis, volleyball } from '@seazn/engine/sports/setbased';
 import { badmintonCfg, refusalOf } from '@/domain/scoring/badmintonEngine';
 import type { BadmintonTap } from '@/domain/scoring/badmintonPad';
 import { chessCfg, chessRefusalOf } from '@/domain/scoring/chessEngine';
@@ -17,6 +17,8 @@ import { footballRefusalOf, type FootballEngineMatch } from '@/domain/scoring/fo
 import type { PadSide } from '@/domain/scoring/padView';
 import { envelopeOf, lineupOf } from '@/domain/scoring/setBasedEngine';
 import { tableTennisCfg, tableTennisRefusalOf } from '@/domain/scoring/tableTennisEngine';
+import { volleyballCfg, volleyballRefusalOf } from '@/domain/scoring/volleyballEngine';
+import { volleyballLineupOf } from '@/domain/scoring/volleyballLineup';
 import { teamSheetOf } from '@/domain/scoring/teamSheet';
 import {
   voidTargetOf,
@@ -45,8 +47,9 @@ import type { ScoringPort } from '@/services/scoringPort';
  */
 export type FakeSeedEvent = { readonly type: string; readonly payload: unknown };
 
-/** The sports the fake can serve: the set-based ones the phone scores, chess (the engine's `boardgame`), cricket and football. */
-export type FakeSportKey = 'badminton' | 'tabletennis' | 'boardgame' | 'cricket' | 'football';
+/** The sports the fake can serve: the set-based ones the phone scores, chess (the engine's `boardgame`), cricket, football and volleyball. */
+export type FakeSportKey =
+  'badminton' | 'tabletennis' | 'boardgame' | 'cricket' | 'football' | 'volleyball';
 
 /** What the fake hands a sport's judge: the match's id, its config as the sport's schema read it and its two lineups. */
 type FakeEngineMatch = {
@@ -88,6 +91,16 @@ const SPORTS: Readonly<Record<FakeSportKey, FakeSport>> = {
     cfg: chessCfg,
     refusalOf: chessRefusalOf,
     lineupsOf: startingLineups,
+  },
+  volleyball: {
+    module: volleyball,
+    cfg: volleyballCfg,
+    refusalOf: volleyballRefusalOf,
+    // The team sheet and the pair order (ruling 186), as the web builds them.
+    lineupsOf: (sides) => ({
+      home: volleyballLineupOf(sides.home),
+      away: volleyballLineupOf(sides.away),
+    }),
   },
   cricket: {
     module: cricket,
@@ -169,6 +182,12 @@ export type FakeServerControls = {
    * not touched.
    */
   carryForward(on: boolean): void;
+  /**
+   * The organiser saved a side's team sheet on the web after the pad opened: the next bootstrap answers `side`, and the
+   * engine judges later taps with its lineup. The ledger is not touched, so an event naming a person the new side
+   * dropped is still judged.
+   */
+  setSide(which: 'home' | 'away', side: BootstrapSide): void;
   /** The next call, of any kind, is the door's 429 and waits this long; the call after it is answered as before. */
   rateLimit(retryAfterMs: number): void;
 };
@@ -191,7 +210,10 @@ type Server = {
   readonly seed: FakeMatchSeed;
   readonly sportKey: FakeSportKey;
   readonly sport: FakeSport;
-  readonly lineups: LineupPair;
+  /** The sides as the bootstrap answers them now: the seed's until `setSide` changes one. */
+  sides: FakeMatchSeed['sides'];
+  /** The lineups the engine judges with, always built from `sides`. */
+  lineups: LineupPair;
   readonly ledger: LedgerEvent[];
   /** Idempotency key → the event it wrote. */
   readonly keys: Map<string, { readonly seq: number; readonly eventId: string }>;
@@ -204,6 +226,11 @@ type Server = {
   offline: boolean;
   dropNext: boolean;
   finalized: boolean;
+  /**
+   * Whether the match is decided, as the status column holds it: set when an event is written, by the lineups then, and
+   * never recomputed by a read (the web reads the column; `setSide` after the fact does not move it).
+   */
+  decidedStatus: boolean;
   forbidden: string | null;
   carried: boolean;
   limitMs: number | null;
@@ -231,6 +258,7 @@ export function createFakeScoringPort(
     seed,
     sportKey,
     sport,
+    sides: seed.sides,
     lineups: sport.lineupsOf(seed.sides),
     ledger: [],
     keys: new Map(),
@@ -242,6 +270,7 @@ export function createFakeScoringPort(
     offline: false,
     dropNext: false,
     finalized: false,
+    decidedStatus: false,
     forbidden: null,
     carried: false,
     limitMs: null,
@@ -311,6 +340,10 @@ function controls(server: Server): FakeServerControls {
     },
     carryForward: (on) => {
       server.carried = on;
+    },
+    setSide: (which, side) => {
+      server.sides = { ...server.sides, [which]: side };
+      server.lineups = server.sport.lineupsOf(server.sides);
     },
     rateLimit: (retryAfterMs) => {
       server.limitMs = retryAfterMs;
@@ -405,6 +438,7 @@ function write(
   const code = engineRefusal(server, [...server.ledger, event]);
   if (code !== null) return { refused: code };
   server.ledger.push(event);
+  server.decidedStatus = foldDecided(server);
   if (key !== undefined) server.keys.set(key, { seq, eventId: event.id });
   return event;
 }
@@ -447,7 +481,7 @@ function bootstrapOf(server: Server): Bootstrap {
     epochRequired: server.epochRequired,
     ...screenOf(server),
     context: seed.context,
-    sides: seed.sides,
+    sides: server.sides,
     lastSeq: tip,
     status: statusOf(server),
   };
@@ -468,7 +502,7 @@ function statusOf(server: Server): string {
   const has = (type: string) =>
     server.ledger.some((event) => event.type === type && !voided.has(event.id));
   if (has('core.forfeit')) return 'forfeited';
-  if (decided(server)) return 'decided';
+  if (server.decidedStatus) return 'decided';
   return has('core.start') ? 'in_play' : 'scheduled';
 }
 
@@ -476,7 +510,7 @@ function statusOf(server: Server): string {
  * The match is decided: the engine's effective outcome (`outcomeOf`, the one reader of a fold's outcome) is not null, so an
  * organiser's settle over a level game, which the module's own state never sees, counts as the web counts it.
  */
-const decided = (server: Server): boolean => {
+const foldDecided = (server: Server): boolean => {
   const { module } = server.sport;
   const folded = foldMatchWithStoppage(
     module,

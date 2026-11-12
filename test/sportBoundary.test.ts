@@ -366,3 +366,71 @@ describe('a generic scoring file names no football module either', { timeout: 18
     expect(await refusals(FOOTBALL_VALUE, 'src/domain/scoring/footballFold.test.ts')).toEqual([]);
   });
 });
+
+/**
+ * Volleyball is held the same way (S2-6 plan Task 8): its modules are `volleyball*` (domain, services) and `*Volleyball*`
+ * (hooks, screens), both case spellings since the globs are case sensitive. The hook, the sheets hook and the screen are
+ * Batch C's; the lint holds their paths already.
+ */
+const VOLLEYBALL_VALUE =
+  "import { foldVolleyball } from '@/domain/scoring/volleyballFold';\nexport const f = foldVolleyball;\n";
+const VOLLEYBALL_TYPE =
+  "import type { VolleyballDisplay } from '@/domain/scoring/volleyballTypes';\nexport type D = VolleyballDisplay;\n";
+const VOLLEYBALL_CAPITAL =
+  "import { useVolleyballMatch } from '@/hooks/useVolleyballMatch';\nexport const h = useVolleyballMatch;\n";
+
+const VOLLEYBALL_OWN = [
+  'src/domain/scoring/volleyballFold.ts',
+  'src/domain/scoring/volleyballPad.ts',
+  'src/domain/scoring/volleyballSport.ts',
+  'src/hooks/useVolleyballMatch.ts',
+  'src/hooks/useVolleyballSheets.ts',
+  'src/ui/screens/VolleyballPadScreen.tsx',
+  'src/services/fakeVolleyballPad.ts',
+  // held by `usePad*` and exempt only by `*Volleyball*`
+  'src/hooks/usePadVolleyballProbe.ts',
+] as const;
+
+describe('a generic scoring file names no volleyball module either', { timeout: 180_000 }, () => {
+  it('a generic file importing volleyballFold fails lint, by value and by type, from a path of every glob', async () => {
+    const byValue = await Promise.all(
+      GENERIC.map(async (file) => (await refusals(VOLLEYBALL_VALUE, file)).length),
+    );
+    const byType = await Promise.all(
+      GENERIC.map(async (file) => (await refusals(VOLLEYBALL_TYPE, file)).length),
+    );
+    expect(byValue).toEqual(GENERIC.map(() => 1));
+    expect(byType).toEqual(GENERIC.map(() => 1));
+  });
+
+  it('refuses the capitalised spelling too (a hook or a screen)', async () => {
+    const counts = await Promise.all(
+      GENERIC.map(async (file) => (await refusals(VOLLEYBALL_CAPITAL, file)).length),
+    );
+    expect(counts).toEqual(GENERIC.map(() => 1));
+  });
+
+  it('refuses the sport module from a path of every glob, and from the lifted set-based fold', async () => {
+    const source =
+      "import { volleyballSport } from '@/domain/scoring/volleyballSport';\nexport const s = volleyballSport;\n";
+    const paths = [...GENERIC, 'src/domain/scoring/setBasedFold.ts'];
+    const counts = await Promise.all(
+      paths.map(async (file) => (await refusals(source, file)).length),
+    );
+    expect(counts).toEqual(paths.map(() => 1));
+  });
+
+  it('stays silent in volleyball’s own files, and in a test', async () => {
+    const own = await Promise.all(
+      VOLLEYBALL_OWN.flatMap((file) =>
+        [VOLLEYBALL_VALUE, VOLLEYBALL_CAPITAL].map(
+          async (src) => (await refusals(src, file)).length,
+        ),
+      ),
+    );
+    expect(own).toEqual(VOLLEYBALL_OWN.flatMap(() => [0, 0]));
+    expect(await refusals(VOLLEYBALL_VALUE, 'src/domain/scoring/volleyballFold.test.ts')).toEqual(
+      [],
+    );
+  });
+});

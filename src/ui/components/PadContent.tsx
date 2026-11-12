@@ -382,6 +382,7 @@ const PadControls = memo(function PadControls({
         onTool={actions.tool}
         brightInk={brightTools}
         holdTool={holdTool}
+        slots={view.toolSlots}
       />
     </>
   );

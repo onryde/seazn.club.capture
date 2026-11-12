@@ -17,6 +17,14 @@ type StartActions = {
 };
 
 /**
+ * A sheet that lists the match's people opened (S2-6 ruling 181): the match reads the bootstrap again, through its 15 s
+ * pace, so a lineup saved on the web after the pad opened is on the list. Stable for a runner; a missing one asks nothing.
+ */
+export function usePeopleSheet(runner: ScoringRunner | null): () => void {
+  return useCallback(() => void runner?.dispatch({ kind: 'peopleSheet' }), [runner]);
+}
+
+/**
  * The Start screen (owner, 2026-11-01, option A): the pick goes to the match, and Start match is a tap carrying it,
  * through the bounce memory. `startWith` makes the sport's start tap for the picked side: keep it stable
  * (`useCallback`), or `start` changes on every render. Start match waits for a pick: with none, it starts nothing.

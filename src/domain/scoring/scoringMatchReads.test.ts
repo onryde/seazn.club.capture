@@ -174,3 +174,58 @@ describe('the bootstrap poll', () => {
     expect(kinds(ticked.effects)).not.toContain('loadBootstrap');
   });
 });
+
+// The bootstrap again on a foreground and on a people sheet (S2-6 Task 3, ruling 181): a lineup saved on the web after
+// the pad opened reaches the next people list, through the same 15 s pace, never on a ping (Realtime nudges those).
+describe('the bootstrap again, for the people lists', () => {
+  const PLAYING = [start(), rally('H')];
+  const playing = () => ready({}, PLAYING);
+  /** `ready` opened the match at NOW, which asked the bootstrap then. */
+  const back = (state: ReturnType<typeof playing>, at: number) =>
+    step(step(state, { kind: 'background' }, at - 1).state, { kind: 'foreground' }, at);
+
+  it('a foreground 15 000 ms after the last ask asks, and one at 14 999 does not', () => {
+    expect(kinds(back(playing(), NOW + PACE).effects)).toEqual(['fetch', 'loadBootstrap']);
+    expect(kinds(back(playing(), NOW + PACE - 1).effects)).toEqual(['fetch']);
+  });
+
+  it('two foregrounds in one window ask once, and the ask moves the window', () => {
+    const first = back(playing(), NOW + PACE);
+    expect(kinds(first.effects)).toEqual(['fetch', 'loadBootstrap']);
+    expect(first.state.bootstrapAskedAt).toBe(NOW + PACE);
+    const second = back(first.state, NOW + PACE + 5000);
+    expect(kinds(second.effects)).toEqual(['fetch']);
+  });
+
+  it('a read never asks it for a match in play: Realtime nudges, the people lists ask on their own', () => {
+    expect(kinds(step(playing(), { kind: 'read' }, NOW + PACE).effects)).toEqual(['fetch']);
+  });
+
+  it('a people sheet asks it, paced, and only the ledger-free bootstrap: no fetch with it', () => {
+    const open = step(playing(), { kind: 'peopleSheet' }, NOW + PACE);
+    expect(kinds(open.effects)).toEqual(['loadBootstrap']);
+    expect(open.state.bootstrapAskedAt).toBe(NOW + PACE);
+    expect(kinds(step(open.state, { kind: 'peopleSheet' }, NOW + PACE + 1).effects)).toEqual([]);
+  });
+
+  it('a people sheet 1 ms inside the window asks nothing', () => {
+    expect(kinds(step(playing(), { kind: 'peopleSheet' }, NOW + PACE - 1).effects)).toEqual([]);
+  });
+
+  it('a people sheet inside the window owes the read: it is read when the pace allows', () => {
+    const early = step(playing(), { kind: 'peopleSheet' }, NOW + PACE - 1);
+    expect(wakeAt(early.state, NOW + PACE - 1)).toBe(NOW + PACE);
+  });
+
+  it('the background sender never asks, on a foreground or a people sheet', () => {
+    const state = ready({ judge: 'trust' }, PLAYING);
+    expect(kinds(step(state, { kind: 'foreground' }, NOW + PACE).effects)).toEqual(['fetch']);
+    expect(kinds(step(state, { kind: 'peopleSheet' }, NOW + PACE).effects)).toEqual([]);
+  });
+
+  it('a dead queue asks nothing on either', () => {
+    const state = ready({ queue: queueOf({ dead: 'finalized' }) }, PLAYING);
+    expect(kinds(step(state, { kind: 'foreground' }, NOW + PACE).effects)).toEqual([]);
+    expect(kinds(step(state, { kind: 'peopleSheet' }, NOW + PACE).effects)).toEqual([]);
+  });
+});

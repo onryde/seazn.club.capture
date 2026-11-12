@@ -22,7 +22,12 @@ import {
   type FootballSheetSnapshot,
   type FootballSheetView,
 } from '@/hooks/useFootballSheets';
-import { useAskActions, useClosedByDeadLink, useStartActions } from '@/hooks/usePadMatchParts';
+import {
+  useAskActions,
+  useClosedByDeadLink,
+  usePeopleSheet,
+  useStartActions,
+} from '@/hooks/usePadMatchParts';
 import { useSettle, useTaps, type PadTapDriver } from '@/hooks/usePadTaps';
 import { usePeriodArm } from '@/hooks/usePeriodArm';
 import { usePorts, type Ports } from '@/hooks/usePorts';
@@ -106,7 +111,7 @@ function useFootballPad(
   const driver = useFootballDriver(sender);
   const taps = useTaps(driver, settle, sender.say, ignoreFlash);
   useResync(ports, runner, sender, display?.enginePhase ?? '');
-  const sheets = useSheets(ports, sender, taps, pad, clock);
+  const sheets = useSheets(ports, sender, runner, taps, pad, clock);
   const armed = usePeriodArm(periodLabelOf(pad));
   const parts = { ports, sender, runner, pad, taps, sheets, clock, setCardNote, armed };
   const actions = useActions(parts);
@@ -242,11 +247,12 @@ function useResync(
 function useSheets(
   ports: Ports,
   sender: Sender,
+  runner: ScoringRunner | null,
   taps: ReturnType<typeof useTaps>,
   pad: PadFacts | null,
   clock: FootballClockRead,
 ) {
-  const driver = useSheetDriver(ports, sender, pad);
+  const driver = useSheetDriver(ports, sender, runner, pad);
   const snapshot = useSheetSnapshot(pad);
   const sheets = useFootballSheets(driver, snapshot, clock, taps.opening, taps.arm);
   useClosedByDeadLink(pad?.view, sheets.open, sheets.cancel);
@@ -254,12 +260,19 @@ function useSheets(
 }
 
 /** What a sheet records through: a step's tap, and Correct's Set, said in the record when it is taken. */
-function useSheetDriver(ports: Ports, sender: Sender, pad: PadFacts | null): FootballSheetDriver {
+function useSheetDriver(
+  ports: Ports,
+  sender: Sender,
+  runner: ScoringRunner | null,
+  pad: PadFacts | null,
+): FootballSheetDriver {
   const { tap } = sender;
   const { logger } = ports;
+  const peopleSheet = usePeopleSheet(runner);
   return useMemo<FootballSheetDriver>(
     () => ({
       tap,
+      peopleSheet,
       correct: (elapsed) => {
         const running = pad?.display.clock.anchor?.running === true;
         const outcome = tap({ kind: 'clock', running, elapsed });
@@ -268,7 +281,7 @@ function useSheetDriver(ports: Ports, sender: Sender, pad: PadFacts | null): Foo
         return outcome;
       },
     }),
-    [tap, logger, pad],
+    [tap, peopleSheet, logger, pad],
   );
 }
 

@@ -1,4 +1,9 @@
-import { EngineError, foldMatchWithStoppage, type EventEnvelope } from '@seazn/engine/core';
+import {
+  EngineError,
+  foldMatchWithStoppage,
+  type EventEnvelope,
+  type LineupPair,
+} from '@seazn/engine/core';
 import {
   setBasedServeContext,
   type SetBasedModule,
@@ -27,7 +32,7 @@ import {
   type SetBasedNames,
 } from '@/domain/scoring/setBasedSides';
 import { undoTarget } from '@/domain/scoring/undoTarget';
-import { matchContextOf, type Bootstrap } from '@/domain/scoring/wire';
+import { matchContextOf, type Bootstrap, type BootstrapSide } from '@/domain/scoring/wire';
 
 /**
  * The fold the one-against-one sports share (badminton, table tennis and chess; design §6; plan S2-1 Task 7, lifted for
@@ -55,6 +60,11 @@ export type SetBasedEvents = {
 
 /** What a sport adds to the shared fold. `D` is the sport's type for what an event did. */
 export type SetBasedKit<D> = SetBasedEvents & {
+  /**
+   * A side's lineup for the engine; `lineupOf` when a sport gives none (badminton, table tennis). Volleyball folds with the
+   * lineup the web server builds (S2-6 ruling 186), so it gives its own.
+   */
+  readonly lineupsOf?: (side: BootstrapSide) => LineupPair['home'];
   /** Whether the server would append `next` after `before`: the web's own refusals first, then the engine's. */
   readonly mayAppend: (
     match: SetBasedMatch,
@@ -135,7 +145,8 @@ function matchOf<D>(kit: SetBasedKit<D>, bootstrap: Bootstrap): SetBasedMatch | 
   if (seats === null || context === null) return 'sides';
   const cfg = setBasedCfgOf(kit.module, bootstrap.cfg);
   if (cfg === null) return 'cfg';
-  const lineups = { home: lineupOf(seats.first), away: lineupOf(seats.second) };
+  const lineupFor = kit.lineupsOf ?? lineupOf;
+  const lineups = { home: lineupFor(seats.first), away: lineupFor(seats.second) };
   return {
     engine: { fixtureId: bootstrap.fixtureId, cfg, lineups },
     rawCfg: bootstrap.cfg,

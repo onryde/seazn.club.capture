@@ -23,8 +23,22 @@ const sides = { home: side('A. Sharma'), away: side('L. Chen') };
  * two sides as the Live Stream label puts them, else the competition. Never an id: a volunteer cannot read one.
  */
 describe('matchLabelOf', () => {
-  it('is the match number the organiser gave', () => {
-    expect(matchLabelOf({ context: context(), sides })).toBe('Match 4');
+  // Owner, 2026-11-12: Home showed just "F·1"; the sides lead, the organiser's reference follows.
+  it('leads with the two sides, " v " between, then " · " and the number the organiser gave', () => {
+    expect(matchLabelOf({ context: context(), sides })).toBe('A. Sharma v L. Chen · Match 4');
+  });
+
+  it('is the number alone when a seat has no side yet', () => {
+    expect(
+      matchLabelOf({ context: context(), sides: { home: side('A. Sharma'), away: null } }),
+    ).toBe('Match 4');
+    expect(matchLabelOf({ context: context(), sides: { home: null, away: null } })).toBe('Match 4');
+  });
+
+  it('keeps a number with a middle dot as typed', () => {
+    expect(matchLabelOf({ context: context({ match: 'F·1' }), sides })).toBe(
+      'A. Sharma v L. Chen · F·1',
+    );
   });
 
   it('is the two sides, " v " between, when the match has no number of its own', () => {
@@ -57,7 +71,21 @@ describe('matchLabelOf', () => {
   });
 
   it('trims what the organiser typed', () => {
-    expect(matchLabelOf({ context: context({ match: '  Match 4 ' }), sides })).toBe('Match 4');
+    expect(matchLabelOf({ context: context({ match: '  Match 4 ' }), sides })).toBe(
+      'A. Sharma v L. Chen · Match 4',
+    );
+    expect(
+      matchLabelOf({
+        context: context({ match: '  Match 4 ' }),
+        sides: { home: null, away: null },
+      }),
+    ).toBe('Match 4');
+  });
+
+  it('reads a side named only by spaces as missing', () => {
+    expect(
+      matchLabelOf({ context: context(), sides: { home: side('  '), away: side('L. Chen') } }),
+    ).toBe('Match 4');
   });
 
   it('trims the side names it joins', () => {

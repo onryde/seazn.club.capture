@@ -18,6 +18,7 @@ import { TapFlash } from '@/ui/components/TapFlash';
 import { Text } from '@/ui/components/Text';
 import { scoreRole } from '@/ui/theme/scoreRole';
 import { colour, layout, plateInk, radius, space } from '@/ui/theme/tokens';
+import { typeScale } from '@/ui/theme/type';
 
 type PadWords = ReturnType<typeof usePadText>;
 
@@ -47,12 +48,17 @@ export const ScoreHalf = memo(function ScoreHalf({ half, flash, onTap }: ScoreHa
   const tap = useCallback(() => onTap(half.side), [onTap, half.side]);
   const [height, measure] = useHeight();
   const sub = half.sub === null ? null : words(half.sub);
+  const foot = half.foot == null ? null : words(half.foot.text);
+  const spokenFoot = half.foot == null ? null : words(half.foot.said);
+  // The counts sit in the bottom row's slot, or on a line of their own when the slot holds something else.
+  const inSlot = half.foot?.place === 'slot';
+  const caution = half.foot?.caution === true;
   const said = half.marks.said.map(words);
   return (
     <Pressable
       testID={`half-${half.side}`}
       accessibilityRole="button"
-      accessibilityLabel={halfName(half, words, sub, said)}
+      accessibilityLabel={halfName(half, words, sub, said, spokenFoot)}
       accessibilityHint={words(half.hint)}
       disabled={!half.tappable}
       onPress={tap}
@@ -62,18 +68,61 @@ export const ScoreHalf = memo(function ScoreHalf({ half, flash, onTap }: ScoreHa
       <TapFlash cue={flash} />
       <HalfHead half={half} />
       <View style={styles.middle}>
-        <Text testID="score" variant={scoreRole(height)}>
+        <Text
+          testID="score"
+          variant={scoreRole(height === null ? null : height - footRoom(inSlot ? null : foot))}
+        >
           {half.value}
         </Text>
       </View>
+      {foot === null || inSlot ? null : <HalfCounts text={foot} caution={caution} />}
       <HalfFoot
         scores={half.periods?.scores ?? NO_SCORES}
         sub={sub}
+        counts={inSlot ? foot : null}
+        caution={caution}
         hint={half.tappable ? words(half.action ?? TAP) : null}
       />
     </Pressable>
   );
 });
+
+/** The room the counts line takes out of the half's height, which the score's size is judged without (`scoreRole`). */
+const footRoom = (foot: string | null): number =>
+  foot === null ? 0 : typeScale.control.lineHeight;
+
+/**
+ * The side's counts on a line of their own above the bottom row (`PadHalf.foot`; volleyball's "T/O 1 of 2 · Subs 4 of 6"):
+ * `caution` once a count is at its number, never red. One line, cut with an ellipsis rather than wrapped. A screen reader
+ * hears the same words in the half's name, so this is hidden from it.
+ */
+const HalfCounts = memo(function HalfCounts({
+  text,
+  caution,
+  slot = false,
+}: {
+  readonly text: string;
+  readonly caution: boolean;
+  /** In the bottom row beside the hint, where it gives way before the boxes and the hint do. */
+  readonly slot?: boolean;
+}) {
+  return (
+    <Text
+      testID="half-counts"
+      variant="control"
+      numberOfLines={1}
+      aria-hidden
+      style={countsStyle(caution, slot)}
+    >
+      {text}
+    </Text>
+  );
+});
+
+const countsStyle = (caution: boolean, slot: boolean) => {
+  if (slot) return caution ? styles.countsSlotCaution : styles.countsSlot;
+  return caution ? styles.countsCaution : styles.counts;
+};
 
 /** The half's height as laid out, which sets the score's size (`scoreRole`); null until it is measured. */
 function useHeight(): readonly [number | null, (event: LayoutChangeEvent) => void] {
@@ -100,11 +149,12 @@ function halfName(
   words: PadWords,
   sub: string | null,
   marks: readonly string[],
+  foot: string | null,
 ): string {
   const periods = half.periods === null ? NO_WORDS : half.periods.said.map(words);
   const serving = half.serving === null ? null : words(half.serving.said);
   const plate = half.plate === null ? null : words(half.plate);
-  return [half.label, half.value, ...periods, sub, ...marks, serving, plate]
+  return [half.label, half.value, ...periods, sub, foot, ...marks, serving, plate]
     .filter(isWords)
     .join(', ');
 }
@@ -161,10 +211,15 @@ const HalfMarks = memo(function HalfMarks({
 const HalfFoot = memo(function HalfFoot({
   scores,
   sub,
+  counts,
+  caution,
   hint,
 }: {
   readonly scores: readonly PadPeriodScore<MessageKey>[];
   readonly sub: string | null;
+  /** The side's counts, when they sit in this row (`PadFoot.place`): after the boxes, cut before the hint is. */
+  readonly counts: string | null;
+  readonly caution: boolean;
   readonly hint: string | null;
 }) {
   const boxed = scores.length > 0;
@@ -181,8 +236,14 @@ const HalfFoot = memo(function HalfFoot({
           {sub}
         </Text>
       )}
+      {counts === null ? null : <HalfCounts text={counts} caution={caution} slot />}
       {hint === null ? null : (
-        <Text variant="metricUnit" numberOfLines={1} aria-hidden style={styles.hint}>
+        <Text
+          variant="metricUnit"
+          numberOfLines={1}
+          aria-hidden
+          style={counts === null ? styles.hint : styles.hintKept}
+        >
           {hint}
         </Text>
       )}
@@ -309,6 +370,12 @@ const styles = StyleSheet.create({
   lostDigits: { color: colour.ink2 },
   // A disqualification's mark: the sanction tools' caution (never red: red means ON AIR, AGENTS §5).
   mark: { color: colour.caution },
+  counts: { color: colour.ink2 },
+  // In the bottom row the counts give way first (an ellipsis) and "Tap" holds its place at the right.
+  countsSlot: { color: colour.ink2, flexShrink: 1, minWidth: 0 },
+  countsSlotCaution: { color: colour.caution, flexShrink: 1, minWidth: 0 },
+  hintKept: { flexShrink: 0, marginLeft: 'auto', textAlign: 'right' },
+  countsCaution: { color: colour.caution },
   plate: { paddingHorizontal: space.sm, paddingVertical: space.xs, backgroundColor: colour.lime },
   plateWord: { color: plateInk },
 });

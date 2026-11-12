@@ -10,6 +10,7 @@ import {
   onFailed,
   onFetched,
   onRulesRead,
+  askedForPeople,
   wanting,
 } from '@/domain/scoring/scoringMatchReads';
 import {
@@ -203,10 +204,11 @@ function handle<S extends SportTypes>(
     case 'bootstrapFailed':
       return handled(onFailed(state, event.kind, event.failure, now));
     case 'read':
+      return handled(wanting(state, now));
     case 'foreground':
-      return handled(
-        wanting(event.kind === 'foreground' ? { ...state, foreground: true } : state, now),
-      );
+      return handled(wanting({ ...state, foreground: true }, now, true));
+    case 'peopleSheet':
+      return handled(askedForPeople(state, now));
     case 'background':
       return handled(part({ ...state, foreground: false }));
     case 'tick':
