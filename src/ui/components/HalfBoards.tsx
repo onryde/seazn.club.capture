@@ -107,8 +107,8 @@ export const FinalBoard = memo(function FinalBoard({
     <View testID="final-board" aria-hidden style={styles.final}>
       {boxes.map((box, at) => (
         // A box's place is its identity: the board is read once, left to right.
-        <View key={at} style={styles.column}>
-          <Text variant="boardLabel" style={styles.label}>
+        <View key={at} style={box.bracket === undefined ? styles.column : styles.columnBracket}>
+          <Text variant="boardLabel" style={[styles.label, styles.centred]}>
             {words(box.label)}
           </Text>
           <View testID="final-box" style={[styles.finalBox, plateOf[box.tone]]}>
@@ -168,14 +168,32 @@ const styles = StyleSheet.create({
     backgroundColor: colour.lime,
   },
   dotDigits: { color: plateInk },
-  final: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', gap: space.xs },
-  column: { alignItems: 'center', gap: space.xs, flexShrink: 1 },
+  // Boxes share their line's width (each starts at its basis and grows to its max); a board of more than a line holds wraps.
+  final: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    gap: space.xs,
+  },
+  column: {
+    flexGrow: 1,
+    flexBasis: layout.padFinalBox,
+    maxWidth: layout.padFinalBoxMax,
+    alignItems: 'stretch',
+    gap: space.xs,
+  },
+  columnBracket: {
+    flexGrow: 1,
+    flexBasis: layout.padFinalBoxBracket,
+    maxWidth: layout.padFinalBoxMax,
+    alignItems: 'stretch',
+    gap: space.xs,
+  },
   finalBox: {
     flexDirection: 'row',
     alignItems: 'baseline',
     justifyContent: 'center',
-    minWidth: layout.padFinalBox,
-    maxWidth: layout.padFinalBoxMax,
     paddingHorizontal: space.xs,
     borderRadius: layout.iconBorder * 8,
     backgroundColor: colour.surface2,
@@ -186,6 +204,7 @@ const styles = StyleSheet.create({
   inkWon: { color: colour.lime },
   inkPlate: { color: plateInk },
   bracket: { color: colour.ink3 },
+  centred: { textAlign: 'center' },
 });
 
 const plateOf = { won: styles.platePlain, plain: styles.platePlain, plate: styles.platePlate };

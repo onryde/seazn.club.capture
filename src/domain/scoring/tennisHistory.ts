@@ -20,35 +20,81 @@ export type TennisHistoryEntry = {
   readonly did: TennisDone;
   readonly set: number;
   readonly after: string;
+  /** The game it was recorded in (`TennisFacts.game`), whether that was a breaker, who served it, and who won it if it closed it. */
+  readonly game: number;
+  readonly breaker: 'tiebreak' | 'matchTiebreak' | null;
+  readonly server: PadSide | null;
+  readonly closed: PadSide | null;
   readonly own: boolean;
   readonly undone: boolean;
   readonly sending: boolean;
 };
 
 /**
- * History (owner ruling 21; view only), the set-based sports' shape over tennis's own entries: grouped by the set they
- * were recorded in, the latest set first, each set's newest entry first, an entry Undo took back in its place. A point
- * gives what it left on the board, the call after it or the games when it closed a game; every other row gives none (its
- * sentence says what it did). The organiser's forfeit and abandon are rows like any other.
+ * History (owner ruling 21; view only), the set-based sports' shape over tennis's own entries, grouped by the game they were
+ * recorded in (ruling 238), the latest game first, each game's newest entry first, an entry Undo took back in its place. A
+ * point that closes a game is in that game; a tap that is not a point (a violation, a break, the start, the toss) is in the game
+ * under way; an award closes its game; a set entered by Set score is a group of its own, with no game. A point gives what it
+ * left on the board, the call after it or the games when it closed a game; every other row gives none (its sentence says what
+ * it did). The organiser's forfeit and abandon are rows like any other.
  */
 export function tennisHistory(
   entries: readonly TennisHistoryEntry[],
   sides: TennisDisplay['sides'],
 ): readonly PadHistoryGroup<TennisPadKey>[] {
-  const sets = [...new Set(entries.map((entry) => entry.set))].sort((a, b) => b - a);
-  return sets.map((set) => ({
-    heading: { key: 'scoring.tennis.setHeading', vars: { set } },
-    rows: entries
-      .filter((entry) => entry.set === set)
-      .reverse()
-      .map((entry) => ({
+  const order = [...new Set(entries.map(groupOf))].reverse();
+  return order.map((group) => {
+    const members = entries.filter((entry) => groupOf(entry) === group);
+    return {
+      heading: headingOf(members, sides),
+      rows: [...members].reverse().map((entry) => ({
         said: doneSaid(sides, entry.did),
         score: entry.did.kind === 'point' ? entry.after : null,
         by: entry.own ? ('thisPhone' as const) : ('otherScorer' as const),
         undone: entry.undone,
         sending: entry.sending,
       })),
-  }));
+    };
+  });
+}
+
+/** The group an entry belongs to: its game (a tie-break is the set's game after its twelve, the match tie-break the set's first) or its Set score's own. */
+function groupOf(entry: TennisHistoryEntry): string {
+  if (entry.did.kind === 'setScore') return `score-${entry.set}-${entry.game}`;
+  return `game-${entry.set}-${entry.game}`;
+}
+
+/**
+ * The group's heading: "Set 2 · Game 3 · Ana Ruiz serving", with "· Bea Lund won" once a standing entry closed the game. The
+ * server is the game's (the same for every entry in it), none when the engine cannot name the order; a tie-break names no server; a Set score's
+ * group is "Set N".
+ */
+function headingOf(members: readonly TennisHistoryEntry[], sides: TennisDisplay['sides']): Text {
+  const first = members[0];
+  if (first === undefined) return { key: 'scoring.tennis.setHeading', vars: { set: 0 } };
+  const set = first.set;
+  if (first.did.kind === 'setScore') return { key: 'scoring.tennis.setHeading', vars: { set } };
+  const closer =
+    members.findLast((entry) => !entry.undone && entry.closed !== null)?.closed ?? null;
+  const winner = closer === null ? null : sideNames(sides[closer]);
+  if (first.breaker === 'matchTiebreak')
+    return winner === null
+      ? { key: 'scoring.tennis.history.matchTiebreak' }
+      : { key: 'scoring.tennis.history.matchTiebreakWon', vars: { winner } };
+  if (first.breaker === 'tiebreak')
+    return winner === null
+      ? { key: 'scoring.tennis.history.tiebreak', vars: { set } }
+      : { key: 'scoring.tennis.history.tiebreakWon', vars: { set, winner } };
+  const named = first.server;
+  const vars = { set, game: first.game };
+  if (named === null)
+    return winner === null
+      ? { key: 'scoring.tennis.history.gameNoServer', vars }
+      : { key: 'scoring.tennis.history.gameWonNoServer', vars: { ...vars, winner } };
+  const server = sideNames(sides[named]);
+  return winner === null
+    ? { key: 'scoring.tennis.history.game', vars: { ...vars, server } }
+    : { key: 'scoring.tennis.history.gameWon', vars: { ...vars, server, winner } };
 }
 
 /** A person as typed, or "Player" for one the sheet no longer lists: never blank. */

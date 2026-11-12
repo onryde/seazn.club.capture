@@ -359,9 +359,15 @@ const base = {
   padDotGap: 2,
   /** The serving ball before a doubles server's name (ruling 235): a small lime disc. */
   padBall: 9,
-  /** A final board's box (ruling 239): at least this wide, a set's games in `finalScore`, and growing to `padFinalBoxMax` while the row has room. */
+  /**
+   * A final board's box (ruling 239): sized from the width the row has. It starts at `padFinalBox` and grows to
+   * `padFinalBoxMax` while its line has room; a box carrying a tie-break loser's points starts at `padFinalBoxBracket`
+   * (a digit of `finalScore` and "(10)" of `boardScore`); and a board of more boxes than a line holds wraps to a second
+   * line, never shrinking a box below its start (`tennisFit.test.ts` sweeps best of 3, 5 and 7, the engine's any odd number).
+   */
   padFinalBox: 36,
   padFinalBoxMax: 64,
+  padFinalBoxBracket: 60,
   /**
    * A card icon in a half's top-right corner (owner ruling 56, 2026-11-04: "just small squere icon", a TV scoreboard's
    * card): an upright rectangle about 8 x 11 dp with a 1 dp radius and a hairline (`ink3`) so its edge reads against the

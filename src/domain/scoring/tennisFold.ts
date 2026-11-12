@@ -155,7 +155,7 @@ function foldOf(
       onFolded: (after, event) => {
         try {
           const now = snapOf(after);
-          const fact = factsOf(before, now, after, event.type);
+          const fact = factsOf(before, now, after);
           facts.set(event.id, fact);
           gameWins = gameWinsAfter(gameWins, before, now, fact.closed);
           before = now;
@@ -203,12 +203,7 @@ const snapOf = (state: Readonly<NestedState>): Snap => ({
  * and the server are the board BEFORE the event, so a point that closes a game belongs to that game, not the next; before the
  * match starts the server is read after the event (a toss names it).
  */
-function factsOf(
-  before: Snap,
-  after: Snap,
-  state: Readonly<NestedState>,
-  type: string,
-): TennisFacts {
+function factsOf(before: Snap, after: Snap, state: Readonly<NestedState>): TennisFacts {
   const closedSet = after.sets > before.sets;
   const gameWon = closedSet || after.home + after.away > before.home + before.away;
   const over = state.phase === 'done' || state.phase === 'final';
@@ -220,11 +215,11 @@ function factsOf(
     game: before.home + before.away + 1,
     breaker: before.kind === 'standard' ? null : before.kind,
     server: before.phase === 'pre' ? after.server : before.server,
-    closed: type === 'tennis.set_summary' ? null : closerOf(state, before, after, closedSet),
+    closed: closerOf(state, before, after, closedSet),
   };
 }
 
-/** The side that won the game (or set) an event closed, or none. */
+/** The side that won the game (or set) an event closed, or none; a Set score closes a set with no game, and History reads it as its own group. */
 function closerOf(
   state: Readonly<NestedState>,
   before: Snap,
@@ -297,6 +292,10 @@ function rowsOf(
         did: event.did,
         set: event.facts.set,
         after: event.facts.after,
+        game: event.facts.game,
+        breaker: event.facts.breaker,
+        server: event.facts.server,
+        closed: event.facts.closed,
         own: entry.own,
         undone: voided.has(entry.envelope.id),
         sending: entry.sending,
@@ -368,6 +367,7 @@ function displayOf(
     gameWins,
     heaviest: heaviestOf(match, stream, set, facts),
     scoreEvents: standing(stream.envelopes, 'tennis.point', 'tennis.set_summary').length,
+    pointEvents: standing(stream.envelopes, 'tennis.point').length,
     serveEvents: serveEventsIn(stream.envelopes),
     ending,
     endingPending: phase === 'live' && defaultStands(stream.envelopes),

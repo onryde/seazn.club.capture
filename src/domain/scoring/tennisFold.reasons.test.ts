@@ -82,7 +82,15 @@ describe('a forfeit as a History row', () => {
     recordedBy: null,
     fixtureId: SINGLES.fixtureId,
   });
-  const facts = { set: 1, won: 'none', after: '0–0' } as const;
+  const facts = {
+    set: 1,
+    won: 'none',
+    after: '0–0',
+    game: 1,
+    breaker: null,
+    server: null,
+    closed: null,
+  } as const;
 
   it.each(FORFEIT_REASONS)('%s has a row with its ending and side', (reason) => {
     const did = tennisDoneOf(envelope({ by: AWAY, reason }), facts, NAMES);

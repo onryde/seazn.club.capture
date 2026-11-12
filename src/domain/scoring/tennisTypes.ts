@@ -157,6 +157,8 @@ export type TennisDisplay = {
   readonly heaviest: Readonly<Record<PadSide, TennisSeenLevel | null>>;
   /** The points and set scores standing in the scorer's view, this phone's legal queued taps on top. */
   readonly scoreEvents: number;
+  /** The points standing in that view: Set score is offered only while there are none (ruling 241). */
+  readonly pointEvents: number;
   /** The points, set scores and awarded games standing in that view: what moves the serve (`serveEventsIn`). */
   readonly serveEvents: number;
   readonly ending: TennisEnding | null;

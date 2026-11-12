@@ -367,9 +367,13 @@ describe('the tally and the tools', () => {
     });
   });
 
-  it('divides the tool row into four slots whatever the state', () => {
-    for (const specs of [[start()], [start(), point('H')], [start(), ...gamesOf(SIX_ALL)]])
-      expect(padOf(specs).toolSlots).toBe(4);
+  it('divides the tool row into four slots until the match has a point, then three (ruling 241)', () => {
+    expect(padOf([start()]).toolSlots).toBe(4);
+    for (const specs of [
+      [start(), point('H')],
+      [start(), ...gamesOf(SIX_ALL)],
+    ])
+      expect(padOf(specs).toolSlots).toBe(3);
   });
 
   it('gives the pad the same tools as the tool row', () => {

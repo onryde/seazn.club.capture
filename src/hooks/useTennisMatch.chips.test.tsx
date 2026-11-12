@@ -64,7 +64,8 @@ const act_ = (view: Match, make: (actions: Pad['actions']) => void) =>
   act(() => make(pad(view).actions));
 
 const toolIds = (view: PadView<string>) => view.tools.map((tool) => tool.id);
-const TOOLS = ['violation', 'break', 'award', 'setScore'];
+// Set score is removed once the match has a point (ruling 241), and every check here is after one.
+const TOOLS = ['violation', 'break', 'award'];
 
 /** The points the server holds, in order. */
 async function serverPoints(fakes: FakePorts, seed: FakeMatchSeed = SEED) {
@@ -303,7 +304,8 @@ describe('a point held for its chips', () => {
     await flush();
     await wait(11_000);
     expect(await serverPoints(fakes)).toEqual([]);
-    expect(toolIds(pad(view).view)).toEqual(TOOLS);
+    // No point stands again, so Set score is back (ruling 241).
+    expect(toolIds(pad(view).view)).toEqual([...TOOLS, 'setScore']);
     expect(pad(view).view.halves[0].value).toBe('0');
   });
 

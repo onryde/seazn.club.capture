@@ -52,7 +52,7 @@ describe('a tennis match from the scan to History', () => {
     app.setNow(new Date(TEST_NOW.getTime() + 4_000));
     press(en['scoring.history.title']);
     await flush(200);
-    expect(screen.getByText(en['scoring.tennis.setHeading'].replace('{set}', '1'))).toBeTruthy();
+    expect(screen.getByText(/^Set 1 · Game 1 · .+ serving$/)).toBeTruthy();
     // Once in the last-tap line under the halves and once as History's row.
     expect(
       screen.getAllByText(en['scoring.tennis.last.point'].replace('{side}', 'Bea Lund')),

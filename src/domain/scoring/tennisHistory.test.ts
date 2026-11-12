@@ -44,7 +44,9 @@ function history(
   return result.history;
 }
 
-const rows = (specs: readonly Spec[], at = 0): readonly Row[] => history(specs)[at]?.rows ?? [];
+/** Every row, newest first, across the groups (a group is a game, ruling 238). */
+const rows = (specs: readonly Spec[]): readonly Row[] =>
+  history(specs).flatMap((group) => group.rows);
 const ANA = 'Ana Ruiz';
 const BEA = 'Bea Lund';
 
@@ -77,12 +79,9 @@ describe('History: a point', () => {
     expect(got.slice(0, 3).map((row) => row.score)).toEqual(['2–1', '1–1', '1–0']);
   });
 
-  it('a set closed by a point groups under its own set, says the set, and gives the games', () => {
+  it('a set closed by a point is in its own game, says the set, and gives the games', () => {
     const groups = history([start(), ...gamesOf('HHHHHH'), point('A')]);
-    expect(groups.map((group) => group.heading)).toEqual([
-      { key: 'scoring.tennis.setHeading', vars: { set: 2 } },
-      { key: 'scoring.tennis.setHeading', vars: { set: 1 } },
-    ]);
+    expect(groups).toHaveLength(7);
     expect(groups[0]?.rows).toHaveLength(1);
     expect(groups[0]?.rows[0]?.score).toBe('0–15');
     const closing = groups[1]?.rows[0];
@@ -94,7 +93,7 @@ describe('History: a point', () => {
   });
 
   it('the match point says the match', () => {
-    const won = rows([start(), ...gamesOf('HHHHHHHHHHHH')], 0);
+    const won = rows([start(), ...gamesOf('HHHHHHHHHHHH')]);
     expect(won[0]?.said).toEqual({ key: 'scoring.tennis.last.match', vars: { side: ANA } });
     expect(won[0]?.score).toBe('6–0');
   });
@@ -102,6 +101,134 @@ describe('History: a point', () => {
   it('a tie-break set closed by a point gives the games, 7–6', () => {
     const got = rows([start(), ...gamesOf('HAHAHAHAHAHA'), ...points('HHHHHHH')]);
     expect(got[0]?.score).toBe('7–6');
+  });
+});
+
+// S2-7 Task 18 (ruling 238): a group for each game. The heading names the set, the game and the side serving it, and who won it
+// once it is over; a point that closes a game is in that game, never the next. Written out from the games played: Ana (home)
+// serves game 1, the engine alternates, and the tie-break and the match tie-break have headings of their own.
+describe('History: a group for each game (ruling 238)', () => {
+  const H = 'scoring.tennis.history.';
+  const PAIR = 'Ruiz / Vega h1 / Ruiz / Vega h2';
+  const headings = (specs: readonly Spec[], bootstrap?: Bootstrap) =>
+    history(specs, bootstrap === undefined ? {} : { bootstrap }).map((group) => group.heading);
+
+  it('heads the game under way with its set, its number and its server, newest first, the start in game 1', () => {
+    const groups = history([start(), point('H'), point('A')]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.heading).toEqual({ key: `${H}game`, vars: { set: 1, game: 1, server: ANA } });
+    expect(groups[0]?.rows).toHaveLength(3);
+  });
+
+  it('says who won a game once it is over, and puts the point that closed it in that game, not the next', () => {
+    const groups = history([start(), ...gamesOf('H'), point('A')]);
+    expect(groups.map((group) => group.heading)).toEqual([
+      { key: `${H}game`, vars: { set: 1, game: 2, server: BEA } },
+      { key: `${H}gameWon`, vars: { set: 1, game: 1, server: ANA, winner: ANA } },
+    ]);
+    expect(groups[0]?.rows).toHaveLength(1);
+    expect(groups[1]?.rows).toHaveLength(5);
+    expect(groups[1]?.rows[0]?.score).toBe('1–0');
+  });
+
+  it('closes a game with an award, the winner the awarded side, and counts it in the numbering', () => {
+    expect(headings([start(), award('A'), point('H')])).toEqual([
+      { key: `${H}game`, vars: { set: 1, game: 2, server: BEA } },
+      { key: `${H}gameWon`, vars: { set: 1, game: 1, server: ANA, winner: BEA } },
+    ]);
+  });
+
+  it('puts a violation or a break in the game under way, and one recorded after a game in the next', () => {
+    const groups = history([
+      start(),
+      ...gamesOf('H'),
+      sanction('A', 'warning'),
+      interruption('heat'),
+      point('A'),
+    ]);
+    expect(groups).toHaveLength(2);
+    expect(groups[0]?.rows).toHaveLength(3);
+    expect(groups[0]?.heading).toMatchObject({ key: `${H}game`, vars: { game: 2 } });
+  });
+
+  it('names a doubles side by its names, as the pad does', () => {
+    expect(headings([start()], DOUBLES)).toEqual([
+      { key: `${H}game`, vars: { set: 1, game: 1, server: PAIR } },
+    ]);
+  });
+
+  it('numbers the games of the next set again from 1, with the set', () => {
+    const groups = headings([start(), ...gamesOf('HHHHHH'), point('A')]);
+    expect(groups[0]).toEqual({ key: `${H}game`, vars: { set: 2, game: 1, server: ANA } });
+    expect(groups[1]).toEqual({
+      key: `${H}gameWon`,
+      vars: { set: 1, game: 6, server: BEA, winner: ANA },
+    });
+  });
+
+  it('heads a set tie-break "Set N · Tie-break", and who won it once it is over', () => {
+    const six = [start(), ...gamesOf('HAHAHAHAHAHA')];
+    expect(headings([...six, point('H')])[0]).toEqual({ key: `${H}tiebreak`, vars: { set: 1 } });
+    expect(headings([...six, ...points('HHHHHHH')])[0]).toEqual({
+      key: `${H}tiebreakWon`,
+      vars: { set: 1, winner: ANA },
+    });
+    expect(headings([...six, point('H')])[1]).toMatchObject({
+      key: `${H}gameWon`,
+      vars: { game: 12 },
+    });
+  });
+
+  it('keeps the game that makes 6-6 a game, even when it is a single awarded entry (not the tie-break it leads to)', () => {
+    // Games 1-11 alternate from Ana (6-5), then Bea is awarded game 12: 6-6, no tie-break point yet.
+    const got = headings([start(), ...gamesOf('HAHAHAHAHAH'), award('A')]);
+    expect(got[0]).toMatchObject({ key: `${H}gameWon`, vars: { set: 1, game: 12, winner: BEA } });
+  });
+
+  it('heads a Set score "Set N" with no game, and the match tie-break "Match tiebreak"', () => {
+    const noAd = {
+      ...SINGLES,
+      cfg: {
+        bestOf: 3,
+        set: { gamesTo: 6, winBy: 2, tiebreakAt: 6, tiebreakTo: 7 },
+        finalSet: { matchTiebreakTo: 10 },
+        game: { noAd: true },
+        tiebreak: { winBy: 2 },
+        points: { win: 2, loss: 0 },
+      },
+    };
+    const got = headings([start(), summary(6, 3), summary(3, 6), point('H')], noAd);
+    expect(got.slice(0, 3)).toEqual([
+      { key: `${H}matchTiebreak` },
+      { key: 'scoring.tennis.setHeading', vars: { set: 2 } },
+      { key: 'scoring.tennis.setHeading', vars: { set: 1 } },
+    ]);
+    const won = headings([start(), summary(6, 3), summary(3, 6), ...points('HHHHHHHHHH')], noAd);
+    expect(won[0]).toEqual({ key: `${H}matchTiebreakWon`, vars: { winner: ANA } });
+  });
+
+  it('names no server when the engine cannot (a set score with an odd number of games), and still names the game', () => {
+    expect(headings([start(), summary(6, 3), point('H')])[0]).toEqual({
+      key: `${H}gameNoServer`,
+      vars: { set: 2, game: 1 },
+    });
+    expect(headings([start(), summary(6, 3), ...gamesOf('H')])[0]).toEqual({
+      key: `${H}gameWonNoServer`,
+      vars: { set: 2, game: 1, winner: ANA },
+    });
+  });
+
+  it('does not name a winner for a game whose closing point was undone', () => {
+    expect(headings([start(), ...gamesOf('H'), voiding(5)])[0]).toEqual({
+      key: `${H}game`,
+      vars: { set: 1, game: 1, server: ANA },
+    });
+  });
+
+  it('is empty for no events and the same on a second call', () => {
+    expect(headings([])).toEqual([]);
+    const specs = [start(), ...gamesOf('HA')];
+    expect(headings(specs)).toEqual(headings(specs));
   });
 });
 
@@ -123,7 +250,7 @@ describe('History: every other event the pad sends', () => {
       key: 'scoring.tennis.last.violation',
       vars: { level: { key: 'scoring.tennis.level.warning' }, person: BEA },
     });
-    const named = rows([start(), sanction('H', 'point_penalty', 'h2')], 0);
+    const named = rows([start(), sanction('H', 'point_penalty', 'h2')]);
     const doubles = history([start(), sanction('H', 'point_penalty', 'h2')], {
       bootstrap: DOUBLES,
     });

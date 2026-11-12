@@ -244,10 +244,7 @@ describe('a no-ad doubles match with a match tie-break, on the set scores of the
         'scoring.tennis.note.decidingPoint',
       );
       await scorer.points('H');
-      expect(scorer.pad.view.halves.map((half) => half.foot?.text.vars)).toEqual([
-        { games: 1 },
-        { games: 0 },
-      ]);
+      expect(scorer.pad.view.halves.map((half) => half.scoreboard?.dots)).toEqual([[1], []]);
       await scorer.games('HAAHHAAHH');
       expect(scorer.pad.view.tally?.shown).toBe('1:0');
 

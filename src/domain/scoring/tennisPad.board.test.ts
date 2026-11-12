@@ -256,6 +256,14 @@ describe('the final board (ruling 239)', () => {
     ]);
   });
 
+  it('shows no MTB box for an ended match whose match tie-break has no point yet', () => {
+    const noAd = withCfg(SINGLES, DOUBLES_NOAD_CFG);
+    const view = padOf([start(), summary(6, 3), summary(3, 6), abandon('rain')], {
+      bootstrap: noAd,
+    });
+    expect(won(view, 0)?.boxes.map((box) => box.value)).toEqual(['6', '3', '1']);
+  });
+
   it('says "Final" in the strip’s set slot, decided or ended', () => {
     const slot = (view: PadView<TennisPadKey>) => view.strip.find((one) => one.slot === 'set');
     expect(slot(padOf([start(), ...gamesOf('HHHHHHHHHHHH')]))?.text).toEqual({

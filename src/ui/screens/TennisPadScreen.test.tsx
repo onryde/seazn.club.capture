@@ -242,28 +242,28 @@ describe.each(['en', 'es', 'fr', 'nl'] as const)('layout A, singles, in %s', (la
     expect(enabled()).toEqual([true, true, true, true]);
   });
 
-  it('after the first point the four cells stay, in place and of one kind; only Set score is disabled', async () => {
+  it('after the match’s first point Set score is gone (ruling 241) and the other three stay in place and of one kind', async () => {
     const app = await started(TENNIS_TOUR_SEED, lang);
     const before = tools();
     const kinds = new Set(row().map((child) => child.className));
     await point(app, 'first');
     expect(score('first')).not.toBe('0');
-    expect(row()).toHaveLength(4);
-    expect(tools()).toEqual(before);
-    expect(new Set(row().map((child) => child.className))).toEqual(kinds);
-    expect(enabled()).toEqual([true, true, true, false]);
+    expect(row()).toHaveLength(3);
+    expect(tools()).toEqual(before.slice(0, 3));
+    expect(tools()).not.toContain(words['scoring.tennis.tool.setScore']);
+    expect(new Set(row().map((child) => child.className)).size).toBeLessThanOrEqual(kinds.size);
+    expect(enabled()).toEqual([true, true, true]);
   });
 
-  it('in a tie-break the four cells stay too; Award game is disabled and Set score as it was', async () => {
+  it('in a tie-break the three cells stay; Award game is disabled', async () => {
     await opened(under(`tb-${lang}`, ...TIEBREAK_EVENTS), lang);
     expect(tools()).toEqual([
       words['scoring.tennis.tool.violation'],
       words['scoring.tennis.tool.break'],
       words['scoring.tennis.tool.award'],
-      words['scoring.tennis.tool.setScore'],
     ]);
-    expect(row()).toHaveLength(4);
-    expect(enabled()).toEqual([true, true, false, false]);
+    expect(row()).toHaveLength(3);
+    expect(enabled()).toEqual([true, true, false]);
     expect(screen.getByText(words['scoring.tennis.breaker.tiebreak'])).toBeTruthy();
   });
 
@@ -360,8 +360,9 @@ describe('the sheets’ own buttons', () => {
     expect(screen.queryByTestId('score-sheet')).toBeNull();
   });
 
-  it('after a set is won the sheet names the set it sets: Set 2', async () => {
-    const app = await opened(under('set-two', ...gameEvents('first', 6)));
+  it('after a set entered by Set score the sheet names the set it sets: Set 2', async () => {
+    const summary = { type: 'tennis.set_summary', payload: { home: 6, away: 3 } };
+    const app = await opened(under('set-two', summary));
     await tap(app, en['scoring.tennis.tool.setScore']);
     expect(
       within(screen.getByTestId('score-sheet')).getByText(
@@ -420,11 +421,11 @@ describe.each(['en', 'es', 'fr', 'nl'] as const)('the point details, in %s', (la
       words['scoring.tennis.chip.error'],
     ]);
     await tap(app, words['scoring.tennis.chip.ace']);
+    // Set score is gone once the match has a point (ruling 241).
     expect(tools()).toEqual([
       words['scoring.tennis.tool.violation'],
       words['scoring.tennis.tool.break'],
       words['scoring.tennis.tool.award'],
-      words['scoring.tennis.tool.setScore'],
     ]);
   });
 
@@ -446,7 +447,6 @@ describe.each(['en', 'es', 'fr', 'nl'] as const)('the point details, in %s', (la
       words['scoring.tennis.tool.violationShort'],
       words['scoring.tennis.tool.break'],
       words['scoring.tennis.tool.awardShort'],
-      words['scoring.tennis.tool.setScore'],
     ]);
   });
 });
@@ -465,15 +465,18 @@ describe('the sheets of the top bar', () => {
     expect(screen.queryByTestId('details-scroll')).toBeNull();
   });
 
-  it('History lists the point under the set it was played in, and Close closes it', async () => {
+  it('History lists the point under its game’s heading, and Close closes it', async () => {
     const app = await started();
     await point(app, 'second');
     await tap(app, en['scoring.history.title']);
-    expect(screen.getByText(en['scoring.tennis.setHeading'].replace('{set}', '1'))).toBeTruthy();
+    // The game's heading (ruling 238): the set, the game and the side serving it.
+    const heading = /^Set 1 · Game 1 · .+ serving$/;
+    expect(en['scoring.tennis.history.game']).toBe('Set {set} · Game {game} · {server} serving');
+    expect(screen.getByText(heading)).toBeTruthy();
     aSecondOn(app);
     press(en['panel.close']);
     await flush(400);
-    expect(screen.queryByText(en['scoring.tennis.setHeading'].replace('{set}', '1'))).toBeNull();
+    expect(screen.queryByText(heading)).toBeNull();
   });
 });
 

@@ -715,8 +715,8 @@ describe('Set score (ruling 221)', () => {
     fakes.realtime.ping();
     await flush();
     expect(pad(view).sheet).toBeNull();
-    const cell = pad(view).view.tools.find((tool) => tool.id === 'setScore');
-    expect(cell?.enabled).toBe(false);
+    // Set score is removed once the match has a point (ruling 241).
+    expect(pad(view).view.tools.find((tool) => tool.id === 'setScore')).toBeUndefined();
   });
 });
 

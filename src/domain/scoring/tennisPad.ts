@@ -17,7 +17,7 @@ import { doneSaid, endingSaid, whoWord } from '@/domain/scoring/tennisHistory';
 import { finalBoardOf, matchWinner, scoreboardOf } from '@/domain/scoring/tennisBoard';
 import { LEVEL_CARDS, levelWord } from '@/domain/scoring/tennisLevels';
 import { tennisRuleRows } from '@/domain/scoring/tennisRules';
-import { TENNIS_TOOL_SLOTS, takesTaps, tennisTools } from '@/domain/scoring/tennisTools';
+import { takesTaps, tennisToolSlots, tennisTools } from '@/domain/scoring/tennisTools';
 import type { TennisDisplay, TennisPadKey, TennisUndoneTap } from '@/domain/scoring/tennisTypes';
 
 /**
@@ -51,7 +51,7 @@ export function tennisPad(display: TennisDisplay, sync: PadSync = SYNCED): PadVi
     lastTap: lastTap(display),
     sync,
     tools: tennisTools(display),
-    toolSlots: TENNIS_TOOL_SLOTS,
+    toolSlots: tennisToolSlots(display),
     card: null,
     ...resultOf(display),
   };

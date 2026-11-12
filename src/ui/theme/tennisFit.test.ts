@@ -306,29 +306,48 @@ describe('tennis: a half’s scoreboard row at 320 and 360 in four languages (ru
   const DOT = layout.padDot + layout.padDotGap;
   /** Lines the row's items take: the label and the boxes, then the dots wrapping after them. */
   const rowLines = (room: number, dictionary: Dictionary, sets: number, dots: number) => {
-    const lead =
+    const lead0 =
       sets === 0
         ? 0
         : labelWidth(said(dictionary, `${TN}.board.sets`)) +
           space.xs +
           sets * (boxWidth + space.xs);
+    // The label and boxes themselves wrap when they are wider than the room (a sixth set in French at 320).
+    const lead = Math.min(lead0, room);
+    const extra = lead0 > room ? 1 : 0;
     const first = Math.max(0, Math.floor((room - lead + layout.padDotGap) / DOT));
     const rest = Math.max(0, dots - first);
-    return 1 + Math.ceil(rest / Math.max(1, Math.floor((room + layout.padDotGap) / DOT)));
+    return 1 + extra + Math.ceil(rest / Math.max(1, Math.floor((room + layout.padDotGap) / DOT)));
   };
 
   it('keeps a numbered dot at the owner’s floor of 20 dp', () => {
     expect(layout.padDot).toBeGreaterThanOrEqual(20);
   });
 
+  // The engine allows any odd best of, so the sweep is 3, 5 and 7: two, four and six sets can be over while a set is under way.
   it.each(LANGUAGES)(
-    '%s: the Sets label and four set boxes stand whole on a line at both widths',
+    '%s: the Sets label and the finished-set boxes of a best of 3 and 5 (up to four) stand on one line, a best of 7 (six) in at most two, at both widths',
     (lang, dictionary: Dictionary) => {
       for (const width of WIDTHS)
-        expect(
-          labelWidth(said(dictionary, `${TN}.board.sets`)) + space.xs + 4 * (boxWidth + space.xs),
-          `${lang} @${width}`,
-        ).toBeLessThanOrEqual(itemsRoom(width, dictionary));
+        for (const sets of [2, 4, 6]) {
+          const need =
+            labelWidth(said(dictionary, `${TN}.board.sets`)) + sets * (boxWidth + space.xs);
+          expect(need, `${lang} ${sets} sets @${width}`).toBeLessThanOrEqual(
+            itemsRoom(width, dictionary) * (sets === 6 ? 2 : 1),
+          );
+        }
+    },
+  );
+
+  it.each(LANGUAGES)(
+    '%s: twelve dots beside four and six set boxes wrap to at most three lines (four beside six), the dots never under 20 dp',
+    (lang, dictionary: Dictionary) => {
+      for (const width of WIDTHS)
+        for (const sets of [4, 6])
+          expect(
+            rowLines(itemsRoom(width, dictionary), dictionary, sets, 12),
+            `${lang} ${sets} sets @${width}`,
+          ).toBeLessThanOrEqual(sets === 6 ? 4 : 3);
     },
   );
 
@@ -369,52 +388,92 @@ describe('tennis: the final board at 320 and 360 in four languages (ruling 239)'
     typeScale.boardLabel.letterSpacing * [...text].length;
   const digits = (text: string) => barlow700.width(text, typeScale.finalScore.fontSize);
   const small = (text: string) => barlow700.width(text, typeScale.boardScore.fontSize);
-  /** A box's width: its label or value, never under `padFinalBox`, with the box's padding. */
-  const box = (label: string, value: string, bracket = '') =>
+  /** A box's start: its basis, but never under what its label or value needs (a bracket's box starts at its own basis). */
+  const start = (label: string, value: string, bracket: string) =>
     Math.max(
-      layout.padFinalBox,
+      bracket === '' ? layout.padFinalBox : layout.padFinalBoxBracket,
       labelWidth(label),
       digits(value) + (bracket === '' ? 0 : small(`(${bracket})`)) + 2 * space.xs,
     );
-  const row = (dictionary: Dictionary, sets: number, bracketAt: number | null) => {
-    const labels = [
-      ...Array.from({ length: sets }, (_, at) =>
-        fill(said(dictionary, `${TN}.board.set`), { set: String(at + 1) }),
-      ),
-      said(dictionary, `${TN}.board.sets`),
-    ];
-    const widths = labels.map((label, at) => box(label, '6', at === bracketAt ? '6' : ''));
-    return widths.reduce((sum, one) => sum + one, 0) + (widths.length - 1) * space.xs;
+  /** Lines the board takes in a room: boxes fill a line in order, a box that does not fit wraps (never shrunk below its start). */
+  const lines = (starts: readonly number[], room: number) => {
+    let used = 0;
+    let rows = 1;
+    for (const one of starts) {
+      const need = used === 0 ? one : used + space.xs + one;
+      if (need > room && used !== 0) {
+        rows += 1;
+        used = one;
+      } else used = need;
+    }
+    return rows;
+  };
+  /** A finished best of `bestOf`: `sets` boxes (the last the match tie-break when `mtb`), a bracket on each of `brackets`, and Sets. */
+  const board = (
+    dictionary: Dictionary,
+    sets: number,
+    mtb: boolean,
+    brackets: readonly number[],
+  ) => {
+    const labels = Array.from({ length: sets }, (_, at) =>
+      mtb && at === sets - 1
+        ? said(dictionary, `${TN}.board.mtb`)
+        : fill(said(dictionary, `${TN}.board.set`), { set: String(at + 1) }),
+    );
+    const boxes = labels.map((label, at) =>
+      start(label, mtb && at === sets - 1 ? '10' : '7', brackets.includes(at) ? '10' : ''),
+    );
+    return [...boxes, start(said(dictionary, `${TN}.board.sets`), '3', '')];
   };
 
+  // The engine allows any odd best of (nested kernel: `bestOf must be odd`), so 3, 5 and 7 are swept; the room is the half's
+  // inner width. One line where it fits, two at most for the worst board: five or seven sets, a tie-break bracket on every
+  // loser box, and a match tie-break decider.
   it.each(LANGUAGES)(
-    '%s: a four-box board (Set 1, Set 2, MTB, Sets) fits the half, with a tie-break loser’s brackets',
+    '%s: best of 3, 5 and 7 in at most two lines at both widths, brackets and a match tie-break included',
     (lang, dictionary: Dictionary) => {
-      const mtb = said(dictionary, `${TN}.board.mtb`);
-      const labels = [
-        fill(said(dictionary, `${TN}.board.set`), { set: '1' }),
-        fill(said(dictionary, `${TN}.board.set`), { set: '2' }),
-        mtb,
-        said(dictionary, `${TN}.board.sets`),
-      ];
-      const widths = labels.map((label, at) => box(label, '10', at === 0 ? '6' : ''));
-      const total = widths.reduce((sum, one) => sum + one, 0) + 3 * space.xs;
       for (const width of WIDTHS)
-        expect(total, `${lang} @${width}`).toBeLessThanOrEqual(halfInner(width));
+        for (const [bestOf, sets] of [
+          [3, 3],
+          [5, 5],
+          [7, 7],
+        ] as const)
+          for (const mtb of [false, true]) {
+            const everyBox = Array.from({ length: sets }, (_, at) => at);
+            expect(
+              lines(board(dictionary, sets, mtb, everyBox), halfInner(width)),
+              `${lang} best of ${bestOf} mtb ${mtb} @${width}`,
+            ).toBeLessThanOrEqual(2);
+          }
     },
   );
 
   it.each(LANGUAGES)(
-    '%s: a best of five (five set boxes and Sets) fits the half at both widths',
+    '%s: a best of 3 with a bracket stands on one line',
     (lang, dictionary: Dictionary) => {
       for (const width of WIDTHS)
-        expect(row(dictionary, 5, null), `${lang} @${width}`).toBeLessThanOrEqual(halfInner(width));
+        expect(lines(board(dictionary, 3, false, [0]), halfInner(width)), `${lang} @${width}`).toBe(
+          1,
+        );
     },
   );
 
-  it('is measured against something real (anti-vacuity): nine boxes would not fit at 320', () => {
-    expect(row(en, 8, null)).toBeGreaterThan(halfInner(320));
+  // Anti-vacuity: a board with more boxes than a line holds does wrap at 320, and eleven sets would take three lines.
+  it('wraps a best of 7 at 320 to a second line, and would need three or more for a best of 15', () => {
+    expect(lines(board(en, 7, false, []), halfInner(320))).toBe(2);
+    expect(lines(board(en, 15, false, []), halfInner(320))).toBeGreaterThanOrEqual(3);
   });
+
+  it(
+    'keeps the boxes' +
+      ' start above the digits it holds (a two-digit match tie-break score fits its basis)',
+    () => {
+      expect(digits('10') + 2 * space.xs).toBeLessThanOrEqual(layout.padFinalBoxMax);
+      expect(digits('6') + small('(10)') + 2 * space.xs).toBeLessThanOrEqual(
+        layout.padFinalBoxBracket,
+      );
+    },
+  );
 
   it.each(LANGUAGES)(
     '%s: the WON plate, "Final" and the strip’s slot',
