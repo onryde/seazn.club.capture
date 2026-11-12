@@ -134,10 +134,53 @@ export type TennisDisplay = {
 };
 
 /**
- * Every dictionary key the pad and its History words name. The pad's keys arrive with the pad (Task 6); until then any
- * `scoring.` key is allowed here and nothing names one.
+ * Every dictionary key the pad names (`MessageKey`s, so each must exist in en.json): the strip, the halves, the tool row, the
+ * level words, the rules rows and the endings. The violation, award and break steps' keys arrive with them (Task 7) and
+ * History's with its words (Task 8).
  */
-export type TennisPadKey = `scoring.${string}`;
+export type TennisPadKey =
+  | 'scoring.tennis.hint'
+  | 'scoring.tennis.start.ask'
+  | 'scoring.tennis.setOf'
+  | 'scoring.tennis.setsTally'
+  | 'scoring.tennis.breaker.tiebreak'
+  | 'scoring.tennis.breaker.matchTiebreak'
+  | 'scoring.tennis.note.deuce'
+  | 'scoring.tennis.note.decidingPoint'
+  | 'scoring.tennis.endsChange'
+  | 'scoring.tennis.endingPending'
+  | 'scoring.tennis.serving'
+  | 'scoring.tennis.foot.games'
+  | 'scoring.tennis.foot.gamesSaid'
+  | 'scoring.tennis.tool.violation'
+  | 'scoring.tennis.tool.violationShort'
+  | 'scoring.tennis.tool.break'
+  | 'scoring.tennis.tool.award'
+  | 'scoring.tennis.tool.awardShort'
+  | 'scoring.tennis.tool.setScore'
+  | 'scoring.tennis.level.warning'
+  | 'scoring.tennis.level.pointPenalty'
+  | 'scoring.tennis.level.gamePenalty'
+  | 'scoring.tennis.level.default'
+  | 'scoring.tennis.rules.format.label'
+  | 'scoring.tennis.rules.bestOf'
+  | 'scoring.tennis.rules.set.label'
+  | 'scoring.tennis.rules.gamesTo'
+  | 'scoring.tennis.rules.tiebreak.label'
+  | 'scoring.tennis.rules.tiebreakAt'
+  | 'scoring.tennis.rules.noTiebreak'
+  | 'scoring.tennis.rules.game.label'
+  | 'scoring.tennis.rules.noAd'
+  | 'scoring.tennis.rules.finalSet.label'
+  | 'scoring.tennis.rules.finalMatchTiebreak'
+  | 'scoring.tennis.rules.finalTiebreak'
+  | 'scoring.tennis.ending.retired'
+  | 'scoring.tennis.ending.defaulted'
+  | 'scoring.tennis.ending.walkover'
+  | 'scoring.tennis.ending.withdrew'
+  | 'scoring.tennis.ending.abandoned'
+  | 'scoring.tennis.ending.by'
+  | 'scoring.tennis.result';
 
 /** Tennis's pad types: what the match runtime is generic over (`SportTypes`). */
 export type TennisTypes = {
