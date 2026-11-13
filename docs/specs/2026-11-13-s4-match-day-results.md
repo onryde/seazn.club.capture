@@ -142,11 +142,33 @@ Second device pass, 13 Nov afternoon (builds 1211–1215, after the rebase onto 
   its R2 was not a candidate for Court 3 (the web's `callableCourtsByFixture`, the scheduler's own court set). The owner
   had Court 3 added to Men's Singles on staging; the list then showed both.
 - **F-T8-11** (layout, fixed 6930dda4): a light hairline between matches in the call sheet (owner request).
+- **F-T8-12** (copy, open: needs the web): a candidate already CALLED to another court reads "Next on Court 2", the
+  same as one only queued there. The call list's `source: other_court` carries `from_court_name` for both, with nothing
+  to tell them apart. Rec: the web adds the court's state (called or queued) to the source, and the phone reads "Called
+  to Court 2" for a called one.
+- **F-T8-13** (copy, fixed 2a49a492): the quiet preview's "No knock-on" read as jargon (owner: "No Knockon mean?"). It
+  now says "No other match moves" (es _Ningún otro partido cambia_, fr _Aucun autre match ne bouge_, nl _Geen andere
+  wedstrijd verschuift_), and the loading line says "Checking the other matches…".
+- **F-T8-14** (layout, fixed cf9bac67): the day list had no dividers while the call sheet did (owner: "why don't have
+  divide line in match day screen in app?"). Every match after the first in a court's queue or finished list now has a
+  hairline above it, and the Finished heading carries one too.
+
+Call to court on build 1215, staging, in portrait (§7a below). The controller drove the phone over adb, read it in
+app-only screenshots and used test data in S.A.F.E:
+
+| #   | Result  | What the phone showed                                                                                                                                                                                                                                                                                |
+| --- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Pass    | With the tick: a small Call beside Free.                                                                                                                                                                                                                                                             |
+| 2   | Pass    | Court 3 → Call → R2 Ben Okafor v Chen Wei. The preview said there was no effect on other matches. A release at 1 s called nothing. The full hold called it: Called, Now 18:49.                                                                                                                       |
+| 3   | Partial | Undo on this phone's call: the confirm read "Undo call? … goes back to where it was", with Keep first. Both Keep and Back kept the call. Undo call put R2 back to Next on Court 2 09:30, and Court 3 read Free. The desk-made refusal was not run: the owner's own F call on Court 2 was left alone. |
+| 4–5 | Not run | They need the desk to act while the phone's sheet is open.                                                                                                                                                                                                                                           |
+| 6   | Pass    | Back during the hold closed the sheet and called nothing. TalkBack was dropped from this pass (owner: "no need TalkBack").                                                                                                                                                                           |
+| 7   | Pass    | nl and fr fit in the list, the sheet, the preview and the hold plate. The app was put back to English afterwards.                                                                                                                                                                                    |
 
 ### Still to run
 
-The 320 dp pass and the device-only list above. The approval overlay was not read on the device in either approval
-(the owner held through it), so TalkBack on it stays open.
+The 320 dp pass, §7a rows 3 (refusal of a call made at the web desk), 4 and 5, and the device-only list above. TalkBack
+is out of this pass on the owner's word.
 
 Calling a match to a court (S4 design §7a; final review 8), on a local build, staging, in portrait:
 
