@@ -28,10 +28,13 @@ import { colour } from '@/ui/theme/tokens';
  */
 export function TennisPadScreen({ model }: { readonly model: TennisPadModel }) {
   const { view, sheet, actions } = model;
+  // A decided match shows each side's final board and no tools: the card and the halves scroll together at their own
+  // height, so a long name's card never squeezes a board (T12-F3).
+  const scrolls = view.halves[0].finalBoard != null;
   return (
     <View style={styles.screen}>
       {holdsScreen(view.card) ? <KeepScreenOn /> : null}
-      <PadContent model={model} covered={sheet !== null} />
+      <PadContent model={model} covered={sheet !== null} scrolls={scrolls} />
       <PadSheet sheet={sheet} pointDetails={model.pointDetails} actions={actions} />
     </View>
   );

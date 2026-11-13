@@ -496,3 +496,35 @@ describe('what the screen holds and shows', () => {
     expect(screen.getAllByTestId('step-sheet')).toHaveLength(1);
   });
 });
+
+// T12-F3 (task 19): at 320 x 640 in Dutch the result card left the two final boards no room. A decided match scrolls the
+// card and both halves together, each half at its own height; a live match takes taps and never scrolls. jsdom cannot see
+// the clipping itself: that the boards are whole and apart is the device check's.
+describe('the final board scrolls with the result card (T12-F3)', () => {
+  const DECIDED = [...gameEvents('first', 12)];
+
+  it('a decided match has the card and both halves, with their final boards, inside the scroll', async () => {
+    await opened(under('fake-tn-decided', ...DECIDED));
+    const scroll = screen.getByTestId('pad-body-scroll');
+    expect(within(scroll).getByTestId('half-first')).toBeTruthy();
+    expect(within(scroll).getByTestId('half-second')).toBeTruthy();
+    expect(within(scroll).getAllByTestId('final-board')).toHaveLength(2);
+    expect(within(scroll).getByTestId('pad-card')).toBeTruthy();
+  });
+
+  it.each(['es', 'fr', 'nl'] as const)('a decided match scrolls in %s too', async (lang) => {
+    await opened(under(`fake-tn-decided-${lang}`, ...DECIDED), lang);
+    expect(screen.getByTestId('pad-body-scroll')).toBeTruthy();
+  });
+
+  it('a live match takes taps and has no scroll', async () => {
+    await started();
+    expect(screen.queryByTestId('pad-body-scroll')).toBeNull();
+    expect(screen.getByTestId('tool-row')).toBeTruthy();
+  });
+
+  it('a match that is not decided yet, one set won, has no scroll', async () => {
+    await opened(under('fake-tn-oneset', ...gameEvents('first', 6)));
+    expect(screen.queryByTestId('pad-body-scroll')).toBeNull();
+  });
+});

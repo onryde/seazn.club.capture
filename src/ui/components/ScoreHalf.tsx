@@ -68,12 +68,20 @@ export const ScoreHalf = memo(function ScoreHalf({ half, flash, onTap }: ScoreHa
       disabled={!half.tappable}
       onPress={tap}
       onLayout={measure}
-      style={half.bar === 'lit' ? litStyle : dimStyle}
+      style={
+        final === null
+          ? half.bar === 'lit'
+            ? litStyle
+            : dimStyle
+          : half.bar === 'lit'
+            ? litNatural
+            : dimNatural
+      }
     >
       <TapFlash cue={flash} />
       <HalfHead half={half} />
       {server === null ? null : <ServerLine words={server} />}
-      <View style={styles.middle}>
+      <View style={final === null ? styles.middle : styles.middleNatural}>
         {final === null ? (
           <Text
             testID="score"
@@ -365,6 +373,10 @@ const styles = StyleSheet.create({
   lit: { borderLeftColor: colour.lime },
   dim: { borderLeftColor: colour.ink3 },
   pressed: { backgroundColor: colour.surface2 },
+  // A half with its final board (tennis's decided match) is drawn at its own height in a scroll, never squeezed under a
+  // card above it (T12-F3): no grow, no shrink, and its middle takes the board's height instead of a share of none.
+  natural: { flex: 0, flexGrow: 0, flexShrink: 0, flexBasis: 'auto' },
+  middleNatural: { flexShrink: 0, alignItems: 'center', justifyContent: 'center' },
   head: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
   names: { flex: 1 },
   // The row is as tall as the stopwatch, and a card sits at its middle; a View never shrinks, so only the names give way.
@@ -433,3 +445,5 @@ const cardStyle: Readonly<Record<PadCard, StyleProp<ViewStyle>>> = {
 const wonBox = [styles.box, styles.won];
 const lostBox = [styles.box, styles.lost];
 const dimStyle = pressable([styles.half, styles.dim]);
+const litNatural = pressable([styles.half, styles.natural, styles.lit]);
+const dimNatural = pressable([styles.half, styles.natural, styles.dim]);
