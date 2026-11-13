@@ -348,6 +348,8 @@ const base = {
    * (padFit.test.ts).
    */
   padPeriodBox: 26,
+  /** How far a half's call plate's word may shrink (Android, one line) before it is cut: pointCallFit.test.ts. */
+  padCallMinScale: 0.7,
   /**
    * A tennis half's scoreboard (S2-7 Task 18, rulings 240, 242): a box of the row is at least this wide (two tabular digits of
    * `boardScore` and its padding), and as tall as the line of `boardScore`; a numbered game dot is a circle of `padDot` (the

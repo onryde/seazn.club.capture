@@ -16,6 +16,7 @@ import { useBackCloses } from '@/hooks/useBackCloses';
 import { useHeldServing } from '@/hooks/useHeldServing';
 import { useAskActions, useClosedByDeadLink, useStartActions } from '@/hooks/usePadMatchParts';
 import { useGuardedTool, useSettle, useTaps, type PadTapDriver } from '@/hooks/usePadTaps';
+import { usePointCallFault } from '@/hooks/usePointCallFault';
 import type { Ports } from '@/hooks/usePorts';
 import { useLinks, useScoringMatch, useSender, type MatchSender } from '@/hooks/useScoringMatch';
 import { useBackToHome } from '@/hooks/useStreamLinks';
@@ -76,6 +77,7 @@ function useTableTennisPad(
   pad: PadFacts | null,
 ): TableTennisPadModel | null {
   const sender = useSender<TableTennisTypes>(ports, runner);
+  usePointCallFault(ports.logger, pad?.display.callFault);
   const [flash, setFlash] = useState<HalfFlash>(null);
   const [cardNote, setCardNote] = useState<MessageKey | null>(null);
   const held = useHeldServing(pad?.display.anchorNeeded ?? false, pad?.display.scoreEvents ?? 0);
