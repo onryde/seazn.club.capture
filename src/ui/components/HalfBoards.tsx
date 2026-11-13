@@ -3,6 +3,7 @@ import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import type { PadFinalBox, PadScoreboard } from '@/domain/scoring/padView';
 import { usePadText } from '@/hooks/usePadText';
 import type { MessageKey } from '@/i18n/messages';
+import { CallPlate } from '@/ui/components/CallPlate';
 import { Text } from '@/ui/components/Text';
 import { colour, layout, plateInk, space } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
@@ -47,16 +48,20 @@ export const ServerLine = memo(function ServerLine({ words }: { readonly words: 
 
 /**
  * The scoreboard's row (rulings 240, 242), one line while it fits: "Sets", a dark box for each set over, then the numbered dots
- * of the games this side won in the set under way (the games count), then the hint at the end, which gives way first (an
+ * of the games this side won in the set under way (the games count), then the call on the next point (break, set or match
+ * point) when there is one, then the hint at the end, which gives way first (an
  * ellipsis, down to nothing). Dots that do not fit beside the boxes wrap to a second line rather than shrink below `padDot`.
  * With nothing to show the row keeps one box's height, so the first dot moves nothing.
  */
 export const ScoreboardRow = memo(function ScoreboardRow({
   board,
+  call,
   hint,
   onHeight,
 }: {
   readonly board: Board;
+  /** The half's call on its next point (break, set or match point): a lime plate after the dots, before the hint. */
+  readonly call: string | null;
   readonly hint: string | null;
   /** The row's height as laid out, for the score's size (`boardRoom`). */
   readonly onHeight: (event: LayoutChangeEvent) => void;
@@ -88,6 +93,7 @@ export const ScoreboardRow = memo(function ScoreboardRow({
             </Text>
           </View>
         ))}
+        {call === null ? null : <CallPlate words={call} />}
       </View>
       {hint === null ? null : (
         <Text variant="metricUnit" numberOfLines={1} style={styles.hint}>
