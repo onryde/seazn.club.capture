@@ -6,8 +6,8 @@ folder (`capture-*` and `fixtures/capture-*`) at one commit, and nothing here is
 services' contracts there too (`relay-job.v1`, the compositor's); they are not the phone's and stay behind (owner,
 2026-10-26, amending §3.1).
 
-Vendored from web `17a33079f1dc156d70275d1e199d136e4a0efd64` on 2026-11-13: 10 schemas and 268 fixtures. This is
-web PR #1207 (NOT merged: re-pin to main's merge commit after it merges). It changed the day read
+Vendored from web `3ec69fc714e851de8539c88c8ab9f7e17bcd300c` on 2026-11-13: 10 schemas and 268 fixtures, the merge of
+web PR #1207 into main (its contracts are byte-identical to the PR's `17a33079f1`, first vendored here). It changed the day read
 (`capture-matchday-day.v1`) additively: each row gains `round_tag`, `home_slot` and `away_slot`, each approval gains
 `waiting` (`stage_complete` or null), and the day gains `can_call` (a code minted with "Call matches to courts");
 `round_label` is unchanged. It added `capture-matchday-call.v1` (Task 8e: a free court's candidates, the call's

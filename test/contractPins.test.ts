@@ -24,7 +24,7 @@ import { listFiles, OURS } from '../scripts/vendor-contracts.mjs';
  *
  * relay-job.v1 sits beside them and is not the phone's: the script takes only the capture contracts.
  */
-const WEB_COMMIT = '17a33079f1dc156d70275d1e199d136e4a0efd64';
+const WEB_COMMIT = '3ec69fc714e851de8539c88c8ab9f7e17bcd300c';
 const WEB_PINS: Readonly<Record<string, string>> = {
   'capture-qr.v2.json': '3292e33f84b693e5def6048012f6653ca7e31e1573fda3901da4fe67a62c5d43',
   'capture-descriptor.v1.json': '5c9b09c422b092671ad3a842b02e5c18902c92fc290cbc562c91033555955b8b',
