@@ -823,4 +823,12 @@ describe('the opening kept for a code kept before its day (owner, 2026-11-12)', 
     await kv.set('matchday.opensAt', 'not json');
     expect(await store.readOpensAt(CODE)).toBeNull();
   });
+
+  it('a copy the phone refuses to remove still loses the kept opening', async () => {
+    const { store, files, kv } = storeOver();
+    await store.writeOpensAt(CODE, OPENS);
+    files.failNext('remove');
+    await expect(store.clearCache()).rejects.toBeDefined();
+    expect(await kv.get('matchday.opensAt')).toBeNull();
+  });
 });

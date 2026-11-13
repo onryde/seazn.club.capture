@@ -289,7 +289,7 @@ export async function forgetWithCopy(ports: Ports, saved: SavedCode): Promise<vo
  * The not-yet-open sheet's Close (owner, 2026-11-12): the code goes with its copy, as the day's end forgets it, and the
  * tile scans again. One forget at a time: a second press while one runs does nothing. A forget the phone refuses leaves
  * the code, closes the sheet and says so on Home's line, as every refused write does (R19), and is recorded; the sheet
- * is never shown closed with the code still there.
+ * closes, the code stays and the line says the forget was refused.
  */
 export function useCloseNotOpen(setPanel: SetPanel, saveFailed: SaveFailed): () => void {
   const ports = usePorts();
@@ -368,6 +368,9 @@ export function useMatchDayHint(saved: SavedCode | null, settled: boolean): stri
   const day = read?.day ?? null;
   if (day !== null && dayHasEnded(day, now)) return null;
   const opensAt = day?.opensAt ?? read?.opensAt ?? null;
+  // A kept opening with no copy cannot know the day's end: it is taken as a day after its opening (a day with a clock
+  // change is an hour off, accepted); the tile's tap forgets the code by the server's own MD_ENDED.
+  if (day === null && opensAt !== null && now.getTime() >= opensAt.getTime() + DAY_MS) return null;
   if (opensAt === null) return t('home.tile.matchday.saved');
   if (opensAt.getTime() > now.getTime())
     return t('home.tile.matchday.opens', {
@@ -377,6 +380,7 @@ export function useMatchDayHint(saved: SavedCode | null, settled: boolean): stri
   return t('home.tile.matchday.tap');
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
 const NO_COURTS: ReadonlyMap<string, string> = new Map();
 const sameCourts = (a: ReadonlyMap<string, string>, b: ReadonlyMap<string, string>): boolean =>
   a.size === b.size && [...a].every(([id, court]) => b.get(id) === court);

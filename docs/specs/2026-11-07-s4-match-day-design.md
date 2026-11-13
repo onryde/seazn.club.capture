@@ -110,8 +110,9 @@ _(owner, 2026-11-07)_
   the dim and Back only hide the sheet, and the code stays. A forget the phone refuses leaves the code and says so on
   Home's line. The record gets `matchday.notOpen {action: shown | closed}`, with no token and no link.
 - **The tile says what is saved** (owner, 2026-11-12, "yes, do both"): the Match Day tile's second line reads "Opens
-  Fri 13 Nov · 00:00" before its day, from the day's last copy; with no copy yet (a code kept before its day has none)
-  "Code saved · tap to open"; from the day's start to its end "Tap to open"; with no code saved, or after the day's
+  Fri 13 Nov · 00:00" before its day, from the day's last copy, else from the opening the not-open answer named, kept
+  with the code (secure store, cleared with it, and taken as ended a day after that opening, as a copy-less code cannot
+  know its end); with neither "Code saved · tap to open"; from the day's start to its end "Tap to open"; with no code saved, or after the day's
   end, "Scan the Match Day code" as before. The other two tiles are unchanged.
 - **Reopen after a kill** (decision record ruling 3): into Match Day. If a match was open, into that match's pad,
   whose Back returns to the list _(my call)_.

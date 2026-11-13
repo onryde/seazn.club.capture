@@ -1236,5 +1236,6 @@
   "matchday.notOpenSheet.unknown": "Deze speeldagcode is nog niet open",
   "home.tile.matchday.opens": "Opent {day} · {time}",
   "home.tile.matchday.saved": "Code opgeslagen · tik om te openen",
-  "home.tile.matchday.tap": "Tik om te openen"
+  "home.tile.matchday.tap": "Tik om te openen",
+  "matchday.notOpenSheet.hide": "Verbergen"
 }

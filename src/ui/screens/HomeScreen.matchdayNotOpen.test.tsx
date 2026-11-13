@@ -177,7 +177,7 @@ describe('the not-yet-open sheet (ruling A)', () => {
       process.off('unhandledRejection', onRejection);
     });
 
-    it('says so, keeps the code and records it; it never looks closed', async () => {
+    it('closes the sheet, keeps the code, says so on the line and records it', async () => {
       const seed = await savedDay(null);
       const refuse = (key: string) => key === STORE_KEYS.code('matchday') && refusing;
       let refusing = false;
@@ -188,6 +188,7 @@ describe('the not-yet-open sheet (ruling A)', () => {
       refusing = true;
       fireEvent.click(closeButton());
       await screen.findByText(en['store.saveFailed']);
+      expect(screen.queryByText(SHEET)).toBeNull();
       expect(savedCodeIn(home)?.raw).toBe(dayLink());
       expect(readRecord(home.record)).toContainEqual(
         expect.objectContaining({ event: 'store.write-refused', fields: { action: 'forget' } }),
@@ -245,6 +246,44 @@ describe('the opening kept with the code (fix round 1)', () => {
     expect(home.kv.entries.has(MATCHDAY_KEYS.opensAt)).toBe(false);
     hide(home);
     await screen.findByText(en['home.tile.matchday.saved']);
+  });
+
+  // The clock moves while the sheet is up; the tile reads it as Home renders again, when the sheet goes.
+  it('a kept opening already past, with no copy of the day: Tap to open', async () => {
+    const home = await renderHome(await savedDay(null));
+    home.matchDay.answerDay({ ok: false, refusal: 'MD_NOT_OPEN', opensAt: OPENS_AT });
+    fireEvent.click(matchDayTile());
+    await screen.findByText(SHEET);
+    act(() => home.setNow(new Date('2026-11-13T09:00:00.000Z')));
+    hide(home);
+    await screen.findByText(en['home.tile.matchday.tap']);
+  });
+
+  it('a kept opening with no copy ends a day after it: the tile scans again', async () => {
+    const home = await renderHome(await savedDay(null));
+    home.matchDay.answerDay({ ok: false, refusal: 'MD_NOT_OPEN', opensAt: OPENS_AT });
+    fireEvent.click(matchDayTile());
+    await screen.findByText(SHEET);
+    act(() => home.setNow(new Date(OPENS_AT.getTime() + 24 * 60 * 60 * 1000 - 1)));
+    hide(home);
+    await screen.findByText(en['home.tile.matchday.tap']);
+    fireEvent.click(matchDayTile());
+    await screen.findByText(SHEET);
+    act(() => home.setNow(new Date(OPENS_AT.getTime() + 24 * 60 * 60 * 1000)));
+    hide(home);
+    await screen.findByText(en['home.tile.matchday.hint']);
+  });
+
+  it('the dim hides the sheet under its own name, not Close’s', async () => {
+    const home = await renderHome(await savedDay(null));
+    home.matchDay.answerDay({ ok: false, refusal: 'MD_NOT_OPEN', opensAt: OPENS_AT });
+    fireEvent.click(matchDayTile());
+    await screen.findByText(SHEET);
+    fireEvent.click(
+      screen.getByRole('button', { name: en['matchday.notOpenSheet.hide'], hidden: true }),
+    );
+    expect(screen.queryByText(SHEET)).toBeNull();
+    expect(savedCodeIn(home)).toEqual(SAVED_DAY);
   });
 
   it('Close takes the kept opening with the code', async () => {

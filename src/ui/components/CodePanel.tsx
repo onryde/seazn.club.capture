@@ -262,7 +262,8 @@ export const CodePanel = memo(function CodePanel(props: CodePanelProps) {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={
-          copy.cancel ?? t(outcome.kind === 'dayNotOpen' ? 'stream.scoring.hide' : 'panel.close')
+          copy.cancel ??
+          t(outcome.kind === 'dayNotOpen' ? 'matchday.notOpenSheet.hide' : 'panel.close')
         }
         onPress={copy.cancel === null ? props.onClose : props.onCancelUnpair}
         disabled={!copy.closable}

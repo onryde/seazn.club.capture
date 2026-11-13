@@ -228,6 +228,7 @@ const panelHandlers = () => ({
   onCancelUnpair: vi.fn(),
   onDismiss: vi.fn(),
   onConfirmDismiss: vi.fn(),
+  onCloseNotOpen: vi.fn(),
 });
 
 /**
@@ -335,12 +336,14 @@ describe('HomeScreen’s unpair sheet', () => {
         continueCopy: null,
         scoring: { current: null, leftovers: [] },
         sending: [],
+        matchDayHint: null,
       },
       actions: {
         tapTile: vi.fn(),
         scanAgain: vi.fn(),
         openFromPanel: vi.fn(),
         closePanel: vi.fn(),
+        closeNotOpen: vi.fn(),
         retryCheck: vi.fn(),
         continueStream: vi.fn(),
         forgetStream: vi.fn(),

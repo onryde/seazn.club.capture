@@ -1236,5 +1236,6 @@
   "matchday.notOpenSheet.unknown": "This Match Day code isn't open yet",
   "home.tile.matchday.opens": "Opens {day} · {time}",
   "home.tile.matchday.saved": "Code saved · tap to open",
-  "home.tile.matchday.tap": "Tap to open"
+  "home.tile.matchday.tap": "Tap to open",
+  "matchday.notOpenSheet.hide": "Hide"
 }

@@ -164,9 +164,10 @@ export function createMatchDayStore(deps: {
       ),
     clearCache: () =>
       serial(async () => {
+        // The kept opening goes first: a file the phone refuses to remove must not leave it behind.
+        await kv.delete(MATCHDAY_KEYS.opensAt);
         await files.remove(COPY);
         await files.remove(TEMP);
-        await kv.delete(MATCHDAY_KEYS.opensAt);
       }),
     opened,
     openedKnown: async () => {

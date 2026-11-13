@@ -1236,5 +1236,6 @@
   "matchday.notOpenSheet.unknown": "Este código del Día de partidos aún no está abierto",
   "home.tile.matchday.opens": "Se abre {day} · {time}",
   "home.tile.matchday.saved": "Código guardado · toca para abrir",
-  "home.tile.matchday.tap": "Toca para abrir"
+  "home.tile.matchday.tap": "Toca para abrir",
+  "matchday.notOpenSheet.hide": "Ocultar"
 }
