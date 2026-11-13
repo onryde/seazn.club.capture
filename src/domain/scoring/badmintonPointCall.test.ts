@@ -192,6 +192,19 @@ describe('badminton point calls: when nobody is called', () => {
     expect(result.display.calls).toEqual({ first: 'game', second: null });
   });
 
+  it('judges only the new point strictly: a game score entered whole that the rules would not reach today still lets the call read', () => {
+    // 25-10 is not a score a game to 21 reaches (it was over at 21-10), so the engine refuses it as a new event; a ledger that
+    // already holds it replays tolerantly (a cfg edit must not brick a fixture). Reading the whole stream strictly would drop
+    // every plate for that match. Game 2 then stands 20-17.
+    const odd: Spec = { type: 'badminton.game.summary', payload: { home: 25, away: 10 } };
+    const [first, ...rest] = standing(20, 17);
+    const shown = calls([first as Spec, odd, ...rest]);
+    expect(shown.finished).toHaveLength(1);
+    expect(shown.points).toEqual({ first: 20, second: 17 });
+    // The top side took game 1 on the entered score, so 20-17 in game 2 is match point.
+    expect(shown.calls).toEqual({ first: 'match', second: null });
+  });
+
   it('replays what the ledger already holds, and judges only the new point: a config edited since the rallies were recorded', () => {
     // The web's read path folds what was recorded without validating it again (a division whose config was edited must not
     // brick its fixtures); a strict reading of the whole stream would refuse the rallies played on after 15 under a game to 15, and the call is the new

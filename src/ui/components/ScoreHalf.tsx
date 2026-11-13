@@ -59,7 +59,7 @@ export const ScoreHalf = memo(function ScoreHalf({ half, flash, onTap }: ScoreHa
   const inSlot = half.foot?.place === 'slot';
   const caution = half.foot?.caution === true;
   const said = half.marks.said.map(words);
-  const call = half.call == null ? null : half.call;
+  const call = half.call ?? null;
   return (
     <Pressable
       testID={`half-${half.side}`}
