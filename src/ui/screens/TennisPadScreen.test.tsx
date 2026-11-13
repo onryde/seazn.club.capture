@@ -546,3 +546,29 @@ describe('the final board scrolls with the result card (T12-F3)', () => {
     expect(screen.queryByTestId('pad-body-scroll')).toBeNull();
   });
 });
+
+// Review finding 6 (fix round 2): the call plate is part of the pad, so an open sheet hides it from accessibility with the rest of
+// `PadContent` (`aria-hidden` and `no-hide-descendants` when covered). Break point stands at 30-40 on the first game (the top side serves).
+describe('tennis pad: a sheet over a pad that shows a call', () => {
+  it('has the plate on the pad, and the open sheet puts it out of the accessibility tree', async () => {
+    const app = await opened(
+      under(
+        'fake-tn-call-sheet',
+        pointEvent('first'),
+        pointEvent('second'),
+        pointEvent('first'),
+        pointEvent('second'),
+        pointEvent('second'),
+      ),
+    );
+    expect(within(half('second')).getByTestId('call').textContent).toBe('Break point');
+    expect(screen.getByRole('button', { name: /Break point/ })).toBeTruthy();
+    expect(screen.getByTestId('pad-content').getAttribute('aria-hidden')).not.toBe('true');
+    await tap(app, en['scoring.tennis.tool.break']);
+    expect(screen.getByTestId('step-sheet')).toBeTruthy();
+    const pad = screen.getByTestId('pad-content');
+    expect(pad.getAttribute('aria-hidden')).toBe('true');
+    expect(pad.contains(screen.getByTestId('call'))).toBe(true);
+    expect(screen.queryByRole('button', { name: /Break point/ })).toBeNull();
+  });
+});

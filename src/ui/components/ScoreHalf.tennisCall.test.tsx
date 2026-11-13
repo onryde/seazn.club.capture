@@ -11,7 +11,7 @@ import { renderWithPorts } from '../../../test/renderWithPorts';
 
 // A tennis half's call on its next point (owner, 2026-11-13): the lime plate on its own line under the scoreboard row, always
 // kept ("own line, always kept": the score never moves). The kit draws what it is given; the pad's domain decides who is called (`tennisPointCall.test.ts`,
-// `tennisPad.call.test.ts`). The width it holds at 320 and 360 is `pointCallFit.test.ts`'s; how it looks is the device's.
+// `tennisPad.call.test.ts`). The width it holds at 320 and 360 is `tennisFit.test.ts`'s; how it looks is the device's.
 
 const T = 'scoring.tennis.board.';
 const CALLS = {
@@ -123,7 +123,7 @@ describe('ScoreHalf: a tennis half’s call', () => {
     [41, 240],
     [67, 217],
   ] as const)(
-    'holds the score still: the same row and the same size with and without a call (row %s, half %s)',
+    'same row shape and same size for the same measured row, with and without a call (row %s, half %s); the measured claim is ScoreHalf.tennisStill.test',
     (row, height) => {
       const sized = (call: 'break' | 'set' | 'match' | null) => {
         const view = renderWithPorts(<ScoreHalf half={half(call)} flash={0} onTap={vi.fn()} />);
