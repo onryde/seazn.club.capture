@@ -79,6 +79,7 @@ describe('what a refused call says', () => {
       { key: 'matchday.call.busyNoCourt', vars: { name: 'Ann Archer' } },
     ],
     ['playerBusy naming nobody', refused('playerBusy'), { key: 'matchday.call.moved' }],
+    ['a reason the phone has no word for', refused('unknown'), { key: 'matchday.call.moved' }],
   ])('%s', (_, why, line) => {
     expect(refusalMeaning(why, 'call', 'Court 1')).toEqual(line);
   });

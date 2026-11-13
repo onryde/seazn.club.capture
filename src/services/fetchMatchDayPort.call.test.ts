@@ -277,6 +277,26 @@ describe('the record', () => {
     }
   });
 
+  it('says a reason it does not know as the word `unknown`, still a refusal and not offline (final review m4)', async () => {
+    const { port, lines } = portOver(
+      answering(respond(409, refusal('MD_CALL_REFUSED', { reason: 'raining' }))),
+    );
+    const answer = await port.call(CODE, FIXTURE, COURT);
+    expect(answer).toMatchObject({
+      ok: false,
+      refused: { code: 'MD_CALL_REFUSED', reason: 'unknown' },
+    });
+    expect(lines().at(-1)?.fields).toMatchObject({ kind: 'refused', reason: 'unknown' });
+    expect(JSON.stringify(lines())).not.toContain('raining');
+  });
+
+  it('never rejects when the path cannot be built: a lone surrogate in an id is offline, nothing is sent (final review m5)', async () => {
+    const { port, calls, lines } = portOver(answering(respond(200, null)));
+    await expect(port.candidates(CODE, '\ud800')).resolves.toEqual(OFFLINE);
+    expect(calls).toHaveLength(0);
+    expect(JSON.stringify(lines())).not.toContain(TOKEN);
+  });
+
   it('says a gone, an offline and a refusal of the other routes by their own call’s name', async () => {
     const gone = portOver(answering(respond(404, refusal('NOT_FOUND'))));
     await gone.port.undoCall(CODE, FIXTURE);

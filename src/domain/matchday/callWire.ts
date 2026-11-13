@@ -281,7 +281,9 @@ export type CallReason =
   | 'notCalled'
   | 'frozen'
   /** Undo only: the call was made on the web desk, and a code may undo only a call a code made. */
-  | 'notCodeCall';
+  | 'notCodeCall'
+  /** A reason a later web sends that this phone has no word for: still the desk's refusal, said in the general words. */
+  | 'unknown';
 
 const REASON: ReadonlyMap<string, CallReason> = new Map([
   ['not_candidate_court', 'notCandidateCourt'],
@@ -309,7 +311,8 @@ export type CallRefused =
 
 /**
  * The refusal of the three call routes, the v1 envelope's `error` on a 4xx: one of the six md_ words or `MD_CALL_REFUSED`
- * with its `reason`. Anything else is null: another route's word (MD_STALE), an unknown reason, the envelope's own
+ * with its `reason` (one this phone has no word for reads as `unknown`, a refusal and not offline). Anything else is
+ * null: another route's word (MD_STALE), a reason that is no string, the envelope's own
  * answers (404, 429, 422), a portal's page. The port reads those by status.
  */
 export function parseCallRefusal(status: number, body: unknown): CallRefused | null {
@@ -326,8 +329,8 @@ export function parseCallRefusal(status: number, body: unknown): CallRefused | n
 }
 
 function refusedByDesk(error: Source): CallRefused | null {
-  const reason = typeof error.reason === 'string' ? REASON.get(error.reason) : undefined;
-  if (reason === undefined) return null;
+  if (typeof error.reason !== 'string') return null;
+  const reason = REASON.get(error.reason) ?? 'unknown';
   const person = nameOf(error.person_name, false);
   const court = nameOf(error.court_name, true);
   if (person === undefined || court === undefined) return null;

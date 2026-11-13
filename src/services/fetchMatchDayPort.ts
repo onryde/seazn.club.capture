@@ -143,9 +143,15 @@ async function send(
   deps.logger.protectLink(code.token);
   if (!isBuildOrigin(code.origin, deps.host)) return { problem: 'foreign-host' };
   const deadline = Math.min(deps.timeoutMs ?? MATCHDAY_TIMEOUT_MS, MATCHDAY_TIMEOUT_MS);
-  const request = { method, path: typeof path === 'string' ? path : path(), cap, body };
+  // The path is built inside the bounded work (async), so a thunk that throws (a lone surrogate in an id) is `unexpected`.
   return withDeadline<Reply | Lost>(
-    (signal) => exchange(deps, code, request, signal),
+    async (signal) =>
+      exchange(
+        deps,
+        code,
+        { method, path: typeof path === 'string' ? path : path(), cap, body },
+        signal,
+      ),
     deadline,
     () => ({ problem: 'timeout' }),
     () => ({ problem: 'unexpected' }),

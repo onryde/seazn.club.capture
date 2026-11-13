@@ -444,7 +444,12 @@ describe('parseCallRefusal', () => {
     ],
     'refusal-invalid-approval-word': [403, null],
     'refusal-invalid-desk-word': [409, null],
-    'refusal-invalid-unknown-reason': [409, null],
+    // A later web's reason: the contract refuses it, the phone reads it as a refusal it has no word for (final review m4),
+    // never as offline.
+    'refusal-invalid-unknown-reason': [
+      409,
+      { code: 'MD_CALL_REFUSED', reason: 'unknown', personName: null, courtName: null },
+    ],
     // Refused by the contract only for a reason on a word that has none: the phone reads the word.
     'refusal-invalid-reason-on-no-call': [403, { code: 'MD_NO_CALL' }],
   };

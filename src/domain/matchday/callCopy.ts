@@ -70,6 +70,8 @@ function desk(
       return { key: 'matchday.call.frozen' };
     case 'notCodeCall':
       return { key: 'matchday.call.notCodeCall' };
+    case 'unknown':
+      return { key: 'matchday.call.moved' };
   }
 }
 
