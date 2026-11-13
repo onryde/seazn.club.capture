@@ -109,10 +109,10 @@ describe('a detailed point, as the event queued', () => {
     expect(detailed(tiebreak, 'first')?.payload).toEqual({ by: HOME, server: 'h1' });
   });
 
-  it('names no server when the engine cannot name the order (a set score of an odd number of games)', () => {
+  it('names the server after a set score of an odd number of games: away’s one player serves set 2', () => {
     const odd = [start(), summary(6, 3)];
-    expect(display(odd).serving).toBeNull();
-    expect(detailed(odd, 'first')?.payload).toEqual({ by: HOME });
+    expect(display(odd).serving).toBe('second');
+    expect(detailed(odd, 'first')?.payload).toEqual({ by: HOME, server: 'a1' });
   });
 
   it('is the plain point, sent at once, with the details off (ruling 217 kept)', () => {

@@ -207,14 +207,14 @@ describe('History: a group for each game (ruling 238)', () => {
     expect(won[0]).toEqual({ key: `${H}matchTiebreakWon`, vars: { winner: ANA } });
   });
 
-  it('names no server when the engine cannot (a set score with an odd number of games), and still names the game', () => {
+  it('names the server after a set score with an odd number of games: away serves set 2’s first game', () => {
     expect(headings([start(), summary(6, 3), point('H')])[0]).toEqual({
-      key: `${H}gameNoServer`,
-      vars: { set: 2, game: 1 },
+      key: `${H}game`,
+      vars: { set: 2, game: 1, server: BEA },
     });
     expect(headings([start(), summary(6, 3), ...gamesOf('H')])[0]).toEqual({
-      key: `${H}gameWonNoServer`,
-      vars: { set: 2, game: 1, winner: ANA },
+      key: `${H}gameWon`,
+      vars: { set: 2, game: 1, server: BEA, winner: ANA },
     });
   });
 

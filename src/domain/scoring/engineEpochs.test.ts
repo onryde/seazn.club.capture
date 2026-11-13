@@ -35,8 +35,8 @@ describe('the engine’s epochs are the ones each sport sends', () => {
   });
 
   // Literal 2, copied by hand from the release (W2e T4 raised it); Task 3's seeds read the engine's own number.
-  it('tennis 3, as at engine 8.0.0 (the toss: tennis.toss seats the first server)', () => {
-    expect(foldEpochOf('tennis')).toBe(3);
-    expect(tennisSport.epoch).toBe(3);
+  it('tennis 4, as at engine 9.0.0 (3 at 8.0.0: the toss; 4: a set summary hands the serve on)', () => {
+    expect(foldEpochOf('tennis')).toBe(4);
+    expect(tennisSport.epoch).toBe(4);
   });
 });

@@ -102,10 +102,10 @@ describe('the serve ball', () => {
     expect(view.halves.map((half) => half.bar)).toEqual(['dim', 'lit']);
   });
 
-  it('is on neither side when the engine cannot name the server (a set score with an odd number of games, F1)', () => {
+  it('is on the side due after a set score with an odd number of games (home served nine, so away serves set 2)', () => {
     const view = padOf([start(), summary(6, 3)]);
-    expect(plates(view)).toEqual([null, null]);
-    expect(view.halves.map((half) => half.bar)).toEqual(['dim', 'dim']);
+    expect(plates(view)).toEqual([null, plate]);
+    expect(view.halves.map((half) => half.bar)).toEqual(['dim', 'lit']);
   });
 
   it('is on neither side once the match is decided: the winner carries WON in its place (ruling 239)', () => {

@@ -256,13 +256,15 @@ describe('tennis.set_summary', () => {
 });
 
 describe('the serve after a set score', () => {
-  it('FINDING: an odd-games set_summary does not turn the serve over: 6-3 leaves home serving, the order unknown', () => {
-    // ITF Rule 10 would have away serving after nine games (home served the first). The engine keeps the serve where it
-    // was and says it cannot name the order (`serveContext.serveOrderKnown`), so the pad must not trust the ball here.
+  it('an odd-games set_summary hands the serve on as the set played would (engine 9.0.0, T12-F2): 6-3 leaves away serving', () => {
+    // ITF Rule 10: home served games 1, 3, 5, 7 and 9 of nine, so away serves the next set's first game.
     const s = stateAfter(TOUR, [start, summary(6, 3)]);
-    expect(s.serving).toBe('home');
-    expect(serveContext(s).serveOrderKnown).toBe(false);
-    expect(serveContext(stateAfter(TOUR, [start, summary(6, 4)])).serveOrderKnown).toBe(true);
+    expect(s.serving).toBe('away');
+    expect(serveContext(s).serveOrderKnown).toBe(true);
+    // Eight games: even, so home serves again.
+    const even = stateAfter(TOUR, [start, summary(6, 4)]);
+    expect(even.serving).toBe('home');
+    expect(serveContext(even).serveOrderKnown).toBe(true);
   });
 });
 

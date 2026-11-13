@@ -165,9 +165,17 @@ describe('the sets over, as one line', () => {
   });
 });
 
-describe('the serve ball after a set score (F1: the engine cannot name the order)', () => {
-  it('an odd 6-3 summary leaves nobody serving', () => {
-    expect(display([start(), summary(6, 3)]).serving).toBeNull();
+describe('the serve ball after a set score (engine 9.0.0 hands the serve on, T12-F2)', () => {
+  it('an odd 6-3 summary (home served game 1 of nine) leaves away to serve set 2', () => {
+    expect(display([start(), summary(6, 3)]).serving).toBe('second');
+  });
+
+  it('a 7-6 summary (thirteen games, a tie-break) also leaves away to serve set 2', () => {
+    expect(display([start(), summary(7, 6, { home: 7, away: 4 })]).serving).toBe('second');
+  });
+
+  it('a toss to away, then 6-3: away served game 1, so home serves set 2', () => {
+    expect(display([toss('A'), start(), summary(6, 3)]).serving).toBe('first');
   });
 
   it("an even 6-4 summary keeps the engine's side", () => {
@@ -439,10 +447,10 @@ describe('the doubles server’s name (ruling 235)', () => {
     expect(tiebreak.serving).not.toBeNull();
   });
 
-  it('names nobody when the engine cannot name the order (a set score of nine games, F1): the plate is gone too', () => {
+  it('after a set score of nine games, names away’s first server (away served games 2, 4, 6, 8; the next is the first again)', () => {
     const shown = display([start(), summary(6, 3)], doubles);
-    expect(shown.serving).toBeNull();
-    expect(shown.servingPerson).toBeNull();
+    expect(shown.serving).toBe('second');
+    expect(shown.servingPerson).toBe('Lund / Berg a1');
   });
 
   it('names nobody in singles: the side is the player', () => {

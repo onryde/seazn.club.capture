@@ -194,6 +194,13 @@ describe('the Start screen (ruling 233)', () => {
     expect(screen.queryByTestId('start-screen')).toBeNull();
     expect(within(half('first')).queryByText(en['scoring.tennis.serving'])).toBeTruthy();
   });
+
+  it('after a Set score of nine games (home served first) the plate is on away for set 2 (engine 9.0.0, T12-F2)', async () => {
+    const summary = { type: 'tennis.set_summary', payload: { home: 6, away: 3 } };
+    await opened(under('set-two-serve', summary));
+    expect(within(half('second')).queryByText(en['scoring.tennis.serving'])).toBeTruthy();
+    expect(within(half('first')).queryByText(en['scoring.tennis.serving'])).toBeNull();
+  });
 });
 
 describe('a doubles server’s name (ruling 235)', () => {
