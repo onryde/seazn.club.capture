@@ -59,6 +59,7 @@ export const ScoreHalf = memo(function ScoreHalf({ half, flash, onTap }: ScoreHa
   const inSlot = half.foot?.place === 'slot';
   const caution = half.foot?.caution === true;
   const said = half.marks.said.map(words);
+  const call = half.call ?? null;
   return (
     <Pressable
       testID={`half-${half.side}`}
@@ -104,6 +105,7 @@ export const ScoreHalf = memo(function ScoreHalf({ half, flash, onTap }: ScoreHa
           scores={half.periods?.scores ?? NO_SCORES}
           sub={sub}
           counts={inSlot ? foot : null}
+          call={call === null ? null : words(call.text)}
           caution={caution}
           hint={half.tappable ? words(half.action ?? TAP) : null}
         />
@@ -181,6 +183,7 @@ function halfName(
   const boards = (half.scoreboard ?? half.finalBoard)?.said.map(words) ?? NO_WORDS;
   const serving = half.serving === null ? null : words(half.serving.said);
   const plate = half.plate === null ? null : words(half.plate);
+  const call = half.call == null ? null : words(half.call.said);
   return [
     half.label,
     server,
@@ -192,6 +195,7 @@ function halfName(
     ...marks,
     serving,
     plate,
+    call,
   ]
     .filter(isWords)
     .join(', ');
@@ -250,6 +254,7 @@ const HalfFoot = memo(function HalfFoot({
   scores,
   sub,
   counts,
+  call,
   caution,
   hint,
 }: {
@@ -257,6 +262,8 @@ const HalfFoot = memo(function HalfFoot({
   readonly sub: string | null;
   /** The side's counts, when they sit in this row (`PadFoot.place`): after the boxes, cut before the hint is. */
   readonly counts: string | null;
+  /** The half's call on its next point ("Game point"): a lime plate after the boxes, which never gives way. */
+  readonly call: string | null;
   readonly caution: boolean;
   readonly hint: string | null;
 }) {
@@ -270,11 +277,16 @@ const HalfFoot = memo(function HalfFoot({
         </Text>
       ) : null}
       {sub === null ? null : (
-        <Text variant="control" style={styles.kept}>
+        <Text
+          variant="control"
+          numberOfLines={call === null ? undefined : 1}
+          style={call === null ? styles.kept : styles.subYields}
+        >
           {sub}
         </Text>
       )}
       {counts === null ? null : <HalfCounts text={counts} caution={caution} slot />}
+      {call === null ? null : <CallPlate words={call} />}
       {hint === null ? null : (
         <Text
           variant="metricUnit"
@@ -343,6 +355,26 @@ const ServingPlate = memo(function ServingPlate({ words }: { readonly words: str
   return (
     <View testID="serving" style={styles.plate}>
       <Text variant="state" style={styles.plateWord}>
+        {words}
+      </Text>
+    </View>
+  );
+});
+
+/**
+ * The call on the half's next point (`PadHalf.call`): the serving plate's lime and night ink, in the bottom row after the
+ * boxes and before the hint, which gives way to it. Drawn, never over the score; the same words are in the half's name.
+ */
+const CallPlate = memo(function CallPlate({ words }: { readonly words: string }) {
+  return (
+    <View testID="call" aria-hidden style={styles.callPlate}>
+      <Text
+        variant="state"
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={layout.padCallMinScale}
+        style={styles.plateWord}
+      >
         {words}
       </Text>
     </View>
@@ -420,6 +452,15 @@ const styles = StyleSheet.create({
   countsCaution: { color: colour.caution },
   plate: { paddingHorizontal: space.sm, paddingVertical: space.xs, backgroundColor: colour.lime },
   plateWord: { color: plateInk },
+  // Beside the boxes, which are never cut, the call is the last thing to give way: the hint goes first (it is flex 1 from
+  // nothing), then the doubles server's line (`subYields`), then the call's own word shrinks (a tenth of the line's weight).
+  callPlate: {
+    flexShrink: 0.1,
+    minWidth: 0,
+    paddingHorizontal: space.sm,
+    backgroundColor: colour.lime,
+  },
+  subYields: { flexShrink: 1, minWidth: 0 },
 });
 
 /** Module-level so render allocates no function; pressed lifts the half to surface2. */

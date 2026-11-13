@@ -16,6 +16,7 @@ import {
 } from '@/hooks/usePadSheets';
 import { useAskActions, useClosedByDeadLink, useStartActions } from '@/hooks/usePadMatchParts';
 import { useGuardedTool, useSettle, useTaps } from '@/hooks/usePadTaps';
+import { usePointCallFault } from '@/hooks/usePointCallFault';
 import type { Ports } from '@/hooks/usePorts';
 import { useLinks, useScoringMatch, useSender, type MatchSender } from '@/hooks/useScoringMatch';
 import { useBackToHome } from '@/hooks/useStreamLinks';
@@ -68,6 +69,7 @@ function useBadmintonPad(
   pad: PadFacts | null,
 ): BadmintonPadModel | null {
   const sender = useSender<BadmintonTypes>(ports, runner);
+  usePointCallFault(ports.logger, pad?.display.callFault);
   const [flash, setFlash] = useState<HalfFlash>(null);
   const [cardNote, setCardNote] = useState<MessageKey | null>(null);
   const settle = useSettle(sender.say);

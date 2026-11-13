@@ -54,6 +54,12 @@ export type PadMarks<K extends string> = {
   readonly said: readonly PadText<K>[];
 };
 
+/** A call on a half's next point: its plate's words, and what a screen reader hears of it. */
+export type PadCall<K extends string> = {
+  readonly text: PadText<K>;
+  readonly said: PadText<K>;
+};
+
 /** One side's half: tapping it gives that side the rally (or the sport's unit of scoring). */
 export type PadHalf<K extends string> = {
   readonly side: PadSide;
@@ -96,6 +102,12 @@ export type PadHalf<K extends string> = {
    * one, and a half without it is drawn as before.
    */
   readonly foot?: PadFoot<K> | null;
+  /**
+   * A call on the half's next point, a lime plate in the bottom row after the boxes (badminton and table tennis: game point,
+   * match point). `text` is drawn, `said` is added to the half's name. Optional: only a sport that calls
+   * points gives one, and a half without it is drawn as before. Never given to a half that takes no tap.
+   */
+  readonly call?: PadCall<K> | null;
   /**
    * The server's name on a line of its own under the side's names (tennis doubles, S2-7 ruling 235, moved from the bottom row
    * by the device finding T12-F1), with the serving ball before it. Optional: only a sport that names a server gives one.

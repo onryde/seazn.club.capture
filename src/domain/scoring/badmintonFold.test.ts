@@ -101,6 +101,9 @@ describe('foldBadminton: before the start', () => {
       undoable: false,
       awaitingEnding: false,
       serverPicked: false,
+      // Nothing is called before a game is under way, between games or once the match is over.
+      calls: { first: null, second: null },
+      callFault: null,
     } satisfies BadmintonDisplay);
     expect(result.legalQueued).toEqual([]);
     expect(result.history).toEqual([]);
@@ -123,6 +126,9 @@ describe('foldBadminton: before the start', () => {
       undoable: true,
       awaitingEnding: false,
       serverPicked: true,
+      // Nothing is called before a game is under way, between games or once the match is over.
+      calls: { first: null, second: null },
+      callFault: null,
     } satisfies BadmintonDisplay);
     expect(result.legalQueued).toEqual(['k-start']);
     expect(result.history).toEqual([
@@ -160,6 +166,9 @@ describe('foldBadminton: the games', () => {
       undoable: false,
       awaitingEnding: false,
       serverPicked: false,
+      // Nothing is called before a game is under way, between games or once the match is over.
+      calls: { first: null, second: null },
+      callFault: null,
     } satisfies BadmintonDisplay);
     const view = badmintonPad(result);
     expect(view.strip).toEqual([
@@ -197,6 +206,9 @@ describe('foldBadminton: the games', () => {
       undoable: false,
       awaitingEnding: false,
       serverPicked: false,
+      // Nothing is called before a game is under way, between games or once the match is over.
+      calls: { first: null, second: null },
+      callFault: null,
     } satisfies BadmintonDisplay);
   });
 
@@ -246,6 +258,9 @@ describe('foldBadminton: the games', () => {
       undoable: false,
       awaitingEnding: false,
       serverPicked: false,
+      // Nothing is called before a game is under way, between games or once the match is over.
+      calls: { first: null, second: null },
+      callFault: null,
     } satisfies BadmintonDisplay);
     expect(badmintonPad(result).card).toEqual({ kind: 'resultRecorded', undoLeft: null });
   });
@@ -445,6 +460,9 @@ describe('foldBadminton: a disqualification and its ending', () => {
       undoable: false,
       awaitingEnding: false,
       serverPicked: false,
+      // Nothing is called before a game is under way, between games or once the match is over.
+      calls: { first: null, second: null },
+      callFault: null,
     } satisfies BadmintonDisplay);
   });
 

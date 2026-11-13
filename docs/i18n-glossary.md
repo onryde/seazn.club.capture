@@ -842,6 +842,17 @@ and a value; no explanatory sentences. Committed without a `_review` marker.
 | Controls                     | Controles                | Commandes                 | Bediening                   | `settings.side.row`: which side the viewfinder's controls sit.            |
 | Left / Right                 | Izquierda / Derecha      | Gauche / Droite           | Links / Rechts              | `settings.side.rowLeft` / `rowRight`.                                     |
 
+### Point calls on the pad (badminton and table tennis, 2026-11-13)
+
+The lime plate in a half's bottom row, left of "Tap" (`scoring.pad.call.*`, shared by the two sports). Game and match follow how each language already says them in
+badminton and table tennis (es _juego_ and _partido_, fr _jeu_ and _match_, nl _game_ and _wedstrijd_ in running text, but the umpires' own
+_matchpunt_ and _gamepunt_ on a plate). **es, fr and nl are unreviewed drafts.**
+
+| English     | Español          | Français       | Nederlands | Where                                                         |
+| ----------- | ---------------- | -------------- | ---------- | ------------------------------------------------------------- |
+| Game point  | Punto de juego   | Balle de jeu   | Gamepunt   | `scoring.pad.call.gamePoint`: the next point wins the game.   |
+| Match point | Punto de partido | Balle de match | Matchpunt  | `scoring.pad.call.matchPoint`: the next point wins the match. |
+
 ## Translation review
 
 - **New or changed English copy.** Add the key to es, fr and nl in the same

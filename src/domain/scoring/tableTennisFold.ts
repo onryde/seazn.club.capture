@@ -27,6 +27,7 @@ import {
   type SetBasedKit,
   type SetBasedMatch,
 } from '@/domain/scoring/setBasedFold';
+import { pointCallsFrom } from '@/domain/scoring/setBasedPointCall';
 import { ledgerRows } from '@/domain/scoring/setBasedLedgerHistory';
 import { sideOfEntrant, type SetBasedNames } from '@/domain/scoring/setBasedSides';
 import { tableTennisRefusalOf } from '@/domain/scoring/tableTennisEngine';
@@ -142,6 +143,7 @@ function displayOf(folding: SetBasedFolding<TableTennisDone>): TableTennisDispla
   const { match, stream, folded } = folding;
   const { state } = folded;
   const board = boardOf(state);
+  const { calls, fault } = pointCallsFrom(EVENTS, folding);
   return {
     sides: match.names.sides,
     context: match.context,
@@ -156,6 +158,8 @@ function displayOf(folding: SetBasedFolding<TableTennisDone>): TableTennisDispla
     records: recordsOf(match),
     lastTap: lastTapOf(stream.envelopes, folding.recorded, undoneTap),
     undoable: folding.undoable,
+    calls,
+    callFault: fault,
   };
 }
 

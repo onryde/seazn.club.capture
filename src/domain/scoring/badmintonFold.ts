@@ -43,6 +43,7 @@ import {
   type SetBasedMatch,
 } from '@/domain/scoring/setBasedFold';
 import { ledgerRows } from '@/domain/scoring/setBasedLedgerHistory';
+import { pointCallsFrom } from '@/domain/scoring/setBasedPointCall';
 import { personName, sideOfEntrant, type SetBasedNames } from '@/domain/scoring/setBasedSides';
 
 /**
@@ -132,6 +133,8 @@ function displayOf(folding: SetBasedFolding<BadmintonDone>): BadmintonDisplay {
   const board = boardOf(match.names, state);
   const phase = phaseOf(state, board.game, lastRallyGame(stream.envelopes, folded.facts, RALLY));
   const server = serverOf(serve, picked);
+  // At 29-29 the next point wins the game whoever takes it: BWF says "29 game point all", so both sides are game point.
+  const { calls, fault } = pointCallsFrom(KIT, folding);
   return {
     sides: match.names.sides,
     context: match.context,
@@ -145,6 +148,8 @@ function displayOf(folding: SetBasedFolding<BadmintonDone>): BadmintonDisplay {
     undoable: folding.undoable,
     awaitingEnding: awaitingEnding(stream.envelopes, folded),
     serverPicked: picked !== null,
+    calls,
+    callFault: fault,
   };
 }
 
