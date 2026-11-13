@@ -354,6 +354,44 @@ describe('a court’s day: its matches open as the card’s do', () => {
     expect(dayScreen()).toBeNull();
   });
 
+  it('a second touch right after the open acts on nothing: the list’s row beneath it is quiet', async () => {
+    const view = await openList();
+    await openDay();
+    fireEvent.click(dayRows()[1] as HTMLElement);
+    // The first open has finished by the time the finger lands again (an open in flight would hide the gap).
+    await settle(100);
+    // The view is gone; the finger lands again on Court 2's own Now row on the list.
+    fireEvent.click(
+      within(screen.getAllByTestId('court-card')[1] as HTMLElement).getAllByTestId(
+        'match-row',
+      )[0] as HTMLElement,
+    );
+    await settle();
+    expect(opens(view)).toHaveLength(1);
+    // Anti-vacuity: after the bounce the same row opens.
+    await settle(300);
+    fireEvent.click(
+      within(screen.getAllByTestId('court-card')[1] as HTMLElement).getAllByTestId(
+        'match-row',
+      )[0] as HTMLElement,
+    );
+    await settle();
+    expect(opens(view)).toHaveLength(2);
+  });
+
+  it('two touches in one frame on a day row open once, and the view is gone', async () => {
+    const view = await openList();
+    await openDay();
+    const target = dayRows()[1] as HTMLElement;
+    act(() => {
+      fireEvent.click(target);
+      fireEvent.click(target);
+    });
+    await settle();
+    expect(opens(view)).toHaveLength(1);
+    expect(dayScreen()).toBeNull();
+  });
+
   it('a match with an empty seat is not a control, and a finished one opens only when its link is held', async () => {
     const half = row('q-h', 'Eva', null, { awaySlot: 'Winner of SF·2' });
     const view = await openList(dayWith([busy({ next: [half, ...queue.slice(1)] })]));

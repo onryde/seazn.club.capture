@@ -92,11 +92,13 @@ export function MatchDayScreen() {
   // A match opened from a court's day leaves the day view: a refusal ("can't open") is said on the list beneath it.
   const openFromDay = useCallback(
     (row: Row, courtName: string) => {
+      // A touch inside the bounce window is no open at all, and the view stays.
+      if (quiet()) return Promise.resolve();
       const opening = open(row, courtName);
       leaveDay();
       return opening;
     },
-    [open, leaveDay],
+    [open, leaveDay, quiet],
   );
   const askUndo = useCallback(
     (row: Row, courtName: string) => {
@@ -284,7 +286,8 @@ function useCourtDayView({ quiet, note }: ReturnType<typeof useBounce>, day: Mat
     note();
     setCourtId(null);
   }, [note]);
-  const leaveDay = useCallback(() => setCourtId(null), []);
+  // Leaving to open a match opens the bounce window too: a second touch lands on the list's row beneath.
+  const leaveDay = closeDay;
   useBackCloses(viewing !== null, closeDay);
   return { viewing, openDay, closeDay, leaveDay };
 }

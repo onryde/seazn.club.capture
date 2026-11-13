@@ -386,7 +386,7 @@ export const StateChip = memo(function StateChip({
 
 /** Module-level so render allocates no function: a pressed head takes the press fill. */
 function headPress({ pressed }: { pressed: boolean }) {
-  return pressed ? [styles.headInfo, styles.headPressed] : styles.headInfo;
+  return pressed ? headDown : headRest;
 }
 
 /** The light line between matches, as the call sheet draws it between candidates. */
@@ -405,11 +405,11 @@ const styles = StyleSheet.create({
   headInfo: {
     flex: 1,
     minWidth: 0,
-    minHeight: layout.touch,
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.sm,
   },
+  headHit: { minHeight: layout.touch },
   headPressed: { backgroundColor: colour.pressFill },
   name: { flex: 1, minWidth: 0 },
   finished: { paddingTop: space.sm, color: colour.ink3, ...hairline },
@@ -423,6 +423,9 @@ const styles = StyleSheet.create({
     borderWidth: layout.cardBorder,
   },
 });
+
+const headRest = [styles.headInfo, styles.headHit];
+const headDown = [styles.headInfo, styles.headHit, styles.headPressed];
 
 const chips = StyleSheet.create({
   playingBox: { backgroundColor: colour.lime, borderColor: colour.lime },
