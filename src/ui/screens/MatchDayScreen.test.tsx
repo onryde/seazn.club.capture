@@ -463,9 +463,9 @@ describe('MatchDayScreen: the approval banner (S4 design §7)', () => {
       'a draw, can approve',
       [draw],
       true,
-      "Groups finished · Men's singles · Knockout draw is ready",
+      "Groups finished · Men's singles · Knockout bracket is ready",
     ],
-    ['a draw, web only', [draw], false, "Groups finished · Men's singles · draw on the web desk"],
+    ['a draw, web only', [draw], false, "Groups finished · Men's singles · bracket on the web desk"],
     ['Swiss with no round', [{ ...swiss, round: null }], true, 'Swiss · pair on the web desk'],
     ['Swiss round 1 (review M5)', [{ ...swiss, round: 1 }], true, 'Swiss · pair on the web desk'],
     [
@@ -478,7 +478,7 @@ describe('MatchDayScreen: the approval banner (S4 design §7)', () => {
       'two waiting',
       [draw, swiss],
       true,
-      "Groups finished · Men's singles · Knockout draw is ready",
+      "Groups finished · Men's singles · Knockout bracket is ready",
     ],
   ] as const)('%s: says the first approval waiting', async (_what, approvals, canApprove, line) => {
     await openList({ day: dayWith({ approvals, canApprove }) });
@@ -959,7 +959,7 @@ describe('MatchDayScreen: the round chip, the slot words and the waiting draw (t
       });
       const banner = within(screen.getByTestId('approval-banner'));
       expect(
-        banner.getByText("Groups finished · Men's singles · Knockout draw is ready"),
+        banner.getByText("Groups finished · Men's singles · Knockout bracket is ready"),
       ).toBeTruthy();
       expect(banner.getByRole('button', { name: en['matchday.approve.review'] })).toBeTruthy();
     });
@@ -974,7 +974,7 @@ describe('MatchDayScreen: the round chip, the slot words and the waiting draw (t
       await settle(MATCHDAY_POLL_MS);
       const banner = within(screen.getByTestId('approval-banner'));
       expect(
-        banner.getByText("Groups finished · Men's singles · Knockout draw is ready"),
+        banner.getByText("Groups finished · Men's singles · Knockout bracket is ready"),
       ).toBeTruthy();
       expect(banner.getByRole('button', { name: en['matchday.approve.review'] })).toBeTruthy();
       view.matchDay.answerDay({

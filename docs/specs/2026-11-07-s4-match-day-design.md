@@ -131,7 +131,7 @@ _(owner, 2026-11-07: layout B, "by court")_
    SAFE Open 2026 · Hall A · Sat 7 Nov
 ┌ banner, only when an approval waits ┐
 │ GROUPS FINISHED · MEN'S SINGLES     │
-│ Knockout draw is ready  [Review]    │
+│ Knockout bracket ready  [Review]    │
 └─────────────────────────────────────┘
 ┌ COURT 1                    PLAYING ┐
 │ NOW   Ng v Brown              14-9 │
@@ -191,7 +191,8 @@ _(owner, 2026-11-07: Swiss next round and knockout draw on the phone, in v1)_
 - **A banner** appears at the top of the list only when the server reports an approval waiting in the code's scope,
   and only on a code with "can approve draws". There are two kinds:
   - **Swiss:** "Round 3 complete · Round 4 pairings are ready".
-  - **Knockout draw:** "Groups finished · {division} · Knockout draw is ready". This is the seed proposal: the web
+  - **Knockout draw:** "Groups finished · {division} · Knockout bracket is ready" (amended 2026-11-13, owner: English
+    says _bracket_, never _draw_, which a scorer reads as a drawn match). This is the seed proposal: the web
     computes it (`POST /stages/{id}/seed-proposal`) and confirms it (`…/seed-proposal/confirm`), which fills the
     knockout's empty slots. Winners inside a bracket already move up by themselves, so only the step from groups into
     the knockout needs approval.
@@ -204,7 +205,7 @@ _(owner, 2026-11-07: Swiss next round and knockout draw on the phone, in v1)_
 - **Two phones approve at once:** the server takes the first. The second shows "Already approved" and refreshes
   _(my call)_.
 - **A proposal goes stale** (a result changed after it was computed): the server refuses it. The phone shows
-  "Draw changed — review again" and reloads it _(my call)_.
+  "Bracket changed — review again" and reloads it _(my call)_.
 - **After approval,** the new matches appear on their courts at the next refresh, which runs at once.
 - **The session record** gets one line per approval: its kind, the stage and the outcome. It never carries the
   token.

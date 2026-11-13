@@ -136,9 +136,9 @@ describe('ApprovalScreen: the review', () => {
     expect(review().getByText('To change a slot, use the web desk')).toBeTruthy();
   });
 
-  it('a draw says Knockout draw, and an open seat is To be decided, never TBD', async () => {
+  it('a draw says Knockout bracket, and an open seat is To be decided, never TBD', async () => {
     await openReview({ approval: DRAW });
-    expect(review().getByText("Men's singles · Knockout draw")).toBeTruthy();
+    expect(review().getByText("Men's singles · Knockout bracket")).toBeTruthy();
     expect(review().getByText('Patel v To be decided')).toBeTruthy();
     expect(screen.queryByText(/TBD/)).toBeNull();
   });
@@ -344,7 +344,7 @@ describe('ApprovalScreen: what the server says to an approve', () => {
   });
 });
 
-describe('ApprovalScreen: a draw says Draw changed', () => {
+describe('ApprovalScreen: a draw says Bracket changed', () => {
   it('MD_STALE on a draw is the spec’s verbatim line', async () => {
     const view = await openReview({
       approval: DRAW,
@@ -355,7 +355,7 @@ describe('ApprovalScreen: a draw says Draw changed', () => {
     await settle(HOLD_MS);
     pressOut(button);
     await settle();
-    expect(review().getByText('Draw changed — review again')).toBeTruthy();
+    expect(review().getByText('Bracket changed — review again')).toBeTruthy();
     expect(calls(view, 'review')).toHaveLength(2);
   });
 });

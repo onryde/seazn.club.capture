@@ -914,7 +914,7 @@ spec's (S4 design §7), verbatim. Committed without a `_review` marker.
 | ------------------------------------ | -------------------------------------------- | --------------------------------------------- | --------------------------------------- |
 | Review                               | Revisar                                      | Examiner                                      | Bekijken                                |
 | {division} · Round {round}           | {division} · Ronda {round}                   | {division} · Tour {round}                     | {division} · Ronde {round}              |
-| {division} · Knockout draw           | {division} · Cuadro eliminatorio             | {division} · Tableau final                    | {division} · Knock-outschema            |
+| {division} · Knockout bracket        | {division} · Cuadro eliminatorio             | {division} · Tableau final                    | {division} · Knock-outschema            |
 | To change a slot, use the web desk   | Para cambiar un puesto, usa la web           | Pour modifier une place, utilisez le site web | Wijzig een plek via de website          |
 | Approve                              | Aprobar                                      | Approuver                                     | Goedkeuren                              |
 | Hold 3 s                             | Mantén 3 s                                   | Maintenez 3 s                                 | Houd 3 s ingedrukt                      |
@@ -922,7 +922,7 @@ spec's (S4 design §7), verbatim. Committed without a `_review` marker.
 | Loading the proposal…                | Cargando la propuesta…                       | Chargement de la proposition…                 | Voorstel laden…                         |
 | Bye                                  | Descansa                                     | Exempt                                        | Vrij                                    |
 | Already approved                     | Ya aprobado                                  | Déjà approuvé                                 | Al goedgekeurd                          |
-| Draw changed — review again          | El cuadro cambió — revisa de nuevo           | Le tableau a changé — examinez à nouveau      | Schema gewijzigd — bekijk opnieuw       |
+| Bracket changed — review again       | El cuadro cambió — revisa de nuevo           | Le tableau a changé — examinez à nouveau      | Schema gewijzigd — bekijk opnieuw       |
 | Ties need a decision on the web desk | Los empates requieren una decisión en la web | Les égalités se décident sur le site web      | Gelijke standen beslis je op de website |
 | Approve it on the web desk           | Apruébalo en la web                          | Approuvez-le sur le site web                  | Keur het goed op de website             |
 | Review again                         | Revisar de nuevo                             | Examiner à nouveau                            | Opnieuw bekijken                        |
@@ -930,7 +930,7 @@ spec's (S4 design §7), verbatim. Committed without a `_review` marker.
 Keys `matchday.approve.*`: review (the banner button and the screen), heading.swiss/draw, change, action, hold (the plate), approving, loading, bye (a Swiss seat with no opponent), already, stale, ties, onWeb, reviewAgain.
 
 Added with the approval's fix round 1 (MD-2 Task 6, 2026-11-12): a Swiss round's stale line, and an approve that was
-this phone's own. The draw keeps the spec's "Draw changed — review again".
+this phone's own. The draw keeps the spec's "Bracket changed — review again". English says _bracket_, never _draw_, for the knockout's seeding (owner, 2026-11-13: "does it confuse with match draw?", then "yes"): a drawn match is a result. es _cuadro_, fr _tableau_ and nl _schema_ already said bracket.
 
 | English                         | Español                                         | Français                                         | Nederlands                             |
 | ------------------------------- | ----------------------------------------------- | ------------------------------------------------ | -------------------------------------- |
