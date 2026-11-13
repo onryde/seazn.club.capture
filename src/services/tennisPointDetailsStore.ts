@@ -1,4 +1,5 @@
 import type { KeyValueStore } from '@/services/KeyValueStore';
+import type { Logger } from '@/services/logger';
 import { matchSwitchKey } from '@/services/scoringMatchSwitches';
 
 /**
@@ -16,12 +17,18 @@ const keyOf = (fixtureId: string): string => matchSwitchKey('pointDetails', fixt
 
 /**
  * Whether the switch is on for the match: false for a match never switched, or a store that does not answer (the secure
- * store refuses an id that is no key, which is the same answer).
+ * store refuses an id that is no key, which is the same answer). A store that does not answer is said in the record
+ * (`scoring.point-details-not-read`), never silent: an off switch that was on shows no chips and would show no reason.
  */
-export async function readPointDetails(kv: KeyValueStore, fixtureId: string): Promise<boolean> {
+export async function readPointDetails(
+  kv: KeyValueStore,
+  fixtureId: string,
+  logger: Pick<Logger, 'warn'>,
+): Promise<boolean> {
   try {
     return (await kv.get(keyOf(fixtureId))) === ON;
   } catch {
+    logger.warn('scoring.point-details-not-read');
     return false;
   }
 }

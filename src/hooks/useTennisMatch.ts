@@ -89,7 +89,16 @@ function useTennisPad(
   const taps = useTaps(driver, settle, sender.say, setFlash);
   const people = usePeople(runner);
   const sheets = useSheets(ports, runner, sender, taps.opening, pad, people);
-  const actions = useActions({ sender, runner, pad, taps, sheets, setCardNote, details });
+  const actions = useActions({
+    sender,
+    runner,
+    pad,
+    taps,
+    sheets,
+    setCardNote,
+    details,
+    logger: ports.logger,
+  });
   useBackCloses(sheets.open, sheets.back);
   const { chips } = details;
   const view = useMemo(
@@ -262,12 +271,13 @@ type Parts = {
   readonly sheets: ReturnType<typeof useSheets>;
   readonly setCardNote: (note: MessageKey | null) => void;
   readonly details: TennisPointDetails;
+  readonly logger: Ports['logger'];
 };
 
 function useActions(parts: Parts): TennisPadActions {
-  const { taps, sheets, sender, runner, pad, details } = parts;
+  const { taps, sheets, sender, runner, pad, details, logger } = parts;
   const home = useBackToHome();
-  const { pickServer, start } = useStart(runner, sender, pad, taps.opening);
+  const { pickServer, start } = useStart(runner, sender, pad, taps.opening, logger);
   const asked = useAskActions(
     sender.answer,
     taps.opening,
@@ -334,6 +344,7 @@ function useStart(
   sender: Sender,
   pad: PadFacts | null,
   opening: ReturnType<typeof useTaps>['opening'],
+  logger: Ports['logger'],
 ) {
   const toss = pad?.toss ?? null;
   const needsToss = pad?.view.start?.needsToss ?? false;
@@ -342,14 +353,16 @@ function useStart(
     [runner],
   );
   const start = useCallback(() => {
-    if (!needsToss) opening(START_TAP, () => startWith(sender));
-    else if (toss !== null) opening(START_TAP, () => startWith(sender, toss));
-  }, [opening, sender, toss, needsToss]);
+    if (!needsToss) opening(START_TAP, () => startWith(sender, logger));
+    else if (toss !== null) opening(START_TAP, () => startWith(sender, logger, toss));
+  }, [opening, sender, logger, toss, needsToss]);
   return useMemo(() => ({ pickServer, start }), [pickServer, start]);
 }
 
 /** The toss (when there is a side) and then the start, as two taps of one action: the start's answer is the action's. */
-function startWith(sender: Sender, server?: PadSide): PadOutcome {
-  if (server !== undefined) sender.tap({ kind: 'toss', side: server });
+function startWith(sender: Sender, logger: Ports['logger'], server?: PadSide): PadOutcome {
+  // A refused toss (the match moved on, or a toss landed first) is said in the record; the start goes on and is judged alone.
+  if (server !== undefined && !sender.tap({ kind: 'toss', side: server }).ok)
+    logger.warn('scoring.toss-refused');
   return sender.tap({ kind: 'start' });
 }

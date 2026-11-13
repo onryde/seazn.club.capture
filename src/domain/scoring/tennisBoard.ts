@@ -10,8 +10,8 @@ import type { TennisDisplay, TennisPadKey } from '@/domain/scoring/tennisTypes';
 /**
  * Tennis's halves as a scoreboard (S2-7 Task 18; rulings 235, 239, 240), the pad's own words and numbers: whoever keeps the
  * score (the engine, through `foldTennis`) decides every fact, this only lays them out. Live, a half is one row of the
- * reference board: a box of this side's games for each set over, a box of its games in the set under way, and the numbered
- * dots of the games it won. Once the match is decided or ended, a half is its final board: a box for each set, then the sets
+ * reference board: a box of this side's games for each set over, and the numbered dots of the games it won (no box for the
+ * set under way: ruling 242). Once the match is decided or ended, a half is its final board: a box for each set, then the sets
  * won. Functions only; the types are `padView`'s, the display `tennisTypes`'.
  */
 

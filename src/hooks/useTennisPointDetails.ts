@@ -73,13 +73,13 @@ function useSwitch(ports: Ports, runner: ScoringRunner | null) {
   useEffect(() => {
     if (fixtureId === null) return;
     let live = true;
-    void readPointDetails(kv, fixtureId).then((kept) => {
+    void readPointDetails(kv, fixtureId, logger).then((kept) => {
       if (live && !touched.current) setOn(kept);
     });
     return () => {
       live = false;
     };
-  }, [kv, fixtureId]);
+  }, [kv, logger, fixtureId]);
   const toggle = useCallback(() => {
     if (fixtureId === null) return;
     touched.current = true;

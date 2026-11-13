@@ -233,6 +233,9 @@ describe('the Start screen and the first point', () => {
     act(() => stale.start());
     await flush();
     expect(queuedOf(fakes, TENNIS_TOUR_SEED, 'tennis.toss')).toEqual([]);
+    expect(
+      readRecord(fakes.record).filter((line) => line.event === 'scoring.toss-refused'),
+    ).toEqual([{ level: 'warn', event: 'scoring.toss-refused', fields: {} }]);
   });
 
   it('Undo of the start takes the toss with it once the start’s void has landed, so the screen asks who serves first again', async () => {
@@ -368,6 +371,33 @@ describe('the Start screen and the first point', () => {
     await wait(2_000);
     expect(pad(view).view.start?.needsToss).toBe(false);
     expect(queued(fakes, TENNIS_TOUR_SEED)).toEqual([]);
+  });
+
+  it('an Undo of a start whose answer was lost pays the toss at once, behind the start’s void: nothing stays owed for a later void by the organiser', async () => {
+    const fakes = await rig();
+    const view = mount(fakes);
+    await flush();
+    act_(view, (actions) => actions.pickServer('second'));
+    await flush();
+    // The toss lands and is answered; the start lands and its answer is lost, so it is unresolved.
+    const append = fakes.scoring.append;
+    let sent = 0;
+    fakes.scoring.append = (...args) => {
+      sent += 1;
+      if (sent === 2) fakes.scoring.dropNextAnswer();
+      return append(...args);
+    };
+    act_(view, (actions) => actions.start());
+    await flush();
+    await wait(300);
+    act_(view, (actions) => actions.undo());
+    await flush();
+    expect(queued(fakes, TENNIS_TOUR_SEED).map((tap) => tap.type)).toEqual([
+      'core.start',
+      'core.void',
+      'core.void',
+    ]);
+    expect(pad(view).view.start?.needsToss).toBe(true);
   });
 
   it('a process death between the toss and the start loses neither: both are in the queue file and come back on a fresh mount', async () => {

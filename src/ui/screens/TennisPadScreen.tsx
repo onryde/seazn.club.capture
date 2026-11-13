@@ -20,8 +20,8 @@ import { colour } from '@/ui/theme/tokens';
 /**
  * The tennis pad (S2-7 Task 11; spec layout A, owner ruling 38: a screen per sport), drawn from the model of
  * `useTennisMatch`. Its layout is the set-based sports' (`PadContent`): the top bar, the strip (Set N of M, the note and
- * Change ends), the two halves with the serve ball and the side's card, the last-tap line with the one Undo, and the four
- * tools that always fill the row (Violation, Break, Award game, Set score: rulings 228, 231, 232), or, while a point is
+ * Change ends), the two halves with the serve ball and the side's card, the last-tap line with the one Undo, and the tools
+ * that fill the row (Violation, Break, Award game, and Set score until the match's first point: rulings 228, 231, 232, 241), or, while a point is
  * held for its details, its chips (ruling 234; the hook's). What is tennis's here: that the screen is held on while the
  * pad is (`holdsScreen`), its sheets, and the Point details switch in Match details. The Start screen is the kit's, with
  * the serve question (ruling 233): the hook's Start turns the pick into the toss and the start.
