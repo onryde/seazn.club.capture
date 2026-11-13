@@ -68,15 +68,7 @@ export const ScoreHalf = memo(function ScoreHalf({ half, flash, onTap }: ScoreHa
       disabled={!half.tappable}
       onPress={tap}
       onLayout={measure}
-      style={
-        final === null
-          ? half.bar === 'lit'
-            ? litStyle
-            : dimStyle
-          : half.bar === 'lit'
-            ? litNatural
-            : dimNatural
-      }
+      style={halfStyle(half.bar === 'lit', final !== null)}
     >
       <TapFlash cue={flash} />
       <HalfHead half={half} />
@@ -447,3 +439,9 @@ const lostBox = [styles.box, styles.lost];
 const dimStyle = pressable([styles.half, styles.dim]);
 const litNatural = pressable([styles.half, styles.natural, styles.lit]);
 const dimNatural = pressable([styles.half, styles.natural, styles.dim]);
+
+/** The half's frame: lit or dim, and at its own height when it carries a final board (T12-F3). */
+function halfStyle(lit: boolean, natural: boolean) {
+  if (natural) return lit ? litNatural : dimNatural;
+  return lit ? litStyle : dimStyle;
+}

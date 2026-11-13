@@ -517,6 +517,17 @@ describe('the final board scrolls with the result card (T12-F3)', () => {
     expect(screen.getByTestId('pad-body-scroll')).toBeTruthy();
   });
 
+  it('a match the organiser ended by a retirement scrolls its final boards too (ruling 239: ended has the board)', async () => {
+    await opened(
+      under('fake-tn-retired-scroll', ...gameEvents('first', 2), {
+        type: 'core.forfeit',
+        payload: { by: 'ent-away', reason: 'retired' },
+      }),
+    );
+    const scroll = screen.getByTestId('pad-body-scroll');
+    expect(within(scroll).getAllByTestId('final-board')).toHaveLength(2);
+  });
+
   it('a live match takes taps and has no scroll', async () => {
     await started();
     expect(screen.queryByTestId('pad-body-scroll')).toBeNull();
