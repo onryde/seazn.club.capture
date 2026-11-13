@@ -399,6 +399,167 @@ describe('tennis: a half’s scoreboard row at 320 and 360 in four languages (ru
   );
 });
 
+// Break point, set point and match point on a half (owner, 2026-11-13): the lime plate sits in the scoreboard row's items after
+// the set boxes and the won-game dots, so it wraps with them (a plate is never cut across lines) and "Tap" keeps the first
+// line's end. The rooms are written out from the tokens and the kit's styles: the items are separated by `space.xs`, a dot is
+// `padDot`, a box at least `padBoardBox`, the plate its word (state, Barlow Condensed 700, uppercase, letter-spaced) and
+// `space.sm` of padding each side. Whether it looks right on a phone is the device check's.
+describe('tennis: the call plate in a half’s scoreboard row at 320 and 360 in four languages', () => {
+  const CALLS = ['breakPoint', 'setPoint', 'matchPoint'] as const;
+  const labelWidth = (text: string) =>
+    barlow600.width(text.toUpperCase(), typeScale.boardLabel.fontSize) +
+    typeScale.boardLabel.letterSpacing * [...text].length;
+  const boxWidth = Math.max(
+    layout.padBoardBox,
+    barlow700.width('00', typeScale.boardScore.fontSize) + 2 * space.xs,
+  );
+  const plateWord = (text: string) =>
+    barlow700.width(text.toUpperCase(), typeScale.state.fontSize) +
+    typeScale.state.letterSpacing * [...text].length;
+  const plate = (dictionary: Dictionary, call: (typeof CALLS)[number]) =>
+    plateWord(said(dictionary, `scoring.pad.call.${call}`)) + 2 * space.sm;
+  /** The items' room on the first line: the half's inner width less the gap and the word Tap. */
+  const room = (width: number, dictionary: Dictionary) =>
+    halfInner(width) - space.sm - unitWidth(said(dictionary, 'scoring.pad.tap'));
+
+  /** The lines a wrapping row takes for these item widths, `space.xs` apart; an item wider than the room is on a line of its own. */
+  const lineCount = (widths: readonly number[], within: number) => {
+    let lines = 1;
+    let used = 0;
+    for (const width of widths) {
+      const next = used === 0 ? width : used + space.xs + width;
+      if (used !== 0 && next > within) {
+        lines += 1;
+        used = width;
+      } else used = next;
+    }
+    return lines;
+  };
+  /** The row: the Sets label and `sets` boxes, `dots` dots, then the plate when there is one. */
+  const row = (dictionary: Dictionary, sets: number, dots: number, call: number | null) => [
+    ...(sets === 0 ? [] : [labelWidth(said(dictionary, `${TN}.board.sets`))]),
+    ...Array<number>(sets).fill(boxWidth),
+    ...Array<number>(dots).fill(layout.padDot),
+    ...(call === null ? [] : [call]),
+  ];
+  const linesWith = (
+    width: number,
+    lang: string,
+    dictionary: Dictionary,
+    sets: number,
+    dots: number,
+    call: (typeof CALLS)[number] | null,
+  ) =>
+    lineCount(
+      row(dictionary, sets, dots, call === null ? null : plate(dictionary, call)),
+      room(width, dictionary),
+    );
+
+  it('uses the tokens it is written from', () => {
+    expect([space.xs, space.sm, layout.padDot, layout.padBoardBox]).toEqual([4, 8, 20, 28]);
+    expect(WIDTHS.map(halfInner)).toEqual([252, 292]);
+  });
+
+  it.each(LANGUAGES)(
+    '%s: says every call, so none is measured empty (anti-vacuity)',
+    (_l, dictionary: Dictionary) => {
+      for (const call of CALLS) expect(plate(dictionary, call)).toBeGreaterThan(2 * space.sm);
+    },
+  );
+
+  const longestOf = (dictionary: Dictionary) =>
+    CALLS.reduce((a, b) => (plate(dictionary, b) > plate(dictionary, a) ? b : a));
+  /** The rows (0 to 4 sets over, 0 to 6 dots: 35) where the longest plate costs the row a line, at `width`. */
+  const rowsCostingALine = (width: number, lang: string, dictionary: Dictionary) =>
+    [0, 1, 2, 3, 4].flatMap((sets) =>
+      [0, 1, 2, 3, 4, 5, 6].filter(
+        (dots) =>
+          linesWith(width, lang, dictionary, sets, dots, longestOf(dictionary)) >
+          linesWith(width, lang, dictionary, sets, dots, null),
+      ),
+    ).length;
+
+  // THE COST (ledgered; device-only until measured): the plate flows with the dots, so a plate that does not fit what is left of
+  // the dots' last line goes to the next line, a whole word, never cut. It costs the row a line in these many of the 35 rows
+  // (the longest word of each language), and the big call steps down to its compact size where the row is two lines (the half
+  // measures its row; `scoreRole`). One line, never two, and never in a row that has none of the plate's neighbours.
+  it.each([
+    ['en', en, 17, 14],
+    ['es', es, 24, 21],
+    ['fr', fr, 21, 21],
+    ['nl', nl, 16, 13],
+  ] as const)(
+    '%s: the longest plate costs the row a line in %i of 35 rows at 320 and %i at 360',
+    (lang, dictionary: Dictionary, at320, at360) => {
+      expect(rowsCostingALine(320, lang, dictionary)).toBe(at320);
+      expect(rowsCostingALine(360, lang, dictionary)).toBe(at360);
+    },
+  );
+
+  it.each(LANGUAGES)(
+    '%s: the plate never costs more than one line in a row of up to three, and a row with no sets and no dots holds it on its own line',
+    (lang, dictionary: Dictionary) => {
+      for (const width of WIDTHS) {
+        for (const sets of [0, 1, 2, 3, 4])
+          for (const dots of [0, 1, 2, 3, 4, 5, 6]) {
+            const gained =
+              linesWith(width, lang, dictionary, sets, dots, longestOf(dictionary)) -
+              linesWith(width, lang, dictionary, sets, dots, null);
+            const base = linesWith(width, lang, dictionary, sets, dots, null);
+            expect(gained, `${lang} ${sets} sets ${dots} dots @${width}`).toBeLessThanOrEqual(1);
+            if (base <= 2)
+              expect(
+                linesWith(width, lang, dictionary, sets, dots, longestOf(dictionary)),
+                `${lang} ${sets} sets ${dots} dots @${width}`,
+              ).toBeLessThanOrEqual(3);
+          }
+        expect(linesWith(width, lang, dictionary, 0, 0, longestOf(dictionary))).toBe(1);
+      }
+    },
+  );
+
+  // The worst row there is: a best of 5 in its fifth set (four boxes), six dots (a tie-break's 6-6), the longest word. The plate
+  // costs a line only where the longest word does not fit the second line beside the dots (Spanish and French at 320).
+  it.each([
+    ['en', en, 2, 2],
+    ['es', es, 2, 3],
+    ['fr', fr, 2, 3],
+    ['nl', nl, 2, 2],
+  ] as const)(
+    '%s: the worst best of 5 row takes %i lines without a plate and %i with the longest one at 320, two at 360',
+    (lang, dictionary: Dictionary, without, withPlate) => {
+      const longest = CALLS.reduce((a, b) => (plate(dictionary, b) > plate(dictionary, a) ? b : a));
+      expect(linesWith(320, lang, dictionary, 4, 6, null)).toBe(without);
+      expect(linesWith(320, lang, dictionary, 4, 6, longest)).toBe(withPlate);
+      expect(linesWith(360, lang, dictionary, 4, 6, longest)).toBe(2);
+    },
+  );
+
+  // LEDGER (device-only until measured): that third line, Spanish and French at 320 × 640, is the one cut this plate makes. A
+  // third line costs 22 dp (a dot and the row gap) of a half that holds 201, so a singles half is over by 9 dp and a doubles
+  // half (the server's line) by 27, landing in the half's padding first as the advantage set's pinned overflow above does. It is
+  // the rarest row (a best of 5 in its fifth set at a tie-break's 6-6) on the narrowest phone; "Tap" and the boxes are not cut.
+  it('costs a singles half 9 dp and a doubles half 27 dp over the 320 × 640 budget in the three-line rows, none at 360 × 724', () => {
+    const content = (lines: number, server: boolean) =>
+      2 * space.md +
+      2 * 22 +
+      (server ? 18 : 0) +
+      typeScale.scoreCompact.lineHeight +
+      22 +
+      (lines - 1) * (layout.padDot + layout.padDotGap);
+    expect([content(3, false) - halfAt(640), content(3, true) - halfAt(640)]).toEqual([9, 27]);
+    expect(content(3, true)).toBeLessThanOrEqual(halfAt(724));
+  });
+
+  it('holds the longest word alone on a line at 320 in every language (it is never cut across lines)', () => {
+    for (const [lang, dictionary] of LANGUAGES)
+      for (const call of CALLS)
+        expect(plate(dictionary, call), `${lang} ${call}`).toBeLessThanOrEqual(
+          room(320, dictionary),
+        );
+  });
+});
+
 // Review I1 (Task 18 fix round 1): the vertical budget of the worst live board. A half holds, at the smallest call
 // (`scoreCompact`, 68): its padding (2 × 16), the names' two lines (22 each), the doubles server's line (18), the call and the
 // scoreboard row, whose first line is 22 and each wrapped dot line 20 + the 2 dp dot gap.
