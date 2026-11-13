@@ -1258,7 +1258,7 @@
   "matchday.call.closure": "Valt in een sluiting van de baan",
   "matchday.call.rest": "{name} heeft minder rust dan de categorie vraagt",
   "matchday.call.closed": "{court} is gesloten",
-  "matchday.call.hold": "Houd ingedrukt om op te roepen",
+  "matchday.call.hold": "Houd om op te roepen",
   "matchday.call.calling": "Oproepen…",
   "matchday.call.other": "Kies een andere",
   "matchday.call.undo": "Oproep ongedaan maken",

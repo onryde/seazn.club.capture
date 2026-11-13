@@ -958,6 +958,14 @@ Keys `matchday.menu` (⋯'s accessible name), `matchday.exit.title`, `matchday.e
 plain body), `matchday.exit.confirm`, `matchday.exit.stay`, `matchday.sendingCard` (`{name}` is the court, else the match, else
 _another match_; `.one` is the singular). fr: no-break space before `?`. The card's es/fr/nl follow `scoring.sync.sending.*`.
 
+## Match Day: call a match to a court (task 8e)
+
+Keys `matchday.call.*` (S4 design §7a). Terms, as es / fr / nl: _call a match_ is es _convocar un partido_, fr _appeler un match_,
+nl _een wedstrijd oproepen_; _Undo call_ is es _Deshacer la convocatoria_, fr _Annuler l'appel_ (`undoTitle` has the no-break space
+before `?`), nl _Oproep ongedaan maken_; _Keep_ is es _Mantener_, fr _Garder_, nl _Behouden_; _knock-on_ (the effect on the later
+matches) is es _efectos en el programa_, fr _effet sur le programme_, nl _gevolgen voor het schema_. The hold plate in nl is _Houd om op
+te roepen_ (the longer wording wrapped at 320 dp). fr uses vous. These keys carry no `_review` marker, as the rest of the branch.
+
 ## Translation review
 
 - **New or changed English copy.** Add the key to es, fr and nl in the same

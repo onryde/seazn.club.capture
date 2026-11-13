@@ -63,7 +63,7 @@ type Flags = {
   /** The last approve answered offline and the day has not been read since: it may have landed. */
   recheck: boolean;
 };
-type Held = { readonly saved: SavedCode; readonly code: SavedDayCode };
+export type Held = { readonly saved: SavedCode; readonly code: SavedDayCode };
 type Failed = Extract<PortAnswer<never>, { ok: false }>;
 /** A refusal the screen shows, or `leave`: the code itself has gone, and the day's own handling takes over. */
 type Meaning = ApprovalRefusal | 'leave';
@@ -188,7 +188,7 @@ function useMounted(): { readonly current: boolean } {
 }
 
 /** The saved day code and the origin and token this build reads from it; none when none can be addressed. */
-function heldCode(ports: Ports): Held | null {
+export function heldCode(ports: Ports): Held | null {
   const snapshot = ports.modeStore.getSnapshot();
   const saved = snapshot.status === 'ready' ? snapshot.saved.codes.matchday : undefined;
   const code = saved === undefined ? null : dayCodeOf(saved.raw, ports.hosts);

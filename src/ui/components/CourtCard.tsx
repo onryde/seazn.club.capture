@@ -10,6 +10,7 @@ import {
 import { useT } from '@/hooks/useLanguage';
 import { useRowWords, type RowWords } from '@/hooks/useRowWords';
 import type { MessageKey } from '@/i18n/messages';
+import { GhostButton } from '@/ui/components/GhostButton';
 import { MatchRow } from '@/ui/components/MatchRow';
 import { StakeLine } from '@/ui/components/StakeLine';
 import { Text } from '@/ui/components/Text';
@@ -39,6 +40,13 @@ type CourtCardProps = {
   readonly expanded?: boolean;
   /** A tap on "+N more finished" or "Show less": the screen flips this court's flag. */
   readonly onToggle?: (courtId: string) => void;
+  /**
+   * A code minted with "Call matches to courts" (S4 design §7a): a free court offers "Call a match" and a called one
+   * with its match not started "Undo call". Without `canCall` the card has neither, whatever the handlers.
+   */
+  readonly canCall?: boolean;
+  readonly onCall?: (courtId: string, courtName: string) => void;
+  readonly onUndo?: (row: Row, courtName: string) => void;
 };
 
 /**
@@ -55,6 +63,9 @@ export const CourtCard = memo(function CourtCard({
   opened,
   expanded = false,
   onToggle,
+  canCall = false,
+  onCall,
+  onUndo,
 }: CourtCardProps) {
   const { t } = useT();
   const words = useRowWords(zone);
@@ -72,7 +83,15 @@ export const CourtCard = memo(function CourtCard({
         <StateChip state={card.state} word={state} />
       </View>
       <StakeLine stake={stake} />
-      <QueueRows card={card} words={words} onOpen={onOpen} />
+      <QueueRows
+        card={card}
+        words={words}
+        onOpen={onOpen}
+        {...(canCall && onUndo !== undefined ? { onUndo } : {})}
+      />
+      {canCall && onCall !== undefined && card.state === 'free' ? (
+        <CallAction courtId={card.courtId} court={card.name} onCall={onCall} />
+      ) : null}
       <FinishedRows
         court={card.name}
         courtId={card.courtId}
@@ -121,14 +140,52 @@ const CourtRow = memo(function CourtRow({
   );
 });
 
+/** "Call a match", on a free court: a plain ghost button, named by the sheet it opens ("Call to Court 2"). */
+const CallAction = memo(function CallAction({
+  courtId,
+  court,
+  onCall,
+}: {
+  readonly courtId: string;
+  readonly court: string;
+  readonly onCall: (courtId: string, courtName: string) => void;
+}) {
+  const { t } = useT();
+  const press = useCallback(() => onCall(courtId, court), [onCall, courtId, court]);
+  return (
+    <GhostButton
+      label={t('matchday.call.action')}
+      accessibilityLabel={t('matchday.call.title', { court })}
+      onPress={press}
+    />
+  );
+});
+
+/** "Undo call", under a called court's Now row while that match has not started. */
+const UndoAction = memo(function UndoAction({
+  row,
+  court,
+  onUndo,
+}: {
+  readonly row: Row;
+  readonly court: string;
+  readonly onUndo: (row: Row, courtName: string) => void;
+}) {
+  const { t } = useT();
+  const press = useCallback(() => onUndo(row, court), [onUndo, row, court]);
+  return <GhostButton label={t('matchday.call.undo')} onPress={press} />;
+});
+
 const QueueRows = memo(function QueueRows({
   card,
   words,
   onOpen,
+  onUndo,
 }: {
   readonly card: CourtCardModel;
   readonly words: (row: Row) => RowWords;
   readonly onOpen: Open;
+  readonly onUndo?: (row: Row, courtName: string) => void;
 }) {
   const { t } = useT();
   const queue = [
@@ -136,16 +193,17 @@ const QueueRows = memo(function QueueRows({
     [card.next, t('matchday.row.next')],
     [card.then, t('matchday.row.then')],
   ] as const;
-  return queue.map(([row, label]) =>
+  const undoable =
+    onUndo !== undefined &&
+    card.state === 'called' &&
+    card.now !== null &&
+    card.now.status === 'upcoming';
+  return queue.map(([row, label], at) =>
     row === null ? null : (
-      <CourtRow
-        key={row.fixtureId}
-        row={row}
-        court={card.name}
-        label={label}
-        words={words}
-        onOpen={onOpen}
-      />
+      <View key={row.fixtureId}>
+        <CourtRow row={row} court={card.name} label={label} words={words} onOpen={onOpen} />
+        {at === 0 && undoable ? <UndoAction row={row} court={card.name} onUndo={onUndo} /> : null}
+      </View>
     ),
   );
 });
