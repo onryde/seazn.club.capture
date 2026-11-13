@@ -962,8 +962,9 @@ _another match_; `.one` is the singular). fr: no-break space before `?`. The car
 
 Keys `matchday.call.*` (S4 design §7a). Terms, as es / fr / nl: _call a match_ is es _convocar un partido_, fr _appeler un match_,
 nl _een wedstrijd oproepen_; _Undo call_ is es _Deshacer la convocatoria_, fr _Annuler l'appel_ (`undoTitle` has the no-break space
-before `?`), nl _Oproep ongedaan maken_; _Keep_ is es _Mantener_, fr _Garder_, nl _Behouden_; _knock-on_ (the effect on the later
-matches) is es _efectos en el programa_, fr _effet sur le programme_, nl _gevolgen voor het schema_. The hold plate in nl is _Houd om op
+before `?`), nl _Oproep ongedaan maken_; _Keep_ is es _Mantener_, fr _Garder_, nl _Behouden_; a quiet preview says no other match moves
+(owner, 2026-11-13: "No Knockon mean?"; was _No knock-on_): es _Ningún otro partido cambia_, fr _Aucun autre match ne bouge_, nl
+_Geen andere wedstrijd verschuift_. The hold plate in nl is _Houd om op
 te roepen_ (the longer wording wrapped at 320 dp). fr uses vous. These keys carry no `_review` marker, as the rest of the branch.
 
 The court's own action is a small button beside its state chip (owner, 2026-11-13: "a small button beside Free"), one word:

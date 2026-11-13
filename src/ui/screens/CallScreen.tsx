@@ -148,7 +148,7 @@ const Candidates = memo(function Candidates({
   );
 });
 
-/** The match picked, and what calling it does to the day: one line a warning, or "No knock-on". */
+/** The match picked, and what calling it does to the day: one line a warning, or "No other match moves". */
 const Preview = memo(function Preview({
   view,
   picked,

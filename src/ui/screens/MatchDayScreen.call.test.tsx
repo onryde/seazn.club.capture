@@ -311,7 +311,7 @@ describe('Call to {court}: the candidates', () => {
 });
 
 describe('the preview', () => {
-  it('asks the server about the match picked and this court, and says No knock-on when quiet', async () => {
+  it('asks the server about the match picked and this court, and says No other match moves when quiet', async () => {
     const view = await openSheet();
     await pickKim();
     expect(calls(view, 'preview')).toEqual([
