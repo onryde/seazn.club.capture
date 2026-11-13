@@ -938,6 +938,8 @@ describe('tennis: every word it has is measured here (the sweep)', () => {
   ];
   /** Words the fit tests do not measure, each with the reason. */
   const ELSEWHERE: Readonly<Record<string, string>> = {
+    'refusal.invalidScore':
+      'the Set score refusal: a last-tap line, measured with the shared refusals in padFit.test.ts',
     hint: 'the half’s spoken hint: never drawn (the kit draws the word Tap)',
     serving: 'the plate’s word: the serve plate group above',
     setsTally: 'said to a screen reader only',

@@ -68,9 +68,9 @@ describe('tennisSport', () => {
     expect(tennisSport.tossOf({ kind: 'point', side: 'first' })).toBeNull();
   });
 
-  it('refuses a set score as invalid, any other tap as not now', () => {
+  it('refuses a set score in a set’s own words, any other tap as not now', () => {
     expect(tennisSport.refusalFor({ kind: 'setScore', first: 9, second: 0, tb: null })).toBe(
-      'invalidScore',
+      'invalidSetScore',
     );
     expect(tennisSport.refusalFor({ kind: 'point', side: 'first' })).toBe('notNow');
     expect(tennisSport.refusalFor({ kind: 'award', side: 'first' })).toBe('notNow');

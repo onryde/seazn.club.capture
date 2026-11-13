@@ -712,7 +712,7 @@ describe('Set score (ruling 221)', () => {
     await press(view, 'setScore');
     await save(view, '9', '0');
     expect(pad(view).sheet).toBeNull();
-    expect(pad(view).line).toEqual({ kind: 'refusal', key: 'scoring.refusal.invalidScore' });
+    expect(pad(view).line).toEqual({ kind: 'refusal', key: 'scoring.tennis.refusal.invalidScore' });
     expect(queued(fakes, TENNIS_STARTED_SEED)).toEqual([]);
   });
 
@@ -720,7 +720,7 @@ describe('Set score (ruling 221)', () => {
     const { fakes, view } = await opened();
     await press(view, 'setScore');
     await save(view, 'six', '4');
-    expect(pad(view).line).toEqual({ kind: 'refusal', key: 'scoring.refusal.invalidScore' });
+    expect(pad(view).line).toEqual({ kind: 'refusal', key: 'scoring.tennis.refusal.invalidScore' });
     expect(queued(fakes, TENNIS_STARTED_SEED)).toEqual([]);
   });
 

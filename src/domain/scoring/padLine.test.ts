@@ -17,6 +17,7 @@ import {
 const KEYS: readonly PadLineKey[] = [
   'scoring.refusal.notNow',
   'scoring.refusal.invalidScore',
+  'scoring.tennis.refusal.invalidScore',
   'scoring.refusal.nothingToUndo',
   'scoring.refusal.notCounted',
   'scoring.refusal.notSaved',
@@ -40,6 +41,7 @@ describe('the last-tap line’s words', () => {
     expect(REFUSAL_WORDS).toEqual({
       notNow: 'scoring.refusal.notNow',
       invalidScore: 'scoring.refusal.invalidScore',
+      invalidSetScore: 'scoring.tennis.refusal.invalidScore',
       nothingToUndo: 'scoring.refusal.nothingToUndo',
     });
   });

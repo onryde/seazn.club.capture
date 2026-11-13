@@ -486,6 +486,8 @@ const base = {
   padTossMin: 120,
   /** A side's button on the Start screen: a big target, half again the touch height and more. */
   padTossHeight: 64,
+  /** The most lines a name wraps to in a Start-screen choice button, then it shrinks, then an ellipsis. */
+  padTossNameLines: 3,
   /**
    * A toss that fills its half of the screen (owner ruling 83, cricket's two-half toss): its question keeps this many
    * lines of `state` whatever it says, so "Team chose to…" becoming a long team's name never moves the buttons under it.

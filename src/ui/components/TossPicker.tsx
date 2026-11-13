@@ -40,8 +40,8 @@ type TossPickerProps<T extends string> = {
  * Bat or Bowl): the question, then the two, the names as typed. The picked one is the lime plate with night ink (AGENTS
  * §5). The question is a heading, drawn as the Rules subheading is; to a screen reader the buttons are a radio group it
  * names, each a radio, checked or not. The buttons stand side by side while the row holds two of `padTossMin`, and stack
- * when it does not; a name with gaps wraps in its button and is never cut, and one long word is shrunk to one line
- * (`NameText`). Generic over its ids, so a side, or Bat and Bowl, goes back to the caller typed. A button that takes a tap
+ * when it does not; a name with gaps wraps in its button at its gaps, to `padTossNameLines` lines, a long word in it shrunk rather than
+ * broken at a letter (`NameText`'s `floor`; S2-7 device finding), and one long word is shrunk to one line. Generic over its ids, so a side, or Bat and Bowl, goes back to the caller typed. A button that takes a tap
  * has the lime border, in every sport (the controller's ruling, S2-4 Batch 3 fix round 1, on rulings 83 and 85).
  */
 function TossPickerOf<T extends string>({
@@ -115,7 +115,12 @@ const TossSide = memo(function TossSide({
       onPress={pick}
       style={SIDE[look]}
     >
-      <NameText variant={big ? 'tally' : 'label'} style={NAME[look]}>
+      <NameText
+        variant={big ? 'tally' : 'label'}
+        lines={layout.padTossNameLines}
+        floor={layout.nameFloor}
+        style={NAME[look]}
+      >
         {option.label}
       </NameText>
     </Pressable>

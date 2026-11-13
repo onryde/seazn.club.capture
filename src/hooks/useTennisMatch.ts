@@ -250,7 +250,10 @@ function useSheets(
     }),
     [peopleSheet, tap, say, logger],
   );
-  const refuseScore = useCallback(() => say(refusalLine('scoring.refusal.invalidScore')), [say]);
+  const refuseScore = useCallback(
+    () => say(refusalLine('scoring.tennis.refusal.invalidScore')),
+    [say],
+  );
   const snapshot = useMemo<TennisSheetSnapshot | null>(
     () =>
       pad === null

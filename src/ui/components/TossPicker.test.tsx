@@ -100,9 +100,38 @@ describe('TossPicker', () => {
       ]);
       const name = side.firstElementChild as HTMLElement;
       expect(getComputedStyle(name).whiteSpace).not.toBe('nowrap');
-      expect(getComputedStyle(name).webkitLineClamp).toBe('');
     }
   });
+});
+
+// Device finding, 2026-11-13 (S2-7): "Maximiliane Oberhauser-Lindqvist" broke inside a word ("Oberha" / "user-Lindqvist"):
+// a name with a gap wrapped with no floor, and a hyphen is not a gap, so Android broke the long second word at a letter.
+// A name with gaps now goes through `FittedName` (floor and a three-line cap): the phone's own lines say a word broke,
+// and the name is set again at its gap, so the break falls between words, then at the hyphen. Where the break falls is
+// the phone's (device-only); jsdom can see the whole name drawn in one piece and its cap of three lines.
+describe('TossPicker, a long name with gaps and a hyphen', () => {
+  const NAME = 'Maximiliane Oberhauser-Lindqvist';
+  const SIDES_LONG: readonly [TossOption<PadSide>, TossOption<PadSide>] = [
+    { id: 'first', label: NAME },
+    { id: 'second', label: 'L. Chen / M. Wong' },
+  ];
+
+  it.each([null, 'first' as const])(
+    'draws the whole name, wrapping to three lines, picked %s',
+    (picked) => {
+      renderWithPorts(
+        <TossPicker
+          ask="Who serves first?"
+          options={SIDES_LONG}
+          picked={picked}
+          onPick={vi.fn()}
+        />,
+      );
+      const name = screen.getByText(NAME);
+      expect(name.textContent).toBe(NAME);
+      expect(linesAllowed(name)).toBe(3);
+    },
+  );
 });
 
 // Device finding, 2026-11-02: a long single-word name broke inside its word on the serving pick ("TEest002ashokash" over
@@ -129,11 +158,11 @@ describe('TossPicker, a name that is one long word', () => {
     },
   );
 
-  it('leaves the doubles name beside it wrapping at its gaps, with no cap', () => {
+  it('leaves the doubles name beside it wrapping at its gaps, to three lines', () => {
     renderWithPorts(
       <TossPicker ask="Who serves first?" options={LONG_SIDES} picked={null} onPick={vi.fn()} />,
     );
-    expect(linesAllowed(screen.getByText('L. Chen / M. Wong'))).toBe(Infinity);
+    expect(linesAllowed(screen.getByText('L. Chen / M. Wong'))).toBe(3);
   });
 });
 

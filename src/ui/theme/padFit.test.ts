@@ -378,7 +378,7 @@ describe('the last-tap line', () => {
   /** Every sentence and refusal, at its widest: doubles names, a disqualification, a game in double figures. */
   const sentences = (dictionary: Dictionary) =>
     Object.keys(dictionary)
-      .filter((key) => /^scoring\.(badminton\.(last|undone)|refusal)\./.test(key))
+      .filter((key) => /^scoring\.(badminton\.(last|undone)|refusal|tennis\.refusal)\./.test(key))
       .map((key) => ({
         key,
         text: fill(dictionary[key] ?? '', {
@@ -401,9 +401,10 @@ describe('the last-tap line', () => {
 
   // Fifteen since S2-1 Task 7 added the start with no named server ("Match started"); eighteen since Task 9 added three
   // refusals the hook says: the match moved on, this phone could not save the tap, and the save is being retried;
-  // nineteen since S2-4 Batch 2 fix round 1 added the scorer's choice that could not be saved.
-  it('reads nineteen sentences in each language (anti-vacuity)', () => {
-    for (const [, dictionary] of LANGUAGES) expect(sentences(dictionary)).toHaveLength(19);
+  // nineteen since S2-4 Batch 2 fix round 1 added the scorer's choice that could not be saved; twenty since S2-7 gave
+  // tennis its own Set score refusal (a set, not a game).
+  it('reads twenty sentences in each language (anti-vacuity)', () => {
+    for (const [, dictionary] of LANGUAGES) expect(sentences(dictionary)).toHaveLength(20);
   });
 
   it('holds every sentence and refusal whole at 360, in four languages', () => {
@@ -426,7 +427,7 @@ describe('the last-tap line', () => {
 
   // A repeat within the bounce window says "Counted once" under the sentence of the tap that counted (review item 3):
   // one line of `controlInk` (Geist 500 at 14, as `control`), and the sentence gives up a line for it.
-  // The other note, "Another scorer since" (Task 9), stands under the last tap while Undo is off for that reason; a
+  // The other note, "Another scorer recorded since" (Task 9), stands under the last tap while Undo is off for that reason; a
   // third, "Undo waiting to send", while an Undo waits for its tap's answer: one line each, in the same ink.
   it.each([
     'scoring.pad.countedOnce',

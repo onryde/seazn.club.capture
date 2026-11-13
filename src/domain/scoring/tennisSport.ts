@@ -23,8 +23,8 @@ export const tennisSport: ScoringSport<TennisTypes> = {
   sendNote: pointDetailsNote,
   /** The side the toss tap names (ruling 233): the Start screen's pick, which the match keeps until the start. */
   tossOf: (tap) => (tap.kind === 'toss' ? tap.side : null),
-  /** A set score the match cannot reach is an invalid score; any other tap is not now. */
-  refusalFor: (tap) => (tap.kind === 'setScore' ? 'invalidScore' : 'notNow'),
+  /** A set score the match cannot reach is refused in a set's words (not a game in progress's); any other tap is not now. */
+  refusalFor: (tap) => (tap.kind === 'setScore' ? 'invalidSetScore' : 'notNow'),
   notStarted: (display) => display.phase === 'notStarted',
   /** Won on court or ended by the organiser: either way the match is over. */
   decided: (display) => display.phase === 'decided' || display.phase === 'ended',
