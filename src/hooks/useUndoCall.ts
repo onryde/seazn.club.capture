@@ -16,6 +16,8 @@ export type Undoing = { readonly row: Row; readonly courtName: string };
 export type UndoSink = {
   readonly say: (line: MessageKey | null) => void;
   readonly refresh: () => void;
+  /** The sheet has closed after an answer: the list opens its bounce window, as every other sheet's close does. */
+  readonly settled?: () => void;
 };
 
 export type UndoView = {
@@ -44,7 +46,7 @@ export function useUndoCall(sink: UndoSink): UndoView {
   const [busy, setBusy] = useState(false);
   const flying = useRef(false);
   const target = useRef<Undoing | null>(null);
-  const { say, refresh } = sink;
+  const { say, refresh, settled } = sink;
   const ask = useCallback((row: Row, courtName: string) => {
     if (target.current !== null) return;
     target.current = { row, courtName };
@@ -71,8 +73,9 @@ export function useUndoCall(sink: UndoSink): UndoView {
         target.current = null;
         setBusy(false);
         setAsking(null);
+        settled?.();
       });
-  }, [ports, say, refresh]);
+  }, [ports, say, refresh, settled]);
   return useMemo(() => ({ asking, busy, ask, keep, undo }), [asking, busy, ask, keep, undo]);
 }
 

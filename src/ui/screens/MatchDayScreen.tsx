@@ -62,7 +62,7 @@ export function MatchDayScreen() {
   const exit = useMatchDayExit(bounce.note);
   useBackCloses(exit.sheet !== null, exit.stay);
   const { calling, startCall, closeCall, canCall } = useCalling(bounce, list.day);
-  const undo = useUndoCall({ say, refresh: list.refresh });
+  const undo = useUndoCall({ say, refresh: list.refresh, settled: bounce.note });
   const keepCall = useCallback(() => {
     bounce.note();
     undo.keep();

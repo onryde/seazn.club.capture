@@ -155,7 +155,7 @@ const CallAction = memo(function CallAction({
   return (
     <GhostButton
       label={t('matchday.call.action')}
-      accessibilityLabel={t('matchday.call.title', { court })}
+      accessibilityLabel={t('matchday.call.actionNamed', { court })}
       onPress={press}
     />
   );

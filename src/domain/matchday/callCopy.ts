@@ -40,12 +40,19 @@ export function refusalMeaning(refused: CallRefused, route: Route, court: string
         key: route === 'candidates' ? 'matchday.call.courtOutOfScope' : 'matchday.outOfScope',
       };
     case 'MD_CALL_REFUSED':
-      return desk(refused, court);
+      return desk(refused, court, route);
   }
 }
 
-function desk(refused: Extract<CallRefused, { code: 'MD_CALL_REFUSED' }>, court: string): Line {
+function desk(
+  refused: Extract<CallRefused, { code: 'MD_CALL_REFUSED' }>,
+  court: string,
+  route: Route,
+): Line {
   const named = refused.courtName ?? court;
+  // Undo cannot be refused for a court or a player (the contract): if it ever is, the match is not where it was.
+  if (route === 'undo' && ['notCandidateCourt', 'courtBusy', 'playerBusy'].includes(refused.reason))
+    return { key: 'matchday.call.moved' };
   switch (refused.reason) {
     case 'notCandidateCourt':
       return { key: 'matchday.call.notCandidate', vars: { court: named } };

@@ -212,16 +212,44 @@ describe('useMatchDay: polling (S4 design §5, every 15 s while on screen)', () 
     expect(dayCalls(view)).toHaveLength(3);
   });
 
-  it('a second refresh while one is in flight asks nothing more; the next one after it lands does', async () => {
+  it('refreshes asked while one is in flight ask nothing at once; ONE trailing read follows it, and the next refresh after that asks again', async () => {
     const view = await mount({ prepare: (fakes) => fakes.matchDay.hold() });
+    act(() => view.result.current.refresh());
     act(() => view.result.current.refresh());
     act(() => view.result.current.refresh());
     expect(dayCalls(view)).toHaveLength(1);
     view.matchDay.release();
     await settle();
-    act(() => view.result.current.refresh());
+    expect(dayCalls(view)).toHaveLength(2);
     await settle();
     expect(dayCalls(view)).toHaveLength(2);
+    act(() => view.result.current.refresh());
+    await settle();
+    expect(dayCalls(view)).toHaveLength(3);
+  });
+
+  it('a call that lands while a poll is out: a trailing read follows and the list ends on the day as it is now', async () => {
+    const view = await mount();
+    // Reads take their answer when asked: the poll's is the day as it was, the trailing read's the day after the call.
+    view.matchDay.answerDay(
+      {
+        ok: true,
+        value: {
+          ...FAKE_DAY,
+          courts: FAKE_DAY.courts.map((c, at) => (at === 0 ? { ...c, courtName: 'Court Z' } : c)),
+        },
+      },
+      { ok: true, value: { ...FAKE_DAY, courts: COPY.courts } },
+    );
+    view.matchDay.hold();
+    await settle(MATCHDAY_POLL_MS);
+    expect(dayCalls(view)).toHaveLength(2);
+    act(() => view.result.current.refresh());
+    expect(dayCalls(view)).toHaveLength(2);
+    view.matchDay.release();
+    await settle();
+    expect(dayCalls(view)).toHaveLength(3);
+    expect(firstCourt(view.result.current.day)).toBe('Court A');
   });
 
   it('a poll that comes due while the last read is still out asks nothing more', async () => {

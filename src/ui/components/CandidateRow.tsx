@@ -52,7 +52,7 @@ export const CandidateRow = memo(function CandidateRow({
         dim={blocked}
         {...(blocked ? {} : { onPress: press })}
       />
-      <Text variant="control" numberOfLines={1} style={blocked ? styles.whereDim : styles.where}>
+      <Text variant="control" style={blocked ? styles.whereDim : styles.where}>
         {where}
       </Text>
       {reason === null ? null : (

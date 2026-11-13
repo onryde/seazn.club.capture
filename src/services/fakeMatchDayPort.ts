@@ -105,7 +105,8 @@ export type FakeMatchDayCall = {
 
 export type FakeMatchDayPort = MatchDayPort & {
   /** What every later `day` answers: `FAKE_DAY` until told otherwise. */
-  answerDay(answer: PortAnswer<MatchDay>): void;
+  /** Several answers are handed out in order, the last one standing (a read that must see the day change). */
+  answerDay(...answers: PortAnswer<MatchDay>[]): void;
   /** What every later `open` answers: a link to `FAKE_OPEN_URL`, a badminton match, until told otherwise. */
   answerOpen(answer: PortAnswer<OpenAnswer>): void;
   /**
@@ -150,7 +151,7 @@ function sequence<T>(none: T): { say(answers: T[]): void; next(): T } {
  * told otherwise.
  */
 export function createFakeMatchDayPort(): FakeMatchDayPort {
-  let day: PortAnswer<MatchDay> = { ok: true, value: FAKE_DAY };
+  const days = sequence<PortAnswer<MatchDay>>({ ok: true, value: FAKE_DAY });
   let open: PortAnswer<OpenAnswer> = {
     ok: true,
     value: { kind: 'link', url: FAKE_OPEN_URL, sportKey: 'badminton' },
@@ -175,7 +176,7 @@ export function createFakeMatchDayPort(): FakeMatchDayPort {
     return read();
   };
   return {
-    day: (code) => answer({ op: 'day', code }, () => day),
+    day: (code) => answer({ op: 'day', code }, () => days.next()),
     open: (code, fixtureId) => answer({ op: 'open', code, fixtureId }, () => open),
     review: (code, kind, stageId) =>
       answer({ op: 'review', code, kind, stageId }, () => reviews.next()),
@@ -194,9 +195,7 @@ export function createFakeMatchDayPort(): FakeMatchDayPort {
     answerUndo: (...answers) => undos.say(answers),
     answerReview: (...answers) => reviews.say(answers),
     answerApprove: (...answers) => approves.say(answers),
-    answerDay: (next) => {
-      day = next;
-    },
+    answerDay: (...answers) => days.say(answers),
     answerOpen: (next) => {
       open = next;
     },

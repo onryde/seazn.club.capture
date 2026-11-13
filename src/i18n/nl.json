@@ -1257,7 +1257,7 @@
   "matchday.call.pastEnd": "Loopt door na sluitingstijd van de baan",
   "matchday.call.closure": "Valt in een sluiting van de baan",
   "matchday.call.rest": "{name} heeft minder rust dan de categorie vraagt",
-  "matchday.call.closed": "{court} is gesloten",
+  "matchday.call.closed": "Gesloten: {court}",
   "matchday.call.hold": "Houd om op te roepen",
   "matchday.call.calling": "Oproepen…",
   "matchday.call.other": "Kies een andere",
@@ -1275,5 +1275,6 @@
   "matchday.call.notReady": "Deze wedstrijd kan nog niet beginnen",
   "matchday.call.frozen": "De competitie is gepauzeerd — vraag het de organisator",
   "matchday.call.notCodeCall": "Opgeroepen vanaf de website — vraag de organisator het ongedaan te maken",
-  "matchday.call.notCandidate": "Deze wedstrijd kan niet op {court} worden gespeeld"
+  "matchday.call.notCandidate": "Deze wedstrijd kan niet op {court} worden gespeeld",
+  "matchday.call.actionNamed": "Wedstrijd oproepen, {court}"
 }

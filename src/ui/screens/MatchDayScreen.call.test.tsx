@@ -135,7 +135,9 @@ async function openList(open: Open = {}) {
 const settle = (ms = 0) => act(() => vi.advanceTimersByTimeAsync(ms));
 const calls = (view: FakePorts, op: string) => view.matchDay.calls.filter((c) => c.op === op);
 const callButton = (lang: Lang = 'en') =>
-  screen.getByRole('button', { name: word(lang, 'matchday.call.title', { court: 'Court 2' }) });
+  screen.getByRole('button', {
+    name: word(lang, 'matchday.call.actionNamed', { court: 'Court 2' }),
+  });
 const sheet = () => within(screen.getByTestId('call-screen'));
 const holdButton = (lang: Lang = 'en') =>
   sheet().getByRole('button', {
@@ -168,7 +170,7 @@ afterEach(() => vi.useRealTimers());
 describe('Call a match: who sees it, and where', () => {
   it('a free court of a code with the power offers it; the playing court does not', async () => {
     await openList();
-    expect(screen.getAllByRole('button', { name: /^Call to / })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: /^Call a match, / })).toHaveLength(1);
     expect(callButton()).toBeTruthy();
     const playing = within(screen.getAllByTestId('court-card')[0] as HTMLElement);
     expect(playing.queryByText(en['matchday.call.action'])).toBeNull();
@@ -177,7 +179,7 @@ describe('Call a match: who sees it, and where', () => {
   it('a code without the power has no call control at all', async () => {
     await openList({ day: calling(false) });
     expect(screen.queryByText(en['matchday.call.action'])).toBeNull();
-    expect(screen.queryByRole('button', { name: /^Call to / })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Call a match, / })).toBeNull();
   });
 
   it('a called court of a code without the power has no Undo call either', async () => {
@@ -318,7 +320,7 @@ describe('the preview', () => {
       'Eve Ellis has less rest than the division asks',
       "Runs past the court's closing time",
       'Crosses a court closure',
-      'Court 2 is closed',
+      'Closed: Court 2',
     ]);
     expect(sheet().queryByText(en['matchday.call.quiet'])).toBeNull();
   });
@@ -627,6 +629,26 @@ describe('Undo call', () => {
     expect(readRecord(view.record).filter((l) => l.event === 'matchday.uncall')).toEqual([
       expect.objectContaining({ fields: { result: 'called' } }),
     ]);
+  });
+
+  it('closing after the answer opens the bounce window: a touch as it closes does not reopen the sheet', async () => {
+    await openList({ day: called() });
+    fireEvent.click(undoButton());
+    await settle();
+    fireEvent.click(
+      within(screen.getByTestId('undo-call-confirm')).getByRole('button', {
+        name: en['matchday.call.undo'],
+      }),
+    );
+    await settle();
+    expect(screen.queryByTestId('undo-call-confirm')).toBeNull();
+    fireEvent.click(undoButton());
+    await settle();
+    expect(screen.queryByTestId('undo-call-confirm')).toBeNull();
+    await settle(300);
+    fireEvent.click(undoButton());
+    await settle();
+    expect(screen.getByTestId('undo-call-confirm')).toBeTruthy();
   });
 
   it.each([

@@ -19,7 +19,7 @@ import {
 } from '../../../test/matchDayContracts';
 
 /**
- * capture-matchday-call.v1 (S4 Match Day design §7a; owner 2026-11-13), vendored at web 4a073d46a: a free court's
+ * capture-matchday-call.v1 (S4 Match Day design §7a; owner 2026-11-13), vendored at web 17a33079f1: a free court's
  * candidates (the root), the call's preview, the call, its Undo, the request's body and the refusals only these routes
  * answer. Every expected value is typed from the contract's fixtures or its text, never computed by the parser under
  * test.

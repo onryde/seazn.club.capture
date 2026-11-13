@@ -38,7 +38,10 @@ type Shown = {
 };
 
 export type MatchDayList = Shown & {
-  /** Reads the day now (pull to refresh, Try again); nothing while a read is out. */
+  /**
+   * Reads the day now (pull to refresh, Try again, after a call): while a read is out ONE trailing read waits for it, and
+   * the answer of the read that was out is dropped, so a read begun before a call never shows the court as it was.
+   */
   readonly refresh: () => void;
   /** A read is out: a pull's spinner and Try again's wait show it (review M4). */
   readonly reading: boolean;
@@ -71,9 +74,9 @@ export function useMatchDay(): MatchDayList {
   const [shown, setShown] = useState<Shown>(LOADING);
   useNoDayGoesHome(ready, held);
   const primed = useLastCopy(held, setShown);
-  const { ask, reading } = useAsk(held, setShown);
+  const { ask, refresh, reading } = useAsk(held, setShown);
   usePoll(primed && held !== null, ask);
-  return useMemo(() => ({ ...shown, refresh: ask, reading }), [shown, ask, reading]);
+  return useMemo(() => ({ ...shown, refresh, reading }), [shown, refresh, reading]);
 }
 
 /** The saved day code as the store holds it now, when this build can address it. */
@@ -120,9 +123,14 @@ function useLastCopy(held: Held | null, setShown: SetShown): boolean {
  * read that rejects (none should: each part says it never does) reads as offline and is recorded, and the next read
  * still goes (review M3: a flag left up would stop the poll and Try again for good).
  */
-function useAsk(held: Held | null, setShown: SetShown): { ask: () => void; reading: boolean } {
+function useAsk(
+  held: Held | null,
+  setShown: SetShown,
+): { ask: () => void; refresh: () => void; reading: boolean } {
   const ports = usePorts();
   const flying = useRef(false);
+  const again = useRef(false);
+  const self = useRef<() => void>(() => undefined);
   const [reading, setReading] = useState(false);
   const mounted = useMounted();
   const ask = useCallback(() => {
@@ -132,7 +140,10 @@ function useAsk(held: Held | null, setShown: SetShown): { ask: () => void; readi
     // Review Focus 5: after the list has gone, or after Exit forgot its code, an answer changes nothing.
     const stands = () => mounted.current && stillSaved(ports, held.saved);
     void readOnce(ports, held.code)
-      .then((read) => (stands() ? settle(ports, held, read, setShown) : undefined))
+      // A refresh asked while this read was out: its answer predates the change, so the trailing read answers instead.
+      .then((read) =>
+        stands() && !again.current ? settle(ports, held, read, setShown) : undefined,
+      )
       .catch(() => {
         ports.logger.warn('matchday.read-failed');
         if (stands()) setShown((now) => ({ ...now, state: 'offline' }));
@@ -140,9 +151,17 @@ function useAsk(held: Held | null, setShown: SetShown): { ask: () => void; readi
       .finally(() => {
         flying.current = false;
         setReading(false);
+        if (!again.current) return;
+        again.current = false;
+        if (stands()) self.current();
       });
   }, [ports, held, mounted, setShown]);
-  return { ask, reading };
+  self.current = ask;
+  const refresh = useCallback(() => {
+    if (flying.current) again.current = held !== null;
+    else ask();
+  }, [ask, held]);
+  return { ask, refresh, reading };
 }
 
 function useMounted(): { readonly current: boolean } {

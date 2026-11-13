@@ -106,59 +106,67 @@ function useMounted(): { readonly current: boolean } {
   return mounted;
 }
 
+type Load = (notice: Line | null) => void;
+
+/** Reads the candidates (one read at a time), the list loading under an optional notice. */
+function startLoad(deps: Deps, notice: Line | null): void {
+  const { flags } = deps;
+  if (flags.current.reading) return;
+  flags.current.reading = true;
+  deps.set((now) => ({ ...now, step: 'list', picked: null, list: 'loading', notice }));
+  void readCandidates(deps)
+    .catch(() => deps.ports.logger.warn('matchday.call-failed'))
+    .finally(() => {
+      flags.current.reading = false;
+    });
+}
+
+/** Asks the preview of `candidate` (one at a time). */
+function startPreview(deps: Deps, candidate: Candidate, load: Load): void {
+  const { flags } = deps;
+  if (flags.current.previewing) return;
+  flags.current.previewing = true;
+  deps.set((now) => ({
+    ...now,
+    step: 'preview',
+    picked: candidate,
+    preview: 'loading',
+    notice: null,
+  }));
+  void readPreview(deps, candidate, load)
+    .catch(() => {
+      deps.ports.logger.warn('matchday.call-failed');
+      deps.set((now) => ({ ...now, preview: 'offline' }));
+    })
+    .finally(() => {
+      flags.current.previewing = false;
+    });
+}
+
+/** Sends the call for the ready preview: one at a time, and only from a ready preview. */
+function startCall(deps: Deps, now: Shown, load: Load): void {
+  const { flags } = deps;
+  const { picked } = now;
+  if (flags.current.calling || picked === null || now.step !== 'preview' || now.preview !== 'ready')
+    return;
+  flags.current.calling = true;
+  deps.set((s) => ({ ...s, calling: true }));
+  void makeCall(deps, picked, load)
+    .catch(() => {
+      deps.ports.logger.warn('matchday.call-failed');
+      deps.sink.current.refresh();
+      deps.set((s) => ({ ...s, preview: 'offline' }));
+    })
+    .finally(() => {
+      flags.current.calling = false;
+      if (deps.mounted.current) deps.set((s) => ({ ...s, calling: false }));
+    });
+}
+
 function asksOf(deps: Deps) {
   const { flags } = deps;
-  const load = (notice: Line | null): void => {
-    if (flags.current.reading) return;
-    flags.current.reading = true;
-    deps.set((now) => ({ ...now, step: 'list', picked: null, list: 'loading', notice }));
-    void readCandidates(deps)
-      .catch(() => deps.ports.logger.warn('matchday.call-failed'))
-      .finally(() => {
-        flags.current.reading = false;
-      });
-  };
-  const preview = (candidate: Candidate): void => {
-    if (flags.current.previewing) return;
-    flags.current.previewing = true;
-    deps.set((now) => ({
-      ...now,
-      step: 'preview',
-      picked: candidate,
-      preview: 'loading',
-      notice: null,
-    }));
-    void readPreview(deps, candidate, load)
-      .catch(() => {
-        deps.ports.logger.warn('matchday.call-failed');
-        deps.set((now) => ({ ...now, preview: 'offline' }));
-      })
-      .finally(() => {
-        flags.current.previewing = false;
-      });
-  };
-  const call = (now: Shown): void => {
-    const { picked } = now;
-    if (
-      flags.current.calling ||
-      picked === null ||
-      now.step !== 'preview' ||
-      now.preview !== 'ready'
-    )
-      return;
-    flags.current.calling = true;
-    deps.set((s) => ({ ...s, calling: true }));
-    void makeCall(deps, picked, load)
-      .catch(() => {
-        deps.ports.logger.warn('matchday.call-failed');
-        deps.sink.current.refresh();
-        deps.set((s) => ({ ...s, preview: 'offline' }));
-      })
-      .finally(() => {
-        flags.current.calling = false;
-        if (deps.mounted.current) deps.set((s) => ({ ...s, calling: false }));
-      });
-  };
+  const load: Load = (notice) => startLoad(deps, notice);
+  const preview = (candidate: Candidate): void => startPreview(deps, candidate, load);
   return {
     load,
     actions: (read: () => Shown) => ({
@@ -175,7 +183,7 @@ function asksOf(deps: Deps) {
         const { picked } = read();
         if (picked !== null && !flags.current.calling) preview(picked);
       },
-      call: () => call(read()),
+      call: () => startCall(deps, read(), load),
     }),
   };
 }

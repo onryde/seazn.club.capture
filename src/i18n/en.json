@@ -1257,7 +1257,7 @@
   "matchday.call.pastEnd": "Runs past the court's closing time",
   "matchday.call.closure": "Crosses a court closure",
   "matchday.call.rest": "{name} has less rest than the division asks",
-  "matchday.call.closed": "{court} is closed",
+  "matchday.call.closed": "Closed: {court}",
   "matchday.call.hold": "Hold to call",
   "matchday.call.calling": "Calling…",
   "matchday.call.other": "Choose another",
@@ -1275,5 +1275,6 @@
   "matchday.call.notReady": "This match isn't ready to start",
   "matchday.call.frozen": "The competition is paused — ask the organiser",
   "matchday.call.notCodeCall": "Called from the web desk — ask the organiser to undo it",
-  "matchday.call.notCandidate": "This match can't be played on {court}"
+  "matchday.call.notCandidate": "This match can't be played on {court}",
+  "matchday.call.actionNamed": "Call a match, {court}"
 }

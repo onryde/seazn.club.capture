@@ -1257,7 +1257,7 @@
   "matchday.call.pastEnd": "Dépasse l'heure de fermeture du terrain",
   "matchday.call.closure": "Chevauche une fermeture du terrain",
   "matchday.call.rest": "{name} a moins de repos que la catégorie ne le demande",
-  "matchday.call.closed": "{court} est fermé",
+  "matchday.call.closed": "Fermeture : {court}",
   "matchday.call.hold": "Maintenez pour appeler",
   "matchday.call.calling": "Appel en cours…",
   "matchday.call.other": "En choisir un autre",
@@ -1275,5 +1275,6 @@
   "matchday.call.notReady": "Ce match n'est pas prêt à commencer",
   "matchday.call.frozen": "La compétition est en pause — demandez à l'organisateur",
   "matchday.call.notCodeCall": "Appelé depuis le site web — demandez à l'organisateur de l'annuler",
-  "matchday.call.notCandidate": "Ce match ne peut pas se jouer sur {court}"
+  "matchday.call.notCandidate": "Ce match ne peut pas se jouer sur {court}",
+  "matchday.call.actionNamed": "Appeler un match, {court}"
 }

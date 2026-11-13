@@ -9,6 +9,17 @@ const refused = (
   courtName: string | null = null,
 ): CallRefused => ({ code: 'MD_CALL_REFUSED', reason, personName, courtName });
 
+describe('what a refused Undo says when the desk names a court or a player', () => {
+  it.each(['playerBusy', 'courtBusy', 'notCandidateCourt'] as const)(
+    '%s on Undo is the match having moved: no placeholder is left unfilled',
+    (reason) => {
+      expect(refusalMeaning(refused(reason, 'Ann', 'Court 3'), 'undo', 'Court 1')).toEqual({
+        key: 'matchday.call.moved',
+      });
+    },
+  );
+});
+
 describe('what a refused call says', () => {
   it.each(['MD_UNKNOWN', 'MD_WITHDRAWN', 'MD_ENDED', 'MD_NOT_OPEN'] as const)(
     '%s ends the code: the day’s handling takes over',
