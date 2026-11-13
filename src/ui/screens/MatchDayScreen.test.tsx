@@ -33,6 +33,9 @@ const word = (lang: Lang, key: string): string => {
   if (text === undefined) throw new Error(`no ${key} in ${lang}`);
   return text;
 };
+/** What a screen reader hears on a court's head: what its tap does, then the state word (the dictionaries' words). */
+const headLabel = (name: string, state: string, lang: Lang = 'en'): string =>
+  `${word(lang, 'matchday.court.openDay').replace('{court}', name)}, ${state}`;
 const DAY_CODE = { origin: 'https://stg.seazn.club', token: FIXTURE_DAY_TOKEN };
 const SAVED_DAY: SavedCode = {
   mode: 'matchday',
@@ -165,8 +168,8 @@ describe('MatchDayScreen: the day by court (S4 design §5)', () => {
 
   it('reads each card’s court and state word to a screen reader, and each row with its label', async () => {
     await openList();
-    expect(screen.getByLabelText('Court 1, Playing')).toBeTruthy();
-    expect(screen.getByLabelText('Court 2, Free')).toBeTruthy();
+    expect(screen.getByLabelText(headLabel('Court 1', en['matchday.court.playing']))).toBeTruthy();
+    expect(screen.getByLabelText(headLabel('Court 2', en['matchday.court.free']))).toBeTruthy();
     expect(screen.getByLabelText('R2, Now, Ng v Brown, 14-9')).toBeTruthy();
     expect(screen.getByLabelText('R2, Next, Patel v Okafor, 14:40')).toBeTruthy();
   });
@@ -209,7 +212,7 @@ describe('MatchDayScreen: the day by court (S4 design §5)', () => {
       ['Court 3', 'matchday.court.free'],
       ['Court 4', 'matchday.court.inUseElsewhere'],
     ] as const) {
-      const head = screen.getByLabelText(`${name}, ${en[key]}`);
+      const head = screen.getByLabelText(headLabel(name, en[key]));
       expect(within(head).getByText(en[key])).toBeTruthy();
     }
   });
@@ -306,8 +309,10 @@ describe('MatchDayScreen: the day by court (S4 design §5)', () => {
     expect(names).toEqual([
       en['stream.home'],
       en['matchday.menu'],
+      headLabel('Court 1', en['matchday.court.playing']),
       'R2, Now, Ng v Brown, 14-9',
       expect.stringMatching(/^R2, Next, Patel v Okafor/),
+      headLabel('Court 2', en['matchday.court.free']),
     ]);
   });
 
@@ -332,7 +337,7 @@ describe('MatchDayScreen: the day by court (S4 design §5)', () => {
     view.matchDay.answerDay({ ok: true, value: moved });
     await settle(MATCHDAY_POLL_MS);
     expect(screen.queryByText('Ng v Brown')).toBeNull();
-    expect(screen.getByLabelText('Court 9, Called')).toBeTruthy();
+    expect(screen.getByLabelText(headLabel('Court 9', en['matchday.court.called']))).toBeTruthy();
   });
 });
 
@@ -650,8 +655,8 @@ describe('MatchDayScreen: Sending N (S4 design §5)', () => {
 describe('MatchDayScreen: the top bar', () => {
   it('has a visible way back to Home (Task 3 review M6), and ⋯ for Exit (Task 7)', async () => {
     const view = await openList();
-    // Back, ⋯ (Exit's), and the court's two rows (Task 5): nothing else is a button.
-    expect(screen.getAllByRole('button')).toHaveLength(4);
+    // Back, ⋯ (Exit's), each court's head (its day) and the first court's two rows (Task 5): nothing else is a button.
+    expect(screen.getAllByRole('button')).toHaveLength(6);
     fireEvent.click(screen.getByRole('button', { name: en['stream.home'] }));
     expect(view.navigation.current()).toBe('home');
   });
@@ -668,7 +673,7 @@ describe('MatchDayScreen: the top bar', () => {
 });
 
 describe('MatchDayScreen: what a thumb hits and what never grows', () => {
-  it('every pressable is at least 48 dp tall: Home, ⋯ and the venue chips', async () => {
+  it('every pressable is at least 48 dp tall: Home, ⋯, the venue chips and the courts’ heads', async () => {
     const twoHalls = [court('c-1', 'Court 1'), court('c-2', 'Court 2', { venueName: 'Hall B' })];
     await openList({
       day: dayWith({ scope: { kind: 'competition', label: 'SAFE Open' }, courts: twoHalls }),
@@ -678,7 +683,7 @@ describe('MatchDayScreen: what a thumb hits and what never grows', () => {
       .map((one) =>
         Math.max(parseFloat(style(one).minHeight) || 0, parseFloat(style(one).height) || 0),
       );
-    expect(tall).toEqual([48, 48, 48, 48, 48]);
+    expect(tall).toEqual([48, 48, 48, 48, 48, 48, 48]);
   });
 
   it('Try again is 48 dp tall too', async () => {
@@ -716,9 +721,11 @@ describe('MatchDayScreen: in four languages', () => {
         prepare: (fakes) => fakes.matchDay.answerDay({ ok: false, offline: true }),
       });
       expect(
-        screen.getByLabelText(`Court 1, ${word(lang, 'matchday.court.playing')}`),
+        screen.getByLabelText(headLabel('Court 1', word(lang, 'matchday.court.playing'), lang)),
       ).toBeTruthy();
-      expect(screen.getByLabelText(`Court 2, ${word(lang, 'matchday.court.free')}`)).toBeTruthy();
+      expect(
+        screen.getByLabelText(headLabel('Court 2', word(lang, 'matchday.court.free'), lang)),
+      ).toBeTruthy();
       expect(
         screen.getByLabelText(`R2, ${word(lang, 'matchday.row.now')}, Ng v Brown, 14-9`),
       ).toBeTruthy();

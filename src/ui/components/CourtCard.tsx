@@ -17,7 +17,7 @@ import { Text } from '@/ui/components/Text';
 import { colour, layout, plateInk, radius, space } from '@/ui/theme/tokens';
 
 /** The copy's word for each court state (the dispatch's ruling 3): the chip draws it and a screen reader says it. */
-const STATE_WORD: Readonly<Record<CourtState, MessageKey>> = {
+export const STATE_WORD: Readonly<Record<CourtState, MessageKey>> = {
   playing: 'matchday.court.playing',
   called: 'matchday.court.called',
   free: 'matchday.court.free',
@@ -47,6 +47,8 @@ type CourtCardProps = {
   readonly canCall?: boolean;
   readonly onCall?: (courtId: string, courtName: string) => void;
   readonly onUndo?: (row: Row, courtName: string) => void;
+  /** A tap on the court's head (its name and state, never the Call or Undo beside them): its whole day opens. */
+  readonly onOpenDay?: (courtId: string) => void;
 };
 
 /**
@@ -66,6 +68,7 @@ export const CourtCard = memo(function CourtCard({
   canCall = false,
   onCall,
   onUndo,
+  onOpenDay,
 }: CourtCardProps) {
   const { t } = useT();
   const words = useRowWords(zone);
@@ -77,12 +80,7 @@ export const CourtCard = memo(function CourtCard({
   return (
     <View testID="court-card" style={styles.card} onLayout={placed}>
       <View style={styles.head}>
-        <View accessible accessibilityLabel={`${card.name}, ${state}`} style={styles.headInfo}>
-          <Text testID="court-name" variant="diagTitle" numberOfLines={1} style={styles.name}>
-            {card.name}
-          </Text>
-          <StateChip state={card.state} word={state} />
-        </View>
+        <CourtHead card={card} state={state} onOpenDay={onOpenDay} />
         <HeadAction card={card} canCall={canCall} onCall={onCall} onUndo={onUndo} />
       </View>
       <StakeLine stake={stake} />
@@ -101,13 +99,55 @@ export const CourtCard = memo(function CourtCard({
   );
 });
 
+/**
+ * The court's name and its state chip: a button that opens the court's day when the card was given a way to, named for
+ * a screen reader by what it does and then the state ("Open Court 2's day, Free"); otherwise one read-only stop.
+ */
+const CourtHead = memo(function CourtHead({
+  card,
+  state,
+  onOpenDay,
+}: {
+  readonly card: CourtCardModel;
+  readonly state: string;
+  readonly onOpenDay: ((courtId: string) => void) | undefined;
+}) {
+  const { t } = useT();
+  const press = useCallback(() => onOpenDay?.(card.courtId), [onOpenDay, card.courtId]);
+  const body = (
+    <>
+      <Text testID="court-name" variant="diagTitle" numberOfLines={1} style={styles.name}>
+        {card.name}
+      </Text>
+      <StateChip state={card.state} word={state} />
+    </>
+  );
+  if (onOpenDay === undefined)
+    return (
+      <View accessible accessibilityLabel={`${card.name}, ${state}`} style={styles.headInfo}>
+        {body}
+      </View>
+    );
+  return (
+    <Pressable
+      testID="court-head"
+      accessibilityRole="button"
+      accessibilityLabel={`${t('matchday.court.openDay', { court: card.name })}, ${state}`}
+      onPress={press}
+      style={headPress}
+    >
+      {body}
+    </Pressable>
+  );
+});
+
 type Open = ((row: Row, courtName: string) => void) | undefined;
 
 /**
  * One row of a court, opening its match on a tap when the card was given a way to. `divided`: a hairline above it, for
  * every match but the first of its section (owner, 2026-11-13: "why don't have divide line in match day screen?").
  */
-const CourtRow = memo(function CourtRow({
+export const CourtRow = memo(function CourtRow({
   row,
   court,
   words,
@@ -242,7 +282,7 @@ const QueueRows = memo(function QueueRows({
   );
 });
 
-const FinishedRows = memo(function FinishedRows({
+export const FinishedRows = memo(function FinishedRows({
   court,
   courtId,
   rows,
@@ -328,7 +368,7 @@ const MoreRow = memo(function MoreRow({
  * match outside this code) a quiet plate in the inert ink. Never red: red means ON AIR (AGENTS §5). Every word's colour
  * is set, since Fabric's default is black.
  */
-const StateChip = memo(function StateChip({
+export const StateChip = memo(function StateChip({
   state,
   word,
 }: {
@@ -344,6 +384,11 @@ const StateChip = memo(function StateChip({
   );
 });
 
+/** Module-level so render allocates no function: a pressed head takes the press fill. */
+function headPress({ pressed }: { pressed: boolean }) {
+  return pressed ? headDown : headRest;
+}
+
 /** The light line between matches, as the call sheet draws it between candidates. */
 const hairline = { borderTopWidth: layout.cardBorder, borderTopColor: colour.rule } as const;
 
@@ -357,7 +402,15 @@ const styles = StyleSheet.create({
     backgroundColor: colour.surface,
   },
   head: { minHeight: layout.touch, flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  headInfo: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  headInfo: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+  },
+  headHit: { minHeight: layout.touch },
+  headPressed: { backgroundColor: colour.pressFill },
   name: { flex: 1, minWidth: 0 },
   finished: { paddingTop: space.sm, color: colour.ink3, ...hairline },
   divider: hairline,
@@ -370,6 +423,9 @@ const styles = StyleSheet.create({
     borderWidth: layout.cardBorder,
   },
 });
+
+const headRest = [styles.headInfo, styles.headHit];
+const headDown = [styles.headInfo, styles.headHit, styles.headPressed];
 
 const chips = StyleSheet.create({
   playingBox: { backgroundColor: colour.lime, borderColor: colour.lime },
