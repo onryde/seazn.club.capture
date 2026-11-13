@@ -318,6 +318,8 @@
   "scoring.pad.tap": "Tap",
   "scoring.pad.call.gamePoint": "Game point",
   "scoring.pad.call.matchPoint": "Match point",
+  "scoring.pad.call.setPoint": "Set point",
+  "scoring.pad.call.breakPoint": "Break point",
   "scoring.sync.sending.one": "Sending {count} tap",
   "scoring.sync.sending.other": "Sending {count} taps",
   "scoring.sync.offline.one": "Offline · {count} tap queued",

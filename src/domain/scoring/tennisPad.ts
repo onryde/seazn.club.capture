@@ -16,6 +16,7 @@ import { sideNames } from '@/domain/scoring/setBasedSides';
 import { doneSaid, endingSaid, whoWord } from '@/domain/scoring/tennisHistory';
 import { finalBoardOf, matchWinner, scoreboardOf } from '@/domain/scoring/tennisBoard';
 import { LEVEL_CARDS, levelWord } from '@/domain/scoring/tennisLevels';
+import { tennisCallPlate } from '@/domain/scoring/tennisPointCall';
 import { tennisRuleRows } from '@/domain/scoring/tennisRules';
 import { takesTaps, tennisToolSlots, tennisTools } from '@/domain/scoring/tennisTools';
 import type { TennisDisplay, TennisPadKey, TennisUndoneTap } from '@/domain/scoring/tennisTypes';
@@ -81,6 +82,8 @@ function half(display: TennisDisplay, side: PadSide): PadHalf<TennisPadKey> {
     // The ball while play is on; once the match is won the winner's half carries WON in its place.
     serving: final ? won(display, side) : plate,
     plate: null,
+    // Break, set or match point for the half's next point, only while the half takes a tap.
+    call: tennisCallPlate(display.calls?.[side], taps),
     action: null,
     // The bar follows the ball: the serving side's is lit, neither while the engine names no server; the winner's once won.
     bar: (final ? matchWinner(display) === side : plate !== null) ? 'lit' : 'dim',

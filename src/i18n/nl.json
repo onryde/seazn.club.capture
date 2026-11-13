@@ -318,6 +318,8 @@
   "scoring.pad.tap": "Tik",
   "scoring.pad.call.gamePoint": "Gamepunt",
   "scoring.pad.call.matchPoint": "Matchpunt",
+  "scoring.pad.call.setPoint": "Setpunt",
+  "scoring.pad.call.breakPoint": "Breekpunt",
   "scoring.sync.sending.one": "Verzenden: {count} tap",
   "scoring.sync.sending.other": "Verzenden: {count} taps",
   "scoring.sync.offline.one": "Offline · {count} tap in wachtrij",
