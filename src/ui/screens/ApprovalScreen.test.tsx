@@ -385,7 +385,8 @@ describe('ApprovalScreen: Back mid-approve, then Review again (fix round 1, M2)'
 });
 
 describe('ApprovalScreen: the list beneath (a touch within 250 ms of closing)', () => {
-  const pressNow = () => fireEvent.click(screen.getByRole('button', { name: /^Now, Ng v Brown/ }));
+  const pressNow = () =>
+    fireEvent.click(screen.getByRole('button', { name: /^R2, Now, Ng v Brown/ }));
   const close = () => fireEvent.click(review().getByRole('button', { name: en['mode.matchday'] }));
 
   it('a touch that lands within 250 ms of the review closing opens no match', async () => {

@@ -683,4 +683,16 @@ describe("parseDay reads a row's round tag and slot labels, and an approval's wa
       reason: expect.any(String),
     });
   });
+
+  it.each(['home_slot', 'away_slot'])(
+    'a %s of "" (the contract admits it) reads as no words, null, never a blank seat',
+    (key) => {
+      const data = wire('valid-courts');
+      firstRow(data)[key] = '';
+      const row = rowOf(data);
+      expect([row.homeSlot, row.awaySlot].filter((v) => v === '')).toEqual([]);
+      expect(key === 'home_slot' ? row.homeSlot : row.awaySlot).toBeNull();
+      expect(contractAdmits(DAY, data)).toBe(true);
+    },
+  );
 });

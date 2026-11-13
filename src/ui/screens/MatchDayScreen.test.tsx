@@ -160,15 +160,15 @@ describe('MatchDayScreen: the day by court (S4 design §5)', () => {
     // 13:00Z on the 3rd is already the 4th in Auckland: the day is still the code's own.
     await openList({ zone: 'Pacific/Auckland' });
     expect(screen.getByText('SAFE Open · Hall A · Sat 3 Oct')).toBeTruthy();
-    expect(screen.getByLabelText('Next, Patel v Okafor, 14:40 BST')).toBeTruthy();
+    expect(screen.getByLabelText('R2, Next, Patel v Okafor, 14:40 BST')).toBeTruthy();
   });
 
   it('reads each card’s court and state word to a screen reader, and each row with its label', async () => {
     await openList();
     expect(screen.getByLabelText('Court 1, Playing')).toBeTruthy();
     expect(screen.getByLabelText('Court 2, Free')).toBeTruthy();
-    expect(screen.getByLabelText('Now, Ng v Brown, 14-9')).toBeTruthy();
-    expect(screen.getByLabelText('Next, Patel v Okafor, 14:40')).toBeTruthy();
+    expect(screen.getByLabelText('R2, Now, Ng v Brown, 14-9')).toBeTruthy();
+    expect(screen.getByLabelText('R2, Next, Patel v Okafor, 14:40')).toBeTruthy();
   });
 
   it('shows Then for the second match of a queue, and no third', async () => {
@@ -276,8 +276,8 @@ describe('MatchDayScreen: the day by court (S4 design §5)', () => {
     expect(names).toEqual([
       en['stream.home'],
       en['matchday.menu'],
-      'Now, Ng v Brown, 14-9',
-      expect.stringMatching(/^Next, Patel v Okafor/),
+      'R2, Now, Ng v Brown, 14-9',
+      expect.stringMatching(/^R2, Next, Patel v Okafor/),
     ]);
   });
 
@@ -685,7 +685,7 @@ describe('MatchDayScreen: in four languages', () => {
       ).toBeTruthy();
       expect(screen.getByLabelText(`Court 2, ${word(lang, 'matchday.court.free')}`)).toBeTruthy();
       expect(
-        screen.getByLabelText(`${word(lang, 'matchday.row.now')}, Ng v Brown, 14-9`),
+        screen.getByLabelText(`R2, ${word(lang, 'matchday.row.now')}, Ng v Brown, 14-9`),
       ).toBeTruthy();
       expect(
         screen.getByText(word(lang, 'matchday.offline').replace('{time}', '10:42')),
@@ -864,6 +864,13 @@ describe('MatchDayScreen: the round chip, the slot words and the waiting draw (t
       screen.getByLabelText('SF·1, Then, Winner of Group A v Runner-up of Group B, 15:20'),
     ).toBeTruthy();
     expect(screen.queryByText(en['matchday.seat.tbd'])).toBeNull();
+  });
+
+  it('a slot the web sent as "" is no words: the seat says "To be decided", never blank', async () => {
+    const queue = [row('n-1', null, null, { roundTag: 'SF·1', homeSlot: '', awaySlot: '' })];
+    await openList({ day: dayWith({ courts: [court('c-1', 'Court 1', { next: queue })] }) });
+    const tbd = en['matchday.seat.tbd'];
+    expect(screen.getByText(`${tbd} v ${tbd}`)).toBeTruthy();
   });
 
   it('"To be decided" only for a seat whose slot is null too', async () => {

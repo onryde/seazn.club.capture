@@ -12,10 +12,15 @@ import { listFiles, OURS } from '../scripts/vendor-contracts.mjs';
  * test holds the folder to that record, file for file.
  *
  * The other side of the pin is the web's own: its capture-contract.test.ts pins the nine schemas. Those nine values
- * and the commit are copied below BY HAND from apps/web/src/server/api-v1/__tests__/capture-contract.test.ts:51-64
- * at 4a07a7f8f (web PR #1207, UNMERGED: re-pin to main's merge commit after it merges; it added the day read's `round_tag`, `home_slot`, `away_slot` and the approval's `waiting`) over 81c0446cc (web main, MD-1 merged as #1140; MD-1 complete: Task 6 added the approval review and approve, capture-matchday-approval.v1, with its
- * fixtures, and reworded the day read's and the open's descriptions; the day read's row summary became the desk's
- * short score, "1–1 · 14–9"; the six before them are as web #1037 left them), so a re-vendor cannot quietly move both sides at once. WEB_COMMIT is the commit actually vendored (plan D1, D-10). The web's
+ * and the commit are copied below BY HAND from apps/web/src/server/api-v1/__tests__/capture-contract.test.ts:51-64,
+ * so a re-vendor cannot quietly move both sides at once. WEB_COMMIT is the commit actually vendored (plan D1, D-10).
+ *
+ * The commit is 4a07a7f8f, web PR #1207, UNMERGED: re-pin to main's merge commit after it merges. It added the day
+ * read's `round_tag`, `home_slot`, `away_slot` and the approval's `waiting`. Before it, 81c0446cc (web main, MD-1
+ * merged as #1140; Task 6 added the approval review and approve, capture-matchday-approval.v1, with its fixtures,
+ * reworded the day read's and the open's descriptions, and made the row summary the desk's short score, "1–1 · 14–9");
+ * the six before them are as web #1037 left them.
+ *
  * relay-job.v1 sits beside them and is not the phone's: the script takes only the capture contracts.
  */
 const WEB_COMMIT = '4a07a7f8f53a454cc9272344af1cb293f4d7b52b';

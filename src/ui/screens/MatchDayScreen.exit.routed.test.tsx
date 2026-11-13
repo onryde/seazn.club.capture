@@ -42,7 +42,7 @@ afterEach(() => vi.useRealTimers());
 
 /** Opens the match from its row and comes back to the list: the match is opened and its link is kept. */
 async function openAndComeBack(app: LaunchedApp): Promise<void> {
-  fireEvent.click(screen.getByRole('button', { name: /^Now, Ng v Brown/ }));
+  fireEvent.click(screen.getByRole('button', { name: /^R2, Now, Ng v Brown/ }));
   await flush(200);
   expect(app.nav.current()).toBe('scoring');
   fireEvent.click(screen.getByRole('button', { name: 'Back to Court 1' }));

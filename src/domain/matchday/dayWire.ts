@@ -1,3 +1,4 @@
+import { ok } from '@/domain/Result';
 import type {
   Approval,
   ApprovalKind,
@@ -24,6 +25,7 @@ import {
   text,
   uuid,
   word,
+  type Item,
   type Read,
   type Source,
 } from '@/domain/matchday/wire';
@@ -62,6 +64,15 @@ const WAITING: ReadonlyMap<string, 'stageComplete'> = new Map([
   ['stage_complete', 'stageComplete'],
 ]);
 
+/**
+ * A seat's words. The contract admits "" (a plain `type: string`) and a blank seat is no words: read as null, so the row
+ * says "To be decided" (a null slot, as the contract's own null). A wrong type is still refused.
+ */
+const slot: Item<string | null> = (raw, at) => {
+  const read = text(raw, at);
+  return read.ok ? ok(read.value === '' ? null : read.value) : read;
+};
+
 const row = objectOf<Row>((source, at) =>
   all({
     fixtureId: field(uuid)(source, 'fixture_id', at),
@@ -71,8 +82,8 @@ const row = objectOf<Row>((source, at) =>
     roundTag: optional(word)(source, 'round_tag', at),
     home: field(nullable(text))(source, 'home', at),
     away: field(nullable(text))(source, 'away', at),
-    homeSlot: optional(text)(source, 'home_slot', at),
-    awaySlot: optional(text)(source, 'away_slot', at),
+    homeSlot: optional(slot)(source, 'home_slot', at),
+    awaySlot: optional(slot)(source, 'away_slot', at),
     status: field(oneOf(ROW_STATUS))(source, 'status', at),
     scheduledAt: field(nullable(instant))(source, 'scheduled_at', at),
     summary: field(nullable(text))(source, 'summary', at),

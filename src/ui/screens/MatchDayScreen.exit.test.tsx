@@ -188,7 +188,7 @@ describe('Stay', () => {
     await press(more());
     await press(screen.getByRole('button', { name: 'Stay' }));
     await settle(100);
-    fireEvent.click(screen.getByRole('button', { name: /^Now, Ng v Brown/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^R2, Now, Ng v Brown/ }));
     fireEvent.click(more());
     fireEvent.click(screen.getByRole('button', { name: en['stream.home'] }));
     await settle();
@@ -202,7 +202,7 @@ describe('Stay', () => {
     await press(more());
     await press(screen.getByRole('button', { name: 'Stay' }));
     await settle(260);
-    fireEvent.click(screen.getByRole('button', { name: /^Now, Ng v Brown/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^R2, Now, Ng v Brown/ }));
     await settle();
     expect(opens(view)).toHaveLength(1);
     await press(more());

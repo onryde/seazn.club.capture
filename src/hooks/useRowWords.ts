@@ -28,14 +28,20 @@ export function useRowWords(zone: string): (row: Row) => RowWords {
   return useCallback(
     (row) => {
       const open = t('matchday.seat.tbd');
-      const home = row.home ?? row.homeSlot ?? open;
-      const away = row.away ?? row.awaySlot ?? open;
+      const homeSlot = wordsOf(row.homeSlot);
+      const awaySlot = wordsOf(row.awaySlot);
+      const home = row.home ?? homeSlot ?? open;
+      const away = row.away ?? awaySlot ?? open;
       const names = t('matchday.row.match', { home, away });
       const slotted =
-        (row.home === null && row.homeSlot !== null) ||
-        (row.away === null && row.awaySlot !== null);
+        (row.home === null && homeSlot !== null) || (row.away === null && awaySlot !== null);
       const parts = slotted
-        ? partsOf(t('matchday.row.match', { home: HOME, away: AWAY }), row, home, away)
+        ? partsOf(
+            t('matchday.row.match', { home: HOME, away: AWAY }),
+            row,
+            [home, homeSlot],
+            [away, awaySlot],
+          )
         : null;
       const chip = roundChipOf(row);
       const detail = rowDetail(row);
@@ -52,13 +58,22 @@ export function useRowWords(zone: string): (row: Row) => RowWords {
 }
 
 /** The template cut at its two seats: a seat is dim when it has no entrant and shows the web's words for it. */
-function partsOf(template: string, row: Row, home: string, away: string): readonly NamePart[] {
+function partsOf(
+  template: string,
+  row: Row,
+  [home, homeSlot]: readonly [string, string | null],
+  [away, awaySlot]: readonly [string, string | null],
+): readonly NamePart[] {
   return template
     .split(/([\u0001\u0002])/)
     .filter((piece) => piece !== '')
     .map((piece) => {
-      if (piece === HOME) return { text: home, dim: row.home === null && row.homeSlot !== null };
-      if (piece === AWAY) return { text: away, dim: row.away === null && row.awaySlot !== null };
+      if (piece === HOME) return { text: home, dim: row.home === null && homeSlot !== null };
+      if (piece === AWAY) return { text: away, dim: row.away === null && awaySlot !== null };
       return { text: piece, dim: false };
     });
 }
+
+/** A seat's words from the web, or null when it sent none: "" is none, so a seat is never drawn blank. */
+const wordsOf = (slot: string | null): string | null =>
+  slot === null || slot === '' ? null : slot;
