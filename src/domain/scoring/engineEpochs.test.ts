@@ -5,6 +5,7 @@ import { chessSport } from '@/domain/scoring/chessSport';
 import { cricketSport } from '@/domain/scoring/cricketSport';
 import { footballSport } from '@/domain/scoring/footballSport';
 import { tableTennisSport } from '@/domain/scoring/tableTennisSport';
+import { tennisSport } from '@/domain/scoring/tennisSport';
 import { volleyballSport } from '@/domain/scoring/volleyballSport';
 
 // Every tap carries its sport's fold epoch, and the server's 426 gate refuses a write below its own (S2 ruling 8). The
@@ -31,5 +32,11 @@ describe('the engine’s epochs are the ones each sport sends', () => {
   it('volleyball 1, as at engine 7.0.0', () => {
     expect(foldEpochOf('volleyball')).toBe(1);
     expect(volleyballSport.epoch).toBe(1);
+  });
+
+  // Literal 2, copied by hand from the release (W2e T4 raised it); Task 3's seeds read the engine's own number.
+  it('tennis 4, as at engine 9.0.0 (3 at 8.0.0: the toss; 4: a set summary hands the serve on)', () => {
+    expect(foldEpochOf('tennis')).toBe(4);
+    expect(tennisSport.epoch).toBe(4);
   });
 });

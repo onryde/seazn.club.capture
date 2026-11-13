@@ -55,20 +55,27 @@ export type SportFold<S extends SportTypes> =
       readonly legalQueued: readonly string[];
       readonly history: readonly PadHistoryGroup<S['padKey']>[];
     }
-  | { readonly kind: 'unfoldable'; readonly reason: Unfoldable };
+  | {
+      readonly kind: 'unfoldable';
+      readonly reason: Unfoldable;
+      /** Why, for the record and never for the screen: a code or an error's name, no message and no payload. */
+      readonly detail?: string;
+    };
 
 /**
  * A tap as the event the server records. `base` is optional and a sport's to set: a count its payload was made at (table
  * tennis: the score's; football's clock taps: the ledger's tip), which the runtime keeps on the queued tap
  * (`QueuedEvent.base`) for the sport's `payloadForSend` to read. `reading` likewise: the phone's own clock reading
  * behind a stamp the payload carries instead (football: a sub that joined a stoppage), kept on the queued tap
- * (`QueuedEvent.reading`) and never sent.
+ * (`QueuedEvent.reading`) and never sent. `hold` (ms) keeps the tap unsent that long after it is made, so the scorer can
+ * add a detail to it (`QueuedEvent.holdUntil`, `amendQueued`; S2-7 ruling 234: tennis's point chips); none: sent at once.
  */
 export type SportEvent = {
   readonly type: string;
   readonly payload: unknown;
   readonly base?: number;
   readonly reading?: TapReading;
+  readonly hold?: number;
 };
 
 /**
@@ -106,6 +113,12 @@ export interface ScoringSport<S extends SportTypes> {
     copied: boolean,
     send: SportSendContext,
   ): unknown;
+  /**
+   * A line for the record when the payload a tap is sent with lost what the scorer gave it (`payloadForSend` dropped it:
+   * tennis's point details judged on a serve that no longer stands, S2-7 ruling 234), or null. Never the payload: a word.
+   * A sport with nothing to say has no `sendNote`.
+   */
+  sendNote?(queued: QueuedEvent, payload: unknown): SportLine | null;
 
   // A tap.
   /** The side a tap picks to serve first (the Start tap's), which the match keeps; null for every other tap. */

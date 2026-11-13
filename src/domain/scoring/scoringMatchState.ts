@@ -148,7 +148,9 @@ export type MatchEffect =
    */
   | { readonly kind: 'dropped'; readonly code: string; readonly count: number }
   /** The sport withdrew the head at its send (`SendWithdrawal`): the runner says the sport's line in the record. */
-  | { readonly kind: 'withdrawn'; readonly line: SportLine };
+  | { readonly kind: 'withdrawn'; readonly line: SportLine }
+  /** The head is sent with less than the scorer gave it (`ScoringSport.sendNote`): the runner warns the sport's line. */
+  | { readonly kind: 'noted'; readonly line: SportLine };
 
 export type SaveEffect = {
   readonly kind: 'save';
@@ -204,7 +206,11 @@ export type MatchEvent<S extends SportTypes = SportTypes> =
   | { readonly kind: 'bootSaved'; readonly boot: BootCache }
   | { readonly kind: 'say'; readonly words: PadLineWords }
   /** The scorer's answer to the reconnect question (`scoringMatchAsk.ts`): send the queued taps, or discard them. */
-  | { readonly kind: 'answerAsk'; readonly answer: 'send' | 'discard' };
+  | { readonly kind: 'answerAsk'; readonly answer: 'send' | 'discard' }
+  /** A held tap's payload, amended by the scorer before it is sent (S2-7 ruling 234; `amendQueued`). */
+  | { readonly kind: 'amend'; readonly key: string; readonly payload: unknown }
+  /** Every held tap let go, to be sent now (the sport's details turned off; `releaseHeld`). */
+  | { readonly kind: 'release' };
 
 /** What is held when a match opens: the queue and ledger from disk, and what the boot cache kept. */
 export type MatchHeld<S extends SportTypes = SportTypes> = {

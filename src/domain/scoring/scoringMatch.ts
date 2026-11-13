@@ -38,12 +38,14 @@ import {
 import { onAnswerAsk, releaseMoot } from '@/domain/scoring/scoringMatchAsk';
 import { decidedAtAfter } from '@/domain/scoring/scoringMatchWindow';
 import {
+  onAmend,
   onPick,
   onSetPicks,
   onTap,
   onUndo,
   withoutOrphanVoids,
 } from '@/domain/scoring/scoringMatchTaps';
+import { releaseHeld } from '@/domain/scoring/syncHold';
 
 /**
  * One scoring match on the phone, as ONE pure reducer (plan S2-1 Task 9): every change to what the phone holds (a tap, an
@@ -107,8 +109,8 @@ export function openMatch<S extends SportTypes>(held: MatchHeld<S>, now: number)
 }
 
 /**
- * The earliest time after `now` at which the state wants a step, or null: a send's backoff, a rules read asked again, a
- * save tried again. The runner arms ONE timer at it after every step, so a wait that comes after another is armed when
+ * The earliest time after `now` at which the state wants a step, or null: a send's backoff, a held head's send, a rules
+ * read asked again, a save tried again. The runner arms ONE timer at it after every step, so a wait that comes after another is armed when
  * the first has passed, never left without a timer. Times are the caller's clock. Nothing is waited for in the
  * background (the return steps the match), and a dead queue sends nothing.
  */
@@ -118,6 +120,8 @@ export function wakeAt(state: MatchState, now: number): number | null {
   const sends = sync.queue.pending.length > 0 && deadOf(state) === null;
   const times = [
     sends ? sync.notBefore : null,
+    // A head the sport holds is sent when its hold ends (`nextSend`).
+    sends ? (sync.queue.pending[0].holdUntil ?? null) : null,
     sync.rulesRetryAt,
     state.saveOwed?.retryAt ?? null,
     bootstrapDueAt(state),
@@ -182,7 +186,7 @@ function handle<S extends SportTypes>(
 ): Handled<S> {
   switch (event.kind) {
     case 'tap':
-      return onTap(state, event);
+      return onTap(state, event, now);
     case 'undo':
       return onUndo(state, event, now);
     case 'pickServer':
@@ -209,8 +213,9 @@ function handle<S extends SportTypes>(
       return handled(wanting({ ...state, foreground: true }, now, true));
     case 'peopleSheet':
       return handled(askedForPeople(state, now));
+    // A held tap is let go: nothing is sent in the background, and the return sends it at once.
     case 'background':
-      return handled(part({ ...state, foreground: false }));
+      return handled(part({ ...state, foreground: false, sync: releaseHeld(state.sync) }));
     case 'tick':
       return handled(part(state));
     case 'saved':
@@ -225,5 +230,9 @@ function handle<S extends SportTypes>(
       return handled(part({ ...state, line: event.words }));
     case 'answerAsk':
       return handled(onAnswerAsk(state, event.answer));
+    case 'amend':
+      return onAmend(state, event.key, event.payload, now);
+    case 'release':
+      return handled(part({ ...state, sync: releaseHeld(state.sync) }));
   }
 }

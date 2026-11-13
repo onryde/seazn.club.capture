@@ -96,8 +96,9 @@ with sport conditions (S2 ruling 38; owner, 2026-11-02).
 The phone scores badminton (S2-1), table tennis (S2-2), chess (S2-3,
 `docs/specs/2026-11-04-s2-3-chess-design.md`, rulings 57–62), cricket (S2-4,
 `docs/specs/2026-11-07-s2-4-cricket-design.md`, rulings 64–85) football (S2-5,
-`docs/specs/2026-11-07-s2-5-football-design.md`, rulings 100–169) and volleyball (S2-6,
-`docs/specs/2026-11-11-s2-6-volleyball-design.md`, rulings 170–189). Chess records one
+`docs/specs/2026-11-07-s2-5-football-design.md`, rulings 100–169), volleyball (S2-6,
+`docs/specs/2026-11-11-s2-6-volleyball-design.md`, rulings 170–189) and tennis (S2-7,
+`docs/specs/2026-11-12-s2-7-tennis-design.md`, rulings 215–237, and 238–242 in `docs/specs/2026-11-13-s2-7-results.md`). Chess records one
 game's result only (57, 58), and for a drawn knockout game also its tie-break
 (ruling 63, `docs/specs/2026-11-05-s2-3b-chess-tiebreak-design.md`). Its key is the engine's shared `boardgame`, and
 every `boardgame` match is treated as chess (61). Forfeit, walkover, abandon
@@ -115,6 +116,11 @@ Volleyball, indoor and beach, records the match rally by rally with the serve, a
 deciding set's 0-0 (180), counts timeouts and subs per set and never refuses one past FIVB's number (175), and records
 the FIVB sanction ladder (174, 185, 189). It has no libero yet (S2-6b), and never sends a forfeit, a settle, an abandon
 or a lineup replacement.
+Tennis records points with the umpire's call (15, 30, 40, Deuce, AD, and the Deciding point at 40–40 in no-ad), games, sets,
+tie-breaks and a match tie-break, the set score (hidden once the match has a point, 241), code violations, the game award and
+breaks. It asks Who serves first? at Start and sends the toss before the start (233), and shows Ace, Double fault, Winner and
+Error chips after a tap only behind a per-match Point details switch, off by default (234). It never sends a forfeit, a settle
+or an abandon: a retirement or default is the organiser's, and the pad names it (225, 237).
 
 Adding a fourth mode, or a screen outside a mode, is a product decision, not
 an implementation detail. Raise it; don't build it.
@@ -181,9 +187,9 @@ src/
                    # the record upload's credential, kept 24 h after its code goes (R4)
     policy/        # fallback strategy, degradation ladder
     scoring/       # Remote Scoring: wire shapes, the tap queue, sync, the match reducer, and one
-                   # module set per sport (`badminton*`, `tableTennis*`, `chess*`, `cricket*`, `football*`, `volleyball*`) behind `ScoringSport`
+                   # module set per sport (`badminton*`, `tableTennis*`, `chess*`, `cricket*`, `football*`, `volleyball*`, `tennis*`) behind `ScoringSport`
                    # (`sportFor`, a table keyed by the bootstrap's `sport_key`: `badminton`, `tabletennis`,
-                   # `boardgame`, `cricket`, `football`, `volleyball`). Generic files never import a sport's: lint (`SPORT_MODULES`,
+                   # `boardgame`, `cricket`, `football`, `volleyball`, `tennis`). Generic files never import a sport's: lint (`SPORT_MODULES`,
                    # `SPORT_OWN_FILES`, both casings) enforces it
   i18n/            # en/es/fr/nl dictionaries, t()/tp(), formatTime(). Pure.
   ui/
@@ -236,8 +242,10 @@ contracts/         # the web's capture contracts, vendored and pinned
   `FEATURES.recordSend` is on, the upload credential, R4 of the D3 findings
   design) sits behind the key-value store port in `services/`. Remote
   Scoring's link (origin, token and sport) is in the secure store under
-  `scoring.link.{id}`, and its unsent taps in one file per match behind the
-  tap queue store port (S2 design §6.1, §6.3).
+  `scoring.link.{id}`, its unsent taps in one file per match behind the
+  tap queue store port (S2 design §6.1, §6.3), and tennis's Point details switch
+  in the key-value store under `scoring.switch.pointDetails.{id}` (S2-7 ruling
+  234; deleted with the match's link).
 - `utils/` is where dead code hides. Put the function where it belongs.
 - Absolute imports via tsconfig paths (`@/domain`, `@/ui`).
 

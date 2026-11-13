@@ -277,6 +277,38 @@ export const typeScale = {
     fontVariant: ['tabular-nums'],
   },
   /**
+   * The games in a tennis half's scoreboard box (S2-7 Task 18, ruling 240): the score's face, tabular, at 20 on a 22 dp
+   * line. Its room is a box measured at its own size, so it does not grow with the phone's scale (`maxFontScale`).
+   */
+  boardScore: {
+    fontFamily: font.displayBold,
+    fontSize: 20,
+    lineHeight: 22,
+    fontVariant: ['tabular-nums'],
+  },
+  /** A scoreboard label ("Sets", "Games", "Set 2"): small uppercase display type, letter-spaced, in a room of its own. */
+  boardLabel: {
+    fontFamily: font.displaySemibold,
+    fontSize: 12,
+    lineHeight: 14,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  /** The number in a scoreboard's game dot: small, tabular, so "12" stands whole in a dot of `padDot`. */
+  dotNumber: {
+    fontFamily: font.displayBold,
+    fontSize: 12,
+    lineHeight: 14,
+    fontVariant: ['tabular-nums'],
+  },
+  /** A final board's box (S2-7 ruling 239): a set's games, large and tabular, on a 48 dp line. */
+  finalScore: {
+    fontFamily: font.displayBold,
+    fontSize: 44,
+    lineHeight: 48,
+    fontVariant: ['tabular-nums'],
+  },
+  /**
    * The games tally in the pad's header (owner, 2026-11-01: "0:0 with lime light in place of preview"; larger, owner,
    * 2026-11-02, into the room the badge gave back): the score's face, lime and tabular, at 46 on the header's own 48 dp
    * line, so "1:0" (58.5 dp) stands whole in the 72 dp the row leaves it at 320 and the header stays one 48 dp row
@@ -352,10 +384,16 @@ export type TypeRole = keyof typeof typeScale;
  *   scale would take it under `clockFloor`, and the time is read at a glance, not by its size setting.
  * - `syncCount`: the badge's slot is 56 dp and the widest count, "99+", is 55.8 in it, so it does not grow at all. The
  *   badge's words are the screen reader's and are not drawn, so nothing is lost to a larger setting.
+ * - `boardScore`, `boardLabel`, `dotNumber`, `finalScore`: tennis's scoreboard boxes, labels, dots and final board are sized
+ *   from the type at its own size (`tennisFit.test.ts`), in rows that must stay one line at 320 dp.
  */
 export const maxFontScale: Partial<Record<TypeRole, number>> = {
   tally: 1.15,
   tallyCompact: 1.15,
   clockHero: 1,
   syncCount: 1,
+  boardScore: 1,
+  boardLabel: 1,
+  dotNumber: 1,
+  finalScore: 1,
 };

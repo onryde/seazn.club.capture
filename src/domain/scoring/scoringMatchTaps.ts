@@ -5,6 +5,7 @@ import type { QueuedEvent, TapReading } from '@/domain/scoring/queue';
 import type { SportFold, SportTypes } from '@/domain/scoring/scoringSport';
 import { undoRunOut } from '@/domain/scoring/scoringMatchWindow';
 import { discardQueued } from '@/domain/scoring/sync';
+import { amendQueued, releaseHeld } from '@/domain/scoring/syncHold';
 import { type UndoTarget, undoEventFor } from '@/domain/scoring/undoTarget';
 import {
   foldOfState,
@@ -64,7 +65,16 @@ function takes<S extends SportTypes>(state: MatchState<S>, tap: QueuedEvent): bo
   return fold !== null && fold.kind === 'folded' && fold.legalQueued.includes(tap.key);
 }
 
-export function onTap<S extends SportTypes>(state: MatchState<S>, event: TapEvent<S>): Handled<S> {
+/**
+ * A tap the sport makes an event of, judged by the fold on top of the queue. A tap the sport holds (`SportEvent.hold`) is
+ * queued held until `now` plus that, on the runner's clock; a tap taken lets go of any tap held before it, so a hold
+ * never outlives the next tap.
+ */
+export function onTap<S extends SportTypes>(
+  state: MatchState<S>,
+  event: TapEvent<S>,
+  now: number,
+): Handled<S> {
   const fold = padTakes(state) ? foldOfState(state) : null;
   if (fold === null || fold.kind !== 'folded' || state.bootstrap === null)
     return refused(state, 'notNow');
@@ -72,10 +82,32 @@ export function onTap<S extends SportTypes>(state: MatchState<S>, event: TapEven
   const { sport } = state;
   const made = sport.eventFor(tap, { bootstrap: state.bootstrap, display: fold.display });
   if (made === null) return refused(state, 'notNow');
-  const queued = queuedOf(state, made, event.key, event);
+  const plain = queuedOf(state, made, event.key, event);
+  const queued = made.hold === undefined ? plain : { ...plain, holdUntil: now + made.hold };
   if (!takes(state, queued)) return refused(state, sport.refusalFor(tap));
   const toss = sport.tossOf(tap) ?? state.toss;
-  const next = { ...withTap(state, queued), toss, line: null, undone: null };
+  const released = { ...state, sync: releaseHeld(state.sync) };
+  const next = { ...withTap(released, queued), toss, line: null, undone: null };
+  return handled(part(next), { outcome: TAKEN, pump: false });
+}
+
+/**
+ * A held tap's payload amended (S2-7 ruling 234: a tennis point's chip), judged by the fold as any tap is, and sent once
+ * the save lands. A tap no longer held, on its way, or one the match would not take with the new payload is refused and
+ * nothing changes (`amendQueued`).
+ */
+export function onAmend<S extends SportTypes>(
+  state: MatchState<S>,
+  key: string,
+  payload: unknown,
+  now: number,
+): Handled<S> {
+  const stepped = amendQueued(state.sync, key, payload, now);
+  if (stepped.state === state.sync) return refused(state, 'notNow');
+  const next: MatchState<S> = { ...state, sync: stepped.state };
+  const fold = foldOfState(next);
+  if (fold === null || fold.kind !== 'folded' || !fold.legalQueued.includes(key))
+    return refused(state, 'notNow');
   return handled(part(next), { outcome: TAKEN, pump: false });
 }
 

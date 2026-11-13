@@ -18,6 +18,7 @@ import {
   part,
   type MatchState,
   type Part,
+  type Planned,
 } from '@/domain/scoring/scoringMatchState';
 
 /**
@@ -121,7 +122,9 @@ function sending<S extends SportTypes>(state: MatchState<S>, now: number): Part<
     sync: marked,
     sent: { key: head.key, expectedSeq: body.expected_seq },
   };
-  return part(next, [{ kind: 'send', body: { ...body, payload }, sent: sentTap }]);
+  const note = state.sport.sendNote?.(head, payload) ?? null;
+  const send: Planned = { kind: 'send', body: { ...body, payload }, sent: sentTap };
+  return part(next, note === null ? [send] : [{ kind: 'noted', line: note }, send]);
 }
 
 /**

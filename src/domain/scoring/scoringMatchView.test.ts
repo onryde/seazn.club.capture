@@ -48,9 +48,9 @@ describe('the states that take the pad’s place', () => {
   });
 
   it('a sport this build does not score, named', () => {
-    expect(viewOf(ready({ bootstrap: { ...SINGLES, sportKey: 'tennis' } }))).toEqual({
+    expect(viewOf(ready({ bootstrap: { ...SINGLES, sportKey: 'hockey' } }))).toEqual({
       kind: 'unsupportedSport',
-      sportKey: 'tennis',
+      sportKey: 'hockey',
     });
   });
 

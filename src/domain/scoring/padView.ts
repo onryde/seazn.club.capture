@@ -97,12 +97,59 @@ export type PadHalf<K extends string> = {
    */
   readonly foot?: PadFoot<K> | null;
   /**
+   * The server's name on a line of its own under the side's names (tennis doubles, S2-7 ruling 235, moved from the bottom row
+   * by the device finding T12-F1), with the serving ball before it. Optional: only a sport that names a server gives one.
+   */
+  readonly server?: PadText<K> | null;
+  /**
+   * One row of a scoreboard in the bottom row, and the games' dots under it (tennis, S2-7 ruling 240). Optional: a half
+   * without one draws its periods and foot as before.
+   */
+  readonly scoreboard?: PadScoreboard<K> | null;
+  /**
+   * The match's final board in the place of the big value (tennis, S2-7 ruling 239): a box for each set and the sets won. A
+   * half that has one draws no value and no bottom row.
+   */
+  readonly finalBoard?: PadFinalBoard<K> | null;
+  /**
    * What a tap does, said to a screen reader ("Tap to award the rally"). The half shows the one word "Tap" in the
    * bottom row while it takes a tap, in every sport and for every side (owner ruling 56: no side name; it supersedes
    * ruling 14's "Tap: rally to …"), so the kit says that word itself and nothing here carries it.
    */
   readonly hint: PadText<K>;
   readonly tappable: boolean;
+};
+
+/**
+ * A half's row of a scoreboard (S2-7 rulings 240, 242): the games of each finished set in a dark box after its label, then the
+ * numbered dots of the games this side won in the set under way on the same row (the dots are the games count), then the
+ * half's hint. `sets` is empty before a set is over (its label is then not drawn); `dots` are the games' numbers, empty for a
+ * side that has won none (the row keeps its height), and null in a match tie-break, which has no games. `said` is what a screen
+ * reader hears of the row, in the half's name.
+ */
+export type PadScoreboard<K extends string> = {
+  readonly setsLabel: PadText<K>;
+  readonly sets: readonly string[];
+  readonly dots: readonly number[] | null;
+  readonly said: readonly PadText<K>[];
+};
+
+/**
+ * One box of a final board: a small label above, the side's value, and the games' tie-break points small in brackets when
+ * its set was a tie-break the side lost. `won` ink is lime, `plate` a lime plate with night ink (the winner's sets), `plain`
+ * the cream the loser's boxes are.
+ */
+export type PadFinalBox<K extends string> = {
+  readonly label: PadText<K>;
+  readonly value: string;
+  readonly bracket?: string;
+  readonly tone: 'won' | 'plain' | 'plate';
+};
+
+/** A half's final board (S2-7 ruling 239), left to right, and what a screen reader hears of it. */
+export type PadFinalBoard<K extends string> = {
+  readonly boxes: readonly PadFinalBox<K>[];
+  readonly said: readonly PadText<K>[];
 };
 
 /**
@@ -263,7 +310,11 @@ export type PadStateCard<K extends string = never> =
    * A decided match whose result the web has carried forward (it moved the competition on, so it refuses this link a
    * write; Task 8d). Not `viewOnly`: nobody finalized it, and the card must not say they did.
    */
-  | { readonly kind: 'carriedForward' }
+  | {
+      readonly kind: 'carriedForward';
+      /** The result in words, when the sport gives one (`PadView.result`): the card then shows what stands, as the web does. */
+      readonly title?: PadText<K>;
+    }
   /** A cancelled match: nothing was decided, and nobody finalized anything (the web's `device.scan.viewOnly.cancelled`). */
   | { readonly kind: 'cancelled' }
   /** A seat with no entrant in a match that is not to be played, a bye (the web's `device.scan.viewOnly.noOpponent`). */
@@ -340,6 +391,12 @@ export type PadView<K extends string> = {
    * shares its width among the tools offered.
    */
   readonly toolSlots?: number;
+  /**
+   * The match's result in words ("Ada Voss won · 7–6(6) 6–0"), for a sport whose pad shows it on a card of a closed match
+   * (tennis, S2-7 ruling 239): the carried-forward card then carries it, so the score is not hidden behind the card. None for
+   * a sport that says nothing here: its cards are as they were.
+   */
+  readonly result?: PadText<K>;
   readonly card: PadStateCard<K> | null;
 };
 
@@ -414,6 +471,10 @@ export function withCard<K extends string>(
 ): PadView<K> {
   if (card === null) return view;
   const [top, bottom] = view.halves;
+  const shown =
+    card.kind === 'carriedForward' && view.result !== undefined
+      ? { ...card, title: view.result }
+      : card;
   return {
     ...view,
     halves: [
@@ -423,7 +484,7 @@ export function withCard<K extends string>(
     tools: [],
     start: null,
     lastTap: lastTapUnder(view.lastTap, card),
-    card,
+    card: shown,
   };
 }
 

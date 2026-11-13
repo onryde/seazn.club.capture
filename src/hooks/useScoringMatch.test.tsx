@@ -123,23 +123,23 @@ describe('before the pad', () => {
       ...seed,
       bootstrap: async () => ({
         kind: 'ok' as const,
-        bootstrap: { ...SINGLES, sportKey: 'tennis' },
+        bootstrap: { ...SINGLES, sportKey: 'padel' },
       }),
     };
     const fakes = await rig({ scoring });
     const view = mount(fakes);
     await flush();
-    expect(view.result.current).toEqual({ kind: 'unsupportedSport', sportKey: 'tennis' });
+    expect(view.result.current).toEqual({ kind: 'unsupportedSport', sportKey: 'padel' });
   });
 
   it('kept as a sport this build does not score says which at once, offline too, and reads nothing', async () => {
     const fakes = createFakePorts({ clock: timerClock });
-    await saveScoringLink(fakes.kv, FIXTURE, LINK, HOST, 'tennis');
+    await saveScoringLink(fakes.kv, FIXTURE, LINK, HOST, 'padel');
     fakes.scoring.goOffline(true);
     const bootstrap = vi.spyOn(fakes.scoring, 'bootstrap');
     const view = mount(fakes);
     await flush();
-    expect(view.result.current).toEqual({ kind: 'unsupportedSport', sportKey: 'tennis' });
+    expect(view.result.current).toEqual({ kind: 'unsupportedSport', sportKey: 'padel' });
     expect(bootstrap).not.toHaveBeenCalled();
   });
 

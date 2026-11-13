@@ -106,7 +106,7 @@ const NO_COLOUR_LITERALS = [
  * (`tableTennis*`, and the hooks, services and screens named `*TableTennis*`: these import patterns match without regard
  * to case, so one spelling holds both; `SPORT_OWN_FILES` below needs both), and chess's (`chess*`, and the services,
  * hooks and screens named `*Chess*`, by the same rule), and cricket's (`cricket*` and `*Cricket*`, S2-4), and football's (`football*`, and the hooks,
- * services and screens named `*Football*`, by the same rule), and volleyball's (`volleyball*` and `*Volleyball*`, S2-6). Tests are free to.
+ * services and screens named `*Football*`, by the same rule), and volleyball's (`volleyball*` and `*Volleyball*`, S2-6), and tennis's (`tennis*` and `*Tennis*`, S2-7). Tests are free to.
  */
 const SPORT_MODULES = {
   group: [
@@ -116,6 +116,7 @@ const SPORT_MODULES = {
     '**/*cricket*',
     '**/*football*',
     '**/*volleyball*',
+    '**/*tennis*',
     '**/usePadSheets',
   ],
   message:
@@ -167,6 +168,8 @@ const SPORT_OWN_FILES = [
   '**/*Football*',
   '**/*volleyball*',
   '**/*Volleyball*',
+  '**/*tennis*',
+  '**/*Tennis*',
   'src/hooks/usePadSheets.ts',
   'src/domain/scoring/sports.ts',
 ];

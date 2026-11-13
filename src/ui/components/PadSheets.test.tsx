@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { PadMatchDetails } from '@/domain/scoring/padView';
 import en from '@/i18n/en.json';
 import type { MessageKey } from '@/i18n/messages';
-import { MatchDetailsView } from '@/ui/components/PadSheets';
+import { MatchDetailsView, SetScoreSheet } from '@/ui/components/PadSheets';
 import { Text } from '@/ui/components/Text';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
@@ -70,5 +70,39 @@ describe('MatchDetailsView', () => {
     );
     act(() => fireEvent.click(screen.getByRole('button', { name: en['panel.close'] })));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+// G4 (S2-7 Task 11): Set score's title and field words are the sport's to name; the sports that name none keep the shared
+// ones (badminton's, table tennis's and volleyball's own sheet tests stay as they were).
+describe('SetScoreSheet', () => {
+  const props = {
+    game: 2,
+    names: ['Ana', 'Bea'] as const,
+    points: [0, 0] as const,
+    onSave: vi.fn(),
+    onCancel: vi.fn(),
+  };
+
+  it('with no title or field key, says the shared Game and Points words', () => {
+    renderWithPorts(<SetScoreSheet {...props} />);
+    const sheet = within(screen.getByTestId('score-sheet'));
+    expect(sheet.getByText('Set score · Game 2')).toBeTruthy();
+    expect(sheet.getByText('Points — Ana')).toBeTruthy();
+    expect(sheet.getByText('Points — Bea')).toBeTruthy();
+  });
+
+  it('a title and a field key replace them', () => {
+    renderWithPorts(
+      <SetScoreSheet
+        {...props}
+        title="Set score · Set 3"
+        fieldKey="scoring.tennis.setScore.games"
+      />,
+    );
+    const sheet = within(screen.getByTestId('score-sheet'));
+    expect(sheet.getByText('Set score · Set 3')).toBeTruthy();
+    expect(sheet.getByText('Games — Ana')).toBeTruthy();
+    expect(sheet.queryByText('Points — Ana')).toBeNull();
   });
 });

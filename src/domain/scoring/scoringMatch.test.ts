@@ -202,7 +202,7 @@ describe('a tap', () => {
     ],
     [
       'a sport this build does not score',
-      () => ready({ bootstrap: { ...SINGLES, sportKey: 'tennis' } }),
+      () => ready({ bootstrap: { ...SINGLES, sportKey: 'hockey' } }),
     ],
     ['a ledger too large to read', () => tooLarge()],
   ])('is refused as not now with %s, and the queue stays as it was', (_name, make) => {

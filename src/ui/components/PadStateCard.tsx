@@ -6,7 +6,7 @@ import { usePadText } from '@/hooks/usePadText';
 import type { MessageKey } from '@/i18n/messages';
 import { EdgeCard, type Edge } from '@/ui/components/EdgeCard';
 import { Text } from '@/ui/components/Text';
-import { space } from '@/ui/theme/tokens';
+import { colour, space } from '@/ui/theme/tokens';
 
 type PadCard = StateCard<MessageKey>;
 
@@ -46,13 +46,21 @@ export const PadStateCard = memo(function PadStateCard({
   readonly children?: ReactNode;
 }) {
   const { t } = useT();
+  const padWords = usePadText();
   if (card.kind === 'resultRecorded') return <RecordedResult card={card} />;
   const words = COPY[card.kind];
+  // A carried-forward card of a sport that has the result in words keeps it on screen, under the sentence.
+  const result = card.kind === 'carriedForward' ? card.title : undefined;
   return (
     <EdgeCard testID="pad-card" edge={EDGE[card.kind]}>
       <Text variant="panelTitle">{t(words.title)}</Text>
       {children}
       <Text variant="body">{t(words.body)}</Text>
+      {result === undefined ? null : (
+        <Text testID="pad-card-result" variant="panelTitle" style={styles.result}>
+          {padWords(result)}
+        </Text>
+      )}
     </EdgeCard>
   );
 });
@@ -93,6 +101,7 @@ const RecordedResult = memo(function RecordedResult({ card }: { readonly card: R
 const styles = StyleSheet.create({
   said: { gap: space.sm },
   digits: { fontVariant: ['tabular-nums'] },
+  result: { color: colour.lime },
 });
 
 const EDGE: Readonly<Record<TitledCard['kind'], Edge>> = {

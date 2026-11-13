@@ -77,13 +77,17 @@ export const StepSheetView = memo(function StepSheetView({
 
 /**
  * Set score, its title naming the game it sets: "Set score · Game 2" (the controller's call, 2026-10-31). `bound` is the
- * most either field may hold, when the sport's rules say; a sport that names none takes the sheet's own limit.
+ * most either field may hold, when the sport's rules say; a sport that names none takes the sheet's own limit. A sport that
+ * counts something else than points in a game (tennis's games of a set, S2-7 plan G4) gives its own `title` and the
+ * dictionary key of its fields' label (`fieldKey`, filled with `{side}`); with neither, the shared words stand.
  */
 export const SetScoreSheet = memo(function SetScoreSheet({
   game,
   names,
   points,
   bound,
+  title,
+  fieldKey = 'scoring.setScore.field',
   onSave,
   onCancel,
 }: {
@@ -91,21 +95,19 @@ export const SetScoreSheet = memo(function SetScoreSheet({
   readonly names: readonly [string, string];
   readonly points: readonly [number, number];
   readonly bound?: number;
+  readonly title?: string;
+  readonly fieldKey?: MessageKey;
   readonly onSave: (first: string, second: string) => void;
   readonly onCancel: () => void;
 }) {
   const { t } = useT();
   const labels = useMemo(
-    () =>
-      [
-        t('scoring.setScore.field', { side: names[0] }),
-        t('scoring.setScore.field', { side: names[1] }),
-      ] as const,
-    [names, t],
+    () => [t(fieldKey, { side: names[0] }), t(fieldKey, { side: names[1] })] as const,
+    [names, t, fieldKey],
   );
   return (
     <ScoreEntrySheet
-      title={t('scoring.setScore.title', { game })}
+      title={title ?? t('scoring.setScore.title', { game })}
       labels={labels}
       initial={points}
       bound={bound}

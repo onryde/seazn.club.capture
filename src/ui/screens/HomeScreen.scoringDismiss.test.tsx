@@ -130,6 +130,9 @@ describe('Dismiss asks first', () => {
     const home = await homeWith(async (fakes) => {
       await deadLeftover('fx-old', 2, 'Match 7')(fakes);
       await deadLeftover('fx-two', 3, 'Match 8')(fakes);
+      // A switch the scorer set for each (S2-7 ruling 234): it goes with its match's link, and only its own.
+      await fakes.kv.set('scoring.switch.pointDetails.fx-two', 'on');
+      await fakes.kv.set('scoring.switch.pointDetails.fx-old', 'on');
     });
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss Match 8' }));
     await asking();
@@ -138,6 +141,8 @@ describe('Dismiss asks first', () => {
     await waitFor(() => expect(leftovers()).toHaveLength(1));
     expect(await home.tapQueue.load('fx-two')).toBeNull();
     expect((await home.tapQueue.load('fx-old'))?.pending).toHaveLength(2);
+    expect(home.kv.entries.has('scoring.switch.pointDetails.fx-two')).toBe(false);
+    expect(home.kv.entries.get('scoring.switch.pointDetails.fx-old')).toBe('on');
   });
 
   it('gives each card a name of its own, so two cards never both read "Dismiss"', async () => {

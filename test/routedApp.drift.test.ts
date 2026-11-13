@@ -327,6 +327,9 @@ describe('every path the navigation moves to has its route file, and each Settin
       // Volleyball (plan S2-6 Task 11): its route row and its pad.
       'src/ui/screens/VolleyballMatchScreen.tsx',
       'src/ui/screens/VolleyballPadScreen.tsx',
+      // Tennis (plan S2-7 Task 11): its route row and its pad.
+      'src/ui/screens/TennisMatchScreen.tsx',
+      'src/ui/screens/TennisPadScreen.tsx',
     ]);
   });
 

@@ -115,7 +115,7 @@ describe('finishOf', () => {
   });
 
   it('is never judged on another sport’s bootstrap, finalized or not', () => {
-    const other = { ...SINGLES, sportKey: 'tennis', status: 'finalized' };
+    const other = { ...SINGLES, sportKey: 'hockey', status: 'finalized' };
     expect(finishOf(cold(DECIDED, { bootstrap: other }))).toBeNull();
   });
 });

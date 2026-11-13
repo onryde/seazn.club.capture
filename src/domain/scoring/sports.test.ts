@@ -5,6 +5,7 @@ import { cricketSport } from '@/domain/scoring/cricketSport';
 import { footballSport } from '@/domain/scoring/footballSport';
 import { sportFor } from '@/domain/scoring/sports';
 import { tableTennisSport } from '@/domain/scoring/tableTennisSport';
+import { tennisSport } from '@/domain/scoring/tennisSport';
 
 // The sports this build scores (owner, 2026-11-02: pad per sport): one table by the bootstrap's sport_key. Badminton and
 // table tennis (S2-2), chess (S2-3, under the engine's key `boardgame`), cricket (S2-4) and football (S2-5) are its five rows.
@@ -32,7 +33,12 @@ describe('sportFor', () => {
     expect(sportFor('Football')).toBeNull();
   });
 
-  it.each(['tennis', '', 'Badminton', 'constructor', 'toString'])(
+  it('names tennis by its key', () => {
+    expect(sportFor('tennis')).toBe(tennisSport);
+    expect(sportFor('Tennis')).toBeNull();
+  });
+
+  it.each(['hockey', '', 'Badminton', 'constructor', 'toString'])(
     'is null for %j: a sport this build does not score, or no row of the table',
     (key) => {
       expect(sportFor(key)).toBeNull();

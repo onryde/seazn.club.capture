@@ -120,6 +120,16 @@ describe('the scoring link store', () => {
     expect([...kv.entries.keys()]).toEqual(['scoring.link.other-match']);
   });
 
+  it('forgets the switches set for the match with its link, and no other match’s (S2-7 ruling 234)', async () => {
+    const kv = createMemoryKeyValueStore({
+      [`scoring.switch.pointDetails.${FIXTURE}`]: 'on',
+      'scoring.switch.pointDetails.other-match': 'on',
+    });
+    await saveScoringLink(kv, FIXTURE, LINK, HOST, SPORT);
+    await forgetScoringLink(kv, FIXTURE);
+    expect([...kv.entries.keys()]).toEqual(['scoring.switch.pointDetails.other-match']);
+  });
+
   it('rejects when the store refuses a save or a forget, so the caller never believes it done', async () => {
     await expect(saveScoringLink(failing(), FIXTURE, LINK, HOST, SPORT)).rejects.toThrow();
     await expect(forgetScoringLink(failing(), FIXTURE)).rejects.toThrow();

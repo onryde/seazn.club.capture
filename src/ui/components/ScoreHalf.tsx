@@ -12,6 +12,7 @@ import type { PadCard, PadHalf, PadPeriodScore, PadSide, PadText } from '@/domai
 import { usePadText } from '@/hooks/usePadText';
 import type { MessageKey } from '@/i18n/messages';
 import { Glyph } from '@/ui/components/Glyph';
+import { boardRoom, FinalBoard, ScoreboardRow, ServerLine } from '@/ui/components/HalfBoards';
 import { NameText } from '@/ui/components/NameText';
 import { SidePlate } from '@/ui/components/SidePlate';
 import { TapFlash } from '@/ui/components/TapFlash';
@@ -47,9 +48,13 @@ export const ScoreHalf = memo(function ScoreHalf({ half, flash, onTap }: ScoreHa
   const words = usePadText();
   const tap = useCallback(() => onTap(half.side), [onTap, half.side]);
   const [height, measure] = useHeight();
+  const [rowHeight, measureRow] = useHeight();
   const sub = half.sub === null ? null : words(half.sub);
   const foot = half.foot == null ? null : words(half.foot.text);
   const spokenFoot = half.foot == null ? null : words(half.foot.said);
+  const server = half.server == null ? null : words(half.server);
+  const board = half.scoreboard ?? null;
+  const final = half.finalBoard ?? null;
   // The counts sit in the bottom row's slot, or on a line of their own when the slot holds something else.
   const inSlot = half.foot?.place === 'slot';
   const caution = half.foot?.caution === true;
@@ -58,31 +63,51 @@ export const ScoreHalf = memo(function ScoreHalf({ half, flash, onTap }: ScoreHa
     <Pressable
       testID={`half-${half.side}`}
       accessibilityRole="button"
-      accessibilityLabel={halfName(half, words, sub, said, spokenFoot)}
+      accessibilityLabel={halfName(half, words, sub, said, spokenFoot, server)}
       accessibilityHint={words(half.hint)}
       disabled={!half.tappable}
       onPress={tap}
       onLayout={measure}
-      style={half.bar === 'lit' ? litStyle : dimStyle}
+      style={halfStyle(half.bar === 'lit', final !== null)}
     >
       <TapFlash cue={flash} />
       <HalfHead half={half} />
-      <View style={styles.middle}>
-        <Text
-          testID="score"
-          variant={scoreRole(height === null ? null : height - footRoom(inSlot ? null : foot))}
-        >
-          {half.value}
-        </Text>
+      {server === null ? null : <ServerLine words={server} />}
+      <View style={final === null ? styles.middle : styles.middleNatural}>
+        {final === null ? (
+          <Text
+            testID="score"
+            variant={scoreRole(
+              height === null
+                ? null
+                : height -
+                    footRoom(inSlot ? null : foot) -
+                    boardRoom(board, server !== null, rowHeight),
+            )}
+          >
+            {half.value}
+          </Text>
+        ) : (
+          <FinalBoard boxes={final.boxes} />
+        )}
       </View>
       {foot === null || inSlot ? null : <HalfCounts text={foot} caution={caution} />}
-      <HalfFoot
-        scores={half.periods?.scores ?? NO_SCORES}
-        sub={sub}
-        counts={inSlot ? foot : null}
-        caution={caution}
-        hint={half.tappable ? words(half.action ?? TAP) : null}
-      />
+      {board === null ? null : (
+        <ScoreboardRow
+          board={board}
+          hint={half.tappable ? words(half.action ?? TAP) : null}
+          onHeight={measureRow}
+        />
+      )}
+      {board !== null || final !== null ? null : (
+        <HalfFoot
+          scores={half.periods?.scores ?? NO_SCORES}
+          sub={sub}
+          counts={inSlot ? foot : null}
+          caution={caution}
+          hint={half.tappable ? words(half.action ?? TAP) : null}
+        />
+      )}
     </Pressable>
   );
 });
@@ -150,11 +175,24 @@ function halfName(
   sub: string | null,
   marks: readonly string[],
   foot: string | null,
+  server: string | null,
 ): string {
   const periods = half.periods === null ? NO_WORDS : half.periods.said.map(words);
+  const boards = (half.scoreboard ?? half.finalBoard)?.said.map(words) ?? NO_WORDS;
   const serving = half.serving === null ? null : words(half.serving.said);
   const plate = half.plate === null ? null : words(half.plate);
-  return [half.label, half.value, ...periods, sub, foot, ...marks, serving, plate]
+  return [
+    half.label,
+    server,
+    half.value,
+    ...periods,
+    ...boards,
+    sub,
+    foot,
+    ...marks,
+    serving,
+    plate,
+  ]
     .filter(isWords)
     .join(', ');
 }
@@ -327,6 +365,10 @@ const styles = StyleSheet.create({
   lit: { borderLeftColor: colour.lime },
   dim: { borderLeftColor: colour.ink3 },
   pressed: { backgroundColor: colour.surface2 },
+  // A half with its final board (tennis's decided match) is drawn at its own height in a scroll, never squeezed under a
+  // card above it (T12-F3): no grow, no shrink, and its middle takes the board's height instead of a share of none.
+  natural: { flex: 0, flexGrow: 0, flexShrink: 0, flexBasis: 'auto' },
+  middleNatural: { flexShrink: 0, alignItems: 'center', justifyContent: 'center' },
   head: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
   names: { flex: 1 },
   // The row is as tall as the stopwatch, and a card sits at its middle; a View never shrinks, so only the names give way.
@@ -395,3 +437,11 @@ const cardStyle: Readonly<Record<PadCard, StyleProp<ViewStyle>>> = {
 const wonBox = [styles.box, styles.won];
 const lostBox = [styles.box, styles.lost];
 const dimStyle = pressable([styles.half, styles.dim]);
+const litNatural = pressable([styles.half, styles.natural, styles.lit]);
+const dimNatural = pressable([styles.half, styles.natural, styles.dim]);
+
+/** The half's frame: lit or dim, and at its own height when it carries a final board (T12-F3). */
+function halfStyle(lit: boolean, natural: boolean) {
+  if (natural) return lit ? litNatural : dimNatural;
+  return lit ? litStyle : dimStyle;
+}

@@ -6,7 +6,7 @@
  */
 
 /** Why a tap was not taken: not at this point of the match, a score no game in progress has, nothing of the scorer's to undo. */
-export type PadRefusal = 'notNow' | 'invalidScore' | 'nothingToUndo';
+export type PadRefusal = 'notNow' | 'invalidScore' | 'invalidSetScore' | 'nothingToUndo';
 
 /** What a tap came to on the phone, at once: taken into the queue, or refused with a reason. */
 export type PadOutcome =
@@ -22,6 +22,7 @@ export const refusing = (refusal: PadRefusal): PadOutcome => ({ ok: false, refus
 export type PadLineKey =
   | 'scoring.refusal.notNow'
   | 'scoring.refusal.invalidScore'
+  | 'scoring.tennis.refusal.invalidScore'
   | 'scoring.refusal.nothingToUndo'
   | 'scoring.refusal.notCounted'
   | 'scoring.refusal.notSaved'
@@ -40,6 +41,7 @@ export type PadLineWords =
 export const REFUSAL_WORDS: Readonly<Record<PadRefusal, PadLineKey>> = {
   notNow: 'scoring.refusal.notNow',
   invalidScore: 'scoring.refusal.invalidScore',
+  invalidSetScore: 'scoring.tennis.refusal.invalidScore',
   nothingToUndo: 'scoring.refusal.nothingToUndo',
 };
 

@@ -1,5 +1,6 @@
 import { isRecord } from '@/domain/credentials/wire';
 import type { KeyValueStore } from '@/services/KeyValueStore';
+import { forgetMatchSwitches } from '@/services/scoringMatchSwitches';
 import { isBuildOrigin } from '@/services/seaznHosts';
 import type { ScoringLink } from '@/services/scoringPort';
 
@@ -85,7 +86,12 @@ export async function saveScoringLink(
   );
 }
 
-/** Rejects when the store refuses. A match with no link is not a failure. */
+/**
+ * Forgets the match's link, then the switches set for it (`forgetMatchSwitches`). Rejects when the store refuses. A match
+ * with no link is not a failure.
+ */
 export async function forgetScoringLink(kv: KeyValueStore, fixtureId: string): Promise<void> {
-  if (FIXTURE_ID.test(fixtureId)) await kv.delete(scoringLinkKey(fixtureId));
+  if (!FIXTURE_ID.test(fixtureId)) return;
+  await kv.delete(scoringLinkKey(fixtureId));
+  await forgetMatchSwitches(kv, fixtureId);
 }

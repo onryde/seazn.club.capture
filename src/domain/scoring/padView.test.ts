@@ -163,6 +163,23 @@ describe('hasUndoCell', () => {
   });
 });
 
+describe('withCard and a sport’s result line (S2-7 ruling 239)', () => {
+  const result = { key: 'k.last' } as const;
+
+  it('hands a carried-forward card the view’s result in words, so the score is not hidden behind the card', () => {
+    const carded = withCard({ ...live, result }, { kind: 'carriedForward' });
+    expect(carded.card).toEqual({ kind: 'carriedForward', title: result });
+  });
+
+  it('leaves a carried-forward card alone when the sport gives no result (every other sport)', () => {
+    expect(withCard(live, { kind: 'carriedForward' }).card).toEqual({ kind: 'carriedForward' });
+  });
+
+  it('gives the result to no other card', () => {
+    expect(withCard({ ...live, result }, { kind: 'viewOnly' }).card).toEqual({ kind: 'viewOnly' });
+  });
+});
+
 describe('withCard', () => {
   it('leaves a pad with no card as it is', () => {
     expect(withCard(live, null)).toBe(live);

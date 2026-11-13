@@ -56,6 +56,14 @@ describe('watchDeadLink', () => {
     expect(fakes.kv.entries.has(linkKey(MATCH))).toBe(false);
   });
 
+  it('forgets the switches set for the match with its link (S2-7 ruling 234)', async () => {
+    const fakes = await rig();
+    await fakes.kv.set(`scoring.switch.pointDetails.${MATCH}`, 'on');
+    watchDeadLink(fakes.ports, stubRunner(DEAD).runner);
+    await settle();
+    expect(fakes.kv.entries.has(`scoring.switch.pointDetails.${MATCH}`)).toBe(false);
+  });
+
   it('forgets once, however many times the runner says more afterwards', async () => {
     const fakes = await rig();
     const stub = stubRunner(LOADING);
