@@ -84,6 +84,14 @@ describe('the call sheet’s words fit (320 and 360 dp, four languages)', () => 
     },
   );
 
+  it('Undo call’s spoken name carries its court in all four languages, and is not drawn (final review m3)', () => {
+    for (const lang of LANGS) {
+      const named = said(lang, 'matchday.call.undoNamed', { court: COURT });
+      expect(named, lang).toContain(COURT);
+      expect(named, lang).toContain(said(lang, 'matchday.call.undo'));
+    }
+  });
+
   it.each(WIDTHS)('every sentence the sheet says stays within 3 lines at %i', (width) => {
     for (const lang of LANGS)
       for (const key of [
@@ -98,6 +106,7 @@ describe('the call sheet’s words fit (320 and 360 dp, four languages)', () => 
         'matchday.call.rest',
         'matchday.call.closed',
         'matchday.call.notFree',
+        'matchday.call.undoGone',
         'matchday.call.noPower',
         'matchday.call.courtOutOfScope',
         'matchday.call.started',

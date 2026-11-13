@@ -1276,5 +1276,7 @@
   "matchday.call.frozen": "De competitie is gepauzeerd — vraag het de organisator",
   "matchday.call.notCodeCall": "Opgeroepen vanaf de website — vraag de organisator het ongedaan te maken",
   "matchday.call.notCandidate": "Deze wedstrijd kan niet op {court} worden gespeeld",
-  "matchday.call.actionNamed": "Wedstrijd oproepen, {court}"
+  "matchday.call.actionNamed": "Wedstrijd oproepen, {court}",
+  "matchday.call.undoNamed": "Oproep ongedaan maken, {court}",
+  "matchday.call.undoGone": "Op {court} is geen wedstrijd meer opgeroepen"
 }

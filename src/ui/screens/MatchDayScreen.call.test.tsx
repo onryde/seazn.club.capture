@@ -143,8 +143,9 @@ const holdButton = (lang: Lang = 'en') =>
   sheet().getByRole('button', {
     name: word(lang, 'stream.action.holdLabel', { label: word(lang, 'matchday.call.action') }),
   });
+/** The list's control, named with its court (final review m3); the sheet's own plain "Undo call" is `confirmUndo`. */
 const undoButton = (lang: Lang = 'en') =>
-  screen.getByRole('button', { name: word(lang, 'matchday.call.undo') });
+  screen.getByRole('button', { name: word(lang, 'matchday.call.undoNamed', { court: 'Court 2' }) });
 
 async function openSheet(open: Open = {}) {
   const view = await openList(open);
@@ -666,6 +667,8 @@ describe('Undo call', () => {
     });
     fireEvent.click(undoButton());
     await settle();
+    // The day is read again, and that read is offline here: no good read has landed yet, so every line is still up.
+    view.matchDay.answerDay(OFFLINE, ok(called()));
     const days = calls(view, 'day').length;
     fireEvent.click(
       within(screen.getByTestId('undo-call-confirm')).getByRole('button', {
@@ -676,6 +679,104 @@ describe('Undo call', () => {
     expect(screen.getByText(line)).toBeTruthy();
     expect(screen.queryByTestId('undo-call-confirm')).toBeNull();
     expect(calls(view, 'day').length).toBeGreaterThan(days);
+  });
+
+  const confirmUndo = async () => {
+    fireEvent.click(
+      within(screen.getByTestId('undo-call-confirm')).getByRole('button', {
+        name: en['matchday.call.undo'],
+      }),
+    );
+    await settle();
+  };
+
+  it.each([
+    ['gone', GONE, en['matchday.call.moved']],
+    ['offline', OFFLINE, en['matchday.offlineEmpty']],
+  ] as const)(
+    'a line about the read in flight (%s) ends when the next good read lands, not before (final review m1)',
+    async (_, answer, line) => {
+      const view = await openList({
+        day: called(),
+        prepare: (f) => f.matchDay.answerUndo(answer as CallAnswer<never>),
+      });
+      fireEvent.click(undoButton());
+      await settle();
+      view.matchDay.answerDay(OFFLINE, ok(called()));
+      await confirmUndo();
+      expect(screen.getByText(line)).toBeTruthy();
+      await settle(MATCHDAY_POLL_MS);
+      expect(screen.queryByText(line)).toBeNull();
+    },
+  );
+
+  it('a good refresh straight after ends such a line at once', async () => {
+    await openList({
+      day: called(),
+      prepare: (f) => f.matchDay.answerUndo(GONE),
+    });
+    fireEvent.click(undoButton());
+    await settle();
+    await confirmUndo();
+    expect(screen.queryByText(en['matchday.call.moved'])).toBeNull();
+  });
+
+  it('a reason to be read (called on the desk) stays through the refresh it asked for, and ends at the next poll', async () => {
+    await openList({ day: called(), prepare: (f) => f.matchDay.answerUndo(desk('notCodeCall')) });
+    fireEvent.click(undoButton());
+    await settle();
+    await confirmUndo();
+    expect(screen.getByText(en['matchday.call.notCodeCall'])).toBeTruthy();
+    await settle(MATCHDAY_POLL_MS);
+    expect(screen.queryByText(en['matchday.call.notCodeCall'])).toBeNull();
+  });
+
+  it('the sheet notices its court is no longer called: it says so, offers Close, and sends nothing (final review m2)', async () => {
+    const view = await openList({ day: called() });
+    fireEvent.click(undoButton());
+    await settle();
+    const confirm = () => within(screen.getByTestId('undo-call-confirm'));
+    expect(confirm().queryByTestId('undo-call-gone')).toBeNull();
+    view.matchDay.answerDay(ok(calling()));
+    await settle(MATCHDAY_POLL_MS);
+    expect(confirm().getByText('Court 2 is no longer called')).toBeTruthy();
+    expect(confirm().queryByRole('button', { name: en['matchday.call.undo'] })).toBeNull();
+    expect(confirm().queryByRole('button', { name: en['matchday.call.keep'] })).toBeNull();
+    fireEvent.click(confirm().getByRole('button', { name: en['matchday.call.close'] }));
+    await settle();
+    expect(screen.queryByTestId('undo-call-confirm')).toBeNull();
+    expect(calls(view, 'undo')).toHaveLength(0);
+  });
+
+  it.each([
+    ['the court is playing', called({ state: 'playing' })],
+    ['the match is in play', called({ now: { ...OWN.match, status: 'inPlay' } })],
+    ['another match is Now', called({ now: row(BUSY, 'Zed', 'Yan') })],
+  ])('the sheet is Close-only too when %s (final review m2)', async (_, day) => {
+    const view = await openList({ day: called() });
+    fireEvent.click(undoButton());
+    await settle();
+    view.matchDay.answerDay(ok(day));
+    await settle(MATCHDAY_POLL_MS);
+    expect(
+      within(screen.getByTestId('undo-call-confirm')).getByTestId('undo-call-gone'),
+    ).toBeTruthy();
+  });
+
+  it('with two called courts each control names its own (final review m3)', async () => {
+    const two: MatchDay = {
+      ...called(),
+      courts: called().courts.map((c) =>
+        c.courtId === COURT_2 ? c : { ...c, state: 'called', now: row(BUSY, 'Zed', 'Yan') },
+      ),
+    };
+    await openList({ day: two });
+    const names = screen
+      .getAllByRole('button', { name: /^Undo call, / })
+      .map((b) => b.getAttribute('aria-label') ?? b.textContent);
+    expect(new Set(names).size).toBe(names.length);
+    expect(names.length).toBeGreaterThan(1);
+    expect(names).toContain('Undo call, Court 2');
   });
 
   it('the desk’s own call is explained in plain words', () => {

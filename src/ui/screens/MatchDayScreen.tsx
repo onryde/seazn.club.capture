@@ -54,7 +54,7 @@ export function MatchDayScreen() {
   const { quiet } = bounce;
   const home = useBackToHome(quiet);
   const list = useMatchDay();
-  const [line, say] = useState<MessageKey | null>(null);
+  const { line, say } = useLine(list.reads);
   const opening = useOpenFromMatchDay({ say, refresh: list.refresh });
   const cameBackTo = useCameBackFrom();
   const opened = useOpenedIds(list.updatedAt);
@@ -130,13 +130,40 @@ export function MatchDayScreen() {
         />
       )}
       {undo.asking === null || list.day === null ? null : (
-        <UndoOverlay undo={undo} zone={list.day.tz} onKeep={keepCall} />
+        <UndoOverlay undo={undo} day={list.day} onKeep={keepCall} />
       )}
       {exit.sheet === null ? null : (
         <ExitMatchDaySheet stake={exit.sheet} onStay={exit.stay} onExit={exit.exit} />
       )}
     </View>
   );
+}
+
+/** Lines that describe the read being made ("refreshing", "Offline"): the first good read after them ends them. */
+const READ_LINES: ReadonlySet<MessageKey> = new Set([
+  'matchday.call.moved',
+  'matchday.offlineEmpty',
+]);
+
+/**
+ * The one line an Undo or an open says on the list (final review m1). It does not outlive the day it was said about: a
+ * line about the read in flight ends when that read lands (the refresh the action itself asks for), and every other
+ * (the reasons to be read: started, called on the desk, no power) at the read after, so it is on screen for a poll.
+ */
+function useLine(reads: number): {
+  line: MessageKey | null;
+  say: (key: MessageKey | null) => void;
+} {
+  const [said, setSaid] = useState<{ key: MessageKey; at: number } | null>(null);
+  const now = useRef(reads);
+  now.current = reads;
+  const say = useCallback(
+    (key: MessageKey | null) => setSaid(key === null ? null : { key, at: now.current }),
+    [],
+  );
+  const lives = said === null ? 0 : READ_LINES.has(said.key) ? 1 : 2;
+  const line = said !== null && reads - said.at < lives ? said.key : null;
+  return { line, say };
 }
 
 /**
@@ -177,22 +204,30 @@ function useCalling({ quiet, note }: ReturnType<typeof useBounce>, day: MatchDay
   return { calling, startCall, closeCall, canCall };
 }
 
+/** The day's latest read still shows this match as the one called on a court and not started (the Undo's own condition). */
+const stillCalled = (day: MatchDay, fixtureId: string): boolean =>
+  day.courts.some(
+    (c) => c.state === 'called' && c.now?.fixtureId === fixtureId && c.now.status === 'upcoming',
+  );
+
 /** Undo call's question over the list, with the match's names as the list says them. */
 const UndoOverlay = memo(function UndoOverlay({
   undo,
-  zone,
+  day,
   onKeep,
 }: {
   readonly undo: UndoView;
-  readonly zone: string;
+  readonly day: MatchDay;
   readonly onKeep: () => void;
 }) {
-  const words = useRowWords(zone);
+  const words = useRowWords(day.tz);
   const asking = undo.asking;
   if (asking === null) return null;
   return (
     <UndoCallSheet
       match={words(asking.row).names}
+      court={asking.courtName}
+      called={stillCalled(day, asking.row.fixtureId)}
       busy={undo.busy}
       onKeep={onKeep}
       onUndo={undo.undo}

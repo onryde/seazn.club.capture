@@ -1276,5 +1276,7 @@
   "matchday.call.frozen": "La competición está en pausa — pregunta al organizador",
   "matchday.call.notCodeCall": "Convocado desde la web — pide al organizador que lo deshaga",
   "matchday.call.notCandidate": "Este partido no se puede jugar en {court}",
-  "matchday.call.actionNamed": "Convocar un partido, {court}"
+  "matchday.call.actionNamed": "Convocar un partido, {court}",
+  "matchday.call.undoNamed": "Deshacer la convocatoria, {court}",
+  "matchday.call.undoGone": "{court} ya no tiene un partido convocado"
 }

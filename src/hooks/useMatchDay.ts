@@ -28,6 +28,8 @@ type Shown = {
   readonly state: MatchDayListState;
   readonly day: MatchDay | null;
   readonly updatedAt: Date | null;
+  /** How many good answers (`ready`) have landed since the list mounted: a line on the list says how long it lives by it. */
+  readonly reads: number;
   readonly refusal: MatchDayRefusal | null;
   /**
    * The unsent taps of each match opened from Match Day (`matchDayStore.opened()`), read with each read of the day: a
@@ -57,6 +59,7 @@ const LOADING: Shown = {
   state: 'loading',
   day: null,
   updatedAt: null,
+  reads: 0,
   refusal: null,
   unsent: NONE_UNSENT,
 };
@@ -231,13 +234,14 @@ function settle(ports: Ports, held: Held, read: Read, setShown: SetShown): void 
   const { verdict, unsent } = read;
   switch (verdict.kind) {
     case 'open':
-      setShown({
+      setShown((now) => ({
         state: 'ready',
         day: verdict.day,
         updatedAt: ports.clock(),
+        reads: now.reads + 1,
         refusal: null,
         unsent,
-      });
+      }));
       void keepCopy(ports, held.code, verdict.day);
       return;
     case 'offline':

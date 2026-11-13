@@ -1276,5 +1276,7 @@
   "matchday.call.frozen": "The competition is paused — ask the organiser",
   "matchday.call.notCodeCall": "Called from the web desk — ask the organiser to undo it",
   "matchday.call.notCandidate": "This match can't be played on {court}",
-  "matchday.call.actionNamed": "Call a match, {court}"
+  "matchday.call.actionNamed": "Call a match, {court}",
+  "matchday.call.undoNamed": "Undo call, {court}",
+  "matchday.call.undoGone": "{court} is no longer called"
 }

@@ -14,12 +14,18 @@ import { Text } from '@/ui/components/Text';
  */
 export const UndoCallSheet = memo(function UndoCallSheet({
   match,
+  court,
+  called,
   busy,
   onKeep,
   onUndo,
 }: {
   /** "Ng v Brown": the match whose call is undone. */
   readonly match: string;
+  /** The court it is called to. */
+  readonly court: string;
+  /** The latest read of the day still shows that match called on that court; when it stops, the sheet says so and offers Close. */
+  readonly called: boolean;
   readonly busy: boolean;
   readonly onKeep: () => void;
   readonly onUndo: () => void;
@@ -36,10 +42,52 @@ export const UndoCallSheet = memo(function UndoCallSheet({
       />
       <View testID="undo-call-confirm" accessibilityViewIsModal aria-modal style={padSheet.sheet}>
         <Text variant="title">{t('matchday.call.undoTitle')}</Text>
-        <Text variant="body">{t('matchday.call.undoBody', { match })}</Text>
-        <Button label={t('matchday.call.keep')} onPress={onKeep} disabled={busy} />
-        <GhostButton label={t('matchday.call.undo')} onPress={onUndo} disabled={busy} />
+        {called || busy ? (
+          <Asking match={match} busy={busy} onKeep={onKeep} onUndo={onUndo} />
+        ) : (
+          <Gone court={court} onClose={onKeep} />
+        )}
       </View>
     </View>
+  );
+});
+
+const Asking = memo(function Asking({
+  match,
+  busy,
+  onKeep,
+  onUndo,
+}: {
+  readonly match: string;
+  readonly busy: boolean;
+  readonly onKeep: () => void;
+  readonly onUndo: () => void;
+}) {
+  const { t } = useT();
+  return (
+    <>
+      <Text variant="body">{t('matchday.call.undoBody', { match })}</Text>
+      <Button label={t('matchday.call.keep')} onPress={onKeep} disabled={busy} />
+      <GhostButton label={t('matchday.call.undo')} onPress={onUndo} disabled={busy} />
+    </>
+  );
+});
+
+/** The court is not calling this match any more (it started, or the desk moved it): nothing to undo, only Close. */
+const Gone = memo(function Gone({
+  court,
+  onClose,
+}: {
+  readonly court: string;
+  readonly onClose: () => void;
+}) {
+  const { t } = useT();
+  return (
+    <>
+      <Text variant="body" testID="undo-call-gone">
+        {t('matchday.call.undoGone', { court })}
+      </Text>
+      <Button label={t('matchday.call.close')} onPress={onClose} />
+    </>
   );
 });

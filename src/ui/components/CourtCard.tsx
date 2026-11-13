@@ -173,7 +173,13 @@ const UndoAction = memo(function UndoAction({
 }) {
   const { t } = useT();
   const press = useCallback(() => onUndo(row, court), [onUndo, row, court]);
-  return <GhostButton label={t('matchday.call.undo')} onPress={press} />;
+  return (
+    <GhostButton
+      label={t('matchday.call.undo')}
+      accessibilityLabel={t('matchday.call.undoNamed', { court })}
+      onPress={press}
+    />
+  );
 });
 
 const QueueRows = memo(function QueueRows({
