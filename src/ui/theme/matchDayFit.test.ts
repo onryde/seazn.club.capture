@@ -457,6 +457,43 @@ describe('the list’s head, banner, chips and sections', () => {
     });
   });
 
+  it('the finished toggle and the offline open line, at 320 and 360 (one line for the toggle; the offline line wraps to two, with room to)', () => {
+    const measured: Record<string, number> = {};
+    for (const lang of LANGS)
+      for (const width of [320, 360]) {
+        const toggle = [
+          said(lang, 'matchday.finished.more.one', { count: '1' }),
+          said(lang, 'matchday.finished.more.other', { count: '12' }),
+          said(lang, 'matchday.finished.less'),
+        ].map((line) => linesOf(line, cardInner(width), geist('control')));
+        measured[`${width} ${lang} toggle`] = Math.max(...toggle);
+        measured[`${width} ${lang} line`] = linesOf(
+          said(lang, 'matchday.offlineOpen'),
+          column(width),
+          geist('control'),
+        );
+      }
+    dump('toggle', measured);
+    expect(measured).toEqual({
+      '320 en toggle': 1,
+      '320 en line': 2,
+      '360 en toggle': 1,
+      '360 en line': 1,
+      '320 es toggle': 1,
+      '320 es line': 2,
+      '360 es toggle': 1,
+      '360 es line': 2,
+      '320 fr toggle': 1,
+      '320 fr line': 2,
+      '360 fr toggle': 1,
+      '360 fr line': 1,
+      '320 nl toggle': 1,
+      '320 nl line': 2,
+      '360 nl toggle': 1,
+      '360 nl line': 2,
+    });
+  });
+
   it('an empty day (it wraps: Dutch takes 2 lines) and the offline-empty word, at 320', () => {
     const measured: Record<string, number> = {};
     for (const lang of LANGS) {

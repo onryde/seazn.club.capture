@@ -159,12 +159,12 @@ describe('opening a match from the list', () => {
     expect(app.kv.entries.has(scoringLinkKey(NOW_ROW.fixtureId))).toBe(false);
   });
 
-  it('offline with a stored link opens it; offline without one shows "Offline"', async () => {
+  it('offline with a stored link opens it; offline without one says to open it once back online', async () => {
     const app = await launchApp({ kvSeed: IN_MATCHDAY, scoringSeed: serving(NOW_ROW) });
     app.matchDay.answerOpen({ ok: false, offline: true });
     await tapRow(/^Now, Ng v Brown/);
     expect(app.nav.current()).toBe('matchday');
-    expect(screen.getAllByText(en['matchday.offlineEmpty']).length).toBeGreaterThan(0);
+    expect(screen.getByText(en['matchday.offlineOpen'])).toBeTruthy();
     await app.kv.set(
       scoringLinkKey(NOW_ROW.fixtureId),
       JSON.stringify({
@@ -224,6 +224,9 @@ describe('finished rows, and a clear the phone refuses', () => {
     });
     await flush(100);
     expect(screen.getByRole('button', { name: /^Finished, Lee v Tan, 21-10/ })).toBeTruthy();
+    // Only the latest finished match shows until "+N more finished" is tapped.
+    expect(screen.queryByLabelText('Finished, Roy v Kim, 21-10')).toBeNull();
+    fireEvent.click(screen.getByTestId('finished-more'));
     expect(screen.queryByRole('button', { name: /Roy v Kim/ })).toBeNull();
     expect(screen.getByLabelText('Finished, Roy v Kim, 21-10')).toBeTruthy();
   });

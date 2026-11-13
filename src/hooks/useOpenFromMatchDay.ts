@@ -118,7 +118,7 @@ async function settle(
     if (value.kind === 'link') return openLink(ports, opening, value, sink);
     return openStored(ports, opening, sink, 'matchday.open-finished-no-link');
   }
-  if ('offline' in answer) return openStored(ports, opening, sink, null, 'matchday.offlineEmpty');
+  if ('offline' in answer) return openStored(ports, opening, sink, null, 'matchday.offlineOpen');
   // A refusal of the code itself (ended, withdrawn, not open yet) or a match that is gone: the day decides.
   sink.refresh();
 }

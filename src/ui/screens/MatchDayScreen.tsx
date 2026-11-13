@@ -361,6 +361,7 @@ const Courts = memo(function Courts({
   readonly onSlot: (courtName: string, y: number) => void;
 }) {
   const [venue, setVenue] = useState<string | null>(null);
+  const [expanded, flip] = useExpandedCourts(day);
   const venues = useMemo(() => venuesOf(day), [day]);
   const cards = useMemo(() => courtCardsAt(day, venue), [day, venue]);
   const sending = useMemo(() => sendingByCourt(day, unsent), [day, unsent]);
@@ -378,11 +379,41 @@ const Courts = memo(function Courts({
           onOpen={open}
           onSlot={onSlot}
           opened={opened}
+          expanded={expanded.has(card.courtId)}
+          onToggle={flip}
         />
       ))}
     </>
   );
 });
+
+/**
+ * The courts showing every finished match, by court id: the screen's own state, not stored, so a reload starts
+ * collapsed. A court that is down to one finished match or none (the day read again) forgets its flag, so it does not
+ * come back open when a second one arrives.
+ */
+function useExpandedCourts(
+  day: MatchDay,
+): readonly [ReadonlySet<string>, (courtId: string) => void] {
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const flip = useCallback(
+    (courtId: string) =>
+      setExpanded((now) => {
+        const next = new Set(now);
+        if (!next.delete(courtId)) next.add(courtId);
+        return next;
+      }),
+    [],
+  );
+  useEffect(() => {
+    const many = new Set(day.courts.filter((c) => c.finished.length > 1).map((c) => c.courtId));
+    setExpanded((now) => {
+      const kept = new Set([...now].filter((id) => many.has(id)));
+      return kept.size === now.size ? now : kept;
+    });
+  }, [day]);
+  return [expanded, flip];
+}
 
 const NO_STAKE: Stake = { count: 0, unreadable: false };
 

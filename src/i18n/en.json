@@ -1237,5 +1237,9 @@
   "home.tile.matchday.opens": "Opens {day} · {time}",
   "home.tile.matchday.saved": "Code saved · tap to open",
   "home.tile.matchday.tap": "Tap to open",
-  "matchday.notOpenSheet.hide": "Hide"
+  "matchday.notOpenSheet.hide": "Hide",
+  "matchday.finished.more.one": "+{count} more finished",
+  "matchday.finished.more.other": "+{count} more finished",
+  "matchday.finished.less": "Show less",
+  "matchday.offlineOpen": "Offline · open this match once you're back online"
 }

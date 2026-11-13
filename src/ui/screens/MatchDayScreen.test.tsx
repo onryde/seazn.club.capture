@@ -689,3 +689,107 @@ describe('MatchDayScreen: in four languages', () => {
     },
   );
 });
+
+describe('finished matches: the latest, then "+N more finished" (F-T8-5)', () => {
+  const done = (id: string, home: string, away: string): Row =>
+    row(id, home, away, { status: 'finished', summary: '21-10' });
+  const three = [done('f-3', 'Cy', 'Di'), done('f-2', 'Bo', 'Eve'), done('f-1', 'Ann', 'Cat')];
+  const finishedLabels = () =>
+    rows()
+      .map((one) => one.getAttribute('aria-label') ?? '')
+      .filter((label) => label.startsWith('Finished'));
+  const moreOf = (at: number) => cardAt(at).queryByTestId('finished-more');
+  const tap = (at: number) => fireEvent.click(moreOf(at) as HTMLElement);
+
+  it('shows the newest finished match and one row for the rest; a tap shows them all, and a tap hides them', async () => {
+    await openList({ day: dayWith({ courts: [court('c-1', 'Court 1', { finished: three })] }) });
+    expect(finishedLabels()).toEqual(['Finished, Cy v Di, 21-10']);
+    const more = moreOf(0) as HTMLElement;
+    expect(more.textContent).toBe('+2 more finished');
+    expect(more.getAttribute('aria-expanded')).toBe('false');
+    expect(style(within(more).getByText('+2 more finished')).color).toBe(edgeOf(colour.ink3));
+    tap(0);
+    expect(finishedLabels()).toHaveLength(3);
+    expect(moreOf(0)?.textContent).toBe(en['matchday.finished.less']);
+    expect(moreOf(0)?.getAttribute('aria-expanded')).toBe('true');
+    tap(0);
+    expect(finishedLabels()).toHaveLength(1);
+    expect(moreOf(0)?.textContent).toBe('+2 more finished');
+  });
+
+  it('says one more in the singular', async () => {
+    await openList({
+      day: dayWith({ courts: [court('c-1', 'Court 1', { finished: three.slice(0, 2) })] }),
+    });
+    expect(moreOf(0)?.textContent).toBe(en['matchday.finished.more.one'].replace('{count}', '1'));
+  });
+
+  it('has no row for a court with one finished match or none', async () => {
+    const courts = [
+      court('c-1', 'Court 1', { finished: three.slice(0, 1) }),
+      court('c-2', 'Court 2'),
+    ];
+    await openList({ day: dayWith({ courts }) });
+    expect(screen.queryAllByTestId('finished-more')).toEqual([]);
+    expect(finishedLabels()).toHaveLength(1);
+  });
+
+  it('opens each court on its own', async () => {
+    const other = [done('g-2', 'Fay', 'Gus'), done('g-1', 'Hal', 'Ivy')];
+    const courts = [
+      court('c-1', 'Court 1', { finished: three }),
+      court('c-2', 'Court 2', { finished: other }),
+    ];
+    await openList({ day: dayWith({ courts }) });
+    tap(1);
+    expect(cardAt(0).getAllByLabelText(/^Finished/)).toHaveLength(1);
+    expect(cardAt(1).getAllByLabelText(/^Finished/)).toHaveLength(2);
+    expect(moreOf(0)?.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('stays open when the day is read again with more than one finished, and closes cleanly when it drops to one', async () => {
+    const view = await openList({
+      day: dayWith({ courts: [court('c-1', 'Court 1', { finished: three })] }),
+    });
+    tap(0);
+    view.matchDay.answerDay({
+      ok: true,
+      value: dayWith({ courts: [court('c-1', 'Court 1', { finished: [...three] })] }),
+    });
+    await settle(MATCHDAY_POLL_MS);
+    expect(finishedLabels()).toHaveLength(3);
+    view.matchDay.answerDay({
+      ok: true,
+      value: dayWith({ courts: [court('c-1', 'Court 1', { finished: three.slice(0, 1) })] }),
+    });
+    await settle(MATCHDAY_POLL_MS);
+    expect(screen.queryAllByTestId('finished-more')).toEqual([]);
+    expect(finishedLabels()).toHaveLength(1);
+    view.matchDay.answerDay({
+      ok: true,
+      value: dayWith({ courts: [court('c-1', 'Court 1', { finished: three })] }),
+    });
+    await settle(MATCHDAY_POLL_MS);
+    expect(finishedLabels()).toHaveLength(1);
+    expect(moreOf(0)?.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('flips once per tap: two taps leave it as it was', async () => {
+    await openList({ day: dayWith({ courts: [court('c-1', 'Court 1', { finished: three })] }) });
+    tap(0);
+    tap(0);
+    expect(finishedLabels()).toHaveLength(1);
+  });
+
+  it.each(['es', 'fr', 'nl'] as const)('reads in %s', async (lang) => {
+    await openList({
+      lang,
+      day: dayWith({ courts: [court('c-1', 'Court 1', { finished: three })] }),
+    });
+    expect(moreOf(0)?.textContent).toBe(
+      word(lang, 'matchday.finished.more.other').replace('{count}', '2'),
+    );
+    tap(0);
+    expect(moreOf(0)?.textContent).toBe(word(lang, 'matchday.finished.less'));
+  });
+});

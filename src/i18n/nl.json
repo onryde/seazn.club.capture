@@ -1237,5 +1237,9 @@
   "home.tile.matchday.opens": "Opent {day} · {time}",
   "home.tile.matchday.saved": "Code opgeslagen · tik om te openen",
   "home.tile.matchday.tap": "Tik om te openen",
-  "matchday.notOpenSheet.hide": "Verbergen"
+  "matchday.notOpenSheet.hide": "Verbergen",
+  "matchday.finished.more.one": "+{count} afgelopen wedstrijd meer",
+  "matchday.finished.more.other": "+{count} afgelopen wedstrijden meer",
+  "matchday.finished.less": "Minder tonen",
+  "matchday.offlineOpen": "Offline · open deze wedstrijd zodra je weer online bent"
 }

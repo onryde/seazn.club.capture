@@ -250,7 +250,7 @@ describe('a refusal, a gone match and a port that fails', () => {
     const m = await mount();
     m.matchDay.throwNext();
     await tap(m.open);
-    expect(m.sink.lines).toEqual([null, 'matchday.offlineEmpty']);
+    expect(m.sink.lines).toEqual([null, 'matchday.offlineOpen']);
     expect(readRecord(m.record).map((line) => line.event)).toContain('matchday.open-threw');
     await tap(m.open);
     expect(m.ports.matchDayStore.openMatch()?.fixtureId).toBe(NOW_ROW.fixtureId);
@@ -281,12 +281,12 @@ describe('offline, and a match already held on this phone', () => {
     expect(m.sink.lines).toEqual([null]);
   });
 
-  it('offline without one says "Offline" and does not navigate', async () => {
+  it('offline without one says to open it once back online, and does not navigate', async () => {
     const m = await mount();
     const calls = vi.spyOn(m.navigation, 'go');
     m.matchDay.answerOpen({ ok: false, offline: true });
     await tap(m.open);
-    expect(m.sink.lines).toEqual([null, 'matchday.offlineEmpty']);
+    expect(m.sink.lines).toEqual([null, 'matchday.offlineOpen']);
     expect(calls).not.toHaveBeenCalledWith('scoring');
     expect(m.ports.matchDayStore.openMatch()).toBeUndefined();
   });
@@ -307,7 +307,7 @@ describe('offline, and a match already held on this phone', () => {
     const m = await mount({ kv });
     m.matchDay.answerOpen({ ok: false, offline: true });
     await tap(m.open);
-    expect(m.sink.lines).toEqual([null, 'matchday.offlineEmpty']);
+    expect(m.sink.lines).toEqual([null, 'matchday.offlineOpen']);
   });
 
   it('a finished match opens view-only from the link already held', async () => {

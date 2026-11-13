@@ -1,5 +1,5 @@
 import { memo, useCallback } from 'react';
-import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import { Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import type {
   CourtCard as CourtCardModel,
   CourtState,
@@ -34,6 +34,10 @@ type CourtCardProps = {
   readonly onSlot?: (courtName: string, y: number) => void;
   /** The matches whose link this phone holds: only these finished rows open (the finished answer carries no link). */
   readonly opened?: ReadonlySet<string>;
+  /** Whether this court shows every finished match, not only the latest (the screen holds it, per court). */
+  readonly expanded?: boolean;
+  /** A tap on "+N more finished" or "Show less": the screen flips this court's flag. */
+  readonly onToggle?: (courtId: string) => void;
 };
 
 /**
@@ -48,6 +52,8 @@ export const CourtCard = memo(function CourtCard({
   onOpen,
   onSlot,
   opened,
+  expanded = false,
+  onToggle,
 }: CourtCardProps) {
   const { t } = useT();
   const words = useRowWords(zone);
@@ -68,10 +74,13 @@ export const CourtCard = memo(function CourtCard({
       <QueueRows card={card} words={words} onOpen={onOpen} />
       <FinishedRows
         court={card.name}
+        courtId={card.courtId}
         rows={card.finished}
         words={words}
         onOpen={onOpen}
         opened={opened}
+        expanded={expanded}
+        onToggle={onToggle}
       />
     </View>
   );
@@ -140,26 +149,35 @@ const QueueRows = memo(function QueueRows({
 
 const FinishedRows = memo(function FinishedRows({
   court,
+  courtId,
   rows,
   words,
   onOpen,
   opened,
+  expanded,
+  onToggle,
 }: {
   readonly opened: ReadonlySet<string> | undefined;
   readonly court: string;
+  readonly courtId: string;
   readonly rows: readonly Row[];
   readonly words: (row: Row) => RowWords;
   readonly onOpen: Open;
+  readonly expanded: boolean;
+  readonly onToggle: ((courtId: string) => void) | undefined;
 }) {
   const { t } = useT();
   if (rows.length === 0) return null;
   const heading = t('matchday.row.finished');
+  // Newest first: the latest alone, until the operator asks for the rest.
+  const more = rows.length - 1;
+  const shown = expanded ? rows : rows.slice(0, 1);
   return (
     <>
       <Text variant="diagSection" style={styles.finished}>
         {heading}
       </Text>
-      {rows.map((row) => (
+      {shown.map((row) => (
         <CourtRow
           key={row.fixtureId}
           row={row}
@@ -170,7 +188,41 @@ const FinishedRows = memo(function FinishedRows({
           onOpen={opened?.has(row.fixtureId) === true ? onOpen : undefined}
         />
       ))}
+      {more > 0 ? (
+        <MoreRow courtId={courtId} more={more} open={expanded} onToggle={onToggle} />
+      ) : null}
     </>
+  );
+});
+
+/** "+N more finished" (or "Show less" once they show): a dimmed button naming itself, with its state. */
+const MoreRow = memo(function MoreRow({
+  courtId,
+  more,
+  open,
+  onToggle,
+}: {
+  readonly courtId: string;
+  readonly more: number;
+  readonly open: boolean;
+  readonly onToggle: ((courtId: string) => void) | undefined;
+}) {
+  const { t, tp } = useT();
+  const press = useCallback(() => onToggle?.(courtId), [onToggle, courtId]);
+  const word = open ? t('matchday.finished.less') : tp('matchday.finished.more', more);
+  return (
+    <Pressable
+      testID="finished-more"
+      accessibilityRole="button"
+      accessibilityLabel={word}
+      aria-expanded={open}
+      onPress={press}
+      style={styles.more}
+    >
+      <Text variant="control" numberOfLines={1} style={styles.moreWord}>
+        {word}
+      </Text>
+    </Pressable>
   );
 });
 
@@ -207,6 +259,8 @@ const styles = StyleSheet.create({
   head: { minHeight: layout.touch, flexDirection: 'row', alignItems: 'center', gap: space.sm },
   name: { flex: 1, minWidth: 0 },
   finished: { paddingTop: space.sm, color: colour.ink3 },
+  more: { minHeight: layout.touch, justifyContent: 'center' },
+  moreWord: { color: colour.ink3 },
   chip: {
     flexShrink: 0,
     paddingHorizontal: space.sm,

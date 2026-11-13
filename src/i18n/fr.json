@@ -1237,5 +1237,9 @@
   "home.tile.matchday.opens": "Ouvre {day} · {time}",
   "home.tile.matchday.saved": "Code enregistré · touchez pour ouvrir",
   "home.tile.matchday.tap": "Touchez pour ouvrir",
-  "matchday.notOpenSheet.hide": "Masquer"
+  "matchday.notOpenSheet.hide": "Masquer",
+  "matchday.finished.more.one": "+{count} terminé de plus",
+  "matchday.finished.more.other": "+{count} terminés de plus",
+  "matchday.finished.less": "Voir moins",
+  "matchday.offlineOpen": "Hors ligne · ouvrez ce match une fois reconnecté"
 }
