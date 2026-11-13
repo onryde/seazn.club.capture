@@ -182,6 +182,28 @@ describe('bannerFor (S4 Match Day design §7: a banner only when an approval wai
     });
   });
 
+  describe('a ready approval is preferred to a waiting one (task 8d-B ruling)', () => {
+    const WAITING: Approval = { ...DRAW, waiting: 'stageComplete' };
+    const WAITING_TOO: Approval = {
+      ...WAITING,
+      stageId: '5d0e1f2a-3b4c-4d5e-9f6a-8b9c0d1e2f3a',
+    };
+
+    it('[waiting draw, ready Swiss] shows the Swiss, which can be reviewed', () => {
+      const banner = bannerFor(day({ approvals: [WAITING, SWISS] }));
+      expect(banner).toEqual({ approval: SWISS, canApprove: true });
+      expect(banner !== null && canReview(banner)).toBe(true);
+    });
+
+    it('[waiting, waiting] shows the first waiting one', () => {
+      expect(bannerFor(day({ approvals: [WAITING, WAITING_TOO] }))?.approval).toBe(WAITING);
+    });
+
+    it('[ready, waiting] is unchanged: the ready one', () => {
+      expect(bannerFor(day({ approvals: [SWISS, WAITING] }))?.approval).toBe(SWISS);
+    });
+  });
+
   it('on a code without the tick, the banner has no button (matchday.approve.webOnly)', () => {
     expect(bannerFor(day({ approvals: [SWISS], canApprove: false }))).toEqual({
       approval: SWISS,

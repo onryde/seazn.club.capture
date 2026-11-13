@@ -154,9 +154,13 @@ function cardOf(court: Court): CourtCard {
   };
 }
 
-/** The first approval the server lists, or null when none waits. */
+/**
+ * The first READY approval the server lists (waiting null), or, when none is ready, the first one the web still holds
+ * as waiting (controller's ruling, task 8d-B): a waiting draw never hides a Swiss round or a draw that can be reviewed.
+ * Null when none waits.
+ */
 export function bannerFor(day: MatchDay): Banner | null {
-  const approval = day.approvals[0];
+  const approval = day.approvals.find((a) => a.waiting === null) ?? day.approvals[0];
   return approval === undefined ? null : { approval, canApprove: day.canApprove };
 }
 
