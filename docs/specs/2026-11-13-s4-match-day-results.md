@@ -128,3 +128,20 @@ Asha v Dina 15–10, Fay v Bea 15–12, Dina v Eva 8–15, Cara v Fay 11–15.
 
 The 320 dp pass and the device-only list above. The approval overlay was not read on the device in either approval
 (the owner held through it), so TalkBack on it stays open.
+
+Calling a match to a court (S4 design §7a; final review 8), on a local build, staging, in portrait:
+
+1. A code minted WITH "Call matches to courts": a free court shows Call a match; a code minted without the tick shows no
+   button anywhere (the court, the list, the sheet).
+2. Call a match: the candidates list (a blocked row dimmed with its reason), a tap on one shows the preview, one line per
+   warning; "Hold to call" fills for 3 s and calls, an early release calls nothing. The court reads Called with the match
+   in Now within one read, also on a weak cell.
+3. Undo call on a call this phone made: the confirm (Keep first), then the match is back where it was. A call made at the
+   web desk: Undo is refused, "Called from the web desk — ask the organiser to undo it".
+4. Undo's sheet open while the desk starts the match or moves the call: within a poll it says "{court} is no longer called"
+   with Close only.
+5. A line from Undo ("Offline", "It has moved since — refreshing") is gone after the next good read; a refusal's reason
+   stays for one poll.
+6. Android Back mid-hold closes the sheet and cancels it; Back on Undo's sheet is Keep. TalkBack: the list beneath is
+   unreachable; "Call a match, Court 2" and "Undo call, Court 2" are spoken, one per called court.
+7. nl and fr on the hold plate and the candidate's place line: they wrap, they are not cut, on the owner's phone.
