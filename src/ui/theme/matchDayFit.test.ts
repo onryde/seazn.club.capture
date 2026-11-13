@@ -339,6 +339,36 @@ describe('a court card’s head: the name one line, the state chip whole', () =>
     ]);
   });
 
+  it('beside its chip and its small action (Call on Free, Undo on Called), a court’s name keeps room at 320 and 360', () => {
+    // Owner, 2026-11-13: "a small button beside Free". The compact ghost: its word in `controlSmall`, its padding and
+    // hairline either side.
+    const button = (word: string) =>
+      geist500.width(word, typeScale.controlSmall.fontSize) +
+      2 * layout.ghostCompactPadX +
+      2 * layout.iconBorder;
+    const PAIRS = [
+      ['matchday.court.free', 'matchday.call.short'],
+      ['matchday.court.called', 'matchday.call.undoShort'],
+    ] as const;
+    const room = (width: number, lang: Lang, state: string, action: string) =>
+      cardInner(width) - GAP - chipOf(said(lang, state)) - GAP - button(said(lang, action));
+    for (const lang of LANGS)
+      for (const [state, action] of PAIRS) {
+        const at = `${lang} ${action}`;
+        // A plain court name stands whole at 320; "Centre Court" at 360 (at 320 it may end in an ellipsis).
+        expect(caps('diagTitle')('Court 12'), at).toBeLessThanOrEqual(
+          room(320, lang, state, action),
+        );
+        expect(caps('diagTitle')('Centre Court'), at).toBeLessThanOrEqual(
+          room(360, lang, state, action),
+        );
+        // Anti-vacuity: a long hall's court is cut beside them, as beside the chip alone.
+        expect(caps('diagTitle')('Sports Centre Hall B Court 3'), at).toBeGreaterThan(
+          room(360, lang, state, action),
+        );
+      }
+  });
+
   it('the widest chip is Dutch Called, and leaves the name over half the card at 320', () => {
     const chips = LANGS.flatMap((lang) => STATES.map((key) => chipOf(said(lang, key))));
     expect(Math.max(...chips)).toBe(chipOf(said('nl', 'matchday.court.called')));

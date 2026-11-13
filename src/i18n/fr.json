@@ -1244,6 +1244,8 @@
   "matchday.offlineOpen": "Hors ligne · ouvrez ce match une fois reconnecté",
   "matchday.approve.waiting": "Poules terminées · {division} · terminez la phase sur le site web",
   "matchday.call.action": "Appeler un match",
+  "matchday.call.short": "Appeler",
+  "matchday.call.undoShort": "Annuler",
   "matchday.call.title": "Appeler sur {court}",
   "matchday.call.loading": "Recherche des matchs…",
   "matchday.call.none": "Rien ne peut commencer ici pour l'instant",

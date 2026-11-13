@@ -126,7 +126,9 @@ const styles = StyleSheet.create({
     gap: space.sm,
   },
   pressed: { backgroundColor: colour.pressFill },
-  label: { width: layout.matchDayRowLabel, color: colour.ink2 },
+  // As wide as its word, at most the widest (es Siguiente): no gap after a short one (owner, 2026-11-13, "big space
+  // between Next F").
+  label: { flexShrink: 0, maxWidth: layout.matchDayRowLabel, color: colour.ink2 },
   chip: {
     flexShrink: 0,
     paddingHorizontal: space.xs,

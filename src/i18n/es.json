@@ -1244,6 +1244,8 @@
   "matchday.offlineOpen": "Sin conexión · abre este partido cuando vuelvas a tener conexión",
   "matchday.approve.waiting": "Grupos terminados · {division} · completa la fase en la web",
   "matchday.call.action": "Convocar un partido",
+  "matchday.call.short": "Convocar",
+  "matchday.call.undoShort": "Deshacer",
   "matchday.call.title": "Convocar a {court}",
   "matchday.call.loading": "Buscando partidos…",
   "matchday.call.none": "Ahora no puede empezar nada aquí",

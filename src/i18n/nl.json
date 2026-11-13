@@ -1244,6 +1244,8 @@
   "matchday.offlineOpen": "Offline · open deze wedstrijd zodra je weer online bent",
   "matchday.approve.waiting": "Groepen afgelopen · {division} · rond de fase af op de website",
   "matchday.call.action": "Wedstrijd oproepen",
+  "matchday.call.short": "Oproepen",
+  "matchday.call.undoShort": "Terug",
   "matchday.call.title": "Oproepen naar {court}",
   "matchday.call.loading": "Wedstrijden zoeken…",
   "matchday.call.none": "Hier kan nu niets beginnen",

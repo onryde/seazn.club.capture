@@ -132,10 +132,12 @@ describe('MatchRow', () => {
       expect([word.whiteSpace, word.textOverflow]).toEqual(['nowrap', 'ellipsis']);
     });
 
-    it('never shrinks (the names give way); the label keeps its column, and a row without one has no column', () => {
+    it('never shrinks (the names give way); the label hugs its word, and a row without one has none', () => {
       const { rerender } = render(<MatchRow chip="R1" label="Now" names="A v B" detail={null} />);
       expect(getComputedStyle(screen.getByTestId('round-chip')).flexShrink).toBe('0');
-      expect(getComputedStyle(screen.getByText('Now')).width).toBe(`${layout.matchDayRowLabel}px`);
+      // No fixed column: a short label ("Now") leaves no gap before the chip; the widest (es) is the cap.
+      const label = getComputedStyle(screen.getByText('Now'));
+      expect([label.width, label.maxWidth]).toEqual(['auto', `${layout.matchDayRowLabel}px`]);
       rerender(<MatchRow chip="R1" spoken="Finished" names="A v B" detail={null} />);
       // No label: nothing stands before the chip, so the sheet's and a finished row's names are not pushed right.
       expect(screen.getByTestId('round-chip').previousElementSibling).toBeNull();

@@ -1244,6 +1244,8 @@
   "matchday.offlineOpen": "Offline · open this match once you're back online",
   "matchday.approve.waiting": "Groups finished · {division} · complete the stage on the web desk",
   "matchday.call.action": "Call a match",
+  "matchday.call.short": "Call",
+  "matchday.call.undoShort": "Undo",
   "matchday.call.title": "Call to {court}",
   "matchday.call.loading": "Finding matches…",
   "matchday.call.none": "Nothing can start here now",

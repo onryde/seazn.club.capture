@@ -966,6 +966,11 @@ before `?`), nl _Oproep ongedaan maken_; _Keep_ is es _Mantener_, fr _Garder_, n
 matches) is es _efectos en el programa_, fr _effet sur le programme_, nl _gevolgen voor het schema_. The hold plate in nl is _Houd om op
 te roepen_ (the longer wording wrapped at 320 dp). fr uses vous. These keys carry no `_review` marker, as the rest of the branch.
 
+The court's own action is a small button beside its state chip (owner, 2026-11-13: "a small button beside Free"), one word:
+`matchday.call.short` _Call_ (es _Convocar_, fr _Appeler_, nl _Oproepen_) on a free court, `matchday.call.undoShort` _Undo_ (es
+_Deshacer_, fr _Annuler_, nl _Terug_) on a called one. nl _Terug_, not _Ongedaan maken_: beside _Opgeroepen_ the longer word left a
+court's name 23 dp at 320 (`matchDayFit.test.ts`). A screen reader still hears the full `actionNamed` / `undoNamed`.
+
 ## Translation review
 
 - **New or changed English copy.** Add the key to es, fr and nl in the same

@@ -174,18 +174,29 @@ describe('Call a match: who sees it, and where', () => {
     expect(screen.getAllByRole('button', { name: /^Call a match, / })).toHaveLength(1);
     expect(callButton()).toBeTruthy();
     const playing = within(screen.getAllByTestId('court-card')[0] as HTMLElement);
-    expect(playing.queryByText(en['matchday.call.action'])).toBeNull();
+    expect(playing.queryByText(en['matchday.call.short'])).toBeNull();
+  });
+
+  it('is a small "Call" beside the court’s Free chip, in its head, not a button under the rows (owner)', async () => {
+    await openList();
+    const button = callButton();
+    expect(within(button).getByText(en['matchday.call.short'])).toBeTruthy();
+    expect(within(button).getByTestId('ghost-box')).toBeTruthy();
+    // The head: the name and the chip (one stop for a screen reader), then the button.
+    const info = button.previousElementSibling as HTMLElement;
+    expect(within(info).getByText('Court 2')).toBeTruthy();
+    expect(within(info).getByText(en['matchday.court.free'])).toBeTruthy();
   });
 
   it('a code without the power has no call control at all', async () => {
     await openList({ day: calling(false) });
-    expect(screen.queryByText(en['matchday.call.action'])).toBeNull();
+    expect(screen.queryByText(en['matchday.call.short'])).toBeNull();
     expect(screen.queryByRole('button', { name: /^Call a match, / })).toBeNull();
   });
 
   it('a called court of a code without the power has no Undo call either', async () => {
     await openList({ day: called({}, false) });
-    expect(screen.queryByText(en['matchday.call.undo'])).toBeNull();
+    expect(screen.queryByText(en['matchday.call.undoShort'])).toBeNull();
   });
 
   it('a court called to a match already called off the list has none, nor one in use elsewhere', async () => {
@@ -196,7 +207,7 @@ describe('Call a match: who sees it, and where', () => {
       ),
     };
     await openList({ day });
-    expect(screen.queryByText(en['matchday.call.action'])).toBeNull();
+    expect(screen.queryByText(en['matchday.call.short'])).toBeNull();
   });
 });
 
@@ -556,24 +567,27 @@ describe('the court stops being free under an open sheet', () => {
 });
 
 describe('Undo call', () => {
-  it('is offered under the Now row of a called court whose match has not started', async () => {
+  it('is a small "Undo" beside the Called chip of a court whose match has not started', async () => {
     await openList({ day: called() });
-    expect(undoButton()).toBeTruthy();
+    const button = undoButton();
+    expect(within(button).getByText(en['matchday.call.undoShort'])).toBeTruthy();
+    const info = button.previousElementSibling as HTMLElement;
+    expect(within(info).getByText(en['matchday.court.called'])).toBeTruthy();
   });
 
   it('is not offered once the match is in play, nor on a playing or free court', async () => {
     await openList({ day: called({ now: { ...OWN.match, status: 'inPlay' } }) });
-    expect(screen.queryByText(en['matchday.call.undo'])).toBeNull();
+    expect(screen.queryByText(en['matchday.call.undoShort'])).toBeNull();
   });
 
   it('is not offered on a playing court or a free one', async () => {
     await openList();
-    expect(screen.queryByText(en['matchday.call.undo'])).toBeNull();
+    expect(screen.queryByText(en['matchday.call.undoShort'])).toBeNull();
   });
 
   it('is not offered under an unstarted match on a court that is not called', async () => {
     await openList({ day: called({ state: 'playing' }) });
-    expect(screen.queryByText(en['matchday.call.undo'])).toBeNull();
+    expect(screen.queryByText(en['matchday.call.undoShort'])).toBeNull();
   });
 
   it('a tap asks first: the match, and Keep or Undo call; nothing is sent yet', async () => {
