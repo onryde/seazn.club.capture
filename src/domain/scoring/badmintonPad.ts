@@ -21,6 +21,7 @@ import {
   type PadView,
 } from '@/domain/scoring/padView';
 import type { SetBasedPhase } from '@/domain/scoring/setBasedBoard';
+import { padCallOf, type PadCallKey, type PointCalls } from '@/domain/scoring/setBasedPointCall';
 import {
   gamesWon,
   heaviestLevel,
@@ -142,6 +143,13 @@ export type BadmintonDisplay = {
    * rally carries it as `serving` (design §7.3). False whenever the server comes from the ledger, or is not known.
    */
   readonly serverPicked: boolean;
+  /**
+   * Game point, match point or the golden point for each side's next rally, as the engine folds it (`setBasedPointCall`).
+   * Optional: a display that names none calls nothing.
+   */
+  readonly calls?: PointCalls['calls'];
+  /** The name of what the engine threw (not its refusal) while the calls were read, else null: the hook logs it. */
+  readonly callFault?: string | null;
 };
 
 /** Every dictionary key this file names. The kit translates them as `MessageKey`, so each must exist in en.json. */
@@ -174,6 +182,7 @@ export type BadmintonPadKey =
   | 'scoring.badminton.tool.sanction'
   | 'scoring.badminton.tool.setScore'
   | BadmintonRuleKey
+  | PadCallKey
   | SanctionLevelKey;
 
 export type SanctionLevelKey = `scoring.sanction.${BadmintonSanctionLevel}`;
@@ -261,6 +270,7 @@ function half(state: BadmintonDisplay, side: PadSide): PadHalf<BadmintonPadKey> 
     // The bar follows the plate (owner, 2026-11-02): the serving side's is lit, so when the serve changes the light moves
     // with it, and neither is lit while the ledger names no server, before the match starts and once it is over.
     bar: plate === null ? 'dim' : 'lit',
+    call: padCallOf(state.calls?.[side], open(state)),
     hint: { key: WORDS.hint },
     tappable: open(state),
   };

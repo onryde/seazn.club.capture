@@ -113,6 +113,8 @@ describe('foldTableTennis: before the start', () => {
       scoreEvents: 0,
       lastTap: null,
       undoable: false,
+      calls: { first: null, second: null },
+      callFault: null,
     } satisfies TableTennisDisplay);
     expect(result.legalQueued).toEqual([]);
     expect(result.history).toEqual([]);

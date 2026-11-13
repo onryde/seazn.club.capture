@@ -28,6 +28,7 @@ import {
   setBasedTally,
   type PadCardMark,
 } from '@/domain/scoring/setBasedPad';
+import { padCallOf, type PadCallKey, type PointCalls } from '@/domain/scoring/setBasedPointCall';
 import { sideNames, type SetBasedSide } from '@/domain/scoring/setBasedSides';
 import { cardWord, doneSaid } from '@/domain/scoring/tableTennisHistory';
 import { isCardLevel } from '@/domain/scoring/tableTennisLedgerHistory';
@@ -193,6 +194,10 @@ export type TableTennisDisplay = {
    */
   readonly anchorNeeded: boolean;
   readonly expedite: TableTennisExpedite;
+  /** Game point or match point for each side's next rally, as the engine folds it (`setBasedPointCall`); none when omitted. */
+  readonly calls?: PointCalls['calls'];
+  /** The name of what the engine threw (not its refusal) while the calls were read, else null: the hook logs it. */
+  readonly callFault?: string | null;
   /**
    * The score events standing in the scorer's view: the ledger's points and game scores no void takes back, and this
    * phone's legal queued taps on top. A `serving` stamp is valid only at the score it was made at, so a tap that names one
@@ -218,6 +223,7 @@ export type ServingForm = 'first' | 'second' | 'plain';
  * in en.json.
  */
 export type TableTennisPadKey =
+  | PadCallKey
   | 'scoring.tabletennis.gameHeading'
   | 'scoring.tabletennis.last.start'
   | 'scoring.tabletennis.last.startUnknownServer'
@@ -347,6 +353,7 @@ function half(display: TableTennisDisplay, side: PadSide): PadHalf<TableTennisPa
     // The bar follows the plate (owner, 2026-11-02): the serving side's is lit, and neither is while the engine names no
     // server, before the match starts and once it is over.
     bar: plate === null ? 'dim' : 'lit',
+    call: padCallOf(display.calls?.[side], takesPoints(display)),
     hint: { key: WORDS.hint },
     tappable: takesPoints(display),
   };
