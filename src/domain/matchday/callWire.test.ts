@@ -80,6 +80,7 @@ describe('parseCandidates reads the root fixtures', () => {
             },
             source: 'thisCourt',
             fromCourtName: null,
+            called: false,
             plannedAt: new Date('2026-11-07T11:30:00.000Z'),
             waitingMinutes: 0,
             behindMinutes: 0,
@@ -95,6 +96,7 @@ describe('parseCandidates reads the root fixtures', () => {
             },
             source: 'noCourt',
             fromCourtName: null,
+            called: false,
             plannedAt: null,
             waitingMinutes: 0,
             behindMinutes: 0,
@@ -110,6 +112,7 @@ describe('parseCandidates reads the root fixtures', () => {
             },
             source: 'otherCourt',
             fromCourtName: 'Court 2',
+            called: true,
             plannedAt: new Date('2026-11-07T11:00:00.000Z'),
             waitingMinutes: 25,
             behindMinutes: 10,
@@ -176,6 +179,27 @@ describe('parseCandidates reads the root fixtures', () => {
       kind: 'missing-field',
       field: `candidates[0].${key}`,
     });
+  });
+
+  it('reads called as written, and absent as false (a web before the field)', () => {
+    const read = (mutate: (c: Record<string, unknown>) => void) => {
+      const data = wire('valid');
+      mutate(data.candidates[2] as Record<string, unknown>);
+      const result = parseCandidates(answered(data));
+      return result.ok ? result.value.candidates[2]?.called : result.error;
+    };
+    expect(read(() => undefined)).toBe(true);
+    expect(read((c) => (c.called = false))).toBe(false);
+    expect(read((c) => delete c.called)).toBe(false);
+  });
+
+  it('refuses a called that is not a boolean, or null', () => {
+    for (const bad of ['yes', 1, null]) {
+      const data = wire('valid');
+      (data.candidates[2] as Record<string, unknown>).called = bad;
+      const result = parseCandidates(answered(data));
+      expect(result.ok ? null : result.error).toMatchObject({ field: 'candidates[2].called' });
+    }
   });
 
   it('a candidate with minutes that are not whole, or negative', () => {

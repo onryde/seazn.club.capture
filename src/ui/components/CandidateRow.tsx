@@ -23,7 +23,7 @@ type CandidateRowProps = {
 
 /**
  * One match the desk offers a free court (S4 design §7a): its round chip, its names (the day's words, slots for an
- * empty seat) and its planned time, with where it is now under them ("Next on Court 2", "Not on a court yet"). A
+ * empty seat) and its planned time, with where it is now under them ("Next on Court 2", "Called to Court 2", "Not on a court yet"). A
  * candidate whose player is in a match elsewhere is dimmed, says so, and is not a control at all: no press, no role.
  */
 export const CandidateRow = memo(function CandidateRow({
@@ -40,7 +40,9 @@ export const CandidateRow = memo(function CandidateRow({
   const where =
     place.kind === 'noCourt'
       ? t('matchday.noCourt')
-      : t('matchday.call.nextOn', { court: place.court });
+      : t(place.kind === 'calledTo' ? 'matchday.call.calledTo' : 'matchday.call.nextOn', {
+          court: place.court,
+        });
   const reason = blockedLine(candidate);
   const press = useCallback(() => onPick(candidate), [onPick, candidate]);
   const detail = candidate.plannedAt === null ? null : time(candidate.plannedAt, zone);

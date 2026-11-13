@@ -141,7 +141,12 @@ describe('the call sheet’s words fit (320 and 360 dp, four languages)', () => 
         layout.matchDayRowLabel -
         space.sm;
       for (const lang of LANGS)
-        for (const key of ['matchday.call.nextOn', 'matchday.noCourt', 'matchday.call.busy'])
+        for (const key of [
+          'matchday.call.nextOn',
+          'matchday.call.calledTo',
+          'matchday.noCourt',
+          'matchday.call.busy',
+        ])
           expect(
             linesOf(said(lang, key, { court: COURT, name: PAIR }), room, control),
             `${lang} ${key}`,

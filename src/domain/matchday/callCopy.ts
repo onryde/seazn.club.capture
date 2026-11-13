@@ -90,13 +90,16 @@ export function blockedLine(candidate: Candidate): Line | null {
 
 /** Where a candidate is now: its court's queue, or not on a court yet. */
 export type Place =
-  { readonly kind: 'nextOn'; readonly court: string } | { readonly kind: 'noCourt' };
+  | { readonly kind: 'nextOn'; readonly court: string }
+  | { readonly kind: 'calledTo'; readonly court: string }
+  | { readonly kind: 'noCourt' };
 
-/** `thisCourt` waits on the court the sheet is about, `otherCourt` on (or is called onto) another; none on no court. */
+/**
+ * `thisCourt` waits on the court the sheet is about, `otherCourt` on another (queued next there, or `called` onto it and
+ * not started: calling it here moves it); none on no court.
+ */
 export function placeOf(candidate: Candidate, court: string): Place {
   if (candidate.source === 'noCourt') return { kind: 'noCourt' };
-  return {
-    kind: 'nextOn',
-    court: candidate.source === 'thisCourt' ? court : (candidate.fromCourtName ?? court),
-  };
+  const where = candidate.source === 'thisCourt' ? court : (candidate.fromCourtName ?? court);
+  return { kind: candidate.called ? 'calledTo' : 'nextOn', court: where };
 }

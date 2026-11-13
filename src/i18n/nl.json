@@ -1250,6 +1250,7 @@
   "matchday.call.loading": "Wedstrijden zoeken…",
   "matchday.call.none": "Hier kan nu niets beginnen",
   "matchday.call.nextOn": "Volgende op {court}",
+  "matchday.call.calledTo": "Opgeroepen naar {court}",
   "matchday.call.busy": "{name} speelt op {court}",
   "matchday.call.busyNoCourt": "{name} zit in een andere wedstrijd",
   "matchday.call.checking": "Andere wedstrijden controleren…",

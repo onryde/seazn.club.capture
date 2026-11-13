@@ -63,6 +63,7 @@ const candidate = (match: Row, more: Partial<Candidate> = {}): Candidate => ({
   match,
   source: 'thisCourt',
   fromCourtName: null,
+  called: false,
   plannedAt: new Date('2026-10-03T14:20:00.000Z'),
   waitingMinutes: 0,
   behindMinutes: 0,
@@ -227,6 +228,33 @@ describe('Call to {court}: the candidates', () => {
     expect(sheet().getByText('Next on Court 2')).toBeTruthy();
     expect(sheet().getByText('Next on Court 3')).toBeTruthy();
     expect(sheet().getByText(en['matchday.noCourt'])).toBeTruthy();
+  });
+
+  it('a match already called onto another court reads "Called to", a queued one still "Next on" (F-T8-12)', async () => {
+    const CALLED_ELSEWHERE = candidate(row(ANN, 'Kim', 'Lee'), {
+      source: 'otherCourt',
+      fromCourtName: 'Court 3',
+      called: true,
+    });
+    const QUEUED_ELSEWHERE = candidate(row(EVE, 'Eve', 'Fay'), {
+      source: 'otherCourt',
+      fromCourtName: 'Court 2',
+    });
+    await openSheet({
+      prepare: (f) => f.matchDay.answerCandidates(candidates(CALLED_ELSEWHERE, QUEUED_ELSEWHERE)),
+    });
+    expect(
+      sheet().getByText(en['matchday.call.calledTo'].replace('{court}', 'Court 3')),
+    ).toBeTruthy();
+    expect(
+      sheet().getByText(en['matchday.call.nextOn'].replace('{court}', 'Court 2')),
+    ).toBeTruthy();
+    expect(
+      sheet().queryByText(en['matchday.call.nextOn'].replace('{court}', 'Court 3')),
+    ).toBeNull();
+    expect(
+      sheet().queryByText(en['matchday.call.calledTo'].replace('{court}', 'Court 2')),
+    ).toBeNull();
   });
 
   it('a light hairline divides the matches: above each but the first (owner, "light divider between matches")', async () => {

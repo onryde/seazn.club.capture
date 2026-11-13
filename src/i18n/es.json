@@ -1250,6 +1250,7 @@
   "matchday.call.loading": "Buscando partidos…",
   "matchday.call.none": "Ahora no puede empezar nada aquí",
   "matchday.call.nextOn": "Siguiente en {court}",
+  "matchday.call.calledTo": "Convocado a {court}",
   "matchday.call.busy": "{name} está jugando en {court}",
   "matchday.call.busyNoCourt": "{name} está en otro partido",
   "matchday.call.checking": "Comprobando los demás partidos…",

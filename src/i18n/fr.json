@@ -1250,6 +1250,7 @@
   "matchday.call.loading": "Recherche des matchs…",
   "matchday.call.none": "Rien ne peut commencer ici pour l'instant",
   "matchday.call.nextOn": "Suivant sur {court}",
+  "matchday.call.calledTo": "Appelé sur {court}",
   "matchday.call.busy": "{name} joue sur {court}",
   "matchday.call.busyNoCourt": "{name} est dans un autre match",
   "matchday.call.checking": "Vérification des autres matchs…",

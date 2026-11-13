@@ -6,6 +6,7 @@ import {
   all,
   countingNumber,
   field,
+  flag,
   instant,
   invalid,
   listOf,
@@ -20,6 +21,7 @@ import {
   word,
   type Item,
   type Read,
+  type Reader,
   type Source,
 } from '@/domain/matchday/wire';
 
@@ -42,6 +44,8 @@ export type Candidate = {
   readonly source: CandidateSource;
   /** `otherCourt`: the court it waits on, or is called onto. */
   readonly fromCourtName: string | null;
+  /** `otherCourt` and the match is called onto that court, not started. Absent on the wire reads false. */
+  readonly called: boolean;
   readonly plannedAt: Date | null;
   readonly waitingMinutes: number;
   readonly behindMinutes: number;
@@ -138,11 +142,17 @@ const blocked = objectOf<Blocked>((source, at) => {
     : read;
 });
 
+/** `called` was added after the contract's first release: absent is false, so a web without it still reads. */
+const calledFlag: Reader<boolean> = (source, key, at) => {
+  return source[key] === undefined ? ok(false) : field(flag)(source, key, at);
+};
+
 const candidate = objectOf<Candidate>((source, at) =>
   all({
     match: field(matchRow)(source, 'match', at),
     source: field(oneOf(SOURCE))(source, 'source', at),
     fromCourtName: field(nullable(text))(source, 'from_court_name', at),
+    called: calledFlag(source, 'called', at),
     plannedAt: field(nullable(instant))(source, 'planned_at', at),
     waitingMinutes: field(wholeNumber)(source, 'waiting_minutes', at),
     behindMinutes: field(wholeNumber)(source, 'behind_minutes', at),

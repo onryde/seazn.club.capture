@@ -15,7 +15,8 @@ import { listFiles, OURS } from '../scripts/vendor-contracts.mjs';
  * and the commit are copied below BY HAND from apps/web/src/server/api-v1/__tests__/capture-contract.test.ts:51-64,
  * so a re-vendor cannot quietly move both sides at once. WEB_COMMIT is the commit actually vendored (plan D1, D-10).
  *
- * The commit is 17a33079f, web PR #1207, UNMERGED: re-pin to main's merge commit after it merges. It added the day
+ * The commit is a44df09b7, web PR #1212 (draft, UNMERGED: re-pin to main's merge commit), which added the candidate's
+ * `called` to capture-matchday-call.v1; before it, 17a33079f, web PR #1207, UNMERGED: re-pin to main's merge commit after it merges. It added the day
  * read's `round_tag`, `home_slot`, `away_slot`, the approval's `waiting` and the code's `can_call`, and the call
  * contract (capture-matchday-call.v1: candidates, preview, call, Undo). Before it, 81c0446cc (web main, MD-1
  * merged as #1140; Task 6 added the approval review and approve, capture-matchday-approval.v1, with its fixtures,
@@ -24,7 +25,7 @@ import { listFiles, OURS } from '../scripts/vendor-contracts.mjs';
  *
  * relay-job.v1 sits beside them and is not the phone's: the script takes only the capture contracts.
  */
-const WEB_COMMIT = '3ec69fc714e851de8539c88c8ab9f7e17bcd300c';
+const WEB_COMMIT = 'a44df09b74a37963d4cc29f85b39b0c4258246ad';
 const WEB_PINS: Readonly<Record<string, string>> = {
   'capture-qr.v2.json': '3292e33f84b693e5def6048012f6653ca7e31e1573fda3901da4fe67a62c5d43',
   'capture-descriptor.v1.json': '5c9b09c422b092671ad3a842b02e5c18902c92fc290cbc562c91033555955b8b',
@@ -40,7 +41,7 @@ const WEB_PINS: Readonly<Record<string, string>> = {
   'capture-matchday-approval.v1.json':
     '279ff1488a1108b3667f9e2f11f559579382f83b238d91da65440c810189f69c',
   'capture-matchday-call.v1.json':
-    '5319376e947103d9e86e31303ab8015b3741ddb69d77f5fdcd824779a47eefa4',
+    '208749ecae47072ea17fbfa8fb4c4b84de49aa2831bc817aa0a9af79d2dc003b',
 };
 
 const root = new URL('../contracts/', import.meta.url);

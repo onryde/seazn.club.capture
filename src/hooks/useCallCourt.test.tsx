@@ -42,6 +42,7 @@ const PICK: Candidate = {
   match: MATCH,
   source: 'thisCourt',
   fromCourtName: null,
+  called: false,
   plannedAt: null,
   waitingMinutes: 0,
   behindMinutes: 0,

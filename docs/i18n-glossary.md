@@ -972,6 +972,10 @@ The court's own action is a small button beside its state chip (owner, 2026-11-1
 _Deshacer_, fr _Annuler_, nl _Terug_) on a called one. nl _Terug_, not _Ongedaan maken_: beside _Opgeroepen_ the longer word left a
 court's name 23 dp at 320 (`matchDayFit.test.ts`). A screen reader still hears the full `actionNamed` / `undoNamed`.
 
+A candidate's place line (F-T8-12): `matchday.call.nextOn` _Next on {court}_ (es _Siguiente en_, fr _Suivant sur_, nl _Volgende op_) when
+it is queued next there, `matchday.call.calledTo` _Called to {court}_ (es _Convocado a_, fr _Appelé sur_, nl _Opgeroepen naar_) when it is
+already called onto that court and not started, the same word as the court's own _Called_ chip.
+
 ## Translation review
 
 - **New or changed English copy.** Add the key to es, fr and nl in the same
