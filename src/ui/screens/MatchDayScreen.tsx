@@ -92,13 +92,12 @@ export function MatchDayScreen() {
   // A match opened from a court's day leaves the day view: a refusal ("can't open") is said on the list beneath it.
   const openFromDay = useCallback(
     (row: Row, courtName: string) => {
-      // A touch inside the bounce window is no open at all, and the view stays.
-      if (quiet()) return Promise.resolve();
+      // No bounce check here: nothing can note one while the day covers the list (review fix round 1, finding 2).
       const opening = open(row, courtName);
       leaveDay();
       return opening;
     },
-    [open, leaveDay, quiet],
+    [open, leaveDay],
   );
   const askUndo = useCallback(
     (row: Row, courtName: string) => {
