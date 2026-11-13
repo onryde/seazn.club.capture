@@ -6,8 +6,9 @@ on 13 Nov 2026 and, once it has run, its results.
 ## Build and phone
 
 - Build 1142 (`com.seazn.capture.dev`, "Seazn Club (dev)", 1.0.8), from `feat/s4-match-day` at 14dcc984, a local
-  release build pointed at staging (stg.seazn.club).
-- The owner's NE2211, Android 16, installed with `adb install -r` on 12 Nov.
+  release build pointed at staging (stg.seazn.club), installed with `adb install -r` on 12 Nov; replaced on 13 Nov by
+  build 1146 (from 00705e06, Task 8c), which ran the pass.
+- The owner's NE2211, Android 16.
 
 ## What a Match Day code's Day means
 
@@ -87,4 +88,43 @@ fill and feel, TalkBack on the approval overlay, the Exit glyph and sheet, es/fr
 
 ## Results
 
-_To be filled in on 13 Nov._
+Run on 13 Nov 2026, 08:50–09:45 (Europe/London), on build 1146 (versionCode 1146, from 00705e06: Task 8c's not-open
+sheet and tile line on top of 14dcc984). The owner held the phone; the controller read it over adb (app-only
+screenshots, status bar cropped) and read the web desk in Chrome. Codes were minted and scanned by the owner; no code's
+value was read, photographed or written down.
+
+| #   | Result | What the phone showed                                                                                                                                                                                                                                                                                                 |
+| --- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Pass   | Courts 1–3 with Now/Next as the desk's board.                                                                                                                                                                                                                                                                         |
+| 2   | Pass   | Men's round 1 scored to the end on Courts 1 and 2; ‹ Court returned to the list.                                                                                                                                                                                                                                      |
+| 3   | Pass   | Force-stopped on the list → reopened on the list. Force-stopped on Court 3's pad at 9–9 → reopened on that pad.                                                                                                                                                                                                       |
+| 4   | Pass   | Offline: 7 taps on Bea v Cara (Court 3), 6 on Eva v Asha (Court 1). ‹ to Home keeps the code (by design; Exit is ⋯). ⋯ → Exit → Home read "Sending 7 taps · Court 3" and "Sending 6 taps · Court 1", tile "Scan the Match Day code". Network back → the desk's ledgers gained exactly 7 and 6 rallies, both Verified. |
+| 5   | Pass   | Hall B code: "MD Test 13 Nov · Hall B", Court 3 only.                                                                                                                                                                                                                                                                 |
+| 6   | Pass   | Swiss: banner → Review → 3 s hold → round 2 on Courts 1–2 (Arun v Dev, Ben v Chen). Groups: after the desk's Complete stage (F-T8-2), Review → hold → semi-finals Eva v Bea (Court 1) and Asha v Fay (Court 2), the desk's proposal.                                                                                  |
+| 7   | Pass   | With the no-Approve code: "Round 1 complete · pair on the web desk", no button.                                                                                                                                                                                                                                       |
+| 8   | Pass   | Code withdrawn on the desk → tile tap → "Match Day code withdrawn", tile back to "Scan the Match Day code".                                                                                                                                                                                                           |
+| 9   | Pass   | A match's own scoring QR opened that match alone (owner's observation; the phone had left the app before it was read).                                                                                                                                                                                                |
+
+Four group results were entered on the web desk by the controller (Result only → Set score), at the owner's request:
+Asha v Dina 15–10, Fay v Bea 15–12, Dina v Eva 8–15, Cara v Fay 11–15.
+
+### Findings
+
+- **F-T8-1** (copy): tapping a match never opened on this phone while offline shows only "Offline". Rec: "Offline · open
+  this match once you're back online".
+- **F-T8-2** (product): the knockout draw is offered only once the desk marks the group stage complete
+  (`seedingSourceReady` needs the source stage's status `complete`); every group match decided is not enough, and the
+  phone says nothing meanwhile. Rec: a banner line "Groups done · complete the stage on the web desk".
+- **F-T8-3** (inert seam): the day read carries `round_label` and the phone parses it (`Row.roundLabel`), but no screen
+  draws it. Owner asked for it on every row ("R1", "SF1", "F1").
+- **F-T8-4** (owner request): a seat with no entrant reads "To be decided"; the owner wants the web's wording ("Winner of
+  Group A", "Winner of SF·1"). The day read does not carry slot labels yet: a web contract change.
+- **F-T8-5** (product): every finished match of the day is listed under its court. Rec: the latest one, then "+N more
+  finished".
+- **F-T8-6** (web): the desk's free-court panel said "Nothing is waiting to be played here today" for Court 1 while the
+  court list showed the semi-final queued on it. Suspected stale candidates after the draw; reload check pending.
+
+### Still to run
+
+The 320 dp pass and the device-only list above. The approval overlay was not read on the device in either approval
+(the owner held through it), so TalkBack on it stays open.
