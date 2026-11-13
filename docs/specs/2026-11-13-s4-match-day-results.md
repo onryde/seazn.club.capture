@@ -124,6 +124,25 @@ Asha v Dina 15–10, Fay v Bea 15–12, Dina v Eva 8–15, Cara v Fay 11–15.
 - **F-T8-6** (web): the desk's free-court panel said "Nothing is waiting to be played here today" for Court 1 while the
   court list showed the semi-final queued on it. Suspected stale candidates after the draw; reload check pending.
 
+All six are fixed: F-T8-1 and F-T8-5 in task 8d-A, F-T8-2, F-T8-3 and F-T8-4 in task 8d-B (with web #1207's
+`round_tag`, slot labels and `waiting`), F-T8-6 in web #1207 (candidates per division).
+
+Second device pass, 13 Nov afternoon (builds 1211–1215, after the rebase onto 1.0.10), owner's phone, staging:
+
+- **F-T8-7** (layout, fixed 255555ea): the round chip stood over Next's label but beside a finished row's names, and the
+  call sheet indented its rows by an empty label column, cutting the names. The chip now sits just before the names in
+  every row kind.
+- **F-T8-8** (copy, fixed 011d7f3a + web #1209): "draw" for the knockout's seeding reads as a drawn match to a scorer
+  (owner: "does it confuse with match draw?"). English says _bracket_ on the phone; the desk's tick is "Approve
+  pairings and brackets".
+- **F-T8-9** (layout, fixed b206293f): Call was a full-width button under the rows (owner: "a small button beside
+  Free"). Call and Undo are now compact buttons beside the court's state chip; a row's label hugs its word, so there is
+  no gap between "Next" and the chip.
+- **F-T8-10** (data, not a defect): Court 3's Call list showed one match. Men's Singles was set to Courts 1–2 only, so
+  its R2 was not a candidate for Court 3 (the web's `callableCourtsByFixture`, the scheduler's own court set). The owner
+  had Court 3 added to Men's Singles on staging; the list then showed both.
+- **F-T8-11** (layout, fixed 6930dda4): a light hairline between matches in the call sheet (owner request).
+
 ### Still to run
 
 The 320 dp pass and the device-only list above. The approval overlay was not read on the device in either approval
@@ -131,8 +150,8 @@ The 320 dp pass and the device-only list above. The approval overlay was not rea
 
 Calling a match to a court (S4 design §7a; final review 8), on a local build, staging, in portrait:
 
-1. A code minted WITH "Call matches to courts": a free court shows Call a match; a code minted without the tick shows no
-   button anywhere (the court, the list, the sheet).
+1. A code minted WITH "Call matches to courts": a free court shows a small Call beside Free; a code minted without the
+   tick shows no button anywhere (the court, the list, the sheet). With the tick: seen on build 1213–1215 (Pass).
 2. Call a match: the candidates list (a blocked row dimmed with its reason), a tap on one shows the preview, one line per
    warning; "Hold to call" fills for 3 s and calls, an early release calls nothing. The court reads Called with the match
    in Now within one read, also on a weak cell.
