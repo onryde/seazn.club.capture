@@ -11,6 +11,7 @@ import {
 import type { PadCard, PadHalf, PadPeriodScore, PadSide, PadText } from '@/domain/scoring/padView';
 import { usePadText } from '@/hooks/usePadText';
 import type { MessageKey } from '@/i18n/messages';
+import { CallPlate } from '@/ui/components/CallPlate';
 import { Glyph } from '@/ui/components/Glyph';
 import { boardRoom, FinalBoard, ScoreboardRow, ServerLine } from '@/ui/components/HalfBoards';
 import { NameText } from '@/ui/components/NameText';
@@ -96,6 +97,7 @@ export const ScoreHalf = memo(function ScoreHalf({ half, flash, onTap }: ScoreHa
       {board === null ? null : (
         <ScoreboardRow
           board={board}
+          call={call === null ? null : words(call.text)}
           hint={half.tappable ? words(half.action ?? TAP) : null}
           onHeight={measureRow}
         />
@@ -361,26 +363,6 @@ const ServingPlate = memo(function ServingPlate({ words }: { readonly words: str
   );
 });
 
-/**
- * The call on the half's next point (`PadHalf.call`): the serving plate's lime and night ink, in the bottom row after the
- * boxes and before the hint, which gives way to it. Drawn, never over the score; the same words are in the half's name.
- */
-const CallPlate = memo(function CallPlate({ words }: { readonly words: string }) {
-  return (
-    <View testID="call" aria-hidden style={styles.callPlate}>
-      <Text
-        variant="state"
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={layout.padCallMinScale}
-        style={styles.plateWord}
-      >
-        {words}
-      </Text>
-    </View>
-  );
-});
-
 const isWords = (part: string | null): part is string => part !== null && part !== '';
 
 const styles = StyleSheet.create({
@@ -452,14 +434,6 @@ const styles = StyleSheet.create({
   countsCaution: { color: colour.caution },
   plate: { paddingHorizontal: space.sm, paddingVertical: space.xs, backgroundColor: colour.lime },
   plateWord: { color: plateInk },
-  // Beside the boxes, which are never cut, the call is the last thing to give way: the hint goes first (it is flex 1 from
-  // nothing), then the doubles server's line (`subYields`), then the call's own word shrinks (a tenth of the line's weight).
-  callPlate: {
-    flexShrink: 0.1,
-    minWidth: 0,
-    paddingHorizontal: space.sm,
-    backgroundColor: colour.lime,
-  },
   subYields: { flexShrink: 1, minWidth: 0 },
 });
 

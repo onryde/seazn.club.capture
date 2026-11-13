@@ -489,15 +489,19 @@ export function withCard<K extends string>(
       : card;
   return {
     ...view,
-    halves: [
-      { ...top, tappable: false },
-      { ...bottom, tappable: false },
-    ],
+    halves: [uncalled(top), uncalled(bottom)],
     tools: [],
     start: null,
     lastTap: lastTapUnder(view.lastTap, card),
     card: shown,
   };
+}
+
+/** A half under a card: it takes no tap, and a call on its next point is not drawn (a call is on a half that takes one). */
+function uncalled<K extends string>(half: PadHalf<K>): PadHalf<K> {
+  return half.call == null
+    ? { ...half, tappable: false }
+    : { ...half, tappable: false, call: null };
 }
 
 function lastTapUnder<K extends string>(

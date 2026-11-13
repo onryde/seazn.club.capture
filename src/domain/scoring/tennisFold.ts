@@ -31,6 +31,7 @@ import {
   type TennisCfg,
   type TennisEngineMatch,
 } from '@/domain/scoring/tennisEngine';
+import { tennisPointCallsOf } from '@/domain/scoring/tennisPointCall';
 import { tennisHistory, type TennisHistoryEntry } from '@/domain/scoring/tennisHistory';
 import { serveEventsIn } from '@/domain/scoring/tennisPointDetails';
 import {
@@ -307,6 +308,7 @@ function displayOf(
   const ending = endingOf(state, match.names);
   const phase = phaseOf(state, ending);
   const decided = phase === 'decided';
+  const { calls, fault } = pointCallsFor(match, stream, state);
   const last = state.sets[state.sets.length - 1];
   const set = decided ? state.sets.length : state.sets.length + 1;
   return {
@@ -334,9 +336,25 @@ function displayOf(
     serveEvents: serveEventsIn(stream.envelopes),
     ending,
     endingPending: phase === 'live' && defaultStands(stream.envelopes),
+    calls,
+    callFault: fault,
     lastTap: lastTapOf(stream.envelopes, recorded, undoneTap),
     undoable,
   };
+}
+
+/**
+ * Break, set and match point for each side's next point (`tennisPointCall`). The receiver is the side the SERVING plate
+ * leaves. While a default waits for the organiser's forfeit the engine refuses every point, so nothing is called then.
+ */
+function pointCallsFor(match: Match, stream: SetBasedStream, state: Readonly<NestedState>) {
+  return tennisPointCallsOf({
+    engine: match.engine,
+    entrants: match.names.entrants,
+    envelopes: stream.envelopes,
+    state,
+    serving: servingOf(state),
+  });
 }
 
 /** Each side's game call: 0, 15, 30, 40, AD in a standard game; a breaker's points as numbers. */

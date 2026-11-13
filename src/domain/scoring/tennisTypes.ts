@@ -2,6 +2,7 @@ import type { MatchContext } from '@/domain/scoring/matchContext';
 import type { PadSide } from '@/domain/scoring/padView';
 import type { SetBasedSide } from '@/domain/scoring/setBasedSides';
 import type { TennisCfg } from '@/domain/scoring/tennisEngine';
+import type { TennisCallKey, TennisPointCalls } from '@/domain/scoring/tennisPointCall';
 
 /**
  * Tennis's types (S2-7 Task 4; rulings 215-229), volleyball's `volleyballTypes.ts` in a file of its own so the fold, the
@@ -130,6 +131,13 @@ export type TennisDisplay = {
   /** The games of that set. */
   readonly games: Readonly<Record<PadSide, number>>;
   readonly call: Readonly<Record<PadSide, TennisCall>>;
+  /**
+   * Break point, set point or match point for each side's next point, as the engine folds it (`tennisPointCall`). Optional:
+   * a display that names none calls nothing.
+   */
+  readonly calls?: TennisPointCalls['calls'];
+  /** The name of what the engine threw (not its refusal) while the calls were read, else null: the hook logs it. */
+  readonly callFault?: string | null;
   readonly breaker: 'tiebreak' | 'matchTiebreak' | null;
   readonly note: 'deuce' | 'decidingPoint' | null;
   readonly endsChanged: boolean;
@@ -186,6 +194,7 @@ export type TennisPadKey =
   | 'scoring.tennis.endingPending'
   | 'scoring.tennis.serving'
   | 'scoring.tennis.serverPerson'
+  | TennisCallKey
   | 'scoring.tennis.board.sets'
   | 'scoring.tennis.board.games'
   | 'scoring.tennis.board.set'

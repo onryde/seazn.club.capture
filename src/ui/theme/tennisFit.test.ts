@@ -399,6 +399,74 @@ describe('tennis: a half’s scoreboard row at 320 and 360 in four languages (ru
   );
 });
 
+// Break point, set point and match point on a half (owner, 2026-11-13; ruling "own line, always kept": the score never moves). A
+// live half's scoreboard row always keeps ONE plate-height line under its boxes, dots and Tap, whether a plate shows or not,
+// and the plate draws on it at the left, never among the dots. The rooms are written out from the tokens and the type scale:
+// a plate is its word (`state`, Barlow Condensed 700, uppercase, letter-spaced) and `space.sm` of padding each side; the line
+// is the `state` line (17) and the dots' row gap (2). Whether it looks right on a phone is the device check's.
+describe('tennis: the call plate on its own line in a half at 320 and 360 in four languages', () => {
+  const CALLS = ['breakPoint', 'setPoint', 'matchPoint'] as const;
+  const plateWord = (text: string) =>
+    barlow700.width(text.toUpperCase(), typeScale.state.fontSize) +
+    typeScale.state.letterSpacing * [...text].length;
+  const plate = (dictionary: Dictionary, call: (typeof CALLS)[number]) =>
+    plateWord(said(dictionary, `scoring.pad.call.${call}`)) + 2 * space.sm;
+  /** The reserved line: a plate's line and the dots' row gap. */
+  const RESERVE = 17 + 2;
+
+  it('uses the tokens it is written from', () => {
+    expect([typeScale.state.lineHeight, layout.padDotGap, layout.padCallMinScale]).toEqual([
+      17, 2, 0.7,
+    ]);
+    expect(WIDTHS.map(halfInner)).toEqual([252, 292]);
+    expect(typeScale.state.lineHeight + layout.padDotGap).toBe(RESERVE);
+  });
+
+  it.each(LANGUAGES)(
+    '%s: every plate word has its own whole line at 320 and 360, no cut, and none needs the 0.7 shrink',
+    (lang, dictionary: Dictionary) => {
+      for (const call of CALLS) {
+        expect(plate(dictionary, call), `${lang} ${call}`).toBeGreaterThan(2 * space.sm);
+        for (const width of WIDTHS)
+          expect(plate(dictionary, call), `${lang} ${call} @${width}`).toBeLessThanOrEqual(
+            halfInner(width),
+          );
+      }
+    },
+  );
+
+  // The widest word is Spanish "Punto de partido" (about 135 dp) in 252: the line holds it with 117 dp to spare.
+  it('has the widest plate, Spanish match point, at under 0.6 of the line at 320', () => {
+    const widest = Math.max(
+      ...LANGUAGES.flatMap(([, dictionary]) => CALLS.map((call) => plate(dictionary, call))),
+    );
+    expect(widest / halfInner(320)).toBeLessThan(0.6);
+  });
+
+  // The vertical budget with the reserve: a half holds, at the smallest call (`scoreCompact`, 68), its padding (2 x 16), the names'
+  // two lines (22 each), the doubles server's line (18), the call, the row (22, and 22 for each wrapped dot line) and the
+  // reserved line. The worst best-of-5 row (four boxes, six dots) is two lines at 320 in every language (the dots' own tests above).
+  const content = (rowLines: number, server: boolean) =>
+    2 * space.md +
+    2 * 22 +
+    (server ? 18 : 0) +
+    typeScale.scoreCompact.lineHeight +
+    22 +
+    (rowLines - 1) * (layout.padDot + layout.padDotGap) +
+    RESERVE;
+
+  it('puts the worst best-of-5 row over the 320 x 640 budget by 6 dp (singles) and 24 dp (doubles); both fit 360 x 724', () => {
+    expect(halfAt(640)).toBe(201);
+    expect([content(2, false) - halfAt(640), content(2, true) - halfAt(640)]).toEqual([6, 24]);
+    expect(content(2, true)).toBeLessThanOrEqual(halfAt(724));
+  });
+
+  it('holds a one-line row in a singles half at 320 x 640, and a doubles half is over by 2 dp', () => {
+    expect(content(1, false)).toBeLessThanOrEqual(halfAt(640));
+    expect(content(1, true) - halfAt(640)).toBe(2);
+  });
+});
+
 // Review I1 (Task 18 fix round 1): the vertical budget of the worst live board. A half holds, at the smallest call
 // (`scoreCompact`, 68): its padding (2 × 16), the names' two lines (22 each), the doubles server's line (18), the call and the
 // scoreboard row, whose first line is 22 and each wrapped dot line 20 + the 2 dp dot gap.
@@ -425,7 +493,8 @@ describe('tennis: the worst live scoreboard fits a half’s height (arithmetic; 
     2 * 22 +
     (server ? 18 : 0) +
     typeScale.scoreCompact.lineHeight +
-    rowHeight(lines);
+    rowHeight(lines) +
+    (typeScale.state.lineHeight + layout.padDotGap);
 
   it('uses the tokens it is written from', () => {
     expect([typeScale.scoreCompact.lineHeight, typeScale.label.lineHeight, layout.padDot]).toEqual([
@@ -450,12 +519,12 @@ describe('tennis: the worst live scoreboard fits a half’s height (arithmetic; 
   });
 
   it.each(LANGUAGES)(
-    '%s: four sets over and six dots take two lines: a singles half fits at 320 × 640, a doubles half is over by 5 dp',
+    '%s: four sets over and six dots take two lines: with the kept call line a singles half is over the 320 × 640 budget by 6 dp and a doubles half by 24 dp',
     (lang, dictionary: Dictionary) => {
       const lines = linesOfDots(320, dictionary, 4, 6);
       expect(lines, lang).toBe(2);
-      expect(content(lines, false), lang).toBeLessThanOrEqual(halfAt(640));
-      expect(content(lines, true) - halfAt(640), lang).toBe(5);
+      expect(content(lines, false) - halfAt(640), lang).toBe(6);
+      expect(content(lines, true) - halfAt(640), lang).toBe(24);
     },
   );
 
@@ -463,10 +532,10 @@ describe('tennis: the worst live scoreboard fits a half’s height (arithmetic; 
   // beside four sets over take a third line in es/fr. Pinned (doubles) so it cannot grow unseen; the overflow lands in the
   // half's padding first.
   it.each([
-    ['en', en, 5],
-    ['es', es, 27],
-    ['fr', fr, 27],
-    ['nl', nl, 5],
+    ['en', en, 24],
+    ['es', es, 46],
+    ['fr', fr, 46],
+    ['nl', nl, 24],
   ] as const)(
     '%s: twelve dots (an advantage set) beside four sets over, doubles, are over the 320 × 640 budget by %i dp',
     (lang, dictionary: Dictionary, over) => {
@@ -475,8 +544,8 @@ describe('tennis: the worst live scoreboard fits a half’s height (arithmetic; 
     },
   );
 
-  it('two dot lines (twelve dots beside two set boxes) fit a singles half at 320 × 640', () => {
-    expect(content(linesOfDots(320, en, 2, 12), false)).toBeLessThanOrEqual(halfAt(640));
+  it('two dot lines (twelve dots beside two set boxes) put a singles half over 320 × 640 by 6 dp, with the call’s kept line', () => {
+    expect(content(linesOfDots(320, en, 2, 12), false) - halfAt(640)).toBe(6);
   });
 });
 

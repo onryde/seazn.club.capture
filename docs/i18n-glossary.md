@@ -853,6 +853,24 @@ _matchpunt_ and _gamepunt_ on a plate). **es, fr and nl are unreviewed drafts.**
 | Game point  | Punto de juego   | Balle de jeu   | Gamepunt   | `scoring.pad.call.gamePoint`: the next point wins the game.   |
 | Match point | Punto de partido | Balle de match | Matchpunt  | `scoring.pad.call.matchPoint`: the next point wins the match. |
 
+### Point calls on the tennis pad (2026-11-13)
+
+Break point and set point join the shared `scoring.pad.call.*` words; tennis's match point is badminton's `matchPoint` (the next
+point wins the match). The words follow the tennis rows above (_set_ stays _set_ in es, fr and nl; es _punto de_ and fr _balle de_
+are how each language names a point that decides something). **es, fr and nl are unreviewed drafts.** Not _Pausa_, _Pause_ or
+_Pauze_ (the Break tool's words, a rest): a break of serve has its own word in each language, so the two never read alike.
+
+| English     | Español          | Français       | Nederlands | Where                                                                                           |
+| ----------- | ---------------- | -------------- | ---------- | ----------------------------------------------------------------------------------------------- |
+| Break point | Punto de quiebre | Balle de break | Breekpunt  | `scoring.pad.call.breakPoint`: the receiver's point would win a normal game.                    |
+| Set point   | Punto de set     | Balle de set   | Setpunt    | `scoring.pad.call.setPoint`: the next point wins a set (a tie-break and a match tie-break too). |
+
+- **es _quiebre_.** The Latin American word, matching the neutral _punto de juego_ and _punto de partido_ of the shared calls; Spain's
+  _bola de break_ is an anglicism and would read as the Break tool's _break_ in a language that already says _Pausa_ for that.
+- **fr _break_.** _Balle de break_ is the umpires' and broadcasters' term (the brief's), where _break_ is not the glossary's Break
+  tool (that is _Pause_).
+- **nl _Breekpunt_.** The Dutch commentators' word; the glossary's anglicisms (_Gamepunt_, _Matchpunt_) are for game and match.
+
 ## Translation review
 
 - **New or changed English copy.** Add the key to es, fr and nl in the same
