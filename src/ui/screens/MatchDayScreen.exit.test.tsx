@@ -35,6 +35,7 @@ const NG = FAKE_DAY.courts[0]?.now?.fixtureId ?? '';
 const WAITING: MatchDay = {
   ...FAKE_DAY,
   canApprove: true,
+  canCall: false,
   approvals: [
     {
       kind: 'swiss',

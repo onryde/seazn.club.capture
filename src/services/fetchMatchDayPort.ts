@@ -1,6 +1,14 @@
 import { isRecord } from '@/domain/credentials/wire';
 import { approveRequest, parseApproval, parseApproved } from '@/domain/matchday/approvalWire';
 import type { ApprovalKind } from '@/domain/matchday/matchDay';
+import {
+  callRequest,
+  parseCalled,
+  parseCallPreview,
+  parseCallRefusal,
+  parseCandidates,
+  parseUncalled,
+} from '@/domain/matchday/callWire';
 import { parseDay } from '@/domain/matchday/dayWire';
 import { openRefused, parseOpen, type OpenAnswer } from '@/domain/matchday/openWire';
 import { parseRefusal } from '@/domain/matchday/refusalWire';
@@ -10,7 +18,7 @@ import { recognise } from '@/domain/mode/recognise';
 import type { ScoringFetch } from '@/services/fetchScoringPort';
 import { MAX_BODY_BYTES, utf8Length, withDeadline, type FetchResponse } from '@/services/httpAsk';
 import type { Logger } from '@/services/logger';
-import type { MatchDayPort, PortAnswer } from '@/services/matchDayPort';
+import type { CallAnswer, MatchDayPort, PortAnswer } from '@/services/matchDayPort';
 import { isBuildOrigin } from '@/services/seaznHosts';
 import type { LogFields } from '@/services/scrub';
 
@@ -29,7 +37,7 @@ type Deps = {
   now?: () => number;
 };
 
-type Op = 'day' | 'open' | 'review' | 'approve';
+type Op = 'day' | 'open' | 'review' | 'approve' | 'candidates' | 'preview' | 'call' | 'undo';
 type Reply = { readonly status: number; readonly body: unknown };
 /** No answer at all, and why: a closed word, never an error's own text. */
 type Lost = { readonly problem: string };
@@ -48,7 +56,7 @@ export function createFetchMatchDayPort(deps: Deps): MatchDayPort {
   return {
     day: async (code) => {
       const reply = await send(deps, code, 'GET', ROOT, MATCHDAY_DAY_MAX_BYTES);
-      return answerOf(say, 'day', reply, parseDay);
+      return answerOf(say, 'day', reply, parseDay, nineWords);
     },
     open: async (code, fixtureId) => {
       const path = () => `${ROOT}/fixtures/${encodeURIComponent(fixtureId)}/scoring-link`;
@@ -57,18 +65,60 @@ export function createFetchMatchDayPort(deps: Deps): MatchDayPort {
         const refused = openRefused(reply.status, reply.body);
         if (refused !== null) return outOfScope(say, reply.status, refused);
       }
-      const answer = answerOf(say, 'open', reply, parseOpen);
+      const answer = answerOf(say, 'open', reply, parseOpen, nineWords);
       return answer.ok ? linkOnBuildHost(deps, say, answer.value) : answer;
     },
     review: async (code, kind, stageId) => {
       const reply = await send(deps, code, 'GET', approvalPath(kind, stageId), MAX_BODY_BYTES);
-      return answerOf(say, 'review', reply, parseApproval);
+      return answerOf(say, 'review', reply, parseApproval, nineWords);
     },
     approve: async (code, kind, stageId, hash, round) => {
       const body = JSON.stringify(approveRequest(hash, round));
       const path = approvalPath(kind, stageId);
       const reply = await send(deps, code, 'POST', path, MAX_BODY_BYTES, body);
-      return answerOf(say, 'approve', reply, parseApproved);
+      return answerOf(say, 'approve', reply, parseApproved, nineWords);
+    },
+    ...callCalls(deps, say),
+  };
+}
+
+type CallCalls = Pick<MatchDayPort, 'candidates' | 'previewCall' | 'call' | 'undoCall'>;
+
+/**
+ * The three call routes (capture-matchday-call.v1; S4 design §7a). The call is ONE request: nothing here retries it, so a
+ * second hold is a second request only because the screen made one.
+ */
+function callCalls(deps: Deps, say: Reporter): CallCalls {
+  const callPath = (fixtureId: string) => () =>
+    `${ROOT}/fixtures/${encodeURIComponent(fixtureId)}/call`;
+  const post = async (code: SavedDayCode, fixtureId: string, courtId: string, preview: boolean) =>
+    send(
+      deps,
+      code,
+      'POST',
+      callPath(fixtureId),
+      MAX_BODY_BYTES,
+      JSON.stringify(callRequest(courtId, preview)),
+    );
+  return {
+    candidates: async (code, courtId) => {
+      const path = () => `${ROOT}/courts/${encodeURIComponent(courtId)}/candidates`;
+      const reply = await send(deps, code, 'GET', path, MAX_BODY_BYTES);
+      return answerOf(say, 'candidates', reply, parseCandidates, callWords);
+    },
+    previewCall: async (code, fixtureId, courtId) =>
+      answerOf(
+        say,
+        'preview',
+        await post(code, fixtureId, courtId, true),
+        parseCallPreview,
+        callWords,
+      ),
+    call: async (code, fixtureId, courtId) =>
+      answerOf(say, 'call', await post(code, fixtureId, courtId, false), parseCalled, callWords),
+    undoCall: async (code, fixtureId) => {
+      const reply = await send(deps, code, 'DELETE', callPath(fixtureId), MAX_BODY_BYTES);
+      return answerOf(say, 'undo', reply, parseUncalled, callWords);
     },
   };
 }
@@ -85,7 +135,7 @@ const approvalPath = (kind: ApprovalKind, stageId: string) => () =>
 async function send(
   deps: Deps,
   code: SavedDayCode,
-  method: 'GET' | 'POST',
+  method: 'GET' | 'POST' | 'DELETE',
   path: string | (() => string),
   cap: number,
   body?: string,
@@ -103,7 +153,7 @@ async function send(
 }
 
 type Request = {
-  readonly method: 'GET' | 'POST';
+  readonly method: 'GET' | 'POST' | 'DELETE';
   readonly path: string;
   readonly cap: number;
   /** JSON, sent as such; none for a GET and for the open ("with no body"). */
@@ -160,16 +210,17 @@ async function bodyOf(response: FetchResponse, cap: number): Promise<unknown> {
 }
 
 /**
- * A reply as the phone acts on it: the 200 parsed, one of the nine words, the envelope's own 404 NOT_FOUND gone, and
- * everything else offline: a 429 is tried again at the next poll (MD-1's B2 ruling), and a 404 that is not the
- * envelope's is a portal's or an edge's page. Every failure is said in the record.
+ * A reply as the phone acts on it: the 200 parsed, a refusal in the route's own words (`refuse`), the envelope's own 404
+ * NOT_FOUND gone, and everything else offline: a 429 is tried again at the next poll (MD-1's B2 ruling), and a 404 that
+ * is not the envelope's is a portal's or an edge's page. Every failure is said in the record.
  */
-function answerOf<T>(
+function answerOf<T, F extends Failure>(
   say: Reporter,
   op: Op,
   reply: Reply | Lost,
   parse: (body: unknown) => Read<T>,
-): PortAnswer<T> {
+  refuse: (status: number, body: unknown) => F | null,
+): { readonly ok: true; readonly value: T } | F | typeof OFFLINE | typeof GONE {
   if ('problem' in reply) return say.failed(op, OFFLINE, 0, reply.problem);
   if (reply.status === 200) {
     const parsed = parse(reply.body);
@@ -177,14 +228,28 @@ function answerOf<T>(
     say.succeeded(op);
     return { ok: true, value: parsed.value };
   }
-  const refused = parseRefusal(reply.status, reply.body);
-  if (refused !== null) {
-    const answer = { ok: false as const, refusal: refused.code };
-    const opens = refused.opensAt === undefined ? {} : { opensAt: refused.opensAt };
-    return say.failed(op, { ...answer, ...opens }, reply.status);
-  }
+  const refused = refuse(reply.status, reply.body);
+  if (refused !== null) return say.failed(op, refused, reply.status);
   if (reply.status === 404 && isNotFound(reply.body)) return say.failed(op, GONE, 404);
   return say.failed(op, OFFLINE, reply.status, reply.status === 429 ? 'rate-limited' : undefined);
+}
+
+type NineWords = Extract<PortAnswer<never>, { refusal: unknown }>;
+
+/** The day, the open and the approvals' refusals: one of the nine words, with MD_NOT_OPEN's opening instant. */
+function nineWords(status: number, body: unknown): NineWords | null {
+  const refused = parseRefusal(status, body);
+  if (refused === null) return null;
+  const opens = refused.opensAt === undefined ? {} : { opensAt: refused.opensAt };
+  return { ok: false, refusal: refused.code, ...opens };
+}
+
+type CallRefusal = Extract<CallAnswer<never>, { refused: unknown }>;
+
+/** The call routes' refusals (`callWire.ts`): their six md_ words and the desk's own, with its reason. */
+function callWords(status: number, body: unknown): CallRefusal | null {
+  const refused = parseCallRefusal(status, body);
+  return refused === null ? null : { ok: false, refused };
 }
 
 /** The v1 envelope's own 404: `{ok: false, error: {code: 'NOT_FOUND'}}`. */
@@ -213,7 +278,7 @@ function linkOnBuildHost(deps: Deps, say: Reporter, answer: OpenAnswer): PortAns
   return { ok: true, value: answer };
 }
 
-type Failure = Exclude<PortAnswer<never>, { ok: true }>;
+type Failure = Exclude<PortAnswer<never> | CallAnswer<never>, { ok: true }>;
 /** `said` is the repeat count the record already holds for the run, so its end does not say it twice. */
 type Run = { readonly fields: LogFields; repeats: number; said: number };
 
@@ -228,7 +293,17 @@ type Reporter = {
 };
 
 const kindOf = (failure: Failure): string =>
-  'refusal' in failure ? 'refused' : 'gone' in failure ? 'gone' : 'offline';
+  'refusal' in failure || 'refused' in failure ? 'refused' : 'gone' in failure ? 'gone' : 'offline';
+
+/** A refusal's word, and the desk's reason when it gave one: closed words, never a message or a name. */
+function wordsOf(failure: Failure): LogFields {
+  if ('refusal' in failure) return { word: failure.refusal };
+  if (!('refused' in failure)) return {};
+  const { refused } = failure;
+  return 'reason' in refused
+    ? { word: refused.code, reason: refused.reason }
+    : { word: refused.code };
+}
 
 /**
  * Recurring failure class 3: a failure is said, never silent. The line names the call, what it came to, the status
@@ -252,7 +327,7 @@ function reporter(logger: Logger): Reporter {
         op,
         kind: kindOf(failure),
         status,
-        ...('refusal' in failure ? { word: failure.refusal } : {}),
+        ...wordsOf(failure),
         ...(problem === undefined ? {} : { problem }),
       };
       const run = runs.get(op);

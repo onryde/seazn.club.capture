@@ -1,4 +1,11 @@
 import type { ApprovalReview, Approved } from '@/domain/matchday/approvalWire';
+import type {
+  Called,
+  CallPreview,
+  CallRefused,
+  Candidates,
+  Uncalled,
+} from '@/domain/matchday/callWire';
 import type { ApprovalKind, MatchDay, MatchDayRefusal } from '@/domain/matchday/matchDay';
 import type { OpenAnswer } from '@/domain/matchday/openWire';
 import type { SavedDayCode } from '@/domain/mode/dayCode';
@@ -12,6 +19,17 @@ import type { SavedDayCode } from '@/domain/mode/dayCode';
 export type PortAnswer<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly refusal: MatchDayRefusal; readonly opensAt?: Date }
+  | { readonly ok: false; readonly offline: true }
+  | { readonly ok: false; readonly gone: true };
+
+/**
+ * What a call route (capture-matchday-call.v1) came to: the same four outcomes as {@link PortAnswer}, with the refusal
+ * of its own, which names the six md_ words it shares and `MD_CALL_REFUSED` with the desk's reason (`callWire.ts`).
+ * `gone` is the envelope's 404 NOT_FOUND: the court or the match is no more, and the list is read again.
+ */
+export type CallAnswer<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly refused: CallRefused }
   | { readonly ok: false; readonly offline: true }
   | { readonly ok: false; readonly gone: true };
 
@@ -42,4 +60,19 @@ export interface MatchDayPort {
     hash: string,
     round: number | null,
   ): Promise<PortAnswer<Approved>>;
+  /**
+   * `GET /api/v1/match-day-code/courts/{courtId}/candidates` (§7a): the matches that could start on the court now, as
+   * the desk offers them, limited to the code's scope. Needs no power.
+   */
+  candidates(code: SavedDayCode, courtId: string): Promise<CallAnswer<Candidates>>;
+  /** `POST .../fixtures/{id}/call` with `{court_id, preview: true}`: what the call would do, nothing written. */
+  previewCall(
+    code: SavedDayCode,
+    fixtureId: string,
+    courtId: string,
+  ): Promise<CallAnswer<CallPreview>>;
+  /** The same route with `preview: false`: the call. One request, never repeated by the port. */
+  call(code: SavedDayCode, fixtureId: string, courtId: string): Promise<CallAnswer<Called>>;
+  /** `DELETE .../fixtures/{id}/call`: takes the call back, with no body; refused once the match has started. */
+  undoCall(code: SavedDayCode, fixtureId: string): Promise<CallAnswer<Uncalled>>;
 }

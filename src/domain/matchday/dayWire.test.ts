@@ -58,6 +58,12 @@ const REFUSED: Readonly<Record<string, unknown>> = {
   },
 };
 
+/**
+ * Refused by the contract only for a field the phone reads as optional (`can_call`: a copy stored before it, and a staging
+ * web that does not send it yet, show no call control rather than no day): the phone reads it, with the field false.
+ */
+const OPTIONAL_ABSENT: readonly string[] = ['invalid-no-can-call'];
+
 const answers = fixturesOf(DAY).filter(([name]) => !name.startsWith('refusal-'));
 const valid = answers.filter(([name]) => name.startsWith('valid-'));
 
@@ -67,6 +73,7 @@ describe('parseDay runs every capture-matchday-day.v1 answer fixture', () => {
       ...valid.map(([name]) => name),
       ...Object.keys(REFUSED),
       ...Object.keys(EXTRA_FIELD),
+      ...OPTIONAL_ABSENT,
     ];
     expect(answers.map(([name]) => name).sort()).toEqual(named.sort());
     expect(valid.length).toBeGreaterThanOrEqual(3);
@@ -99,6 +106,16 @@ describe('parseDay runs every capture-matchday-day.v1 answer fixture', () => {
     },
   );
 
+  it.each(OPTIONAL_ABSENT)(
+    '%s: refused by the contract, read by the phone with no power to call',
+    (name) => {
+      const data = fixtureOf(DAY, name);
+      expect(contractAdmits(DAY, data)).toBe(false);
+      const result = read(data);
+      expect(result.ok && result.value.canCall).toBe(false);
+    },
+  );
+
   it('keeps no scoring link from a row that carries one', () => {
     const result = read(fixtureOf(DAY, 'invalid-row-carries-url'));
     expect(result.ok).toBe(true);
@@ -118,6 +135,7 @@ describe('parseDay reads a day in camelCase, with Dates', () => {
         opensAt: new Date('2026-11-06T23:00:00.000Z'),
         expiresAt: new Date('2026-11-07T23:00:00.000Z'),
         canApprove: false,
+        canCall: false,
         courts: [
           {
             courtId: '6a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d',
@@ -279,7 +297,13 @@ function requiredAt(...steps: string[]): string[] {
  * The fields the contract requires that the phone reads as optional (task 8d-B ruling: a build still reads a staging
  * web that does not send them yet): an absent one reads null, a present one of the wrong type is still refused.
  */
-const OPTIONAL: ReadonlySet<string> = new Set(['round_tag', 'home_slot', 'away_slot', 'waiting']);
+const OPTIONAL: ReadonlySet<string> = new Set([
+  'round_tag',
+  'home_slot',
+  'away_slot',
+  'waiting',
+  'can_call',
+]);
 
 describe('parseDay refuses a missing field', () => {
   it.each(requiredAt())('without %s', (key) => {
@@ -464,6 +488,18 @@ describe('parseDay refuses a field of the wrong shape, naming the field', () => 
     refuses((data) => (data.courts[0]!.now!.summary = ['14', '9']), 'courts[0].now.summary');
     refuses((data) => (data.courts[0]!.court_name = null), 'courts[0].court_name');
     refuses((data) => (data.competition.name = 7), 'competition.name');
+  });
+
+  it('reads can_call as the web sends it: true for valid-courts, false for valid-competition', () => {
+    const courts = read(fixtureOf(DAY, 'valid-courts'));
+    const competition = read(fixtureOf(DAY, 'valid-competition'));
+    expect(courts.ok && courts.value.canCall).toBe(true);
+    expect(competition.ok && competition.value.canCall).toBe(false);
+  });
+
+  it('can_call that is not a boolean', () => {
+    refuses((data) => (data.can_call = 'true'), 'can_call');
+    refuses((data) => (data.can_call = null), 'can_call');
   });
 
   it('can_approve that is not a boolean', () => {

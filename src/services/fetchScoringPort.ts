@@ -34,11 +34,14 @@ export const EVENTS_TIMEOUT_MS = 15000;
  */
 export const SCORING_MAX_BODY_BYTES = 1024 * 1024;
 
-/** `FetchLike` with a body and a POST: the scoring calls are the first that write. */
+/**
+ * `FetchLike` with a body and a POST: the scoring calls are the first that write. Match Day's Undo of a call is its one
+ * DELETE (S4 design §7a).
+ */
 export type ScoringFetch = (
   url: string,
   init: {
-    method: 'GET' | 'POST';
+    method: 'GET' | 'POST' | 'DELETE';
     headers: Readonly<Record<string, string>>;
     body?: string;
     /** React Native's fetch ignores it; the answer's URL is checked instead. */

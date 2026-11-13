@@ -87,6 +87,8 @@ export type MatchDay = {
   readonly expiresAt: Date;
   /** Minted with "can approve draws". */
   readonly canApprove: boolean;
+  /** Minted with "Call matches to courts" (S4 design §7a); false when the web does not say. */
+  readonly canCall: boolean;
   readonly courts: readonly Court[];
   /** A whole-competition code only: the day's matches on no court. */
   readonly noCourt: readonly Row[];

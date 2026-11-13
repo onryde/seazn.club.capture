@@ -48,6 +48,7 @@ const waiting = (stage: string, kind: Approval['kind'] = 'swiss'): Approval => (
 const dayWaiting = (approvals: readonly Approval[]): MatchDay => ({
   ...FAKE_DAY,
   canApprove: true,
+  canCall: false,
   approvals,
 });
 

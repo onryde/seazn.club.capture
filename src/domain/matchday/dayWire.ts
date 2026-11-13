@@ -73,7 +73,8 @@ const slot: Item<string | null> = (raw, at) => {
   return read.ok ? ok(read.value === '' ? null : read.value) : read;
 };
 
-const row = objectOf<Row>((source, at) =>
+/** One match as the day read lists it; the call contract's candidates carry the same row (`callWire.ts`). */
+export const matchRow = objectOf<Row>((source, at) =>
   all({
     fixtureId: field(uuid)(source, 'fixture_id', at),
     sportKey: field(word)(source, 'sport_key', at),
@@ -90,7 +91,7 @@ const row = objectOf<Row>((source, at) =>
   }),
 );
 
-const rows = field(listOf(row));
+const rows = field(listOf(matchRow));
 
 const court = objectOf<Court>((source, at) =>
   all({
@@ -98,7 +99,7 @@ const court = objectOf<Court>((source, at) =>
     courtName: field(text)(source, 'court_name', at),
     venueName: field(text)(source, 'venue_name', at),
     state: field(oneOf(COURT_STATE))(source, 'state', at),
-    now: field(nullable(row))(source, 'now', at),
+    now: field(nullable(matchRow))(source, 'now', at),
     next: rows(source, 'next', at),
     finished: rows(source, 'finished', at),
   }),
@@ -126,6 +127,14 @@ const scope = objectOf<MatchDay['scope']>((source, at) =>
   }),
 );
 
+/**
+ * The day's `can_call`: required by the contract, but read as false when absent, so a copy stored before it (and a
+ * staging web that does not send it yet) shows no call control rather than no day (the 8d optional fields' reason).
+ */
+function canCall(source: Source): Read<boolean> {
+  return source.can_call === undefined ? ok(false) : field(flag)(source, 'can_call', '');
+}
+
 function readDay(source: Source): Read<MatchDay> {
   return all({
     competition: field(competition)(source, 'competition', ''),
@@ -135,6 +144,7 @@ function readDay(source: Source): Read<MatchDay> {
     opensAt: field(instant)(source, 'opens_at', ''),
     expiresAt: field(instant)(source, 'expires_at', ''),
     canApprove: field(flag)(source, 'can_approve', ''),
+    canCall: canCall(source),
     courts: field(listOf(court))(source, 'courts', ''),
     noCourt: rows(source, 'no_court', ''),
     online: rows(source, 'online', ''),
@@ -167,6 +177,7 @@ const WIRE_NAME: ReadonlyMap<string, string> = new Map([
   ['opensAt', 'opens_at'],
   ['expiresAt', 'expires_at'],
   ['canApprove', 'can_approve'],
+  ['canCall', 'can_call'],
   ['noCourt', 'no_court'],
   ['courtId', 'court_id'],
   ['courtName', 'court_name'],

@@ -67,6 +67,7 @@ const day = (change: Partial<MatchDay> = {}): MatchDay => ({
   opensAt: new Date('2026-11-06T23:00:00.000Z'),
   expiresAt: new Date('2026-11-07T23:00:00.000Z'),
   canApprove: true,
+  canCall: false,
   courts: [],
   noCourt: [],
   online: [],

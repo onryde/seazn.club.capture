@@ -35,6 +35,15 @@ describe('readStoredDay', () => {
     expect(readStoredDay(revived(day))).toEqual(day);
   });
 
+  it('reads a copy stored before the calling flag as one that may not call, and keeps a true one', () => {
+    const calling = parsed('valid-courts');
+    expect(calling.canCall).toBe(true);
+    expect(readStoredDay(stored(calling))?.canCall).toBe(true);
+    const old = stored(calling);
+    delete old.canCall;
+    expect(readStoredDay(old)).toEqual({ ...calling, canCall: false });
+  });
+
   it('there are valid fixtures with rows, courts and approvals to read', () => {
     const days = valid.map(([name]) => parsed(name));
     expect(days.some((day) => day.courts.some((court) => court.now !== null))).toBe(true);
@@ -138,6 +147,7 @@ describe('readStoredDay', () => {
     ['no competition', (c: ReturnType<typeof base>) => delete c.competition],
     ['a day that is no day', (c: ReturnType<typeof base>) => (c.day = '7 Nov')],
     ['no flag for approving', (c: ReturnType<typeof base>) => delete c.canApprove],
+    ['a calling flag that is text', (c: ReturnType<typeof base>) => (c.canCall = 'yes')],
   ])('%s is no day', (_, spoil) => {
     const copy = base();
     expect(readStoredDay(copy)).not.toBeNull();

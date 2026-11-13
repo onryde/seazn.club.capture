@@ -71,6 +71,7 @@ const APPROVED = ok({ ok: true } as const);
 const dayWith = (approvals: readonly Approval[], canApprove = true): MatchDay => ({
   ...FAKE_DAY,
   canApprove,
+  canCall: false,
   approvals,
 });
 

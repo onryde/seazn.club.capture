@@ -48,6 +48,7 @@ const DAY: MatchDay = {
   opensAt: new Date('2026-11-07T00:00:00.000Z'),
   expiresAt: new Date('2026-11-08T00:00:00.000Z'),
   canApprove: true,
+  canCall: false,
   courts: [
     {
       courtId: '0e5f6a7b-8c9d-4e0f-8a1b-3c4d5e6f7a8b',
@@ -402,6 +403,7 @@ describe('the copy’s version follows the shape it was written in', () => {
       opensAt: 1,
       expiresAt: 1,
       canApprove: 1,
+      canCall: 1,
       courts: 1,
       noCourt: 1,
       online: 1,

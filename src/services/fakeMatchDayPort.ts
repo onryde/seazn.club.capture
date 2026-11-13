@@ -1,8 +1,9 @@
 import type { ApprovalReview, Approved } from '@/domain/matchday/approvalWire';
+import type { Called, CallPreview, Candidates, Uncalled } from '@/domain/matchday/callWire';
 import type { ApprovalKind, MatchDay, Row } from '@/domain/matchday/matchDay';
 import type { OpenAnswer } from '@/domain/matchday/openWire';
 import type { SavedDayCode } from '@/domain/mode/dayCode';
-import type { MatchDayPort, PortAnswer } from '@/services/matchDayPort';
+import type { CallAnswer, MatchDayPort, PortAnswer } from '@/services/matchDayPort';
 
 const row = (fixtureId: string, home: string, away: string, at: string): Row => ({
   fixtureId,
@@ -32,6 +33,7 @@ export const FAKE_DAY: MatchDay = {
   opensAt: new Date('2026-10-02T23:00:00.000Z'),
   expiresAt: new Date('2026-10-03T23:00:00.000Z'),
   canApprove: false,
+  canCall: false,
   courts: [
     {
       courtId: '0e5f6a7b-8c9d-4e0f-8a1b-3c4d5e6f7a8b',
@@ -84,8 +86,13 @@ export const FAKE_REVIEW: ApprovalReview = {
   ties: false,
 };
 
+/** A made-up quiet preview: nothing is pushed, no rule is bent. */
+export const FAKE_QUIET_PREVIEW: CallPreview = { shifts: [], warnings: [] };
+
 export type FakeMatchDayCall = {
-  readonly op: 'day' | 'open' | 'review' | 'approve';
+  readonly op: 'day' | 'open' | 'review' | 'approve' | 'candidates' | 'preview' | 'call' | 'undo';
+  /** The call routes: the court asked about, or called onto. */
+  readonly courtId?: string;
   readonly code: SavedDayCode;
   readonly fixtureId?: string;
   /** Review and approve: the kind and stage asked for. */
@@ -108,6 +115,14 @@ export type FakeMatchDayPort = MatchDayPort & {
   answerReview(...answers: PortAnswer<ApprovalReview>[]): void;
   /** The same for approves. */
   answerApprove(...answers: PortAnswer<Approved>[]): void;
+  /**
+   * What the next candidate reads, previews, calls and undos answer, in order; the last one stands for every later one.
+   * With none given, offline, as review and approve are. A fresh call replaces the whole list.
+   */
+  answerCandidates(...answers: CallAnswer<Candidates>[]): void;
+  answerPreview(...answers: CallAnswer<CallPreview>[]): void;
+  answerCall(...answers: CallAnswer<Called>[]): void;
+  answerUndo(...answers: CallAnswer<Uncalled>[]): void;
   /** Pends every later call until `release()`, which settles them with the answer standing then. */
   hold(): void;
   release(): void;
@@ -145,6 +160,10 @@ export function createFakeMatchDayPort(): FakeMatchDayPort {
   let throwing = false;
   const reviews = sequence<PortAnswer<ApprovalReview>>(OFFLINE);
   const approves = sequence<PortAnswer<Approved>>(OFFLINE);
+  const candidates = sequence<CallAnswer<Candidates>>(OFFLINE);
+  const previews = sequence<CallAnswer<CallPreview>>(OFFLINE);
+  const callAnswers = sequence<CallAnswer<Called>>(OFFLINE);
+  const undos = sequence<CallAnswer<Uncalled>>(OFFLINE);
   const calls: FakeMatchDayCall[] = [];
   const answer = async <T>(call: FakeMatchDayCall, read: () => T): Promise<T> => {
     calls.push(call);
@@ -162,6 +181,17 @@ export function createFakeMatchDayPort(): FakeMatchDayPort {
       answer({ op: 'review', code, kind, stageId }, () => reviews.next()),
     approve: (code, kind, stageId, hash, round) =>
       answer({ op: 'approve', code, kind, stageId, hash, round }, () => approves.next()),
+    candidates: (code, courtId) =>
+      answer({ op: 'candidates', code, courtId }, () => candidates.next()),
+    previewCall: (code, fixtureId, courtId) =>
+      answer({ op: 'preview', code, fixtureId, courtId }, () => previews.next()),
+    call: (code, fixtureId, courtId) =>
+      answer({ op: 'call', code, fixtureId, courtId }, () => callAnswers.next()),
+    undoCall: (code, fixtureId) => answer({ op: 'undo', code, fixtureId }, () => undos.next()),
+    answerCandidates: (...answers) => candidates.say(answers),
+    answerPreview: (...answers) => previews.say(answers),
+    answerCall: (...answers) => callAnswers.say(answers),
+    answerUndo: (...answers) => undos.say(answers),
     answerReview: (...answers) => reviews.say(answers),
     answerApprove: (...answers) => approves.say(answers),
     answerDay: (next) => {
