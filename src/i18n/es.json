@@ -1231,5 +1231,10 @@
   "matchday.exit.confirm": "Salir",
   "matchday.exit.stay": "Quedarme",
   "matchday.sendingCard.one": "Enviando {count} toque · {name}",
-  "matchday.sendingCard.other": "Enviando {count} toques · {name}"
+  "matchday.sendingCard.other": "Enviando {count} toques · {name}",
+  "matchday.notOpenSheet": "Este código del Día de partidos se abre el {day} a las {time}",
+  "matchday.notOpenSheet.unknown": "Este código del Día de partidos aún no está abierto",
+  "home.tile.matchday.opens": "Se abre {day} · {time}",
+  "home.tile.matchday.saved": "Código guardado · toca para abrir",
+  "home.tile.matchday.tap": "Toca para abrir"
 }

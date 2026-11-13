@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import type { CodeError } from '@/domain/credentials/waitingFields';
 import type { Mode, ModeCode } from '@/domain/mode/Mode';
 import type { HomePanel, PanelUnpairReason } from '@/hooks/useHome';
+import { useFormatDay, useFormatTime } from '@/hooks/useFormatTime';
 import { useT } from '@/hooks/useLanguage';
 import type { MessageKey } from '@/i18n/messages';
 import { MODE_NAME } from '@/i18n/modeNames';
@@ -31,6 +32,8 @@ type Copy = {
   readonly keep: string | null;
   /** The dismiss question's Dismiss: deletes the match it names. */
   readonly confirmDismiss: string | null;
+  /** The not-yet-open sheet's one button: forgets the code (owner, 2026-11-12). */
+  readonly close: string | null;
 };
 
 /** A panel that has said its piece: Scan again, and the dim closes it. */
@@ -45,10 +48,16 @@ const settled = (title: string, body: string | null, open: string | null = null)
   dismiss: null,
   keep: null,
   confirmDismiss: null,
+  close: null,
 });
 
 /** Every outcome, in the operator's words (decisions 3 and 10). Never "Invalid code". */
-function panelCopy(outcome: HomePanel, translator: Translator, time: string | null): Copy {
+function panelCopy(
+  outcome: HomePanel,
+  translator: Translator,
+  time: string | null,
+  opens: { readonly day: string; readonly time: string } | null,
+): Copy {
   const { t, tp } = translator;
   switch (outcome.kind) {
     case 'otherMode': {
@@ -85,6 +94,7 @@ function panelCopy(outcome: HomePanel, translator: Translator, time: string | nu
         dismiss: null,
         keep: null,
         confirmDismiss: null,
+        close: null,
       };
     case 'codeError':
       return withDismiss(codeCopy(outcome.error, t, outcome.tapped), outcome.dismiss, t);
@@ -93,6 +103,16 @@ function panelCopy(outcome: HomePanel, translator: Translator, time: string | nu
     // S4 design §4: one line, "Match Day code withdrawn", then Scan again.
     case 'dayRefused':
       return settled(t(outcome.line), null);
+    // Owner, 2026-11-12: one sentence and one button, Close, which forgets the code so the tile can scan.
+    case 'dayNotOpen':
+      return {
+        ...settled(
+          opens === null ? t('matchday.notOpenSheet.unknown') : t('matchday.notOpenSheet', opens),
+          null,
+        ),
+        scanAgain: false,
+        close: t('panel.close'),
+      };
     // A7's sheet has the spec's two answers and no others (review C5 I-3): no
     // Scan again, and the dim (and Back) mean Cancel, which sends nothing.
     case 'unpairConfirm': {
@@ -108,6 +128,7 @@ function panelCopy(outcome: HomePanel, translator: Translator, time: string | nu
         dismiss: null,
         keep: null,
         confirmDismiss: null,
+        close: null,
       };
     }
     case 'dismissConfirm':
@@ -140,6 +161,7 @@ function dismissCopy(
     dismiss: null,
     keep: t('home.scoring.confirm.keep'),
     confirmDismiss: t('home.scoring.dismiss'),
+    close: null,
   };
 }
 
@@ -203,6 +225,8 @@ type CodePanelProps = {
   onDismiss: (fixtureId: string) => void;
   /** The dismiss question's Dismiss: the match goes. Keep is `onClose`. */
   onConfirmDismiss: (fixtureId: string) => void;
+  /** The not-yet-open sheet's Close: the Match Day code goes. The dim and Back only hide the sheet. */
+  onCloseNotOpen: () => void;
 };
 
 /**
@@ -216,7 +240,15 @@ export const CodePanel = memo(function CodePanel(props: CodePanelProps) {
   const translator = useT();
   const { t } = translator;
   const { outcome, onOpen, onConfirmUnpair, onDismiss, onConfirmDismiss } = props;
-  const copy = panelCopy(outcome, translator, props.time);
+  const formatDay = useFormatDay();
+  const formatTime = useFormatTime();
+  const at = outcome.kind === 'dayNotOpen' ? outcome.at : null;
+  const copy = panelCopy(
+    outcome,
+    translator,
+    props.time,
+    at === null ? null : { day: formatDay(at, null), time: formatTime(at, null) },
+  );
   const open = useCallback(() => {
     if (outcome.kind === 'otherMode') onOpen(outcome.code);
     if (outcome.kind === 'unpairConfirm') onConfirmUnpair();
@@ -229,7 +261,9 @@ export const CodePanel = memo(function CodePanel(props: CodePanelProps) {
     <View style={styles.overlay}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={copy.cancel ?? t('panel.close')}
+        accessibilityLabel={
+          copy.cancel ?? t(outcome.kind === 'dayNotOpen' ? 'stream.scoring.hide' : 'panel.close')
+        }
         onPress={copy.cancel === null ? props.onClose : props.onCancelUnpair}
         disabled={!copy.closable}
         style={styles.dim}
@@ -241,6 +275,7 @@ export const CodePanel = memo(function CodePanel(props: CodePanelProps) {
         <Text variant="title">{copy.title}</Text>
         {copy.body === null ? null : <Text variant="body">{copy.body}</Text>}
         {copy.open === null ? null : <Button label={copy.open} onPress={open} />}
+        {copy.close === null ? null : <Button label={copy.close} onPress={props.onCloseNotOpen} />}
         {copy.keep === null ? null : <Button label={copy.keep} onPress={props.onClose} />}
         {copy.cancel === null ? null : (
           <GhostButton label={copy.cancel} onPress={props.onCancelUnpair} />

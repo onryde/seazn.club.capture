@@ -1231,5 +1231,10 @@
   "matchday.exit.confirm": "Verlaten",
   "matchday.exit.stay": "Blijven",
   "matchday.sendingCard.one": "Verzenden: {count} tap · {name}",
-  "matchday.sendingCard.other": "Verzenden: {count} taps · {name}"
+  "matchday.sendingCard.other": "Verzenden: {count} taps · {name}",
+  "matchday.notOpenSheet": "Deze speeldagcode opent {day} om {time}",
+  "matchday.notOpenSheet.unknown": "Deze speeldagcode is nog niet open",
+  "home.tile.matchday.opens": "Opent {day} · {time}",
+  "home.tile.matchday.saved": "Code opgeslagen · tik om te openen",
+  "home.tile.matchday.tap": "Tik om te openen"
 }

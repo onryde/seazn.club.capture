@@ -125,14 +125,23 @@ const TILE_MODES = ['stream', 'scoring', 'matchday'] as const;
 type TileMode = (typeof TILE_MODES)[number];
 
 /**
- * The line under each tile's purpose, written out here: Remote Scoring says which link opens it (plan S2-1 Task 10),
- * and Match Day which code (MD-2 Task 1).
+ * What each tile's second line can say (the Match Day one changes with its saved code: owner, 2026-11-12), written out
+ * here, with a day and time as `formatDay` and `formatTime` write the widest ones (`WIDEST_DAY`, a two-digit hour).
  */
-const TILE_HINT = {
-  stream: 'home.tile.stream.hint',
-  scoring: 'home.tile.scoring.hint',
-  matchday: 'home.tile.matchday.hint',
-} as const satisfies Readonly<Record<TileMode, string>>;
+const TILE_LINES: Readonly<Record<TileMode, readonly string[]>> = {
+  stream: ['home.tile.stream.hint'],
+  scoring: ['home.tile.scoring.hint'],
+  matchday: [
+    'home.tile.matchday.hint',
+    'home.tile.matchday.opens',
+    'home.tile.matchday.saved',
+    'home.tile.matchday.tap',
+  ],
+};
+const hintTexts = (lang: Lang, mode: TileMode): readonly string[] =>
+  TILE_LINES[mode].map((key) =>
+    word(lang, key).replace('{day}', WIDEST_DAY[lang]).replace('{time}', '23:59'),
+  );
 
 // MD-2 Task 1: the third mode is Match Day (S4 design §8), and its title is in every fit below. This pins the order the
 // fits measure and the words, so a change to either is a decision.
@@ -172,13 +181,14 @@ function tileNeedBy(width: number, titleLines?: number): Readonly<Record<Lang, n
   for (const lang of LANGS) {
     for (const mode of TILE_MODES) {
       const title = word(lang, `mode.${mode}`).toUpperCase();
-      const hint = TILE_HINT[mode];
       const lines = titleLines ?? linesOf(title, inner - ICON - space.sm, measureTitle);
       const purposeLines = linesOf(word(lang, `home.tile.${mode}.purpose`), inner, (text) =>
         geist400.width(text, typeScale.body.fontSize),
       );
-      const hintLines = linesOf(word(lang, hint), inner, (text) =>
-        geist500.width(text, typeScale.metricUnit.fontSize),
+      const hintLines = Math.max(
+        ...hintTexts(lang, mode).map((text) =>
+          linesOf(text, inner, (line) => geist500.width(line, typeScale.metricUnit.fontSize)),
+        ),
       );
       const height =
         2 * TILE_PAD +
@@ -354,7 +364,6 @@ describe('portrait with the gear in the logo’s row: do three equal tiles fit? 
     GHOST;
   /** A tile upright, from the fonts. */
   const tileAt = (width: number, lang: Lang, mode: TileMode): number => {
-    const hint = TILE_HINT[mode];
     const titleLines = linesOf(
       word(lang, `mode.${mode}`).toUpperCase(),
       inner(width) - ICON - space.sm,
@@ -363,8 +372,10 @@ describe('portrait with the gear in the logo’s row: do three equal tiles fit? 
     const purposeLines = linesOf(word(lang, `home.tile.${mode}.purpose`), inner(width), (text) =>
       geist400.width(text, typeScale.body.fontSize),
     );
-    const hintLines = linesOf(word(lang, hint), inner(width), (text) =>
-      geist500.width(text, typeScale.metricUnit.fontSize),
+    const hintLines = Math.max(
+      ...hintTexts(lang, mode).map((text) =>
+        linesOf(text, inner(width), (line) => geist500.width(line, typeScale.metricUnit.fontSize)),
+      ),
     );
     return (
       2 * space.md +

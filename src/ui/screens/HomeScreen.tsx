@@ -61,6 +61,7 @@ export function HomeScreen() {
           onCancelUnpair={actions.cancelUnpair}
           onDismiss={actions.askDismiss}
           onConfirmDismiss={actions.dismissScoring}
+          onCloseNotOpen={actions.closeNotOpen}
         />
       )}
     </View>
@@ -117,7 +118,7 @@ function HomeContent({
       <ContinueSlot view={view} actions={actions} shape={shape} />
       <ScoringSlot view={view} actions={actions} shape={shape} />
       <SendingSlot sending={view.sending} shape={shape} />
-      <ModeTiles onPress={actions.tapTile} layout={layout} />
+      <ModeTiles onPress={actions.tapTile} layout={layout} matchDayHint={view.matchDayHint} />
       {devTools ? <DevPaste onUse={actions.useRaw} /> : null}
       {devTools ? <DevProbe /> : null}
       {landscape ? null : <HomeFooter version={appVersion} />}
@@ -254,9 +255,11 @@ function SendingSlot({ sending, shape }: { sending: HomeView['sending']; shape: 
 const ModeTiles = memo(function ModeTiles({
   onPress,
   layout,
+  matchDayHint,
 }: {
   onPress: (mode: Mode) => void;
   layout: ScreenLayout;
+  matchDayHint: string | null;
 }) {
   return (
     <View testID="tiles" style={layout === 'landscape' ? styles.tilesRow : styles.tiles}>
@@ -267,6 +270,7 @@ const ModeTiles = memo(function ModeTiles({
           available={BUILT_MODES.includes(mode)}
           onPress={onPress}
           layout={layout}
+          hint={mode === 'matchday' ? matchDayHint : null}
         />
       ))}
     </View>

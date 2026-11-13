@@ -60,7 +60,9 @@ import {
   useScoringRows,
 } from '@/hooks/useScoringHome';
 import {
+  useCloseNotOpen,
   useDayCheck,
+  useMatchDayHint,
   useOpenSavedDay,
   useSendingCourts,
   type DayCode,
@@ -100,6 +102,8 @@ export type HomePanel =
   | { readonly kind: 'unpaired'; readonly tapped: 'stream'; readonly reason: PanelUnpairReason }
   /** S4 design §4: a Match Day code the server has ended, withdrawn or does not know; `line` says which. */
   | { readonly kind: 'dayRefused'; readonly tapped: 'matchday'; readonly line: MessageKey }
+  /** Owner, 2026-11-12: a Match Day code kept before its day; `at` is when it opens, null when the server did not say. */
+  | { readonly kind: 'dayNotOpen'; readonly tapped: 'matchday'; readonly at: Date | null }
   /** Owner ruling B: a Dismiss that discards taps asks first; `unsent` is null for a queue that cannot be read. */
   | {
       readonly kind: 'dismissConfirm';
@@ -129,6 +133,8 @@ export type HomeView = {
   readonly scoring: ScoringHome;
   /** The matches Exit left with taps still sending (S4 design §4), each a small card of its own; taken out of `scoring`. */
   readonly sending: readonly SendingCard[];
+  /** What the Match Day tile's second line says while a code is saved (owner, 2026-11-12); null leaves its own hint. */
+  readonly matchDayHint: string | null;
 };
 
 export type HomeActions = {
@@ -136,6 +142,8 @@ export type HomeActions = {
   scanAgain(): void;
   openFromPanel(code: ModeCode): void;
   closePanel(): void;
+  /** The not-yet-open sheet's Close (owner, 2026-11-12): forgets the Match Day code and its copy. */
+  closeNotOpen(): void;
   /** Try again on the no-connection panel: the same code, checked again (D27). */
   retryCheck(): void;
   continueStream(): void;
@@ -209,6 +217,7 @@ export function useHome(): { view: HomeView; actions: HomeActions } {
   const { rows, finish, refresh } = useScoringRows(savedMatchId(snapshot));
   const view = useHomeView(snapshot, panel, statusKey, rows, finish);
   const panelActions = usePanelActions(panel, scanFrom, openOrCheck, setPanel);
+  const closeNotOpen = useCloseNotOpen(setPanel, saveFailed);
   const continueStream = useContinue(setStatusKey, saveFailed);
   const forgetStream = useForget(setStatusKey, saveFailed);
   const pasteRaw = usePaste(handle);
@@ -227,6 +236,7 @@ export function useHome(): { view: HomeView; actions: HomeActions } {
     dismissScoring,
     askDismiss,
     continueScoring,
+    closeNotOpen,
   };
   return { view, actions };
 }
@@ -486,6 +496,7 @@ function useHomeView(
   const continueCopy = useContinueCopy(continueCode);
   const match = ready?.saved.codes.scoring ?? null;
   const all = useMemo(() => scoringHome(match, rows, finish), [match, rows, finish]);
+  const matchDayHint = useMatchDayHint(ready?.saved.codes.matchday ?? null, panel === null);
   const courts = useSendingCourts(rowsKey(rows));
   const { cards: sending, leftovers } = useMemo(() => sendingCards(courts, all), [courts, all]);
   const scoring = useMemo(() => ({ current: all.current, leftovers }), [all, leftovers]);
@@ -497,6 +508,7 @@ function useHomeView(
     continueCopy,
     scoring,
     sending,
+    matchDayHint,
   };
 }
 

@@ -1231,5 +1231,10 @@
   "matchday.exit.confirm": "Exit",
   "matchday.exit.stay": "Stay",
   "matchday.sendingCard.one": "Sending {count} tap · {name}",
-  "matchday.sendingCard.other": "Sending {count} taps · {name}"
+  "matchday.sendingCard.other": "Sending {count} taps · {name}",
+  "matchday.notOpenSheet": "This Match Day code opens {day} at {time}",
+  "matchday.notOpenSheet.unknown": "This Match Day code isn't open yet",
+  "home.tile.matchday.opens": "Opens {day} · {time}",
+  "home.tile.matchday.saved": "Code saved · tap to open",
+  "home.tile.matchday.tap": "Tap to open"
 }

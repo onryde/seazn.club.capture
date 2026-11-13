@@ -264,11 +264,11 @@ describe('Home: the Match Day tile, with no code saved', () => {
   });
 
   // S4 design §3: before the day starts, the tile says when it opens and lists nothing; the code is kept.
-  it('a code scanned before its day is kept, opens nothing, and the line says when it opens', async () => {
+  it('a code scanned before its day is kept, opens nothing, and the sheet says when it opens', async () => {
     const home = await renderHome();
     home.matchDay.answerDay({ ok: false, refusal: 'MD_NOT_OPEN', opensAt: OPENS_AT });
     scanDay(home);
-    await screen.findByText('Match Day opens Sat 7 Nov');
+    await screen.findByText('This Match Day code opens Sat 7 Nov at 00:00');
     expect(home.navigation.current()).toBe('home');
     expect(savedCodeIn(home)).toEqual(SAVED_DAY);
     // Kept, not opened: the last mode is still the last mode.
@@ -281,7 +281,7 @@ describe('Home: the Match Day tile, with no code saved', () => {
     const home = await renderHome();
     home.matchDay.answerDay({ ok: false, refusal: 'MD_NOT_OPEN' });
     scanDay(home);
-    await screen.findByText("Match Day hasn't opened yet");
+    await screen.findByText("This Match Day code isn't open yet");
     expect(savedCodeIn(home)?.raw).toBe(dayLink());
   });
 
@@ -291,7 +291,7 @@ describe('Home: the Match Day tile, with no code saved', () => {
     pairCode(home.engine, stream);
     home.matchDay.answerDay({ ok: false, refusal: 'MD_NOT_OPEN', opensAt: OPENS_AT });
     scanDay(home);
-    await screen.findByText('Match Day opens Sat 7 Nov');
+    await screen.findByText('This Match Day code opens Sat 7 Nov at 00:00');
     expect(screen.queryByRole('button', { name: 'Unpair & open' })).toBeNull();
     expect(kinds(home)).toEqual(['pair']);
     expect(home.kv.entries.get(STORE_KEYS.active)).toBe('stream');
@@ -355,10 +355,10 @@ describe('Home: the Match Day tile, with no code saved', () => {
 
   // Question 4: every language. The dates are Node's ICU for each locale (formatDay.test.ts pins them).
   it.each<[Lang, string]>([
-    ['en', 'Match Day opens Sat 7 Nov'],
-    ['es', 'El Día de partidos se abre el sáb, 7 nov'],
-    ['fr', 'Le Jour de match ouvre le sam. 7 nov.'],
-    ['nl', 'Speeldag opent za 7 nov'],
+    ['en', 'This Match Day code opens Sat 7 Nov at 00:00'],
+    ['es', 'Este código del Día de partidos se abre el sáb, 7 nov a las 00:00'],
+    ['fr', 'Ce code Jour de match ouvre le sam. 7 nov. à 00:00'],
+    ['nl', 'Deze speeldagcode opent za 7 nov om 00:00'],
   ])('in %s, says the code is withdrawn, and when a day opens', async (lang, opens) => {
     const home = await renderHome({ deviceLanguages: [lang] });
     home.matchDay.answerDay({ ok: false, refusal: 'MD_WITHDRAWN' });
@@ -454,15 +454,15 @@ describe('Home: the Match Day tile, with a code saved', () => {
     keptNothing(home);
   });
 
-  it('the tile before opens_at shows "Match Day opens Sat 7 Nov" and keeps the code', async () => {
+  it('the tile before opens_at shows the "opens at" sheet and keeps the code', async () => {
     const home = await renderHome(await savedDay({ day: null, active: false }));
     home.matchDay.answerDay({ ok: false, refusal: 'MD_NOT_OPEN', opensAt: OPENS_AT });
     fireEvent.click(matchDayTile());
-    await screen.findByText('Match Day opens Sat 7 Nov');
+    await screen.findByText('This Match Day code opens Sat 7 Nov at 00:00');
     expect(home.scanner.scans).toBe(0);
     expect(home.navigation.current()).toBe('home');
     expect(savedCodeIn(home)).toEqual(SAVED_DAY);
-    // The check's panel goes with its answer: the line is all there is to read.
+    // The check's panel goes with its answer: the sheet replaces it.
     expect(screen.queryByText('Checking code…')).toBeNull();
   });
 
@@ -586,7 +586,7 @@ describe('Home: Match Day when the phone or the port lets it down (questions 2 a
     home.matchDay.answerDay({ ok: false, refusal: 'MD_NOT_OPEN', opensAt: OPENS_AT });
     scanDay(home);
     await screen.findByText(SAVE_FAILED);
-    expect(screen.queryByText('Match Day opens Sat 7 Nov')).toBeNull();
+    expect(screen.queryByText('This Match Day code opens Sat 7 Nov at 00:00')).toBeNull();
     expect(savedModeCodes(home)).toEqual({});
     expect(home.navigation.current()).toBe('home');
     expect(readRecord(home.record)).toContainEqual(
@@ -714,7 +714,7 @@ describe('Home: a different day code lets go of the first one’s opened matches
     const home = await openedUnderA();
     home.matchDay.answerDay({ ok: false, refusal: 'MD_NOT_OPEN', opensAt: OPENS_AT });
     await scanFromStream(home, OTHER_TOKEN);
-    await screen.findByText('Match Day opens Sat 7 Nov');
+    await screen.findByText('This Match Day code opens Sat 7 Nov at 00:00');
     await waitFor(async () => expect(await linkOf(home, VIEWED)).toBe('none'));
     expect(await linkOf(home, TAPPED)).toBe('link');
     expect(await home.ports.matchDayStore.opened()).toEqual([]);

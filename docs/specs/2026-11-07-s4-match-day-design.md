@@ -56,7 +56,7 @@ _(owner, 2026-11-07: "yes" to the controller's recommendation)_
   _(owner, 2026-11-07)_. This also covers the old S3 "court code" idea (memory `s3-court-code-notes`).
 - **One day.** The organiser picks the day when minting; today is the default. The code opens at the start of that
   day and expires at its end, in the division's time zone. The web decides both instants and puts them in the code's
-  answer (§9). Before the day starts, the tile shows "Match Day opens Sat 8 Nov" and lists nothing _(my call)_.
+  answer (§9). Before the day starts, the tile shows the "opens at" sheet (§4) and lists nothing _(my call)_.
 - **Revocable** on the web at any time.
 - **Powers:**
   - Always: list the day's matches, and open a listed match's scoring link.
@@ -103,6 +103,16 @@ _(owner, 2026-11-07)_
 - **The organiser withdraws the code** (the server refuses it): the same, with "Match Day code withdrawn"
   _(my call)_.
 - **No Continue card on Home** (owner, 2026-11-12: drop it): the Match Day tile opens the saved day without a rescan.
+- **The day is not open yet** (owner, 2026-11-12: "the code only open at xx yy then close button, I have to close that in
+  order to scan any other 3 buttons"): a code scanned, or a saved code's tile tapped, before its day shows a sheet,
+  "This Match Day code opens Fri 13 Nov at 00:00" ("This Match Day code isn't open yet" when the server named no
+  time), with one button, Close. Close forgets the code and its copy, as the day's end does, so the tile scans again;
+  the dim and Back only hide the sheet, and the code stays. A forget the phone refuses leaves the code and says so on
+  Home's line. The record gets `matchday.notOpen {action: shown | closed}`, with no token and no link.
+- **The tile says what is saved** (owner, 2026-11-12, "yes, do both"): the Match Day tile's second line reads "Opens
+  Fri 13 Nov · 00:00" before its day, from the day's last copy; with no copy yet (a code kept before its day has none)
+  "Code saved · tap to open"; from the day's start to its end "Tap to open"; with no code saved, or after the day's
+  end, "Scan the Match Day code" as before. The other two tiles are unchanged.
 - **Reopen after a kill** (decision record ruling 3): into Match Day. If a match was open, into that match's pad,
   whose Back returns to the list _(my call)_.
 - **Another kind of code scanned while Match Day is saved:** decision record ruling 2 applies: the app offers to

@@ -1231,5 +1231,10 @@
   "matchday.exit.confirm": "Quitter",
   "matchday.exit.stay": "Rester",
   "matchday.sendingCard.one": "Envoi de {count} saisie · {name}",
-  "matchday.sendingCard.other": "Envoi de {count} saisies · {name}"
+  "matchday.sendingCard.other": "Envoi de {count} saisies · {name}",
+  "matchday.notOpenSheet": "Ce code Jour de match ouvre le {day} à {time}",
+  "matchday.notOpenSheet.unknown": "Ce code Jour de match n'est pas encore ouvert",
+  "home.tile.matchday.opens": "Ouvre {day} · {time}",
+  "home.tile.matchday.saved": "Code enregistré · touchez pour ouvrir",
+  "home.tile.matchday.tap": "Touchez pour ouvrir"
 }
