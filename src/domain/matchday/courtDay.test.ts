@@ -44,6 +44,19 @@ describe('courtDay: one court as its whole day', () => {
     });
   });
 
+  it('drops the venue line when the court name already says it', () => {
+    expect(
+      courtDay(court({ courtName: 'Court 1 (Sports Hall)', venueName: 'Sports Hall' })).venueName,
+    ).toBe('');
+    expect(
+      courtDay(court({ courtName: 'Court 1 (sports hall)', venueName: 'Sports Hall' })).venueName,
+    ).toBe('');
+    expect(courtDay(court({ courtName: 'Court 1', venueName: 'Sports Hall' })).venueName).toBe(
+      'Sports Hall',
+    );
+    expect(courtDay(court({ courtName: 'Court 1', venueName: '' })).venueName).toBe('');
+  });
+
   it('has the match on the court as now, or none', () => {
     const playing = row('p-1', 'inPlay');
     expect(courtDay(court({ now: playing })).now).toBe(playing);
