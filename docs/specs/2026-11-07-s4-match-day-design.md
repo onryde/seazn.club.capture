@@ -32,7 +32,8 @@ one who sees a round finish, so the approval belongs on the same screen.
 **Non-goals (v1)**
 
 - Push alerts to Match Day phones (decision record ruling 11(c)): deferred.
-- Calling a match to a court, moving a match, or any Match Day desk action on the web other than approvals.
+- Moving a match, or any Match Day desk action on the web other than approvals and calling a match to a court (§7a).
+  _Calling was a non-goal until the owner reversed it on 13 Nov 2026 ("yes need in this session")._
 - Editing a proposal: changing a slot, unpairing a round or rebuilding a draw stays on the web desk.
 - Finalizing a match. The device-link rules stand: a scoring link cannot finalize (web `scoring.ts:599-602`).
 - Streaming. Match Day never starts the camera.
@@ -62,7 +63,9 @@ _(owner, 2026-11-07: "yes" to the controller's recommendation)_
   - Always: list the day's matches, and open a listed match's scoring link.
   - Only with **"can approve draws"** ticked at mint: approve a proposed Swiss round or knockout draw (§7)
     _(owner, 2026-11-07, approvals in v1; the tick is my call)_.
-  - Never: finalize, call to a court, edit, stream, or anything else an organiser does.
+  - Only with **"Call matches to courts"** ticked at mint (`can_call`, off by default): call a match to a free court
+    in the code's scope, and undo that call (§7a) _(owner, 2026-11-13, reversing "never"; the separate tick is my call)_.
+  - Never: finalize, move or edit a match, stream, or anything else an organiser does.
 - **Every link opened and every approval is logged on the server** against the code that did it.
 - **Each match keeps its own scoring QR.** Scanning a match's code still opens that match alone, as in S2
   _(owner: "match QR still same, just match day open the match remote qr for scoring")_.
@@ -205,6 +208,24 @@ _(owner, 2026-11-07: Swiss next round and knockout draw on the phone, in v1)_
 - **After approval,** the new matches appear on their courts at the next refresh, which runs at once.
 - **The session record** gets one line per approval: its kind, the stage and the outcome. It never carries the
   token.
+
+## 7a. Calling a match to a court (owner, 2026-11-13)
+
+Found in the device pass: the umpire at a free court needs the next match on it without the organiser's laptop.
+
+- **Who:** a code minted with "Call matches to courts" (`can_call`). Without it the phone shows no call control.
+- **Where:** a free court's card offers **Call a match**. It opens a sheet, "Call to {court}", listing the desk's own
+  candidates for that court (the web's `matchDayCandidates`, limited to the code's scope; a whole-competition code
+  also offers its matches with no court). Each row shows its round tag, the names, and where it is now (its court's
+  queue, or not on a court yet). A row whose player is in a match elsewhere is dimmed with the reason and cannot be
+  picked _(my call)_.
+- **Confirm:** picking a row shows the server's preview, one line per warning (matches pushed later, past the court's
+  closing time, across a closure, a player's rest), then a **3 s hold**, as approvals _(my call)_. The court then
+  reads Called with the match in Now.
+- **Undo call:** on a called court's Now row, a tap and a confirm sheet; no hold, since a call can be made again
+  _(my call)_. Refused once the match has started.
+- **The server** runs the desk's own call, preview and undo with the same checks, and logs each call against the code.
+  Its refusals have their own words (no power, out of scope, refused with a reason).
 
 ## 8. Rules the build keeps
 
