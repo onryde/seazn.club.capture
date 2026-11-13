@@ -142,10 +142,10 @@ Second device pass, 13 Nov afternoon (builds 1211–1215, after the rebase onto 
   its R2 was not a candidate for Court 3 (the web's `callableCourtsByFixture`, the scheduler's own court set). The owner
   had Court 3 added to Men's Singles on staging; the list then showed both.
 - **F-T8-11** (layout, fixed 6930dda4): a light hairline between matches in the call sheet (owner request).
-- **F-T8-12** (copy, open: needs the web): a candidate already CALLED to another court reads "Next on Court 2", the
-  same as one only queued there. The call list's `source: other_court` carries `from_court_name` for both, with nothing
-  to tell them apart. Rec: the web adds the court's state (called or queued) to the source, and the phone reads "Called
-  to Court 2" for a called one.
+- **F-T8-12** (copy, fixed 4ba0dae3 + web #1212): a candidate already CALLED to another court read "Next on Court 2",
+  the same as one only queued there. The web's candidate now carries `called` (the desk's own rule), and the phone reads
+  "Called to Court 2" (es _Convocado a_, fr _Appelé sur_, nl _Opgeroepen naar_); a web without the field reads as not
+  called.
 - **F-T8-13** (copy, fixed 2a49a492): the quiet preview's "No knock-on" read as jargon (owner: "No Knockon mean?"). It
   now says "No other match moves" (es _Ningún otro partido cambia_, fr _Aucun autre match ne bouge_, nl _Geen andere
   wedstrijd verschuift_), and the loading line says "Checking the other matches…".
