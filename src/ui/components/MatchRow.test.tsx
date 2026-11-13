@@ -81,6 +81,27 @@ describe('MatchRow', () => {
       expect(screen.getByText('SF·1')).toBeTruthy();
     });
 
+    it('sits on the names’ line, just before the names, with or without a label (owner: "fix chip placement")', () => {
+      for (const label of ['Next', undefined]) {
+        const { unmount } = render(
+          <MatchRow
+            chip="F"
+            {...(label === undefined ? {} : { label })}
+            names="Bea Lund v Fay Mensah"
+            detail="11:30"
+          />,
+        );
+        const chip = screen.getByTestId('round-chip');
+        const name = screen.getByText('Bea Lund v Fay Mensah');
+        // One line: the chip, the names and the label are all the row's own children, chip right before the names.
+        expect(chip.parentElement, String(label)).toBe(screen.getByTestId('match-row'));
+        expect(chip.nextElementSibling, String(label)).toBe(name);
+        if (label !== undefined) expect(screen.getByText(label).nextElementSibling).toBe(chip);
+        else expect(chip.previousElementSibling).toBeNull();
+        unmount();
+      }
+    });
+
     it('is read first on a finished row too, before its spoken heading', () => {
       render(<MatchRow chip="F" spoken="Finished" names="Ann v Cat" detail="21–15" dim />);
       expect(screen.getByTestId('match-row').getAttribute('aria-label')).toBe(
@@ -111,13 +132,13 @@ describe('MatchRow', () => {
       expect([word.whiteSpace, word.textOverflow]).toEqual(['nowrap', 'ellipsis']);
     });
 
-    it('shares the label’s column, so a row with a chip has the names room of a labelled row', () => {
+    it('never shrinks (the names give way); the label keeps its column, and a row without one has no column', () => {
       const { rerender } = render(<MatchRow chip="R1" label="Now" names="A v B" detail={null} />);
-      const both = getComputedStyle(screen.getByTestId('round-chip').parentElement!).width;
-      expect(both).toBe(`${layout.matchDayRowLabel}px`);
+      expect(getComputedStyle(screen.getByTestId('round-chip')).flexShrink).toBe('0');
+      expect(getComputedStyle(screen.getByText('Now')).width).toBe(`${layout.matchDayRowLabel}px`);
       rerender(<MatchRow chip="R1" spoken="Finished" names="A v B" detail={null} />);
-      expect(getComputedStyle(screen.getByTestId('round-chip').parentElement!).width).toBe(both);
-      expect(getComputedStyle(screen.getByTestId('round-chip')).maxWidth).toBe('100%');
+      // No label: nothing stands before the chip, so the sheet's and a finished row's names are not pushed right.
+      expect(screen.getByTestId('round-chip').previousElementSibling).toBeNull();
     });
   });
 

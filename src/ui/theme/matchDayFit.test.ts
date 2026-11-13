@@ -266,29 +266,28 @@ describe('the round chip and the slot words (task 8d-B)', () => {
   const plate = (tag: string) => caps('diagSection')(tag) + 2 * space.xs + 2 * layout.cardBorder;
   const TAGS = ['R1', 'R12', 'QF·2', 'SF·1', 'SF·2', '3rd', 'F'];
 
-  it('the desk’s tags stand whole in the label column (the chip never wraps; a longer word is cut)', () => {
+  it('the desk’s tags are short plates: the widest is under the label column, a long round name is not', () => {
     for (const tag of TAGS) expect(plate(tag), tag).toBeLessThanOrEqual(layout.matchDayRowLabel);
     // Anti-vacuity: the widest tag is not trivially small, and a long round name would not fit.
     expect(plate('SF·2')).toBeGreaterThan(layout.matchDayRowLabel / 2);
     expect(plate('Quarter-final 2')).toBeGreaterThan(layout.matchDayRowLabel);
   });
 
-  it('the chip over the label is 36 dp in a row of 48, in every language', () => {
-    const line = typeScale.diagSection.lineHeight;
-    const stack = line + 2 * layout.cardBorder + layout.matchDayChipGap + line;
-    expect(stack).toBe(36);
-    expect(stack).toBeLessThanOrEqual(layout.touch);
-    for (const lang of LANGS)
-      for (const key of ['matchday.row.now', 'matchday.row.next', 'matchday.row.then'])
-        expect(caps('diagSection')(said(lang, key)), `${lang} ${key}`).toBeLessThanOrEqual(
-          layout.matchDayRowLabel,
-        );
+  it('the chip stands on the names’ line: one line of caps and its hairlines, inside the row’s 48 dp', () => {
+    const chipHeight = typeScale.diagSection.lineHeight + 2 * layout.cardBorder;
+    expect(chipHeight).toBe(18);
+    expect(chipHeight).toBeLessThanOrEqual(layout.touch);
   });
 
-  it('a chip rides the label column, so the names room of a finished row with one is a labelled row’s', () => {
-    // The same budget as the labelled pins above: 188 dp for the names and the detail at 320.
-    expect(Math.round(rowRoom(320, true))).toBe(188);
-    expect(rowRoom(320, true)).toBeLessThan(rowRoom(320, false));
+  it('beside the widest tag, a labelled row at 320 still gives the names their floor and a time whole', () => {
+    // Owner, 2026-11-13 ("fix chip placement"): the chip moved out of the label column onto the names' line, so it
+    // costs the names its plate and a gap. The names keep `matchDayNamesMin` beside a time, in every row kind.
+    for (const labelled of [true, false]) {
+      const left = rowRoom(320, labelled) - plate('SF·2') - GAP - detail('14:40');
+      expect(left, String(labelled)).toBeGreaterThanOrEqual(layout.matchDayNamesMin);
+    }
+    // Anti-vacuity: the chip's cost is real (more than its gap alone).
+    expect(plate('SF·2')).toBeGreaterThan(GAP);
   });
 
   it('two slot labels never wrap: the pair is one line, cut with an ellipsis, beside a time at 320 and 360', () => {

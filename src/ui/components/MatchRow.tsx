@@ -6,8 +6,9 @@ import { colour, layout, space } from '@/ui/theme/tokens';
 
 type MatchRowProps = {
   /**
-   * The round chip at the row's left (the desk's tag, SF·1; task 8d-B, F-T8-3): in the label's column, above the label
-   * or alone, so a row with one has the names room of a labelled row. None when the row has no tag and no round.
+   * The round chip (the desk's tag, SF·1; task 8d-B, F-T8-3): on the names' line, just before the names, in every row
+   * kind alike (owner, 2026-11-13: "fix chip placement", after the device pass showed it over Next's label but beside a
+   * finished row's names). None when the row has no tag and no round.
    */
   readonly chip?: string | null;
   /** The row's label in its column at the left (Now, Next, Then); none for a row under a section's heading. */
@@ -70,10 +71,14 @@ const RowBody = memo(function RowBody({
   detail,
   dim = false,
 }: MatchRowProps) {
-  const lead = chip === null && label === undefined ? null : <Lead chip={chip} label={label} />;
   return (
     <>
-      {lead}
+      {label === undefined ? null : (
+        <Text variant="diagSection" numberOfLines={1} style={styles.label}>
+          {label}
+        </Text>
+      )}
+      {chip === null ? null : <RoundChip tag={chip} />}
       <Text variant="rowNames" numberOfLines={1} style={dim ? styles.namesDim : styles.names}>
         {parts === null ? names : parts.map(partOf)}
       </Text>
@@ -97,31 +102,13 @@ function partOf(part: NamePart, index: number) {
   );
 }
 
-/**
- * The row's first column, `matchDayRowLabel` wide: the round chip over the label (Now, Next, Then), or the chip alone.
- * A row with a label and no chip is the label as before.
- */
-const Lead = memo(function Lead({
-  chip,
-  label,
-}: {
-  readonly chip: string | null;
-  readonly label: string | undefined;
-}) {
+/** The round chip: the tag in caps on a hairlined plate, whole (it never shrinks; the names give way). */
+const RoundChip = memo(function RoundChip({ tag }: { readonly tag: string }) {
   return (
-    <View style={styles.lead}>
-      {chip === null ? null : (
-        <View testID="round-chip" style={styles.chip}>
-          <Text variant="diagSection" numberOfLines={1} style={styles.chipWord}>
-            {chip}
-          </Text>
-        </View>
-      )}
-      {label === undefined ? null : (
-        <Text variant="diagSection" numberOfLines={1} style={styles.label}>
-          {label}
-        </Text>
-      )}
+    <View testID="round-chip" style={styles.chip}>
+      <Text variant="diagSection" numberOfLines={1} style={styles.chipWord}>
+        {tag}
+      </Text>
     </View>
   );
 });
@@ -139,11 +126,9 @@ const styles = StyleSheet.create({
     gap: space.sm,
   },
   pressed: { backgroundColor: colour.pressFill },
-  lead: { width: layout.matchDayRowLabel, gap: layout.matchDayChipGap },
-  label: { color: colour.ink2 },
+  label: { width: layout.matchDayRowLabel, color: colour.ink2 },
   chip: {
-    alignSelf: 'flex-start',
-    maxWidth: '100%',
+    flexShrink: 0,
     paddingHorizontal: space.xs,
     borderWidth: layout.cardBorder,
     borderColor: colour.rule,

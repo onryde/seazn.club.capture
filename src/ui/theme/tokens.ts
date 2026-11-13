@@ -608,11 +608,6 @@ const base = {
    * ("0–1 · 12–10", 85.8) and a time with its zone stand whole while a full scoreboard headline is cut.
    */
   matchDayNamesMin: 100,
-  /**
-   * The round chip over a row's label (task 8d-B): both stand in the `matchDayRowLabel` column, a 16 dp line each, the
-   * chip's 2 dp border and a 2 dp gap between them, 36 dp in all, inside the row's 48 dp. A plate, square (AGENTS §5).
-   */
-  matchDayChipGap: 2,
 } as const;
 
 /** The cells the controls half's width is made of (`base` holds the shipped ones). */

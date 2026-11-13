@@ -8,7 +8,7 @@ import { useRowWords } from '@/hooks/useRowWords';
 import type { MessageKey } from '@/i18n/messages';
 import { MatchRow } from '@/ui/components/MatchRow';
 import { Text } from '@/ui/components/Text';
-import { colour, layout, space } from '@/ui/theme/tokens';
+import { colour, space } from '@/ui/theme/tokens';
 
 type CandidateRowProps = {
   readonly candidate: Candidate;
@@ -65,7 +65,7 @@ export const CandidateRow = memo(function CandidateRow({
 });
 
 const styles = StyleSheet.create({
-  candidate: { paddingBottom: space.sm, paddingLeft: layout.matchDayRowLabel + space.sm },
+  candidate: { paddingBottom: space.sm },
   where: { color: colour.ink2 },
   whereDim: { color: colour.ink3 },
   blocked: { color: colour.ink3 },
