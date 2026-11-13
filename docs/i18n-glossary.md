@@ -60,7 +60,11 @@ is an owner decision, not a translation fix.
 | Live Stream (mode)                                                 | Emisión en directo                      | Diffusion en direct                       | Livestream                             |                                                                                                                                                                                                                                                                                                                                                                      |
 | Remote Scoring (mode)                                              | Anotación remota                        | Score à distance                          | Scoren op afstand                      | es: keeping score is _anotación_, as the web's _anotador_. _Puntuar un partido_ means to rate it. The button's accessible name is the mode's name.                                                                                                                                                                                                                   |
 | Score this match (the panel's title)                               | Anota este partido                      | Tenez le score du match                   | Scoor deze wedstrijd                   | The mode's noun as a verb. fr: not _Scorez_, which nothing else in the fr copy says; the Home tile already says _Tenez le score_.                                                                                                                                                                                                                                    |
-| Dashboard (mode)                                                   | Panel                                   | Tableau de bord                           | Dashboard                              | As the web.                                                                                                                                                                                                                                                                                                                                                          |
+| Match Day (mode)                                                   | Día de partidos                         | Jour de match                             | Speeldag                               | es, fr: as the web (`matchDay.title`). nl: not the web's _Wedstrijddag_, one word too wide for a Home tile's title sideways (N31); _Speeldag_ fits. MD-2 Task 1.                                                                                                                                                                                                     |
+| Match Day code (the QR)                                            | código del Día de partidos              | code Jour de match                        | speeldagcode                           | As the tile's hint (`home.tile.matchday.hint`): the mode's name, then code. nl: one word, as Dutch compounds it. MD-2 Task 3.                                                                                                                                                                                                                                        |
+| Match Day ended (the line)                                         | El Día de partidos ha terminado         | Jour de match terminé                     | Speeldag afgelopen                     | Home's line when a day code has run out (S4 design §4). A state, not a blame: never _expired_ or _invalid_. MD-2 Task 3.                                                                                                                                                                                                                                             |
+| withdrawn (a code the organiser took back)                         | retirado                                | retiré                                    | ingetrokken                            | As the web's Withdraw (_Retirar_, _Retirer_, _Intrekken_). The organiser's act, not the phone's fault. MD-2 Task 3.                                                                                                                                                                                                                                                  |
+| Match Day opens {date}                                             | El Día de partidos se abre el {date}    | Le Jour de match ouvre le {date}          | Speeldag opent {date}                  | As the web's _Se abre el_, _Ouvre le_, _Opent_, with the mode named. `{date}` is the short day in the phone's language (`formatDay`). MD-2 Task 3.                                                                                                                                                                                                                   |
 | broadcast, stream (the thing on air)                               | la emisión                              | le direct                                 | de stream                              | One noun each. fr keeps _diffusion_ only in the mode's name and its _code de diffusion_.                                                                                                                                                                                                                                                                             |
 | to stream                                                          | emitir                                  | diffuser                                  | streamen                               |                                                                                                                                                                                                                                                                                                                                                                      |
 | Go live (button)                                                   | Emitir                                  | Passer en direct                          | Live gaan                              | As the web (whose nl button says _Ga live_; buttons here are infinitives).                                                                                                                                                                                                                                                                                           |
@@ -870,6 +874,107 @@ _Pauze_ (the Break tool's words, a rest): a break of serve has its own word in e
 - **fr _break_.** _Balle de break_ is the umpires' and broadcasters' term (the brief's), where _break_ is not the glossary's Break
   tool (that is _Pause_).
 - **nl _Breekpunt_.** The Dutch commentators' word; the glossary's anglicisms (_Gamepunt_, _Matchpunt_) are for game and match.
+
+## Match Day list (MD-2 Task 4, 2026-11-08)
+
+Match Day's list by court (S4 design §5, layout B). The court words are the web's court board's where it has them; a
+row's names and its score are one line each, cut with an ellipsis (`matchDayFit.test.ts` pins which are). Committed
+without a `_review` marker.
+
+| English                  | Español                                 | Français                           | Nederlands                     | Notes                                                                                   |
+| ------------------------ | --------------------------------------- | ---------------------------------- | ------------------------------ | --------------------------------------------------------------------------------------- |
+| Playing                  | En juego                                | En jeu                             | Bezig                          | `matchday.court.playing`: a court state chip, read by a screen reader with the court.   |
+| Called                   | Convocado                               | Appelé                             | Opgeroepen                     | `matchday.court.called`. nl is the widest chip, 98.6 dp (word 80.6): name keeps 155.    |
+| Free                     | Libre                                   | Libre                              | Vrij                           | `matchday.court.free`.                                                                  |
+| In use                   | En uso                                  | Occupé                             | In gebruik                     | `matchday.court.inUseElsewhere`: by a match outside this code.                          |
+| Now / Next / Then        | Ahora / Siguiente / Después             | En cours / Suivant / Ensuite       | Nu / Volgende / Daarna         | `matchday.row.*`. es _Siguiente_ (56.5 dp) sets the label column, `matchDayRowLabel`.   |
+| Finished                 | Terminados                              | Terminés                           | Afgelopen                      | `matchday.row.finished`: the heading over a court's finished matches, plural.           |
+| To be decided            | Por decidir                             | À déterminer                       | Nog te bepalen                 | `matchday.seat.tbd`: a seat with no player yet. Never _TBD_.                            |
+| Not on a court yet       | Aún sin pista                           | Pas encore de terrain              | Nog geen baan                  | `matchday.noCourt`, then " · " and the count.                                           |
+| Online                   | En línea                                | En ligne                           | Online                         | `matchday.online`: the online boards' section (chess). Read-only rows.                  |
+| All courts / All venues  | Todas las pistas / Todas las sedes      | Tous les terrains / Tous les lieux | Alle banen / Alle locaties     | `matchday.scope.competition`, `matchday.venues.all`.                                    |
+| Offline · updated {time} | Sin conexión · actualizado a las {time} | Hors ligne · mis à jour à {time}   | Offline · bijgewerkt om {time} | `matchday.offline`: over the last copy; `{time}` in the venue's zone.                   |
+| Sending {count}          | Enviando {count}                        | Envoi : {count}                    | Verzenden: {count}             | `matchday.sending.*`: a court's (or no court's) unsent taps. fr: no-break space, colon. |
+| Taps at risk             | Toques en riesgo                        | Saisies en danger                  | Taps in gevaar                 | `matchday.sending.atRisk`, in caution: a queue the phone cannot read. No count.         |
+| pair on the web desk     | empareja en la web                      | appariez sur le site web           | koppel op de website           | `matchday.approve.webOnly*`: a code that cannot approve says where it is done.          |
+
+Added with opening a match (MD-2 Task 5, 2026-11-12), the line on the list when the server says a match is not on the
+code's courts. Committed without a `_review` marker.
+
+| English                         | Español                            | Français                            | Nederlands                              | Notes                                                                                                              |
+| ------------------------------- | ---------------------------------- | ----------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| This match isn't on your courts | Este partido no está en tus pistas | Ce match n'est pas sur vos terrains | Deze wedstrijd staat niet op jouw banen | `matchday.outOfScope`: one line on the list; nothing opens. Courts as `matchday.noCourt` has them.                 |
+| Couldn't open this match        | No se pudo abrir este partido      | Impossible d'ouvrir ce match        | Kon deze wedstrijd niet openen          | `matchday.cantOpen`: one line on the list; nothing opens (no usable day code, or a link this build will not keep). |
+| Back to {court}                 | Volver a {court}                   | Retour à {court}                    | Terug naar {court}                      | `matchday.backTo`: the pad's Back, as its accessible name only (the chevron is drawn alone).                       |
+
+Added with approving a draw (MD-2 Task 6, 2026-11-12), the review and its hold. The first two rows' English is the
+spec's (S4 design §7), verbatim. Committed without a `_review` marker.
+
+| English                              | Español                                      | Français                                      | Nederlands                              |
+| ------------------------------------ | -------------------------------------------- | --------------------------------------------- | --------------------------------------- |
+| Review                               | Revisar                                      | Examiner                                      | Bekijken                                |
+| {division} · Round {round}           | {division} · Ronda {round}                   | {division} · Tour {round}                     | {division} · Ronde {round}              |
+| {division} · Knockout bracket        | {division} · Cuadro eliminatorio             | {division} · Tableau final                    | {division} · Knock-outschema            |
+| To change a slot, use the web desk   | Para cambiar un puesto, usa la web           | Pour modifier une place, utilisez le site web | Wijzig een plek via de website          |
+| Approve                              | Aprobar                                      | Approuver                                     | Goedkeuren                              |
+| Hold 3 s                             | Mantén 3 s                                   | Maintenez 3 s                                 | Houd 3 s ingedrukt                      |
+| Approving…                           | Aprobando…                                   | Approbation…                                  | Goedkeuren…                             |
+| Loading the proposal…                | Cargando la propuesta…                       | Chargement de la proposition…                 | Voorstel laden…                         |
+| Bye                                  | Descansa                                     | Exempt                                        | Vrij                                    |
+| Already approved                     | Ya aprobado                                  | Déjà approuvé                                 | Al goedgekeurd                          |
+| Bracket changed — review again       | El cuadro cambió — revisa de nuevo           | Le tableau a changé — examinez à nouveau      | Schema gewijzigd — bekijk opnieuw       |
+| Ties need a decision on the web desk | Los empates requieren una decisión en la web | Les égalités se décident sur le site web      | Gelijke standen beslis je op de website |
+| Approve it on the web desk           | Apruébalo en la web                          | Approuvez-le sur le site web                  | Keur het goed op de website             |
+| Review again                         | Revisar de nuevo                             | Examiner à nouveau                            | Opnieuw bekijken                        |
+
+Keys `matchday.approve.*`: review (the banner button and the screen), heading.swiss/draw, change, action, hold (the plate), approving, loading, bye (a Swiss seat with no opponent), already, stale, ties, onWeb, reviewAgain.
+
+Added with the approval's fix round 1 (MD-2 Task 6, 2026-11-12): a Swiss round's stale line, and an approve that was
+this phone's own. The draw keeps the spec's "Bracket changed — review again". English says _bracket_, never _draw_, for the knockout's seeding (owner, 2026-11-13: "does it confuse with match draw?", then "yes"): a drawn match is a result. es _cuadro_, fr _tableau_ and nl _schema_ already said bracket.
+
+| English                         | Español                                         | Français                                         | Nederlands                             |
+| ------------------------------- | ----------------------------------------------- | ------------------------------------------------ | -------------------------------------- |
+| Pairings changed — review again | Los emparejamientos cambiaron — revisa de nuevo | Les appariements ont changé — examinez à nouveau | Koppelingen gewijzigd — bekijk opnieuw |
+| Approved                        | Aprobado                                        | Approuvé                                         | Goedgekeurd                            |
+
+Keys `matchday.approve.staleSwiss`, `matchday.approve.approved`.
+
+Added with Exit and the Sending card (MD-2 Task 7, 2026-11-12): ⋯'s name, Exit's question and the small card Home keeps for taps
+still sending. The spec's two sentences are verbatim (design §4, §4's "Sending 3 taps · Court 2"). _Taps_ is the word the
+rest of the app uses (es _toques_, fr _saisies_, nl _taps_).
+
+| English                                                             | Español                                                                            | Français                                                                 | Nederlands                                                             |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| More                                                                | Más                                                                                | Plus                                                                     | Meer                                                                   |
+| Exit Match Day?                                                     | ¿Salir del Día de partidos?                                                        | Quitter Jour de match ?                                                  | Speeldag verlaten?                                                     |
+| You'll need to scan again.                                          | Tendrás que escanear de nuevo.                                                     | Vous devrez scanner à nouveau.                                           | Je moet opnieuw scannen.                                               |
+| {count} taps still sending — they'll keep sending.                  | {count} toques aún se están enviando; se seguirán enviando.                        | {count} saisies en cours d'envoi — elles continueront d'être envoyées.   | {count} taps worden nog verstuurd — dat gaat door.                     |
+| Some taps can't be read and are at risk. You'll need to scan again. | Algunos toques no se pueden leer y están en riesgo. Tendrás que escanear de nuevo. | Des saisies sont illisibles et en danger. Vous devrez scanner à nouveau. | Sommige taps zijn onleesbaar en lopen gevaar. Je moet opnieuw scannen. |
+| Exit / Stay                                                         | Salir / Quedarme                                                                   | Quitter / Rester                                                         | Verlaten / Blijven                                                     |
+| Sending {count} taps · {name}                                       | Enviando {count} toques · {name}                                                   | Envoi de {count} saisies · {name}                                        | Verzenden: {count} taps · {name}                                       |
+
+Keys `matchday.menu` (⋯'s accessible name), `matchday.exit.title`, `matchday.exit.body`, `matchday.exit.bodySending` (`.one` says
+"{count} tap still sending — it'll keep sending."), `matchday.exit.bodyAtRisk` (a queue the phone cannot read: taps at risk, never the
+plain body), `matchday.exit.confirm`, `matchday.exit.stay`, `matchday.sendingCard` (`{name}` is the court, else the match, else
+_another match_; `.one` is the singular). fr: no-break space before `?`. The card's es/fr/nl follow `scoring.sync.sending.*`.
+
+## Match Day: call a match to a court (task 8e)
+
+Keys `matchday.call.*` (S4 design §7a). Terms, as es / fr / nl: _call a match_ is es _convocar un partido_, fr _appeler un match_,
+nl _een wedstrijd oproepen_; _Undo call_ is es _Deshacer la convocatoria_, fr _Annuler l'appel_ (`undoTitle` has the no-break space
+before `?`), nl _Oproep ongedaan maken_; _Keep_ is es _Mantener_, fr _Garder_, nl _Behouden_; a quiet preview says no other match moves
+(owner, 2026-11-13: "No Knockon mean?"; was _No knock-on_): es _Ningún otro partido cambia_, fr _Aucun autre match ne bouge_, nl
+_Geen andere wedstrijd verschuift_. The hold plate in nl is _Houd om op
+te roepen_ (the longer wording wrapped at 320 dp). fr uses vous. These keys carry no `_review` marker, as the rest of the branch.
+
+The court's own action is a small button beside its state chip (owner, 2026-11-13: "a small button beside Free"), one word:
+`matchday.call.short` _Call_ (es _Convocar_, fr _Appeler_, nl _Oproepen_) on a free court, `matchday.call.undoShort` _Undo_ (es
+_Deshacer_, fr _Annuler_, nl _Terug_) on a called one. nl _Terug_, not _Ongedaan maken_: beside _Opgeroepen_ the longer word left a
+court's name 23 dp at 320 (`matchDayFit.test.ts`). A screen reader still hears the full `actionNamed` / `undoNamed`.
+
+A candidate's place line (F-T8-12): `matchday.call.nextOn` _Next on {court}_ (es _Siguiente en_, fr _Suivant sur_, nl _Volgende op_) when
+it is queued next there, `matchday.call.calledTo` _Called to {court}_ (es _Convocado a_, fr _Appelé sur_, nl _Opgeroepen naar_) when it is
+already called onto that court and not started, the same word as the court's own _Called_ chip.
 
 ## Translation review
 

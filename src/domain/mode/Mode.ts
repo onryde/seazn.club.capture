@@ -4,7 +4,7 @@ import type { StreamCode } from '@/domain/credentials/streamCode';
  * The three things the app does. Only one runs at a time, and each is
  * unlocked by its own code — there is no login (decision record, ruling 2).
  */
-export type Mode = 'stream' | 'scoring' | 'dashboard';
+export type Mode = 'stream' | 'scoring' | 'matchday';
 
 /**
  * A code the app recognised and can act on. The wire shape stops here: `raw`
@@ -13,10 +13,13 @@ export type Mode = 'stream' | 'scoring' | 'dashboard';
  *
  * `raw` for a stream code carries the code's `tok`, a lasting bearer
  * (amendment, Known gaps). Never log it, print it, or put it in a test snapshot.
+ * A Match Day code's `raw` is its day link and `token` the link's `md_…` (MD-2;
+ * S4 design §3), a bearer for every match of the day: the same rules.
  */
 export type ModeCode =
   | ({ readonly mode: 'stream'; readonly raw: string } & StreamCode)
-  | { readonly mode: 'scoring'; readonly raw: string; readonly token: string };
+  | { readonly mode: 'scoring'; readonly raw: string; readonly token: string }
+  | { readonly mode: 'matchday'; readonly raw: string; readonly token: string };
 
 /**
  * What a scan turned out to be. A closed union, so every screen that shows a

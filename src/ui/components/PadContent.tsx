@@ -16,6 +16,7 @@ import { flashCue, type HalfFlash } from '@/domain/scoring/tapFlash';
 import type { PadActions, PadLineWords } from '@/hooks/padScreenModel';
 import { useT } from '@/hooks/useLanguage';
 import { usePadText } from '@/hooks/usePadText';
+import { useBackLabel } from '@/hooks/useScoringOrigin';
 import type { MessageKey } from '@/i18n/messages';
 import { Button } from '@/ui/components/Button';
 import { DetailsCard } from '@/ui/components/DetailsCard';
@@ -151,10 +152,10 @@ const PadHeader = memo(function PadHeader({
   readonly known: boolean;
   readonly actions: PadContentActions;
 }) {
-  const { t } = useT();
+  const backLabel = useBackLabel();
   return (
     <View style={styles.header}>
-      <IconButton glyph="back" label={t('stream.home')} onPress={actions.home} />
+      <IconButton glyph="back" label={backLabel} onPress={actions.home} />
       {known ? <GamesTally tally={tally} /> : null}
       <HeaderEnd sync={sync} known={known} actions={actions} />
     </View>

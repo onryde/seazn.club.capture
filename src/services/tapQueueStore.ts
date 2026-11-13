@@ -68,6 +68,11 @@ export interface TapQueueStore {
    * aside. It stands until the match is removed or saved again, or, for a refused read, until the next list reads it.
    */
   list(): Promise<readonly QueueEntry[]>;
+  /**
+   * `list`, but null when the folder cannot be listed: a caller that lets go of a match because it has NO queue must not
+   * read a folder it could not see as an empty one (MD-2 final review I1). Never rejects.
+   */
+  listKnown(): Promise<readonly QueueEntry[] | null>;
   /** A match's queue, or null when it has none or it cannot be read (reported once, never thrown). */
   load(fixtureId: string): Promise<MatchQueue | null>;
   /**
@@ -242,7 +247,12 @@ export function createTapQueueStore(deps: { files: QueueFiles; logger: Logger })
   const guarded = <T>(fixtureId: string, otherwise: T, task: () => Promise<T>): Promise<T> =>
     FIXTURE_ID.test(fixtureId) ? inOrder(task) : Promise.resolve(otherwise);
   return {
-    list: () => inOrder(() => listEntries(reading)),
+    list: () => inOrder(async () => listEntries(reading, (await folderNamesKnown(reading)) ?? [])),
+    listKnown: () =>
+      inOrder(async () => {
+        const names = await folderNamesKnown(reading);
+        return names === null ? null : listEntries(reading, names);
+      }),
     load: (fixtureId) => guarded(fixtureId, null, () => recover(reading, queueSlot(fixtureId))),
     save: (queue) =>
       inOrder(async () => {
@@ -314,21 +324,29 @@ type Reading = { files: QueueFiles; report: Report; readable: Readable };
 
 /** Every file name in the folder; none, said once, when the folder cannot be listed. */
 async function folderNames(reading: Reading): Promise<readonly string[]> {
+  return (await folderNamesKnown(reading)) ?? [];
+}
+
+/** Every file name in the folder; null, said once, when the folder cannot be listed. */
+async function folderNamesKnown(reading: Reading): Promise<readonly string[] | null> {
   try {
     const names = await reading.files.names();
     reading.readable(FOLDER);
     return names;
   } catch {
     reading.report(queueSlot('x'), FOLDER, 'folder');
-    return [];
+    return null;
   }
 }
 
 const idsIn = (names: readonly string[], pattern: RegExp): string[] =>
   [...new Set(names.flatMap((name) => pattern.exec(name)?.[1] ?? []))].sort();
 
-async function listEntries(reading: Reading): Promise<readonly QueueEntry[]> {
-  const ids = idsIn(await folderNames(reading), QUEUE_FILE);
+async function listEntries(
+  reading: Reading,
+  names: readonly string[],
+): Promise<readonly QueueEntry[]> {
+  const ids = idsIn(names, QUEUE_FILE);
   const entries: QueueEntry[] = [];
   for (const id of ids) {
     const { value, trouble } = await recoverSlot(reading, queueSlot(id));

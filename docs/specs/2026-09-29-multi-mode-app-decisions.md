@@ -27,7 +27,7 @@ unlocked by its own QR code. **There is no login anywhere.**
 | ------------------ | ------------------------------------------------------------------ | -------------------- | -------------------------------------------------------------------------------------------------------------- |
 | **Live Stream**    | Capture QR (v1), or a court-pairing QR                             | **Always landscape** | _Handheld:_ today's capture design. _Court-bound:_ a paired phone that streams whatever match the desk assigns |
 | **Remote Scoring** | Device-link QR, from the console, a printed sheet or a court phone | Portrait             | Scores **one fixture**, like today's device link                                                               |
-| **Dashboard**      | Tournament approval QR (new)                                       | Portrait             | Lists divisions pending a decision (next round, stage completion, knockout proposal) and approves them         |
+| **Match Day**      | A day code, minted on the web (S4)                                 | Portrait             | Lists the day's matches by court and opens each in Remote Scoring; approves a Swiss round or a knockout draw   |
 
 ## Rulings
 
@@ -112,7 +112,7 @@ record.
 | **S1** | Live Stream, handheld (= M1) | Today's capture design on the real StreamPack engine, carrying the P5 inheritance list (the results doc's Verdict) and the delivered-playlist watch; the QR parser as above      | The session-descriptor endpoint                                                                                                                      |
 | **S2** | Remote Scoring               | R4's engine spike; a native chassis on `@seazn/engine`; **one sport first**, then the rest; offline queue parity; ~~first-scan claim~~                                           | `@seazn/engine` and the sport skins (already pure data) packaged for React Native; ~~claim-on-first-scan for `device_links`~~ (S2 ruling 3)          |
 | **S3** | Live Stream, court-bound     | Pairing; the assignment queue; the scorer-start trigger; the grace end; the split screen; the heartbeat; Android only (R3)                                                       | Device registration beside `fixture_stream_sessions`; a court channel and token mint; the heartbeat API; the console status board; push registration |
-| **S4** | Dashboard                    | Tournament QR; pending divisions; approve with a hold; receiving push                                                                                                            | The tournament approval link (a new credential beside `device_links`, R1); a pending-divisions API                                                   |
+| **S4** | Match Day                    | A day code lists the day's matches by court and opens each in Remote Scoring; approves by a hold. Replaces the Dashboard: [S4 design](2026-11-07-s4-match-day-design.md)         | The day code, the day read, open a match and approvals (S4 design §9)                                                                                |
 
 ## For the main repo
 

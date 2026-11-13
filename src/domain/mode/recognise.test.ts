@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_RAW_LENGTH, recognise } from '@/domain/mode/recognise';
+import { dayLink, FIXTURE_DAY_TOKEN } from '../../../test/fixtures/dayCode';
 import { captureWire, FIXTURE_CODE, FIXTURE_TOKEN } from '../../../test/fixtures/wire';
 
 const NOW = new Date('2026-10-03T13:00:00Z');
@@ -142,6 +143,80 @@ describe('recognise — links', () => {
     ['production host on a staging build', 'https://seazn.club/score/abc123'],
   ])('rejects a %s', (_label, raw) => {
     expect(recognise(raw, NOW, HOSTS)).toEqual({ outcome: 'foreign' });
+  });
+});
+
+/**
+ * MD-2 Task 1 (S4 design §8): the day's QR is `https://<build host>/day/md_…`, `md_` and 43 base64url characters. It
+ * routes the UI only; the server's answer is the trust decision. Made-up tokens (test/fixtures/dayCode.ts).
+ */
+describe('recognise — Match Day links', () => {
+  it('uses a made-up token of the shape the web mints: md_ and 43 base64url characters', () => {
+    expect(FIXTURE_DAY_TOKEN).toMatch(/^md_[A-Za-z0-9_-]+$/);
+    expect(FIXTURE_DAY_TOKEN).toHaveLength(3 + 43);
+  });
+
+  it('recognises https://<build host>/day/md_… as a matchday code', () => {
+    const raw = dayLink();
+    expect(recognise(raw, NOW, HOSTS)).toEqual({
+      outcome: 'code',
+      code: { mode: 'matchday', raw, token: FIXTURE_DAY_TOKEN },
+    });
+  });
+
+  it.each([
+    `https://stg.seazn.club/day/${FIXTURE_DAY_TOKEN}/`,
+    `https://stg.seazn.club/day/${FIXTURE_DAY_TOKEN}?utm=print`,
+    `https://stg.seazn.club/day/${FIXTURE_DAY_TOKEN}#top`,
+    `https://STG.Seazn.Club/day/${FIXTURE_DAY_TOKEN}`,
+  ])('takes the token from %s', (raw) => {
+    const result = recognise(raw, NOW, HOSTS);
+    expect(result.outcome === 'code' && result.code.mode === 'matchday' && result.code.token).toBe(
+      FIXTURE_DAY_TOKEN,
+    );
+  });
+
+  it('keeps the link whole in raw, as a scoring code does', () => {
+    const raw = `  ${dayLink()}\n`;
+    const result = recognise(raw, NOW, HOSTS);
+    expect(result.outcome === 'code' && result.code.raw).toBe(raw);
+  });
+
+  it.each([
+    ['foreign host', dayLink('evil.io')],
+    ['lookalike suffix host', dayLink('stg.seazn.club.evil.io')],
+    ['subdomain of a Seazn host', dayLink('evil.stg.seazn.club')],
+    ['production host on a staging build', dayLink('seazn.club')],
+    ['plain http', `http://stg.seazn.club/day/${FIXTURE_DAY_TOKEN}`],
+    ['userinfo trick', `https://stg.seazn.club@evil.io/day/${FIXTURE_DAY_TOKEN}`],
+  ])('a /day/ link on a %s is foreign', (_label, raw) => {
+    expect(recognise(raw, NOW, HOSTS)).toEqual({ outcome: 'foreign' });
+  });
+
+  it.each([
+    ['no token', 'https://stg.seazn.club/day/'],
+    ['no md_ prefix', `https://stg.seazn.club/day/${FIXTURE_DAY_TOKEN.slice(3)}`],
+    ['an uppercase prefix', `https://stg.seazn.club/day/MD_${FIXTURE_DAY_TOKEN.slice(3)}`],
+    ['a token one short', `https://stg.seazn.club/day/${FIXTURE_DAY_TOKEN.slice(0, -1)}`],
+    ['a token one long', `https://stg.seazn.club/day/${FIXTURE_DAY_TOKEN}x`],
+    ['base64 padding', `https://stg.seazn.club/day/${FIXTURE_DAY_TOKEN.slice(0, -1)}=`],
+    ['a plus sign', `https://stg.seazn.club/day/${FIXTURE_DAY_TOKEN.slice(0, -1)}+`],
+    ['a deeper path', `https://stg.seazn.club/day/${FIXTURE_DAY_TOKEN}/list`],
+    ['a path that only starts like it', `https://stg.seazn.club/days/${FIXTURE_DAY_TOKEN}`],
+    ['a path under another', `https://stg.seazn.club/x/day/${FIXTURE_DAY_TOKEN}`],
+    ['an uppercase path', `https://stg.seazn.club/DAY/${FIXTURE_DAY_TOKEN}`],
+  ])('/day/ with %s is a Seazn page, not a code', (_label, raw) => {
+    expect(recognise(raw, NOW, HOSTS)).toEqual({ outcome: 'seaznPage' });
+  });
+
+  // The two paths never cross: a day token under /score/ is a scoring link's token, and a scoring token under /day/
+  // is no code at all. The server's answer is what decides either (spec §8).
+  it('reads the mode from the path, never from the token', () => {
+    const scoring = recognise(`https://stg.seazn.club/score/${FIXTURE_DAY_TOKEN}`, NOW, HOSTS);
+    expect(scoring.outcome === 'code' && scoring.code.mode).toBe('scoring');
+    expect(recognise('https://stg.seazn.club/day/abc_123-XYZ', NOW, HOSTS)).toEqual({
+      outcome: 'seaznPage',
+    });
   });
 });
 

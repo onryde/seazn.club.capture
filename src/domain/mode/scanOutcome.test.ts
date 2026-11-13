@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ModeCode } from '@/domain/mode/Mode';
 import { BUILT_MODES, scanOutcome } from '@/domain/mode/scanOutcome';
+import { dayLink, FIXTURE_DAY_TOKEN } from '../../../test/fixtures/dayCode';
 
 const streamCode: ModeCode = {
   mode: 'stream',
@@ -11,6 +12,8 @@ const streamCode: ModeCode = {
   expiresAt: new Date('2026-10-03T18:40:00Z'),
 };
 const scoringCode: ModeCode = { mode: 'scoring', raw: 'https://x/score/t', token: 't' };
+/** A made-up Match Day code, as `recognise` reads one (recognise.test.ts). */
+const dayCode: ModeCode = { mode: 'matchday', raw: dayLink(), token: FIXTURE_DAY_TOKEN };
 
 describe('scanOutcome', () => {
   it('opens the mode when the code matches the tile', () => {
@@ -41,21 +44,55 @@ describe('scanOutcome', () => {
     });
   });
 
-  // `recognise` reads no Dashboard code yet (S4 adds it), so this one is made by hand: a mode this build has not built
-  // is named and told it is coming soon, never opened, whichever tile was tapped.
+  // MD-2 Task 1: Match Day is a built mode, so its code opens from its own tile (S4 design §4).
+  it('a matchday code scanned from the matchday tile opens', () => {
+    expect(scanOutcome('matchday', { outcome: 'code', code: dayCode })).toEqual({
+      kind: 'open',
+      code: dayCode,
+    });
+  });
+
+  // Decision record ruling 2: a code for another mode is named, and the app offers to open it, both ways round.
+  it('a scoring code scanned from the matchday tile offers to switch', () => {
+    expect(scanOutcome('matchday', { outcome: 'code', code: scoringCode })).toEqual({
+      kind: 'otherMode',
+      tapped: 'matchday',
+      code: scoringCode,
+    });
+    expect(scanOutcome('matchday', { outcome: 'code', code: streamCode })).toEqual({
+      kind: 'otherMode',
+      tapped: 'matchday',
+      code: streamCode,
+    });
+  });
+
+  it.each(['stream', 'scoring'] as const)(
+    'a matchday code scanned from the %s tile offers to switch',
+    (tapped) => {
+      expect(scanOutcome(tapped, { outcome: 'code', code: dayCode })).toEqual({
+        kind: 'otherMode',
+        tapped,
+        code: dayCode,
+      });
+    },
+  );
+
+  // Every mode is built now (MD-2 Task 1), so no code `recognise` reads reaches this rule. It stays for a code whose
+  // mode the build has not built, so this one is made by hand: named and told it is coming soon, never opened,
+  // whichever tile was tapped.
   it('says a code of a mode not built is coming soon, whichever tile was tapped', () => {
-    const dashboard = { mode: 'dashboard', raw: 'r', token: 't' } as unknown as ModeCode;
-    for (const tapped of ['stream', 'scoring', 'dashboard'] as const) {
-      expect(scanOutcome(tapped, { outcome: 'code', code: dashboard })).toEqual({
+    const later = { mode: 'later', raw: 'r', token: 't' } as unknown as ModeCode;
+    for (const tapped of ['stream', 'scoring', 'matchday'] as const) {
+      expect(scanOutcome(tapped, { outcome: 'code', code: later })).toEqual({
         kind: 'comingSoon',
         tapped,
-        mode: 'dashboard',
+        mode: 'later',
       });
     }
   });
 
-  it('builds Live Stream and Remote Scoring, and not yet the Dashboard', () => {
-    expect([...BUILT_MODES]).toEqual(['stream', 'scoring']);
+  it('builds all three modes: Live Stream, Remote Scoring and Match Day', () => {
+    expect([...BUILT_MODES]).toEqual(['stream', 'scoring', 'matchday']);
   });
 
   it('passes the plain outcomes through with the tapped tile', () => {
@@ -67,9 +104,9 @@ describe('scanOutcome', () => {
       at,
     });
     // The expired panel names the code's mode, not the tile's.
-    expect(scanOutcome('dashboard', { outcome: 'expired', mode: 'stream', at })).toEqual({
+    expect(scanOutcome('matchday', { outcome: 'expired', mode: 'stream', at })).toEqual({
       kind: 'expired',
-      tapped: 'dashboard',
+      tapped: 'matchday',
       mode: 'stream',
       at,
     });

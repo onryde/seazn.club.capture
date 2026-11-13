@@ -12,7 +12,11 @@ import { useHomeLinks } from '@/hooks/useStreamLinks';
 import logo from '@/ui/assets/logo-wide-night.png';
 import { CodePanel } from '@/ui/components/CodePanel';
 import { ContinueCard } from '@/ui/components/ContinueCard';
-import { ScoringContinueCard, ScoringLeftoverCard } from '@/ui/components/ScoringCards';
+import {
+  ScoringContinueCard,
+  ScoringLeftoverCard,
+  SendingCard,
+} from '@/ui/components/ScoringCards';
 import type { CardShape } from '@/ui/components/cardShape';
 import { DevPaste } from '@/ui/components/DevPaste';
 import { DevProbe } from '@/ui/components/DevProbe';
@@ -57,6 +61,7 @@ export function HomeScreen() {
           onCancelUnpair={actions.cancelUnpair}
           onDismiss={actions.askDismiss}
           onConfirmDismiss={actions.dismissScoring}
+          onCloseNotOpen={actions.closeNotOpen}
         />
       )}
     </View>
@@ -112,7 +117,8 @@ function HomeContent({
       <EndedSlot shape={shape} />
       <ContinueSlot view={view} actions={actions} shape={shape} />
       <ScoringSlot view={view} actions={actions} shape={shape} />
-      <ModeTiles onPress={actions.tapTile} layout={layout} />
+      <SendingSlot sending={view.sending} shape={shape} />
+      <ModeTiles onPress={actions.tapTile} layout={layout} matchDayHint={view.matchDayHint} />
       {devTools ? <DevPaste onUse={actions.useRaw} /> : null}
       {devTools ? <DevProbe /> : null}
       {landscape ? null : <HomeFooter version={appVersion} />}
@@ -231,16 +237,29 @@ function ScoringSlot({
   );
 }
 
+/** The taps Match Day's Exit left sending (S4 design §4), a small card each, under the scoring cards, above the tiles. */
+function SendingSlot({ sending, shape }: { sending: HomeView['sending']; shape: CardShape }) {
+  return (
+    <>
+      {sending.map((one) => (
+        <SendingCard key={one.fixtureId} sending={one} layout={shape} />
+      ))}
+    </>
+  );
+}
+
 /**
- * The three tiles. Remote Scoring scans in every build (plan S2-1 Task 10); the Dashboard is still coming soon. None
+ * The three tiles, every one a built mode: Remote Scoring since plan S2-1 Task 10, Match Day since MD-2 Task 1. None
  * carries a gear: Settings is Home's own (owner, 2026-11-02).
  */
 const ModeTiles = memo(function ModeTiles({
   onPress,
   layout,
+  matchDayHint,
 }: {
   onPress: (mode: Mode) => void;
   layout: ScreenLayout;
+  matchDayHint: string | null;
 }) {
   return (
     <View testID="tiles" style={layout === 'landscape' ? styles.tilesRow : styles.tiles}>
@@ -251,6 +270,7 @@ const ModeTiles = memo(function ModeTiles({
           available={BUILT_MODES.includes(mode)}
           onPress={onPress}
           layout={layout}
+          hint={mode === 'matchday' ? matchDayHint : null}
         />
       ))}
     </View>

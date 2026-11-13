@@ -601,10 +601,12 @@ describe('routeTarget', () => {
     // Remote Scoring is portrait (decision record ruling 4; owner layout A, 2026-10-31): held sideways, its two
     // halves would get about 1 dp each, so the turn-upright card asks for the phone upright.
     ['/scoring', 'portrait'],
+    // Match Day's list is portrait (S4 design §7: "The screen is portrait"), as the pads it opens are.
+    ['/matchday', 'portrait'],
   ] as const;
 
-  it('has its six rows (anti-vacuity)', () => {
-    expect(ROWS).toHaveLength(6);
+  it('has its seven rows (anti-vacuity)', () => {
+    expect(ROWS).toHaveLength(7);
   });
 
   it.each(ROWS)('%s wants %s', (pathname, target) => {

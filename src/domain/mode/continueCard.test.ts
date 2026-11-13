@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { NO_NAME, type CodeName } from '@/domain/mode/codeName';
-import { continueCard } from '@/domain/mode/continueCard';
+import { continueCard, dayHasEnded } from '@/domain/mode/continueCard';
 import type { EngineStatus } from '@/domain/mode/reopen';
 import { savedStreamCode } from '../../../test/fixtures/savedStream';
 import { FIXTURE_CODE, FIXTURE_TOKEN_TAG } from '../../../test/fixtures/wire';
@@ -124,5 +124,15 @@ describe('continueCard', () => {
         validTill: '18:40',
       }),
     ).toEqual({ kind: 'saved', slot: 1, validTill: '18:40' });
+  });
+});
+
+// S4 design §3: the code expires at the end of its day; the server answers MD_ENDED from that instant (the contract).
+describe('dayHasEnded', () => {
+  it('ends at its expiry, not a millisecond before', () => {
+    const expiresAt = new Date('2026-11-08T00:00:00.000Z');
+    expect(dayHasEnded({ expiresAt }, new Date('2026-11-07T23:59:59.999Z'))).toBe(false);
+    expect(dayHasEnded({ expiresAt }, expiresAt)).toBe(true);
+    expect(dayHasEnded({ expiresAt }, new Date('2026-11-09T00:00:00.000Z'))).toBe(true);
   });
 });

@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { parseOpen } from '@/domain/matchday/openWire';
+import { recognise } from '@/domain/mode/recognise';
+import { FAKE_DAY, FAKE_OPEN_URL, FAKE_REVIEW } from '@/services/fakeMatchDayPort';
 import { TABLE_TENNIS_SINGLES_SEED } from '@/services/fakeTableTennisPad';
 import { createFakePorts, disposeFakePorts } from './fakePorts';
 import { FAKE_SCORING_SECRET, FAKE_SCORING_URL } from './fakeScoringLinkPort';
@@ -21,6 +24,105 @@ describe('fake back', () => {
     leaveSecond();
     expect(back.press()).toBe(true);
     expect(pressed).toEqual(['first']);
+  });
+});
+
+describe('fake Match Day', () => {
+  const CODE = { origin: 'https://stg.seazn.club', token: 'md_made-up' };
+
+  it('answers the made-up day by default, lists each call, and review and approve are offline', async () => {
+    const { matchDay } = createFakePorts();
+    const day = await matchDay.day(CODE);
+    expect(day.ok && day.value).toBe(FAKE_DAY);
+    expect(await matchDay.open(CODE, 'f1')).toEqual({
+      ok: true,
+      value: { kind: 'link', url: FAKE_OPEN_URL, sportKey: 'badminton' },
+    });
+    expect(await matchDay.review(CODE, 'swiss', 's1')).toEqual({ ok: false, offline: true });
+    expect(await matchDay.approve(CODE, 'swiss', 's1', 'h', 4)).toEqual({
+      ok: false,
+      offline: true,
+    });
+    expect(matchDay.calls.map((call) => call.op)).toEqual(['day', 'open', 'review', 'approve']);
+    expect(matchDay.calls[1]).toEqual({ op: 'open', code: CODE, fixtureId: 'f1' });
+  });
+
+  it('records the kind, stage, hash and round of a review and an approve (Task 6)', async () => {
+    const { matchDay } = createFakePorts();
+    await matchDay.review(CODE, 'draw', 's1');
+    await matchDay.approve(CODE, 'swiss', 's2', 'h2', 4);
+    await matchDay.approve(CODE, 'draw', 's3', 'h3', null);
+    expect(matchDay.calls).toEqual([
+      { op: 'review', code: CODE, kind: 'draw', stageId: 's1' },
+      { op: 'approve', code: CODE, kind: 'swiss', stageId: 's2', hash: 'h2', round: 4 },
+      { op: 'approve', code: CODE, kind: 'draw', stageId: 's3', hash: 'h3', round: null },
+    ]);
+  });
+
+  it('answers reviews and approves in the order told, the last standing, and a new telling replaces them', async () => {
+    const { matchDay } = createFakePorts();
+    const offline = { ok: false, offline: true } as const;
+    matchDay.answerReview(offline, { ok: true, value: FAKE_REVIEW });
+    expect(await matchDay.review(CODE, 'swiss', 's')).toEqual(offline);
+    expect(await matchDay.review(CODE, 'swiss', 's')).toEqual({ ok: true, value: FAKE_REVIEW });
+    expect(await matchDay.review(CODE, 'swiss', 's')).toEqual({ ok: true, value: FAKE_REVIEW });
+    matchDay.answerApprove({ ok: false, refusal: 'MD_STALE' }, { ok: true, value: { ok: true } });
+    expect(await matchDay.approve(CODE, 'swiss', 's', 'h', 4)).toEqual({
+      ok: false,
+      refusal: 'MD_STALE',
+    });
+    expect(await matchDay.approve(CODE, 'swiss', 's', 'h', 4)).toEqual({
+      ok: true,
+      value: { ok: true },
+    });
+    matchDay.answerReview(offline);
+    expect(await matchDay.review(CODE, 'swiss', 's')).toEqual(offline);
+  });
+
+  it('a held call answers what stands at release', async () => {
+    const { matchDay } = createFakePorts();
+    matchDay.hold();
+    const pending = matchDay.day(CODE);
+    matchDay.answerDay({ ok: false, refusal: 'MD_ENDED' });
+    matchDay.release();
+    expect(await pending).toEqual({ ok: false, refusal: 'MD_ENDED' });
+  });
+
+  it('throws once when told to, then answers again', async () => {
+    const { matchDay } = createFakePorts();
+    matchDay.throwNext();
+    await expect(matchDay.day(CODE)).rejects.toThrow('threw');
+    expect((await matchDay.day(CODE)).ok).toBe(true);
+  });
+
+  // Review M2: Task 5 opens matches on a laptop through this fake, so its link is one the real port can hand on.
+  it('hands out a link the contract admits and a scan reads as a scoring code on the build’s host', () => {
+    const read = parseOpen({
+      ok: true,
+      data: { kind: 'link', url: FAKE_OPEN_URL, sport_key: 'badminton' },
+    });
+    expect(read).toEqual({
+      ok: true,
+      value: { kind: 'link', url: FAKE_OPEN_URL, sportKey: 'badminton' },
+    });
+    const scanned = recognise(FAKE_OPEN_URL, new Date(0), ['stg.seazn.club']);
+    expect(scanned.outcome === 'code' && scanned.code.mode).toBe('scoring');
+  });
+
+  it('the store is the real one: the opened matches in the key-value store, the day’s copy in its own folder', async () => {
+    const { ports, kv, dayFiles } = createFakePorts();
+    await ports.matchDayStore.addOpened('f1');
+    expect(kv.entries.get('matchday.opened')).toBe('["f1"]');
+    await ports.matchDayStore.writeCache(CODE, FAKE_DAY, new Date(0));
+    expect([...dayFiles.files.keys()]).toEqual(['day.json']);
+    expect([...kv.entries.keys()]).toEqual(['matchday.opened']);
+  });
+
+  it('starts from the folder a test seeds', async () => {
+    const first = createFakePorts();
+    await first.ports.matchDayStore.writeCache(CODE, FAKE_DAY, new Date(0));
+    const { ports } = createFakePorts({ dayFilesSeed: Object.fromEntries(first.dayFiles.files) });
+    expect((await ports.matchDayStore.readCache(CODE))?.day).toEqual(FAKE_DAY);
   });
 });
 

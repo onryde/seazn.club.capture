@@ -102,6 +102,57 @@ describe('modeStore', () => {
     expect(kv.entries.get(STORE_KEYS.active)).toBe('stream');
   });
 
+  // S4 design §3: a Match Day code scanned before its day is saved, and nothing opens, so the last mode is still the
+  // last mode (Live Stream's cold-start re-pair keys on it).
+  it('keep() saves the code and leaves the active mode as it was', async () => {
+    const day: SavedCode = {
+      ...code,
+      mode: 'matchday',
+      raw: 'https://stg.seazn.club/day/md_made-up',
+      slot: null,
+      expiresAt: null,
+      stream: null,
+    };
+    const kv = createMemoryKeyValueStore();
+    const store = createModeStore(kv);
+    await store.load();
+    await store.open(code);
+    await store.keep(day);
+    expect(ready(store).saved).toEqual({
+      active: 'stream',
+      codes: { stream: code, matchday: day },
+    });
+    expect(kv.entries.get(STORE_KEYS.active)).toBe('stream');
+    expect(await relaunch(kv)).toEqual({
+      active: 'stream',
+      codes: { stream: code, matchday: day },
+    });
+    const empty = createModeStore(createMemoryKeyValueStore());
+    await empty.load();
+    await empty.keep(day);
+    expect(ready(empty).saved).toEqual({ active: null, codes: { matchday: day } });
+  });
+
+  it('keep() runs in turn with the other writes, and a refused one publishes nothing', async () => {
+    const memory = createMemoryKeyValueStore();
+    let refuse = true;
+    const kv: KeyValueStore = {
+      ...memory,
+      set: (key, value) =>
+        refuse ? Promise.reject(new Error('keystore locked')) : memory.set(key, value),
+    };
+    const store = createModeStore(kv);
+    await store.load();
+    await expect(store.keep(code)).rejects.toThrow('keystore locked');
+    expect(ready(store).saved).toEqual({ active: null, codes: {} });
+    refuse = false;
+    const kept = store.keep(code);
+    const forgot = store.forget(code);
+    await kept;
+    await expect(forgot).resolves.toBe(true);
+    expect(ready(store).saved.codes).toEqual({});
+  });
+
   it('forget() removes the code and leaves the mode', async () => {
     const store = createModeStore(createMemoryKeyValueStore());
     await store.load();

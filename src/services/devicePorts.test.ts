@@ -12,6 +12,8 @@ describe('the routes', () => {
     ['streamSettings', true, false],
     ['settings', false, true],
     ['scoring', false, true],
+    // MD-2: Match Day holds no broadcast either; Back and a return to the foreground treat it as Home's.
+    ['matchday', false, true],
   ])('%s: a Live Stream sub-screen %s, a Home sub-screen %s', (route, stream, home) => {
     expect([isStreamSubRoute(route), isHomeSubRoute(route)]).toEqual([stream, home]);
   });

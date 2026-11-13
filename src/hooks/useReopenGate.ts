@@ -3,6 +3,7 @@ import {
   expiredModes,
   orphanedSession,
   reopenTarget,
+  reopensMatchDay,
   reopensScoring,
   resumesAtColdStart,
   type ReopenTarget,
@@ -57,17 +58,22 @@ export function useReopenGate(navigatorReady: boolean): void {
   useEffect(() => foreground.subscribeBackground(scanFlight.appLeft), [foreground, scanFlight]);
 }
 
-/** True once the stream settings have been read (`load()` never rejects, so it always arrives). */
+/**
+ * True once the stream settings have been read (`load()` never rejects, so it always arrives) and the match Match Day
+ * had open has been (`loadOpen()` never rejects either): the first decision may land on that match's pad (S4 design §4).
+ */
 function useSettingsLoaded(): boolean {
-  const { streamSettings } = usePorts();
+  const { streamSettings, matchDayStore } = usePorts();
   const [loaded, setLoaded] = useState(false);
   useEffect(() => {
     let alive = true;
-    void streamSettings.load().then(() => alive && setLoaded(true));
+    void Promise.all([streamSettings.load(), matchDayStore.loadOpen()]).then(
+      () => alive && setLoaded(true),
+    );
     return () => {
       alive = false;
     };
-  }, [streamSettings]);
+  }, [streamSettings, matchDayStore]);
   return loaded;
 }
 
@@ -81,6 +87,7 @@ function useSettingsLoaded(): boolean {
  * foreground never pairs: closing the permission dialog reads as one. Remote
  * Scoring reopens its match the same way, at cold start only and with nothing
  * to pair; a foreground on the pad, or on Home, stays where the scorer is.
+ * Match Day reopens its list the same way (S4 design §4).
  *
  * N4 and I1 (final review): the gate clears a session no saved code owns
  * (`orphanedSession`): an ended one is reset, a paired one unpaired
@@ -88,7 +95,7 @@ function useSettingsLoaded(): boolean {
  * same tick, so no session that moved on is cleared.
  */
 function useSettle(): (coldStart: boolean) => void {
-  const { modeStore, engine, navigation, clock, logger, probeFlight } = usePorts();
+  const { modeStore, engine, navigation, clock, logger, probeFlight, matchDayStore } = usePorts();
   const unpair = useUnpair();
   const pair = usePairing();
   return useCallback(
@@ -106,7 +113,11 @@ function useSettle(): (coldStart: boolean) => void {
       if (resumed) pair(stream, 'resume');
       // Remote Scoring (plan S2-1 Task 10): at a cold start only, into the match saved, as the last mode.
       const scoring = reopensScoring({ saved: current.saved, coldStart });
-      const target = reopenTarget({ ...facts, now, resumed, scoring });
+      // Match Day (S4 design §4 "Reopen after a kill"): the same, into the day's list.
+      const matchday = reopensMatchDay({ saved: current.saved, coldStart });
+      // A match open from the day when the app was killed: its pad, whose Back is the list's (`scoringOrigin`).
+      const matchdayOpen = (matchDayStore.openMatch() ?? null) !== null;
+      const target = reopenTarget({ ...facts, now, resumed, scoring, matchday, matchdayOpen });
       // N4, I1: a session whose code is gone is cleared on the way Home. F-S4-2: not the dev probe's,
       // whose made-up code no saved code owns; its own clean-up unpairs it.
       if (orphanedSession({ ...facts, now }) && !probeFlight.active()) unpair('orphan');
@@ -123,7 +134,7 @@ function useSettle(): (coldStart: boolean) => void {
         (target.go === 'home' && isHomeSubRoute(here));
       if (!staying) navigation.go(target.go);
     },
-    [modeStore, clock, engine, navigation, logger, unpair, pair, probeFlight],
+    [modeStore, clock, engine, navigation, logger, unpair, pair, probeFlight, matchDayStore],
   );
 }
 

@@ -7,12 +7,15 @@ import { appVersionOf } from '@/hooks/appVersion';
 import { realtimePortFor } from '@/hooks/realtimePortWiring';
 import { chooseCodePort } from '@/hooks/codePortWiring';
 import { chooseEngine, routedRecordFor } from '@/hooks/engineWiring';
+import { matchDayPortFor } from '@/hooks/matchDayPortWiring';
+import { matchDayStoreFor } from '@/hooks/matchDayStoreWiring';
 import { photoPortFor } from '@/hooks/photoPortWiring';
 import { scoringLinkPortFor } from '@/hooks/scoringLinkPortWiring';
 import { scoringPortFor } from '@/hooks/scoringPortWiring';
 import type { Ports } from '@/hooks/usePorts';
 import { createNativeCodeScanner } from '@/scanner/nativeCodeScanner';
 import { createEndedNotice } from '@/services/endedNotice';
+import { createMailbox } from '@/services/mailbox';
 import { withTimeout } from '@/services/kvTimeout';
 import { createLogger } from '@/services/logger';
 import { createModeStore } from '@/services/modeStore';
@@ -121,6 +124,7 @@ export function createNativePorts(
     scanFlight: createScanFlight(),
     probeFlight: createProbeFlight(),
     endedNotice: createEndedNotice(),
+    homeNews: createMailbox(),
     streamSettings: createStreamSettingsStore(kv, logger),
     motion: createNativeMotion(),
     orientationLock: createNativeOrientationLock(),
@@ -151,9 +155,14 @@ export function createNativePorts(
     serverClock,
     steadyClock,
     // S2: one JSON file per match in the document directory. The runner, the hub and Home's cards read and write it.
-    tapQueue: createTapQueueStore({ files: createExpoQueueFiles(), logger }),
+    tapQueue: createTapQueueStore({ files: createExpoQueueFiles('scoring'), logger }),
     // S2: the real `@supabase/realtime-js` over the runtime's WebSocket. The focused match's live owner (`scoringLive.ts`) subscribes.
     realtime: realtimePortFor({ logger }),
+    // S4: plain fetch (AGENTS §8), the code's token to the build's host only. Home's tile and Match Day's list call it.
+    matchDay: matchDayPortFor({ fetch: (url, init) => fetch(url, init), logger, hosts }),
+    // S4: the day's last good copy is a file in documentDirectory/matchday, never the tap queue's scoring/; the opened
+    // list is in the secure store, beside the mode store's `code.matchday`.
+    matchDayStore: matchDayStoreFor({ kv, logger }),
     power: createNativePower({
       native,
       os: Platform.OS,

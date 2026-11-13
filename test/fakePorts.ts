@@ -18,7 +18,9 @@ import type {
   SplashPort,
 } from '@/services/devicePorts';
 import { createEndedNotice } from '@/services/endedNotice';
+import { createMailbox } from '@/services/mailbox';
 import { createFakeCodePort, type FakeCodePort } from '@/services/fakeCodePort';
+import { createFakeMatchDayPort, type FakeMatchDayPort } from '@/services/fakeMatchDayPort';
 import { createFakeRealtimePort, type FakeRealtimePort } from '@/services/fakeRealtimePort';
 import {
   SINGLES_SEED,
@@ -28,6 +30,7 @@ import {
 } from '@/services/fakeScoringPort';
 import { createMemoryKeyValueStore, type MemoryKeyValueStore } from '@/services/KeyValueStore';
 import { createLogger } from '@/services/logger';
+import { createMatchDayStore } from '@/services/matchDayStore';
 import { createModeStore } from '@/services/modeStore';
 import { createProbeFlight } from '@/services/probeFlight';
 import { createRecordSendFlight } from '@/services/recordSendFlight';
@@ -111,6 +114,14 @@ export type FakePorts = {
    * channel, `ping()` is another scorer's tap; `subscriptions` lists each grant and whether it is still open.
    */
   readonly realtime: FakeRealtimePort;
+  /**
+   * S4: the made-up day (`FAKE_DAY`) and a link to `FAKE_OPEN_URL` until `answerDay`/`answerOpen`; `hold()`/`release()`
+   * pend calls; `throwNext()` makes the next call throw; `calls` lists each with its code. The store beside it is the
+   * real one (`ports.matchDayStore`): the day's copy in `dayFiles`, the opened matches in `kv`.
+   */
+  readonly matchDay: FakeMatchDayPort;
+  /** S4: Match Day's own folder, in memory (`documentDirectory/matchday` on a phone): `failNext`, `ops`, `files`. */
+  readonly dayFiles: MemoryQueueFiles;
   /** The battery mode (R5): Unrestricted until `set`; `opened` counts App info's opens. */
   readonly power: FakePower;
   /** R4: no credential until `give`; the real store's own tests are `uploadCredentialStore.test.ts`. */
@@ -129,11 +140,13 @@ const created: FakeCaptureEngine[] = [];
  */
 export type FakePortsOverrides = Partial<Ports> & {
   kvSeed?: Record<string, string>;
+  /** Match Day's folder as a phone left it: file name to text. */
+  dayFilesSeed?: Record<string, string>;
   scoringSeed?: FakeMatchSeed;
 };
 
 export function createFakePorts(overrides: FakePortsOverrides = {}): FakePorts {
-  const { kvSeed, scoringSeed, ...portOverrides } = overrides;
+  const { kvSeed, dayFilesSeed, scoringSeed, ...portOverrides } = overrides;
   let now = TEST_NOW;
   const engine = recordingIntents(createFakeCaptureEngine(() => now.getTime()));
   created.push(engine);
@@ -142,6 +155,8 @@ export function createFakePorts(overrides: FakePortsOverrides = {}): FakePorts {
   const record = createRingRecord();
   const logger = createLogger({ record, now: () => now.getTime() });
   const queueFiles = createMemoryQueueFiles();
+  const dayFiles = createMemoryQueueFiles();
+  for (const [name, text] of Object.entries(dayFilesSeed ?? {})) dayFiles.files.set(name, text);
   const fakes = {
     engine,
     scanner: createFakeCodeScanner(),
@@ -172,6 +187,8 @@ export function createFakePorts(overrides: FakePortsOverrides = {}): FakePorts {
     tapQueue: createTapQueueStore({ files: queueFiles, logger }),
     queueFiles,
     realtime: createFakeRealtimePort(),
+    matchDay: createFakeMatchDayPort(),
+    dayFiles,
     power: createFakePower(),
     uploadCredential: createFakeUploadCredential(),
     recordUpload: createFakeRecordUpload(),
@@ -181,9 +198,11 @@ export function createFakePorts(overrides: FakePortsOverrides = {}): FakePorts {
     devEngine: engine,
     nativeEngine: null,
     modeStore: createModeStore(kv),
+    matchDayStore: createMatchDayStore({ kv, files: dayFiles, logger }),
     scanFlight: createScanFlight(),
     probeFlight: createProbeFlight(),
     endedNotice: createEndedNotice(),
+    homeNews: createMailbox(),
     streamSettings: createStreamSettingsStore(kv, logger),
     clock: () => now,
     hosts: ['stg.seazn.club'],

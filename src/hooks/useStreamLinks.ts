@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { usePorts } from '@/hooks/usePorts';
+import { useScoringOrigin } from '@/hooks/useScoringOrigin';
 import { isHomeSubRoute, isStreamSubRoute } from '@/services/devicePorts';
 
 /** The viewfinder's way into Settings (Diagnostics is a card in it, spec §6), open in every state (AGENTS §6). */
@@ -44,18 +45,30 @@ export function useHomeLinks(): { settings(): void } {
   return useMemo(() => ({ settings }), [settings]);
 }
 
-/** Back from Settings, or from Remote Scoring, returns Home; handled only while one of them is the route (M21). */
-export function useBackToHome(): () => void {
+/**
+ * Back from Settings, or from Remote Scoring, returns Home; handled only while one of them is the route (M21). From a
+ * match opened in Match Day it returns to the day's list instead (S4 design §6, `scoringOrigin`), and only from the
+ * pad's own route: Match Day's list and the app's Settings, which share this hook, always go Home. `swallow`, which
+ * only Match Day's list passes, is asked first on Android's Back: true means the press was a bounce (it came as an
+ * overlay closed, MD-2 Task 7) and is taken with nothing done. Left out, nothing changes for any other screen.
+ */
+export function useBackToHome(swallow?: () => boolean): () => void {
   const { navigation, back } = usePorts();
-  const toHome = useCallback(() => navigation.go('home'), [navigation]);
+  const origin = useScoringOrigin();
+  const toList = origin.back === 'matchday';
+  const leave = useCallback(
+    () => navigation.go(toList && navigation.current() === 'scoring' ? 'matchday' : 'home'),
+    [navigation, toList],
+  );
   useEffect(
     () =>
       back.subscribe(() => {
         if (!isHomeSubRoute(navigation.current())) return false;
-        toHome();
+        if (swallow?.() === true) return true;
+        leave();
         return true;
       }),
-    [back, navigation, toHome],
+    [back, navigation, leave, swallow],
   );
-  return toHome;
+  return leave;
 }

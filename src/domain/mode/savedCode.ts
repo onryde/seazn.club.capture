@@ -53,7 +53,7 @@ export type SavedCode = {
 };
 
 const VERSION = 3;
-const MODES: readonly Mode[] = ['stream', 'scoring', 'dashboard'];
+const MODES: readonly Mode[] = ['stream', 'scoring', 'matchday'];
 
 export function savedCodeFrom(
   code: ModeCode,

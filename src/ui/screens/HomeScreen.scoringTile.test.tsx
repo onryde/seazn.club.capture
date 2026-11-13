@@ -27,11 +27,11 @@ describe('Home: the Remote Scoring tile', () => {
     expect(home.navigation.current()).toBe('home');
   });
 
-  it('says which code opens it, and only the Dashboard is still coming soon', async () => {
+  // MD-2 Task 1: Match Day is built too, so no tile is left coming soon.
+  it('says which code opens it, and no tile is coming soon', async () => {
     await renderHome();
     expect(within(scoringTile()).getByText(en['home.tile.scoring.hint'])).toBeTruthy();
-    expect(within(scoringTile()).queryByText(en['home.tile.comingSoon'])).toBeNull();
-    expect(screen.getAllByText(en['home.tile.comingSoon'])).toHaveLength(1);
+    expect(screen.queryByText(en['home.tile.comingSoon'])).toBeNull();
   });
 
   it('not while a scan is in flight: the one scan is Home’s', async () => {

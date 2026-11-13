@@ -595,6 +595,19 @@ const base = {
   sheetListMax: 5 * 48 + 5 * 8 + 24,
   /** A shootout kick's mark under its team's column (S2-5 design §6.5): a lime dot when scored, a lilac ring when not. */
   kickMark: 12,
+  /**
+   * Match Day's list (MD-2 Task 4; S4 design §5, layout B): a court card's padding either side, and the most a row's
+   * label (Now, Next, Then) takes at its left, which is as wide as its word (owner, 2026-11-13): the widest of them in four languages, `diagSection` caps, is Spanish
+   * "Siguiente" at 56.5 dp (matchDayFit.test.ts measures each). Names take what the label and the detail leave.
+   */
+  matchDayCardPad: 12,
+  matchDayRowLabel: 58,
+  /**
+   * A row's names never get less than this (review I2): the detail at the right takes what it needs up to what this
+   * leaves, then ends in an ellipsis. 100 leaves the detail 88 dp under a label at 320, so the web's short score
+   * ("0–1 · 12–10", 85.8) and a time with its zone stand whole while a full scoreboard headline is cut.
+   */
+  matchDayNamesMin: 100,
 } as const;
 
 /** The cells the controls half's width is made of (`base` holds the shipped ones). */

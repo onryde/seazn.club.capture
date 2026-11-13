@@ -24,6 +24,8 @@ type TileProps = {
   onPress: (mode: Mode) => void;
   /** Landscape pads the tile tighter (`tileLandscapePad`); portrait, the default, is unchanged. */
   layout?: ScreenLayout;
+  /** The second line, already in words, when the mode has something to say about its saved code (Match Day, owner 2026-11-12). */
+  hint?: string | null;
 };
 
 /**
@@ -37,6 +39,7 @@ export const Tile = memo(function Tile({
   available,
   onPress,
   layout = 'portrait',
+  hint = null,
 }: TileProps) {
   const { t } = useT();
   const press = useCallback(() => onPress(mode), [mode, onPress]);
@@ -67,7 +70,7 @@ export const Tile = memo(function Tile({
       <Text variant="body" style={available ? undefined : styles.inert}>
         {t(MODE_PURPOSE[mode])}
       </Text>
-      <Text variant="metricUnit">{t(MODE_HINT[mode])}</Text>
+      <Text variant="metricUnit">{hint ?? t(MODE_HINT[mode])}</Text>
     </Pressable>
   );
 });

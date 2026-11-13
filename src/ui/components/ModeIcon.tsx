@@ -24,7 +24,7 @@ export const ModeIcon = memo(function ModeIcon({ mode, dim }: { mode: Mode; dim:
       ) : mode === 'scoring' ? (
         <ScoringGlyph />
       ) : (
-        <DashboardGlyph />
+        <MatchDayGlyph />
       )}
     </Svg>
   );
@@ -48,6 +48,7 @@ function ScoringGlyph() {
   );
 }
 
-function DashboardGlyph() {
+/** A draw's bracket: two matches feeding one. */
+function MatchDayGlyph() {
   return <Path d="M3 5h5v4H3zM3 15h5v4H3zM8 7h3v10H8M11 12h4M15 10h6v4h-6z" />;
 }

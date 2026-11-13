@@ -18,6 +18,7 @@ export const GLYPH_NAMES = [
   'up',
   'upBlocked',
   'stopwatch',
+  'more',
 ] as const;
 export type GlyphName = (typeof GLYPH_NAMES)[number];
 
@@ -81,6 +82,7 @@ const DRAWINGS: Record<GlyphName, (props: { slashed: boolean }) => ReactElement>
   up: UpGlyph,
   upBlocked: UpBlockedGlyph,
   stopwatch: StopwatchGlyph,
+  more: MoreGlyph,
 };
 
 function CameraGlyph({ slashed }: { slashed: boolean }) {
@@ -199,4 +201,12 @@ function StopwatchGlyph() {
       <Path d="M9.5 2.5h5M12 2.5v4M12 14v-4" />
     </>
   );
+}
+
+/**
+ * Match Day's ⋯ (S4 design §4): three dots in a row, the way out under them. Each is a stroke 0.01 long, which the
+ * round caps make a dot; a zero-length one is a platform's choice to draw or not, and this is not.
+ */
+function MoreGlyph() {
+  return <Path d="M5 12h.01M12 12h.01M19 12h.01" strokeWidth={3} />;
 }

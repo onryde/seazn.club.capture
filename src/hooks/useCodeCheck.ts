@@ -5,6 +5,7 @@ import type { ModeCode } from '@/domain/mode/Mode';
 import type { SavedStream } from '@/domain/mode/savedCode';
 import type { ScoringOpen } from '@/hooks/scoringOpen';
 import type { HomePanel, StreamCode } from '@/hooks/useHome';
+import type { DayCode } from '@/hooks/useMatchDayHome';
 import { useScoringCheck } from '@/hooks/useScoringCheck';
 import { usePorts } from '@/hooks/usePorts';
 import type { CodePort } from '@/services/codePort';
@@ -23,6 +24,8 @@ type Answer = Result<WaitingFields, CodeError>;
 
 const NO_ANSWER: Answer = err({ kind: 'offline' });
 const CHECKING: HomePanel = { kind: 'checking', tapped: 'stream' };
+/** A Match Day code's first scan: checked with the server before anything is saved (`useDayCheck`, MD-2 Task 3). */
+export type CheckDay = (code: DayCode) => Promise<void>;
 
 /**
  * Ruling R12: the store takes writes only once it is `ready`. Read at call
@@ -48,8 +51,9 @@ export function useCodeCheck(
   openCode: OpenCode,
   panel: HomePanel | null,
   setPanel: SetPanel,
+  checkDay: CheckDay,
 ): { readonly openOrCheck: OpenOrCheck; readonly retryCheck: () => void } {
-  const openOrCheck = useOpenOrCheck(openCode, setPanel);
+  const openOrCheck = useOpenOrCheck(openCode, setPanel, checkDay);
   const retryCheck = useRetryCheck(panel, openOrCheck);
   useBusyRetry(panel, retryCheck);
   return { openOrCheck, retryCheck };
@@ -57,20 +61,20 @@ export function useCodeCheck(
 
 /**
  * Spec §1: a stream code is checked with the server before anything is saved; a scoring link is read from it too
- * (`useScoringCheck`).
+ * (`useScoringCheck`), and a Match Day code's day (`useDayCheck`).
  * The scan flight is still up while this runs, so a second tap is ignored
  * until the answer is in. A store that is not ready is not asked (R12), nor is
  * a code that ran out while its panel sat open (a Try again; a code with no
  * `exp` never runs out, A1), and a port that throws or rejects is read as no
  * connection. The token is protected before the ask (CD6, "from the scan").
  */
-function useOpenOrCheck(openCode: OpenCode, setPanel: SetPanel): OpenOrCheck {
+function useOpenOrCheck(openCode: OpenCode, setPanel: SetPanel, checkDay: CheckDay): OpenOrCheck {
   const { code: port, modeStore, logger, clock } = usePorts();
   const checkScoring = useScoringCheck(openCode, setPanel);
   return useCallback(
     async (code: ModeCode) => {
       if (code.mode === 'scoring') return checkScoring(code);
-      if (code.mode !== 'stream') return openCode(code, null);
+      if (code.mode === 'matchday') return checkDay(code);
       if (!isReady(modeStore)) return;
       if (code.expiresAt !== null && code.expiresAt.getTime() <= clock().getTime()) {
         return setPanel({ kind: 'expired', tapped: 'stream', mode: 'stream', at: code.expiresAt });
@@ -88,7 +92,7 @@ function useOpenOrCheck(openCode: OpenCode, setPanel: SetPanel): OpenOrCheck {
         tapToPair: false,
       });
     },
-    [port, modeStore, logger, clock, openCode, setPanel, checkScoring],
+    [port, modeStore, logger, clock, openCode, setPanel, checkScoring, checkDay],
   );
 }
 

@@ -45,6 +45,15 @@ export type ScoringHub = {
    * however many scans hold it. A second call of one release does nothing.
    */
   claim(fixtureId: string): () => void;
+  /**
+   * Before Match Day lets go of its opened list (Exit, the heal, a new day code; MD-2 final review I1): each opened match
+   * with no queue (viewed, never tapped) that nothing holds is left (`leave`: its link and boot cache go), since no sweep
+   * would ever name it again. A match with a queue stays for S2's tidy rule. The list then loses every match it no longer
+   * needs to name, and only the ones it read: a match still held, one whose leave the phone refused (recorded), and one
+   * opened after the read all stay. Rejects, letting go of nothing, when the list or the queue folder cannot be read, and when the
+   * list's write is refused.
+   */
+  letGoOfOpened(): Promise<void>;
 };
 
 type Focused = {
@@ -137,13 +146,61 @@ function createScoringHub(ports: Ports): ScoringHub {
   };
 
   /**
-   * Nothing wants this match: no screen holds it, no scan is writing it and it is not the saved one. A store that has
-   * not loaded cannot say what is saved, so it is never unwanted; a later sweep decides.
+   * Nothing wants this match: no screen holds it, no scan is writing it, it is not the saved one and Match Day did not
+   * open it (S4 design §3, §6: its link goes by S2's rules once its queue is empty, but a match opened from the day is
+   * not let go of by a sweep while the day holds it). A store that has not loaded cannot say what is saved, so it is
+   * never unwanted; a later sweep decides. Match Day's list is read when asked (`opened` never rejects).
    */
-  const unwanted = (id: string): boolean => {
+  const unwanted = async (id: string): Promise<boolean> => {
+    if (!nobodyHolds(id)) return false;
+    // Fails closed: a list the phone will not read spares the match this round, never deletes it.
+    const opened = await ports.matchDayStore.openedKnown();
+    if (opened === null || (opened.includes(id) && dayHeld())) return false;
+    // The list was read across an await: what a screen, a scan or a save took meanwhile still counts.
+    return nobodyHolds(id);
+  };
+
+  /**
+   * Match Day holds its opened matches only while a day code is saved. With none (an Exit that died or was refused
+   * between its steps, or a code that ended) a list is stale and spares nothing. A store that has not loaded says
+   * nothing, so the list stands.
+   */
+  const dayHeld = (): boolean => {
+    const snapshot = ports.modeStore.getSnapshot();
+    return snapshot.status !== 'ready' || snapshot.saved.codes.matchday !== undefined;
+  };
+
+  /** Clears what a day that is gone left behind: its opened list, and notes of matches no longer sending. Refusals are recorded. */
+  const healDay = async (): Promise<void> => {
+    try {
+      if (!dayHeld() && ((await ports.matchDayStore.openedKnown()) ?? []).length > 0)
+        await letGoOfOpened();
+      const queues = new Map<string, number>();
+      for (const entry of await ports.tapQueue.list())
+        queues.set(
+          entry.kind === 'queue' ? entry.queue.fixtureId : entry.fixtureId,
+          entry.kind === 'queue' ? entry.queue.pending.length : 1,
+        );
+      for (const id of await ports.matchDayStore.sending())
+        if ((queues.get(id[0]) ?? 0) === 0) await letGoOfSending(id[0]);
+    } catch {
+      ports.logger.warn('matchday.heal-refused');
+    }
+  };
+
+  const nobodyHolds = (id: string): boolean => {
     const saved = savedMatchOf(ports);
     return saved !== undefined && saved !== id && !focused.has(id) && !claims.has(id);
   };
+
+  /**
+   * The match is gone, so is Exit's note that it was still sending (Home's Sending card, S4 design §4). A refusal is
+   * recorded and leaves the note, which says nothing once the queue it names is gone.
+   */
+  const letGoOfSending = (id: string): Promise<void> =>
+    ports.matchDayStore
+      .forgetSending(id)
+      .catch(() => ports.logger.warn('matchday.sending-refused'));
 
   /**
    * An unwanted match goes with its link, queue, ledger and boot cache (Dismiss without the runner), keeping the ids of
@@ -152,10 +209,11 @@ function createScoringHub(ports: Ports): ScoringHub {
    */
   const sweep = async (id: string): Promise<void> => {
     try {
-      if (!unwanted(id)) return;
+      if (!(await unwanted(id))) return;
       undoStarts.delete(id);
       await forgetScoringLink(ports.kv, id);
       await ports.tapQueue.leave(id, ports.clock().getTime());
+      await letGoOfSending(id);
     } catch {
       ports.logger.warn('scoring.tidy-refused', {});
     }
@@ -202,6 +260,7 @@ function createScoringHub(ports: Ports): ScoringHub {
 
   const resume = async (): Promise<void> => {
     await expireKept();
+    await healDay();
     for (const entry of await ports.tapQueue.list()) {
       if (entry.kind !== 'queue') continue;
       const { fixtureId, pending, dead } = entry.queue;
@@ -262,6 +321,33 @@ function createScoringHub(ports: Ports): ScoringHub {
     return handleOf(id, entry);
   };
 
+  const letGoOfOpened = async (): Promise<void> => {
+    const opened = await ports.matchDayStore.openedKnown();
+    const queues = await ports.tapQueue.listKnown();
+    if (opened === null || queues === null)
+      throw new Error('Match Day’s list or the queues did not read');
+    const queued = new Set(
+      queues.map((e) => (e.kind === 'queue' ? e.queue.fixtureId : e.fixtureId)),
+    );
+    // Only the ids read here leave the list: one opened since (a row tapped on a new day mid-pass) is not this pass's
+    // (final re-review N1). Holding is judged per id at its let-go (`letGoUntapped`), never from the read.
+    const gone: string[] = [];
+    for (const id of opened) if (queued.has(id) || (await letGoUntapped(id))) gone.push(id);
+    await ports.matchDayStore.forgetOpened(gone);
+  };
+
+  /** A match with no queue is left unless something holds it; false when it stays (held, or its leave was refused). */
+  const letGoUntapped = async (id: string): Promise<boolean> => {
+    if (!nobodyHolds(id)) return false;
+    try {
+      await leave(id);
+      return true;
+    } catch {
+      ports.logger.warn('matchday.let-go-refused');
+      return false;
+    }
+  };
+
   const dismiss = (id: string): Promise<void> => ending(id, false);
 
   const leave = (id: string): Promise<void> => ending(id, true);
@@ -297,7 +383,8 @@ function createScoringHub(ports: Ports): ScoringHub {
     await forgetScoringLink(ports.kv, id);
     if (keepOwn) await ports.tapQueue.leave(id, ports.clock().getTime());
     else await ports.tapQueue.remove(id);
+    await letGoOfSending(id);
   };
 
-  return { focus, resume, dismiss, leave, claim, settled };
+  return { focus, resume, dismiss, leave, claim, settled, letGoOfOpened };
 }

@@ -90,10 +90,13 @@ const IDLE = 'Tap a mode, then scan its code.';
 const SAVE_FAILED = "Couldn't save on this phone. Try again.";
 
 describe('Home', () => {
-  it('shows three tiles, one of them coming soon', async () => {
+  // MD-2 Task 1: Match Day is built, so every tile takes a tap and none says it is coming soon.
+  it('shows three tiles, none of them coming soon', async () => {
     await renderHome();
-    expect(liveStreamTile()).toBeTruthy();
-    expect(screen.getAllByText('Coming soon')).toHaveLength(1);
+    for (const name of [/Live Stream/, /Remote Scoring/, /Match Day/]) {
+      expect(screen.getByRole('button', { name }).getAttribute('aria-disabled')).not.toBe('true');
+    }
+    expect(screen.queryByText('Coming soon')).toBeNull();
     expect(screen.getByText(IDLE)).toBeTruthy();
   });
 
@@ -1537,7 +1540,7 @@ describe('the Settings gear in Home’s corner (owner, 2026-11-02)', () => {
   it('is on no tile: each of the three is one button, and there is exactly one gear', async () => {
     await renderHome();
     expect(screen.getAllByRole('button', { name: 'Settings' })).toHaveLength(1);
-    for (const name of [/Live Stream/, /Remote Scoring/, /Dashboard/]) {
+    for (const name of [/Live Stream/, /Remote Scoring/, /Match Day/]) {
       const tile = screen.getByRole('button', { name });
       expect(tile.parentElement).toBe(screen.getByTestId('tiles'));
       expect(within(tile).queryByRole('button')).toBeNull();

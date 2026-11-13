@@ -13,15 +13,15 @@ import { colour, radius, space } from '@/ui/theme/tokens';
 
 /**
  * Shown only when a mode that was left still holds a valid code (decision 2).
- * What it says is `continueCard`'s (amendment §2, Home). `row` is the landscape card (spec §7, F15): the title and
- * the detail on the left, the two buttons at the end, in one row.
+ * What it says is `continueCard`'s (amendment §2, Home). `row` is the landscape card (spec §7, F15): the title and the
+ * detail on the left, the buttons at the end, in one row. Match Day has no card (S4 design §4; owner, 2026-11-12).
  */
 export const ContinueCard = memo(function ContinueCard(props: {
   mode: Mode;
   copy: ContinueCopy;
   layout?: CardShape;
   onContinue: () => void;
-  onForget: () => void;
+  onForget?: () => void;
 }) {
   const { t } = useT();
   const { title, detail } = cardText(props.mode, props.copy, t);
@@ -30,11 +30,13 @@ export const ContinueCard = memo(function ContinueCard(props: {
       {title}
     </Text>
   );
-  const line = <Text variant="control">{detail}</Text>;
+  const line = detail === null ? null : <Text variant="control">{detail}</Text>;
   const actions = (
     <View style={styles.actions}>
       <Button label={t('home.continue.open')} onPress={props.onContinue} />
-      <GhostButton label={t('home.continue.forget')} onPress={props.onForget} />
+      {props.onForget === undefined ? null : (
+        <GhostButton label={t('home.continue.forget')} onPress={props.onForget} />
+      )}
     </View>
   );
   if (props.layout === 'row') {
@@ -62,7 +64,7 @@ function cardText(
   mode: Mode,
   copy: ContinueCopy,
   t: Translator['t'],
-): { title: string; detail: string } {
+): { title: string; detail: string | null } {
   const title = t('home.continue.title', { mode: t(MODE_NAME[mode]) });
   // Review C5 I-4: in the stream screen's own words for Pairing.
   if (copy.kind === 'pairing') return { title, detail: t('stream.status.pairing') };

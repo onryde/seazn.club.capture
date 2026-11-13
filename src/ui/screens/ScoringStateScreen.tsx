@@ -2,6 +2,7 @@ import { memo } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import type { ScoringState } from '@/hooks/padScreenModel';
 import { useT } from '@/hooks/useLanguage';
+import { useBackLabel } from '@/hooks/useScoringOrigin';
 import { useScoringStateActions, type StateActions } from '@/hooks/useScoringStateActions';
 import { useBackToHome } from '@/hooks/useStreamLinks';
 import { DismissSheet } from '@/ui/components/DismissSheet';
@@ -44,11 +45,11 @@ export const ScoringStateScreen = memo(function ScoringStateScreen({
 });
 
 const StateHeader = memo(function StateHeader() {
-  const { t } = useT();
+  const backLabel = useBackLabel();
   const home = useBackToHome();
   return (
     <View style={styles.header}>
-      <IconButton glyph="back" label={t('stream.home')} onPress={home} />
+      <IconButton glyph="back" label={backLabel} onPress={home} />
     </View>
   );
 });

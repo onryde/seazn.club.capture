@@ -15,8 +15,13 @@ const FOREIGN: Recognition = { outcome: 'foreign' };
  * than `URL`: React Native's URL polyfill has historically lacked `hostname`
  * and `pathname`, and this runs on Hermes.
  */
-const HTTPS_LINK = /^https:\/\/([^/?#:@\s]+)(\/[^?#\s]*)?(?:[?#]\S*)?$/i;
+export const HTTPS_LINK = /^https:\/\/([^/?#:@\s]+)(\/[^?#\s]*)?(?:[?#]\S*)?$/i;
 const SCORE_PATH = /^\/score\/([^/?#\s]+)\/?$/;
+/**
+ * The day's QR (MD-2; S4 design §9 item 2): `/day/` and a token of `md_` and
+ * 43 base64url characters, nothing else. Case matters: the web mints `md_`.
+ */
+export const DAY_PATH = /^\/day\/(md_[A-Za-z0-9_-]{43})\/?$/;
 
 /**
  * UI routing only, never a trust decision (spec §2). Recognising a stream code
@@ -35,7 +40,10 @@ function recogniseLink(raw: string, text: string, hosts: readonly string[]): Rec
   if (match === null) return FOREIGN;
   const host = (match[1] ?? '').toLowerCase();
   if (!hosts.includes(host)) return FOREIGN;
-  const token = SCORE_PATH.exec(match[2] ?? '')?.[1];
+  const path = match[2] ?? '';
+  const day = DAY_PATH.exec(path)?.[1];
+  if (day !== undefined) return { outcome: 'code', code: { mode: 'matchday', raw, token: day } };
+  const token = SCORE_PATH.exec(path)?.[1];
   if (token === undefined) return { outcome: 'seaznPage' };
   return { outcome: 'code', code: { mode: 'scoring', raw, token } };
 }

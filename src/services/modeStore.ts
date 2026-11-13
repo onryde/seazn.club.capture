@@ -8,7 +8,7 @@ import {
 } from '@/domain/mode/savedCode';
 import type { KeyValueStore } from '@/services/KeyValueStore';
 
-const MODES: readonly Mode[] = ['stream', 'scoring', 'dashboard'];
+const MODES: readonly Mode[] = ['stream', 'scoring', 'matchday'];
 
 export const STORE_KEYS = {
   active: 'mode.active',
@@ -37,6 +37,11 @@ export type ModeStore = {
   getSnapshot(): ModeStoreSnapshot;
   subscribe(listener: () => void): () => void;
   open(code: SavedCode): Promise<void>;
+  /**
+   * Saves a mode's code and leaves the active mode as it is: a Match Day code scanned before its day opens is kept,
+   * and nothing opens (S4 design §3), so Live Stream's cold-start re-pair, which keys on the active mode, is untouched.
+   */
+  keep(code: SavedCode): Promise<void>;
   setActive(mode: Mode | null): Promise<void>;
   /**
    * Forgets `expected`, if its mode still holds it when the write runs
@@ -110,6 +115,12 @@ export function createModeStore(kv: KeyValueStore): ModeStore {
         await kv.set(STORE_KEYS.active, code.mode);
         const codes = { ...current().saved.codes, [code.mode]: code };
         publish(withSaved({ active: code.mode, codes }));
+      }),
+    keep: (code) =>
+      serial(async () => {
+        await kv.set(STORE_KEYS.code(code.mode), encodeSavedCode(code));
+        const { saved } = current();
+        publish(withSaved({ ...saved, codes: { ...saved.codes, [code.mode]: code } }));
       }),
     setActive: (mode) =>
       serial(async () => {

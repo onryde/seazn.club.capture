@@ -32,3 +32,8 @@ export function continueCard(input: {
   }
   return { kind: 'saved', slot: saved.slot, validTill: input.validTill };
 }
+
+/** S4 design §3: a day code ends at its day's end, `expiresAt`, the instant the server answers MD_ENDED from. */
+export function dayHasEnded(day: { readonly expiresAt: Date }, now: Date): boolean {
+  return day.expiresAt.getTime() <= now.getTime();
+}

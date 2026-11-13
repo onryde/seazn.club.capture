@@ -228,11 +228,12 @@ const panelHandlers = () => ({
   onCancelUnpair: vi.fn(),
   onDismiss: vi.fn(),
   onConfirmDismiss: vi.fn(),
+  onCloseNotOpen: vi.fn(),
 });
 
 /**
  * The sheet's words (copy table, Task 30), in the operator's language, with the
- * mode named. Remote Scoring only: `ModeCode` has no Dashboard code before S2.
+ * mode named. Remote Scoring here; a Match Day code's sheet is HomeScreen.matchday.test.tsx's (MD-2 Task 3).
  */
 describe('the unpair sheet', () => {
   it.each<[Lang, HomePanel, string, string, string]>([
@@ -334,12 +335,15 @@ describe('HomeScreen’s unpair sheet', () => {
         continueCode: null,
         continueCopy: null,
         scoring: { current: null, leftovers: [] },
+        sending: [],
+        matchDayHint: null,
       },
       actions: {
         tapTile: vi.fn(),
         scanAgain: vi.fn(),
         openFromPanel: vi.fn(),
         closePanel: vi.fn(),
+        closeNotOpen: vi.fn(),
         retryCheck: vi.fn(),
         continueStream: vi.fn(),
         forgetStream: vi.fn(),

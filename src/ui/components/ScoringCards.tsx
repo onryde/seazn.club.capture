@@ -1,5 +1,6 @@
 import { memo, useCallback, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View, type PressableStateCallbackType } from 'react-native';
+import type { SendingCard as Sending } from '@/domain/matchday/exit';
 import type { ScoringCurrent, ScoringLeftover } from '@/domain/mode/scoringHome';
 import { useT } from '@/hooks/useLanguage';
 import type { Translator } from '@/i18n/translate';
@@ -309,6 +310,28 @@ export const ScoringLeftoverCard = memo(function ScoringLeftoverCard(props: Left
           onDismiss={props.onDismiss}
         />
       ) : null}
+    </CardFrame>
+  );
+});
+
+/**
+ * The taps Exit left sending (S4 design §4, owner 2026-11-07): "Sending 3 taps · Court 2", a quiet card with nothing to
+ * press, since the sender is already at work and a Dismiss would throw taps away. Gone once the queue is empty.
+ */
+export const SendingCard = memo(function SendingCard(props: {
+  sending: Sending;
+  layout?: CardShape;
+}) {
+  const { tp, t } = useT();
+  const { sending, layout } = props;
+  const name = sending.name ?? t('home.scoring.matchFallback');
+  return (
+    <CardFrame testID="matchday-sending" layout={layout} edge="quiet">
+      <CardText layout={layout}>
+        <Text variant="control" style={styles.line}>
+          {tp('matchday.sendingCard', sending.unsent, { name })}
+        </Text>
+      </CardText>
     </CardFrame>
   );
 });
