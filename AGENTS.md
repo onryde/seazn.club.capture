@@ -144,7 +144,10 @@ Home shows "Sending 3 taps · Court 2" (S4 design §4; owner, 2026-11-07: "yes
 and apply our rec"). A scoring link outlives its day code (S4 design §3). Its
 code's token is a credential, kept in the secure store and never in a record
 line, a log line, an error or a URL query. Match Day never finalizes a match,
-calls one to a court, edits, or streams.
+edits, or streams. It may call a match to a free court, and only with a code
+minted with the organiser's "Call matches to courts" tick (`can_call`; S4 design
+§7a; owner, 2026-11-13): the phone shows no call control without it, the call is
+held for 3 s, and Undo takes back only a call this phone made.
 
 Adding a fourth mode, or a screen outside a mode, is a product decision, not
 an implementation detail. Raise it; don't build it.
@@ -227,7 +230,8 @@ src/
   services/        # ports (key-value store, device ports) + implementations; Remote Scoring's:
                    # the scoring port (the web's capture API), the tap queue store (a file per
                    # match), the scoring link store (secure store) and the Realtime port;
-                   # Match Day's: its port (the web's day, open and approval calls) and its store
+                   # Match Day's: its port (the web's day, open, approval, candidates, preview, call and
+                   # undo-call calls) and its store
                    # (the day's last copy, a file at documentDirectory/matchday/day.json; the matches
                    # it opened, `matchday.opened`, and the one open, `matchday.open`, and the matches Exit left sending, `matchday.sending`, court names only, in the secure store)
 modules/
@@ -527,7 +531,9 @@ Three rules travel with these tokens:
   its plate saying "Hold 3 s", and no other sport's tool is held. A fourth is
   Match Day's approval of a Swiss round or a knockout draw (S4 design §7;
   decision record ruling 14): the same 3 s under the same fill, its plate saying
-  "Hold 3 s".
+  "Hold 3 s". A fifth is Match Day's call of a match to a court (S4 design §7a;
+  owner, 2026-11-13): the same 3 s under the same fill, its plate saying "Hold to
+  call". Undo call is not held: a tap and a confirm, Keep the primary.
 - Go Live enables only when _paired and ready_: camera running, the mic
   available (a silent room is ready; design follow-up §4), network reachable,
   phone held sideways, as native judges it. The pre-flight is the safety, for
@@ -606,7 +612,8 @@ Three rules travel with these tokens:
 - No React Query. The endpoints JS calls (the code check, the record upload
   behind `RecordUploadPort`: R3 of the D3 findings design; owner, 2026-10-11,
   Remote Scoring's capture API behind the scoring port, and Match Day's day,
-  open, review and approve calls behind the Match Day port,
+  open, review, approve, candidates, preview, call and undo-call calls (the one
+  DELETE, `ScoringFetch`, S4 design §7a) behind the Match Day port,
   `fetchMatchDayPort.ts`) sit behind ports with plain `fetch`; the rest are
   native's. Match Day polls its day once every 15 s while the list is on
   screen, within the code's rate limit: a 429 waits for the next poll (S4
