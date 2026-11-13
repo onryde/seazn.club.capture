@@ -958,6 +958,14 @@ Keys `matchday.menu` (⋯'s accessible name), `matchday.exit.title`, `matchday.e
 plain body), `matchday.exit.confirm`, `matchday.exit.stay`, `matchday.sendingCard` (`{name}` is the court, else the match, else
 _another match_; `.one` is the singular). fr: no-break space before `?`. The card's es/fr/nl follow `scoring.sync.sending.*`.
 
+## Match Day: a court's day
+
+Key `matchday.court.openDay` (owner, 2026-11-13: "If I click Court 2, can we open screen with full list and finished matches less?"):
+what a tap on a court's head does, read by a screen reader before the state word ("Open Court 2's day, Free"; never drawn). en
+_Open {court}'s day_, es _Abrir el día de {court}_, fr _Ouvrir la journée de {court}_, nl _Dag van {court} openen_. The screen
+reuses `matchday.row.*`, `matchday.court.*` and `matchday.finished.*`; its title is the court's own name and its Back is named
+_Match Day_ (`mode.matchday`). No `_review` marker.
+
 ## Match Day: call a match to a court (task 8e)
 
 Keys `matchday.call.*` (S4 design §7a). Terms, as es / fr / nl: _call a match_ is es _convocar un partido_, fr _appeler un match_,

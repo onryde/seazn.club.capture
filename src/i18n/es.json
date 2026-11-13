@@ -1184,6 +1184,7 @@
   "matchday.court.called": "Convocado",
   "matchday.court.free": "Libre",
   "matchday.court.inUseElsewhere": "En uso",
+  "matchday.court.openDay": "Abrir el día de {court}",
   "matchday.row.now": "Ahora",
   "matchday.row.next": "Siguiente",
   "matchday.row.then": "Después",

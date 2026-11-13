@@ -1184,6 +1184,7 @@
   "matchday.court.called": "Opgeroepen",
   "matchday.court.free": "Vrij",
   "matchday.court.inUseElsewhere": "In gebruik",
+  "matchday.court.openDay": "Dag van {court} openen",
   "matchday.row.now": "Nu",
   "matchday.row.next": "Volgende",
   "matchday.row.then": "Daarna",

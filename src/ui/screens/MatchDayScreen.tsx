@@ -13,6 +13,7 @@ import {
   type Row,
   type Stake,
 } from '@/domain/matchday/matchDay';
+import { courtDayOf } from '@/domain/matchday/courtDay';
 import { isBounce } from '@/domain/scoring/bounce';
 import { useFormatDay, useFormatTime } from '@/hooks/useFormatTime';
 import { useT } from '@/hooks/useLanguage';
@@ -28,6 +29,7 @@ import { useUndoCall, type UndoView } from '@/hooks/useUndoCall';
 import type { MessageKey } from '@/i18n/messages';
 import { ApprovalScreen } from '@/ui/screens/ApprovalScreen';
 import { CallScreen } from '@/ui/screens/CallScreen';
+import { CourtDayScreen } from '@/ui/screens/CourtDayScreen';
 import { ApprovalBanner } from '@/ui/components/ApprovalBanner';
 import { CourtCard } from '@/ui/components/CourtCard';
 import { ExitMatchDaySheet } from '@/ui/components/ExitMatchDaySheet';
@@ -75,12 +77,26 @@ export function MatchDayScreen() {
   const askExit = useCallback(() => {
     if (!quiet()) exit.ask();
   }, [quiet, exit]);
+  const { viewing, openDay, closeDay, leaveDay } = useCourtDayView(bounce, list.day);
   const covered =
-    reviewing !== null || exit.sheet !== null || calling !== null || undo.asking !== null;
+    reviewing !== null ||
+    exit.sheet !== null ||
+    calling !== null ||
+    undo.asking !== null ||
+    viewing !== null;
   // A touch that lands as the review closes is the finger's own bounce, and must not act on the list beneath it.
   const open = useCallback(
     (row: Row, courtName: string) => (quiet() ? Promise.resolve() : opening(row, courtName)),
     [opening, quiet],
+  );
+  // A match opened from a court's day leaves the day view: a refusal ("can't open") is said on the list beneath it.
+  const openFromDay = useCallback(
+    (row: Row, courtName: string) => {
+      const opening = open(row, courtName);
+      leaveDay();
+      return opening;
+    },
+    [open, leaveDay],
   );
   const askUndo = useCallback(
     (row: Row, courtName: string) => {
@@ -92,7 +108,7 @@ export function MatchDayScreen() {
     () => ({ can: canCall, start: startCall, undo: askUndo }),
     [canCall, startCall, askUndo],
   );
-  const body = { list, line, open, cameBackTo, opened, review, callTo };
+  const body = { list, line, open, cameBackTo, opened, review, callTo, openDay };
   return (
     <View testID="matchday-screen" style={styles.screen}>
       <View
@@ -117,6 +133,15 @@ export function MatchDayScreen() {
           refresh={list.refresh}
           onClose={closeReview}
           sent={sent}
+        />
+      )}
+      {viewing === null || list.day === null ? null : (
+        <CourtDayScreen
+          day={viewing}
+          zone={list.day.tz}
+          onOpen={openFromDay}
+          opened={opened}
+          onClose={closeDay}
         />
       )}
       {calling === null || list.day === null ? null : (
@@ -235,6 +260,35 @@ const UndoOverlay = memo(function UndoOverlay({
   );
 });
 
+/**
+ * The court whose day is open over the list, if any (a tap on a court's head), as the latest read of the day has it, so
+ * the view follows the polls. A court that leaves the day closes it; closing opens the bounce window, and a tap that
+ * lands as it closes is ignored (`quiet`).
+ */
+function useCourtDayView({ quiet, note }: ReturnType<typeof useBounce>, day: MatchDay | null) {
+  const [courtId, setCourtId] = useState<string | null>(null);
+  const viewing = useMemo(
+    () => (courtId === null ? null : courtDayOf(day, courtId)),
+    [day, courtId],
+  );
+  useEffect(() => {
+    if (courtId !== null && viewing === null) setCourtId(null);
+  }, [courtId, viewing]);
+  const openDay = useCallback(
+    (id: string) => {
+      if (!quiet()) setCourtId(id);
+    },
+    [quiet],
+  );
+  const closeDay = useCallback(() => {
+    note();
+    setCourtId(null);
+  }, [note]);
+  const leaveDay = useCallback(() => setCourtId(null), []);
+  useBackCloses(viewing !== null, closeDay);
+  return { viewing, openDay, closeDay, leaveDay };
+}
+
 /** The approval under review, if any; closing it opens the bounce window. */
 function useReview({ quiet, note }: ReturnType<typeof useBounce>) {
   const [reviewing, setReviewing] = useState<Approval | null>(null);
@@ -293,6 +347,7 @@ type BodyProps = {
   readonly opened: ReadonlySet<string>;
   readonly review: (approval: Approval) => void;
   readonly callTo: CallTo;
+  readonly openDay: (courtId: string) => void;
 };
 
 /** What the courts need to call a match, or undo a call (S4 design §7a): the code's power and the two taps. */
@@ -310,6 +365,7 @@ const MatchDayBody = memo(function MatchDayBody({
   opened,
   review,
   callTo,
+  openDay,
 }: BodyProps) {
   if (list.day !== null)
     return (
@@ -322,6 +378,7 @@ const MatchDayBody = memo(function MatchDayBody({
         opened={opened}
         review={review}
         callTo={callTo}
+        openDay={openDay}
       />
     );
   if (list.state === 'offline') return <OfflineEmpty retry={list.refresh} reading={list.reading} />;
@@ -372,8 +429,10 @@ const DayList = memo(function DayList({
   opened,
   review,
   callTo,
+  openDay,
 }: {
   readonly callTo: CallTo;
+  readonly openDay: BodyProps['openDay'];
   readonly list: MatchDayList;
   readonly day: MatchDay;
   readonly line: MessageKey | null;
@@ -419,6 +478,7 @@ const DayList = memo(function DayList({
         onSlot={onSlot}
         opened={opened}
         callTo={callTo}
+        openDay={openDay}
       />
       <RowSection
         title={`${t('matchday.noCourt')} · ${day.noCourt.length}`}
@@ -485,8 +545,10 @@ const Courts = memo(function Courts({
   onSlot,
   opened,
   callTo,
+  openDay,
 }: {
   readonly callTo: CallTo;
+  readonly openDay: BodyProps['openDay'];
   readonly day: MatchDay;
   readonly unsent: ReadonlyMap<string, number | null>;
   readonly opened: ReadonlySet<string>;
@@ -517,6 +579,7 @@ const Courts = memo(function Courts({
           canCall={callTo.can}
           onCall={callTo.start}
           onUndo={callTo.undo}
+          onOpenDay={openDay}
         />
       ))}
     </>
