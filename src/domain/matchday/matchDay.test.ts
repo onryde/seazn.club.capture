@@ -7,7 +7,9 @@ import {
   courtCardsAt,
   isEmptyDay,
   noonOf,
+  roundChipOf,
   rowDetail,
+  seated,
   noCourtStake,
   sendingByCourt,
   totalStake,
@@ -25,8 +27,11 @@ const row = (fixtureId: string, home: string, away: string): Row => ({
   sportKey: 'badminton',
   divisionName: "Men's singles",
   roundLabel: 'R2',
+  roundTag: 'R2',
   home,
   away,
+  homeSlot: null,
+  awaySlot: null,
   status: 'upcoming',
   scheduledAt: new Date('2026-11-07T09:40:00.000Z'),
   summary: null,
@@ -75,6 +80,7 @@ const SWISS: Approval = {
   divisionName: 'Open',
   label: 'Swiss',
   round: 4,
+  waiting: null,
 };
 const DRAW: Approval = {
   kind: 'draw',
@@ -82,6 +88,7 @@ const DRAW: Approval = {
   divisionName: "Men's singles",
   label: 'Finals',
   round: null,
+  waiting: null,
 };
 
 describe('courtCards (S4 Match Day design §5: one card per court, in the order the web gives)', () => {
@@ -192,6 +199,7 @@ describe('bannerFor (S4 Match Day design §7: a banner only when an approval wai
         divisionName: "Men's singles",
         label: 'Finals',
         round: null,
+        waiting: null,
       },
       canApprove: true,
     });
@@ -407,6 +415,7 @@ describe('canReview: the banner offers Review (S4 design §7)', () => {
     divisionName: 'Open',
     label: 'Swiss',
     round,
+    waiting: null,
   });
   const draw: Approval = { ...swiss(null), kind: 'draw' };
 
@@ -418,7 +427,42 @@ describe('canReview: the banner offers Review (S4 design §7)', () => {
     ['Swiss round 1, no round before it', swiss(1), true, false],
     ['Swiss with no round', swiss(null), true, false],
     ['Swiss round 4 on a code without approvals', swiss(4), false, false],
+    // Task 8d-B: groups decided but the stage not complete: the web desk finishes it, whatever the tick says.
+    ['a waiting draw on a code with the tick', { ...draw, waiting: 'stageComplete' }, true, false],
+    ['a waiting draw on a code without', { ...draw, waiting: 'stageComplete' }, false, false],
   ] as const)('%s', (_what, approval, canApprove, offered) => {
     expect(canReview({ approval, canApprove })).toBe(offered);
+  });
+});
+
+describe('roundChipOf: the chip a row starts with (task 8d-B, F-T8-3)', () => {
+  const tagged = (roundTag: string | null, roundLabel: string | null): Row => ({
+    ...PATEL,
+    roundTag,
+    roundLabel,
+  });
+
+  it.each([
+    ['the desk’s tag', 'SF·1', 'SF', 'SF·1'],
+    ['the board’s label when the web sent no tag', null, 'QF', 'QF'],
+    ['nothing when it has neither', null, null, null],
+    ['the tag alone', 'F', null, 'F'],
+  ])('is %s', (_what, tag, label, chip) => {
+    expect(roundChipOf(tagged(tag, label))).toBe(chip);
+  });
+});
+
+describe('seated: a match opens only with both seats filled (task 8d-B)', () => {
+  it.each([
+    ['both named', 'Eva', 'Bea', true],
+    ['no home', null, 'Bea', false],
+    ['no away', 'Eva', null, false],
+    ['neither', null, null, false],
+  ])('%s', (_what, home, away, yes) => {
+    expect(seated({ ...PATEL, home, away })).toBe(yes);
+  });
+
+  it('a slot label does not seat a match', () => {
+    expect(seated({ ...PATEL, home: null, homeSlot: 'Winner of Group A' })).toBe(false);
   });
 });

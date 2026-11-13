@@ -261,6 +261,49 @@ describe('a match row: names one line with an ellipsis, the detail whole up to i
   });
 });
 
+describe('the round chip and the slot words (task 8d-B)', () => {
+  /** The chip's plate: its word's width, 4 dp padding and the 1 dp border either side. */
+  const plate = (tag: string) => caps('diagSection')(tag) + 2 * space.xs + 2 * layout.cardBorder;
+  const TAGS = ['R1', 'R12', 'QF·2', 'SF·1', 'SF·2', '3rd', 'F'];
+
+  it('the desk’s tags stand whole in the label column (the chip never wraps; a longer word is cut)', () => {
+    for (const tag of TAGS) expect(plate(tag), tag).toBeLessThanOrEqual(layout.matchDayRowLabel);
+    // Anti-vacuity: the widest tag is not trivially small, and a long round name would not fit.
+    expect(plate('SF·2')).toBeGreaterThan(layout.matchDayRowLabel / 2);
+    expect(plate('Quarter-final 2')).toBeGreaterThan(layout.matchDayRowLabel);
+  });
+
+  it('the chip over the label is 36 dp in a row of 48, in every language', () => {
+    const line = typeScale.diagSection.lineHeight;
+    const stack = line + 2 * layout.cardBorder + layout.matchDayChipGap + line;
+    expect(stack).toBe(36);
+    expect(stack).toBeLessThanOrEqual(layout.touch);
+    for (const lang of LANGS)
+      for (const key of ['matchday.row.now', 'matchday.row.next', 'matchday.row.then'])
+        expect(caps('diagSection')(said(lang, key)), `${lang} ${key}`).toBeLessThanOrEqual(
+          layout.matchDayRowLabel,
+        );
+  });
+
+  it('a chip rides the label column, so the names room of a finished row with one is a labelled row’s', () => {
+    // The same budget as the labelled pins above: 188 dp for the names and the detail at 320.
+    expect(Math.round(rowRoom(320, true))).toBe(188);
+    expect(rowRoom(320, true)).toBeLessThan(rowRoom(320, false));
+  });
+
+  it('two slot labels never wrap: the pair is one line, cut with an ellipsis, beside a time at 320 and 360', () => {
+    const pair = said('en', 'matchday.row.match', {
+      home: 'Winner of Group A',
+      away: 'Runner-up of Group B',
+    });
+    for (const width of WIDTHS)
+      expect(names(pair), String(width)).toBeGreaterThan(namesRoom(width, true, '14:40'));
+    // A short slot beside an entrant fits at 360.
+    const mixed = said('en', 'matchday.row.match', { home: 'Eva Novak', away: 'Winner of SF·2' });
+    expect(names(mixed)).toBeLessThanOrEqual(namesRoom(360, true, '14:40'));
+  });
+});
+
 describe('a court card’s head: the name one line, the state chip whole', () => {
   const chipOf = (word: string) => caps('state')(word) + 2 * space.sm + 2 * layout.cardBorder;
   const STATES = [
@@ -441,6 +484,7 @@ describe('the list’s head, banner, chips and sections', () => {
           said(lang, 'matchday.approve.webOnly.swiss', { done: '3' }),
           said(lang, 'matchday.approve.webOnly.draw', { division }),
           said(lang, 'matchday.approve.webOnly', { label: 'Swiss' }),
+          said(lang, 'matchday.approve.waiting', { division }),
         ].map((line) => linesOf(line, inner(width), geist('controlInk')));
         measured[`${width} ${lang}`] = Math.max(...lines);
       }

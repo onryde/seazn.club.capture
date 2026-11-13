@@ -8,6 +8,9 @@
 /** A match's place in its day: not started, in play, or over (decided, finalized, held, abandoned, forfeited or cancelled). */
 export type RowStatus = 'upcoming' | 'inPlay' | 'finished';
 
+/** One piece of a row's names: a seat's words or the template's own, `dim` for a seat with no entrant yet. */
+export type NamePart = { readonly text: string; readonly dim: boolean };
+
 /** One match as the list shows it. */
 export type Row = {
   readonly fixtureId: string;
@@ -16,9 +19,20 @@ export type Row = {
   readonly divisionName: string;
   /** As the web's board codes it (R2, QF, SF, F, …), or null. */
   readonly roundLabel: string | null;
+  /**
+   * The web desk's own tag for the match (R1, SF·1, SF·2, F), English; null from a web that does not send it.
+   * The row's chip says it, and falls back to `roundLabel`.
+   */
+  readonly roundTag: string | null;
   /** A seat with no entrant yet is null, never a made-up name. */
   readonly home: string | null;
   readonly away: string | null;
+  /**
+   * What the web desk prints for an empty seat ("Winner of Group A"), English; null when the seat has an entrant, the
+   * web has no words for it, or it does not send them.
+   */
+  readonly homeSlot: string | null;
+  readonly awaySlot: string | null;
   readonly status: RowStatus;
   readonly scheduledAt: Date | null;
   /** The short score while it plays, or the result once finished; null before any. */
@@ -54,6 +68,11 @@ export type Approval = {
   readonly label: string;
   /** Swiss: the round awaiting pairing ("Round 4 pairings are ready"); a draw: null. */
   readonly round: number | null;
+  /**
+   * A draw the web cannot seed yet: its groups are all decided but the stage is not complete. Waiting is for the web
+   * desk to finish, so the phone offers no Review for it; null for a ready draw, a Swiss round and a web that does not say.
+   */
+  readonly waiting: 'stageComplete' | null;
 };
 
 export type MatchDay = {
@@ -109,10 +128,11 @@ export type Banner = { readonly approval: Approval; readonly canApprove: boolean
 
 /**
  * Whether the banner offers Review (S4 design §7): a code that can approve, and a stage the phone can name a round
- * for. A Swiss stage with no round, or a round of 1 (no round before it to call complete), is the web desk's.
+ * for. A Swiss stage with no round, or a round of 1 (no round before it to call complete), is the web desk's, and so is
+ * a draw the web still holds as waiting for its stage to complete (task 8d-B): there is no proposal to review yet.
  */
 export function canReview({ approval, canApprove }: Banner): boolean {
-  if (!canApprove) return false;
+  if (!canApprove || approval.waiting !== null) return false;
   return approval.kind === 'draw' || (approval.round !== null && approval.round > 1);
 }
 
@@ -202,6 +222,21 @@ export function noCourtStake(day: MatchDay, unsent: ReadonlyMap<string, number |
 /** Everything at stake on Exit (Task 7): every match opened from Match Day, on today's list or not. */
 export function totalStake(unsent: ReadonlyMap<string, number | null>): Stake {
   return stakeOf(unsent.keys(), unsent);
+}
+
+/**
+ * The chip a row starts with: the web desk's tag (SF·1), else the board's round label, else none (task 8d-B, F-T8-3).
+ */
+export function roundChipOf(row: Row): string | null {
+  return row.roundTag ?? row.roundLabel;
+}
+
+/**
+ * Both seats have an entrant. A match with an empty seat has no sides to score yet, so the list never opens it: a slot
+ * label ("Winner of SF·1") says what the seat waits for, and is not an entrant.
+ */
+export function seated(row: Row): boolean {
+  return row.home !== null && row.away !== null;
 }
 
 /** What a row shows at its right: a match not started, its planned time; in play or over, its score. */

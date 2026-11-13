@@ -6,7 +6,11 @@ folder (`capture-*` and `fixtures/capture-*`) at one commit, and nothing here is
 services' contracts there too (`relay-job.v1`, the compositor's); they are not the phone's and stay behind (owner,
 2026-10-26, amending §3.1).
 
-Vendored from web `7c15a5a780e7310c8df56d4db9f97e13acc54aea` on 2026-11-08: 9 schemas and 241 fixtures. Staging
+Vendored from web `4a07a7f8f53a454cc9272344af1cb293f4d7b52b` on 2026-11-13: 9 schemas and 241 fixtures. This is
+web PR #1207 (draft, NOT merged: re-pin to main's merge commit after it merges). It changed only the day read
+(`capture-matchday-day.v1`) and six of its fixtures, additively: each row gains `round_tag`, `home_slot` and
+`away_slot`, each approval gains `waiting` (`stage_complete` or null); `round_label` is unchanged. Before it, on
+2026-11-08, `7c15a5a780e7310c8df56d4db9f97e13acc54aea`. Staging
 deploys the web's `main`. 7c15a5a78 (MD-1 complete, Task 6) added Match Day's approval review and approve,
 `capture-matchday-approval.v1`, with its 17 fixtures, and changed only the descriptions of the day read (a division
 whose schedule is locked lists no approval) and the open (an archived division's match is out of scope); no fixture

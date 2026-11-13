@@ -129,8 +129,11 @@ describe('parseDay reads a day in camelCase, with Dates', () => {
               sportKey: 'badminton',
               divisionName: "Men's doubles",
               roundLabel: 'R1',
+              roundTag: 'R1',
               home: 'Ann & Bob',
               away: 'Cat & Dan',
+              homeSlot: null,
+              awaySlot: null,
               status: 'inPlay',
               scheduledAt: new Date('2026-11-07T10:00:00.000Z'),
               summary: '1–1 · 14–9',
@@ -141,8 +144,11 @@ describe('parseDay reads a day in camelCase, with Dates', () => {
                 sportKey: 'badminton',
                 divisionName: "Men's singles",
                 roundLabel: 'R2',
+                roundTag: 'R2',
                 home: 'Patel',
                 away: 'Okafor',
+                homeSlot: null,
+                awaySlot: null,
                 status: 'upcoming',
                 scheduledAt: new Date('2026-11-07T09:40:00.000Z'),
                 summary: null,
@@ -154,8 +160,11 @@ describe('parseDay reads a day in camelCase, with Dates', () => {
                 sportKey: 'badminton',
                 divisionName: "Men's doubles",
                 roundLabel: 'R1',
+                roundTag: 'R1',
                 home: 'Ann & Bob',
                 away: 'Cat & Dan',
+                homeSlot: null,
+                awaySlot: null,
                 status: 'finished',
                 scheduledAt: new Date('2026-11-07T08:00:00.000Z'),
                 summary: '2–0',
@@ -174,8 +183,11 @@ describe('parseDay reads a day in camelCase, with Dates', () => {
                 sportKey: 'badminton',
                 divisionName: "Men's doubles",
                 roundLabel: 'QF',
+                roundTag: 'QF',
                 home: null,
                 away: null,
+                homeSlot: null,
+                awaySlot: null,
                 status: 'upcoming',
                 scheduledAt: new Date('2026-11-07T09:20:00.000Z'),
                 summary: null,
@@ -190,8 +202,11 @@ describe('parseDay reads a day in camelCase, with Dates', () => {
             sportKey: 'badminton',
             divisionName: "Women's singles",
             roundLabel: 'R2',
+            roundTag: 'R2',
             home: 'Singh',
             away: 'Murphy',
+            homeSlot: null,
+            awaySlot: null,
             status: 'upcoming',
             scheduledAt: null,
             summary: null,
@@ -215,6 +230,7 @@ describe('parseDay reads a day in camelCase, with Dates', () => {
         divisionName: "Men's singles",
         label: 'Finals',
         round: null,
+        waiting: null,
       },
       {
         kind: 'swiss',
@@ -222,6 +238,15 @@ describe('parseDay reads a day in camelCase, with Dates', () => {
         divisionName: 'Open',
         label: 'Swiss',
         round: 4,
+        waiting: null,
+      },
+      {
+        kind: 'draw',
+        stageId: '5d0e1f2a-3b4c-4d5e-9f6a-8b9c0d1e2f3a',
+        divisionName: "Women's singles",
+        label: 'Finals',
+        round: null,
+        waiting: 'stageComplete',
       },
     ]);
   });
@@ -247,8 +272,14 @@ describe('parseDay reads a day in camelCase, with Dates', () => {
 function requiredAt(...steps: string[]): string[] {
   let node: unknown = schemaOf(DAY);
   for (const step of steps) node = (node as Record<string, unknown>)[step];
-  return (node as { required: string[] }).required;
+  return (node as { required: string[] }).required.filter((key) => !OPTIONAL.has(key));
 }
+
+/**
+ * The fields the contract requires that the phone reads as optional (task 8d-B ruling: a build still reads a staging
+ * web that does not send them yet): an absent one reads null, a present one of the wrong type is still refused.
+ */
+const OPTIONAL: ReadonlySet<string> = new Set(['round_tag', 'home_slot', 'away_slot', 'waiting']);
 
 describe('parseDay refuses a missing field', () => {
   it.each(requiredAt())('without %s', (key) => {
@@ -577,12 +608,79 @@ describe('parseDay and the four questions (AGENTS §10)', () => {
         sportKey: 'badminton',
         divisionName: "Women's singles",
         roundLabel: 'R2',
+        roundTag: 'R2',
         home: 'Singh',
         away: 'Murphy',
+        homeSlot: null,
+        awaySlot: null,
         status: 'upcoming',
         scheduledAt: null,
         summary: null,
       },
     ]);
+  });
+});
+
+describe("parseDay reads a row's round tag and slot labels, and an approval's waiting (task 8d-B)", () => {
+  const firstRow = (data: Wire) => data.courts[0]!.next[0]!;
+  const rowOf = (data: unknown) => {
+    const result = read(data);
+    if (!result.ok) throw new Error('the day refused');
+    return result.value.courts[0]!.next[0]!;
+  };
+
+  it("reads valid-courts: the desk's tag and the empty seats' words, from the fixture", () => {
+    const row = rowOf(fixtureOf(DAY, 'valid-courts'));
+    expect([row.roundTag, row.homeSlot, row.awaySlot]).toEqual([
+      'QF·2',
+      'Winner of Group A',
+      'Runner-up of Group B',
+    ]);
+  });
+
+  it('reads a stage the web holds as waiting, and a ready one as not', () => {
+    const result = read(fixtureOf(DAY, 'valid-approvals'));
+    if (!result.ok) throw new Error('valid-approvals refused');
+    expect(result.value.approvals.map((a) => a.waiting)).toEqual([null, null, 'stageComplete']);
+  });
+
+  it('a row without the three fields (a web that does not send them) reads them as null', () => {
+    const data = wire('valid-courts');
+    for (const key of ['round_tag', 'home_slot', 'away_slot']) delete firstRow(data)[key];
+    const row = rowOf(data);
+    expect([row.roundTag, row.homeSlot, row.awaySlot]).toEqual([null, null, null]);
+    expect(row.home).toBeNull();
+  });
+
+  it('an approval without waiting reads null', () => {
+    const data = wire('valid-approvals');
+    delete data.approvals[2]!.waiting;
+    const result = read(data);
+    expect(result.ok && result.value.approvals[2]?.waiting).toBeNull();
+  });
+
+  it.each([
+    ['round_tag', 7],
+    ['round_tag', ''],
+    ['home_slot', 3],
+    ['away_slot', false],
+  ])('a row with %s %j is refused, naming the field', (key, bad) => {
+    const data = wire('valid-courts');
+    firstRow(data)[key] = bad;
+    expect(errorOf(data)).toEqual({
+      kind: 'invalid-field',
+      field: `courts[0].next[0].${key}`,
+      reason: expect.any(String),
+    });
+  });
+
+  it.each(['pending', 7, true])('an approval with waiting %j is refused', (bad) => {
+    const data = wire('valid-approvals');
+    data.approvals[2]!.waiting = bad;
+    expect(errorOf(data)).toEqual({
+      kind: 'invalid-field',
+      field: 'approvals[2].waiting',
+      reason: expect.any(String),
+    });
   });
 });

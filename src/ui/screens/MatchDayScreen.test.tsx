@@ -53,9 +53,12 @@ const row = (
   fixtureId,
   sportKey: 'badminton',
   divisionName: "Men's singles",
-  roundLabel: 'R2',
+  roundLabel: null,
+  roundTag: null,
   home,
   away,
+  homeSlot: null,
+  awaySlot: null,
   status: 'upcoming',
   scheduledAt: new Date('2026-10-03T14:20:00.000Z'),
   summary: null,
@@ -442,6 +445,7 @@ describe('MatchDayScreen: the approval banner (S4 design §7)', () => {
     divisionName: 'Open',
     label: 'Swiss',
     round: 4,
+    waiting: null,
   };
   const draw: Approval = {
     kind: 'draw',
@@ -449,6 +453,7 @@ describe('MatchDayScreen: the approval banner (S4 design §7)', () => {
     divisionName: "Men's singles",
     label: 'Finals',
     round: null,
+    waiting: null,
   };
 
   it.each([
@@ -791,5 +796,186 @@ describe('finished matches: the latest, then "+N more finished" (F-T8-5)', () =>
     );
     tap(0);
     expect(moreOf(0)?.textContent).toBe(word(lang, 'matchday.finished.less'));
+  });
+});
+
+describe('MatchDayScreen: the round chip, the slot words and the waiting draw (task 8d-B)', () => {
+  const tagged = (id: string, home: string | null, away: string | null, more: Partial<Row> = {}) =>
+    row(id, home, away, { roundTag: 'SF·1', ...more });
+  const chips = () => screen.queryAllByTestId('round-chip').map((chip) => chip.textContent);
+
+  it('every row kind starts with its chip: Now, Next, Then, a finished match, no court and online', async () => {
+    const day = dayWith({
+      courts: [
+        court('c-1', 'Court 1', {
+          now: tagged('p-1', 'Ng', 'Brown', { status: 'inPlay', roundTag: 'R1' }),
+          next: [
+            tagged('n-1', 'Lee', 'Tan', { roundTag: 'QF·1' }),
+            tagged('n-2', 'Kim', 'Rossi', { roundTag: 'QF·2' }),
+          ],
+          finished: [tagged('f-1', 'Ann', 'Cat', { status: 'finished', roundTag: 'R2' })],
+        }),
+      ],
+      noCourt: [tagged('c-9', 'Singh', 'Murphy', { roundTag: 'SF·2' })],
+      online: [tagged('o-1', 'Ola', 'Pia', { roundTag: 'F' })],
+    });
+    await openList({ day });
+    expect(chips()).toEqual(['R1', 'QF·1', 'QF·2', 'R2', 'SF·2', 'F']);
+  });
+
+  it('the tag is read first: "SF·1, Now, Eva Novak v Bea Lund, 14-9"', async () => {
+    const now = tagged('p-1', 'Eva Novak', 'Bea Lund', { status: 'inPlay', summary: '14-9' });
+    await openList({ day: dayWith({ courts: [court('c-1', 'Court 1', { now })] }) });
+    expect(screen.getByLabelText('SF·1, Now, Eva Novak v Bea Lund, 14-9')).toBeTruthy();
+  });
+
+  it('a finished row reads its tag before its heading', async () => {
+    const done = tagged('f-1', 'Ann', 'Cat', { status: 'finished', summary: '2–0' });
+    await openList({ day: dayWith({ courts: [court('c-1', 'Court 1', { finished: [done] })] }) });
+    expect(screen.getByLabelText('SF·1, Finished, Ann v Cat, 2–0')).toBeTruthy();
+  });
+
+  it('with no tag the chip is the round label, and with neither there is none', async () => {
+    const queue = [
+      row('n-1', 'Lee', 'Tan', { roundTag: null, roundLabel: 'QF' }),
+      row('n-2', 'Kim', 'Rossi', { roundTag: null, roundLabel: null }),
+    ];
+    await openList({ day: dayWith({ courts: [court('c-1', 'Court 1', { next: queue })] }) });
+    expect(chips()).toEqual(['QF']);
+    expect(screen.getByLabelText('QF, Next, Lee v Tan, 15:20')).toBeTruthy();
+    expect(screen.getByLabelText('Then, Kim v Rossi, 15:20')).toBeTruthy();
+  });
+
+  it('an empty seat says what it waits for, dimmed; a seated one stays in cream', async () => {
+    const queue = [
+      tagged('n-1', 'Eva Novak', null, { awaySlot: 'Winner of SF·2' }),
+      tagged('n-2', null, null, {
+        homeSlot: 'Winner of Group A',
+        awaySlot: 'Runner-up of Group B',
+      }),
+    ];
+    await openList({ day: dayWith({ courts: [court('c-1', 'Court 1', { next: queue })] }) });
+    expect(style(screen.getByText('Winner of SF·2')).color).toBe(edgeOf(colour.ink3));
+    expect(style(screen.getByText('Winner of Group A')).color).toBe(edgeOf(colour.ink3));
+    expect(style(screen.getByText('Runner-up of Group B')).color).toBe(edgeOf(colour.ink3));
+    expect(style(screen.getByText(/^Eva Novak/)).color).toBe(edgeOf(colour.ink));
+    expect(screen.getByLabelText('SF·1, Next, Eva Novak v Winner of SF·2, 15:20')).toBeTruthy();
+    expect(
+      screen.getByLabelText('SF·1, Then, Winner of Group A v Runner-up of Group B, 15:20'),
+    ).toBeTruthy();
+    expect(screen.queryByText(en['matchday.seat.tbd'])).toBeNull();
+  });
+
+  it('"To be decided" only for a seat whose slot is null too', async () => {
+    const queue = [tagged('n-1', null, null, { homeSlot: 'Winner of Group A' })];
+    await openList({ day: dayWith({ courts: [court('c-1', 'Court 1', { next: queue })] }) });
+    expect(
+      screen.getByLabelText(`SF·1, Next, Winner of Group A v ${en['matchday.seat.tbd']}, 15:20`),
+    ).toBeTruthy();
+  });
+
+  it.each(['es', 'fr', 'nl'] as const)(
+    'says "To be decided" in %s from its dictionary',
+    async (lang) => {
+      const queue = [tagged('n-1', 'Eva', null)];
+      await openList({
+        lang,
+        day: dayWith({ courts: [court('c-1', 'Court 1', { next: queue })] }),
+      });
+      expect(screen.getByText(`Eva v ${word(lang, 'matchday.seat.tbd')}`)).toBeTruthy();
+    },
+  );
+
+  it('a match with an empty seat is not a control, slot words or not: the pad never opens on it', async () => {
+    const view = await openList({
+      day: dayWith({
+        courts: [
+          court('c-1', 'Court 1', {
+            next: [
+              tagged('n-3', 'Kim', 'Rossi'),
+              tagged('n-1', 'Eva', null, { awaySlot: 'Winner of SF·2' }),
+            ],
+          }),
+          court('c-2', 'Court 2', { next: [tagged('n-2', null, null)] }),
+        ],
+      }),
+    });
+    const [seatedRow, half, none] = rows();
+    expect(seatedRow?.getAttribute('role')).toBe('button');
+    expect(half?.getAttribute('role')).not.toBe('button');
+    expect(none?.getAttribute('role')).not.toBe('button');
+    fireEvent.click(half as HTMLElement);
+    fireEvent.click(none as HTMLElement);
+    await settle();
+    expect(view.matchDay.calls.filter((call) => call.op === 'open')).toEqual([]);
+    // Anti-vacuity: the seated row's tap does ask the server to open it.
+    fireEvent.click(seatedRow as HTMLElement);
+    await settle();
+    expect(view.matchDay.calls.filter((call) => call.op === 'open')).toHaveLength(1);
+  });
+
+  describe('a draw the web holds as waiting', () => {
+    const draw: Approval = {
+      kind: 'draw',
+      stageId: '3b8c9d0e-1f2a-4b3c-bd4e-6f7a8b9c0d1e',
+      divisionName: "Men's singles",
+      label: 'Finals',
+      round: null,
+      waiting: 'stageComplete',
+    };
+    const line = (lang: Lang) =>
+      word(lang, 'matchday.approve.waiting').replace('{division}', "Men's singles");
+
+    it.each([true, false])(
+      'says to complete the stage on the web desk, with no button (can approve: %s)',
+      async (canApprove) => {
+        await openList({ day: dayWith({ approvals: [draw], canApprove }) });
+        const banner = within(screen.getByTestId('approval-banner'));
+        expect(banner.getByText(line('en'))).toBeTruthy();
+        expect(line('en')).toBe(
+          "Groups finished · Men's singles · complete the stage on the web desk",
+        );
+        expect(banner.queryByRole('button')).toBeNull();
+      },
+    );
+
+    it.each(['es', 'fr', 'nl'] as const)('says it in %s', async (lang) => {
+      await openList({ lang, day: dayWith({ approvals: [draw], canApprove: true }) });
+      const banner = within(screen.getByTestId('approval-banner'));
+      expect(banner.getByText(line(lang))).toBeTruthy();
+      expect(banner.queryByRole('button')).toBeNull();
+    });
+
+    it('a ready draw is unchanged: its own words and its Review button', async () => {
+      await openList({
+        day: dayWith({ approvals: [{ ...draw, waiting: null }], canApprove: true }),
+      });
+      const banner = within(screen.getByTestId('approval-banner'));
+      expect(
+        banner.getByText("Groups finished · Men's singles · Knockout draw is ready"),
+      ).toBeTruthy();
+      expect(banner.getByRole('button', { name: en['matchday.approve.review'] })).toBeTruthy();
+    });
+
+    it('a list refresh that flips the draw from waiting to ready brings the Review button, and back takes it away', async () => {
+      const view = await openList({ day: dayWith({ approvals: [draw], canApprove: true }) });
+      expect(within(screen.getByTestId('approval-banner')).queryByRole('button')).toBeNull();
+      view.matchDay.answerDay({
+        ok: true,
+        value: dayWith({ approvals: [{ ...draw, waiting: null }], canApprove: true }),
+      });
+      await settle(MATCHDAY_POLL_MS);
+      const banner = within(screen.getByTestId('approval-banner'));
+      expect(
+        banner.getByText("Groups finished · Men's singles · Knockout draw is ready"),
+      ).toBeTruthy();
+      expect(banner.getByRole('button', { name: en['matchday.approve.review'] })).toBeTruthy();
+      view.matchDay.answerDay({
+        ok: true,
+        value: dayWith({ approvals: [draw], canApprove: true }),
+      });
+      await settle(MATCHDAY_POLL_MS);
+      expect(within(screen.getByTestId('approval-banner')).queryByRole('button')).toBeNull();
+    });
   });
 });

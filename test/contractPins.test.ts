@@ -13,12 +13,12 @@ import { listFiles, OURS } from '../scripts/vendor-contracts.mjs';
  *
  * The other side of the pin is the web's own: its capture-contract.test.ts pins the nine schemas. Those nine values
  * and the commit are copied below BY HAND from apps/web/src/server/api-v1/__tests__/capture-contract.test.ts:51-64
- * at 81c0446cc (web main, MD-1 merged as #1140; MD-1 complete: Task 6 added the approval review and approve, capture-matchday-approval.v1, with its
+ * at 4a07a7f8f (web PR #1207, UNMERGED: re-pin to main's merge commit after it merges; it added the day read's `round_tag`, `home_slot`, `away_slot` and the approval's `waiting`) over 81c0446cc (web main, MD-1 merged as #1140; MD-1 complete: Task 6 added the approval review and approve, capture-matchday-approval.v1, with its
  * fixtures, and reworded the day read's and the open's descriptions; the day read's row summary became the desk's
  * short score, "1–1 · 14–9"; the six before them are as web #1037 left them), so a re-vendor cannot quietly move both sides at once. WEB_COMMIT is the commit actually vendored (plan D1, D-10). The web's
  * relay-job.v1 sits beside them and is not the phone's: the script takes only the capture contracts.
  */
-const WEB_COMMIT = '81c0446ccca1ee91f4c9085cae792b7b5224beb6';
+const WEB_COMMIT = '4a07a7f8f53a454cc9272344af1cb293f4d7b52b';
 const WEB_PINS: Readonly<Record<string, string>> = {
   'capture-qr.v2.json': '3292e33f84b693e5def6048012f6653ca7e31e1573fda3901da4fe67a62c5d43',
   'capture-descriptor.v1.json': '5c9b09c422b092671ad3a842b02e5c18902c92fc290cbc562c91033555955b8b',
@@ -28,7 +28,7 @@ const WEB_PINS: Readonly<Record<string, string>> = {
     'f0f1188655f3ca83b3e42ce7fedd6f6210a3a141b0bcf02fa250eb2448b1c85f',
   'capture-record.v1.json': '213f766043b7682f198cc98da13e93995b6602e46533ecf60c78bf562aebd6f8',
   'capture-matchday-day.v1.json':
-    '31b411690974b0c32ef98265edce74b6b0c586bb6d5e638c3dbf2f329fdcdc65',
+    '63b14bde9a71e6e8ec82c31cdcd945e9e9b9345c74302739e51b91fe61f1c28e',
   'capture-matchday-open.v1.json':
     '760028bf99e5cf74ee033f5613fa43477677cef318ecdf739c0b62e2fc21c0c0',
   'capture-matchday-approval.v1.json':

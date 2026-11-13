@@ -1,10 +1,11 @@
 import { memo, useCallback } from 'react';
 import { Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
-import type {
-  CourtCard as CourtCardModel,
-  CourtState,
-  Row,
-  Stake,
+import {
+  seated,
+  type CourtCard as CourtCardModel,
+  type CourtState,
+  type Row,
+  type Stake,
 } from '@/domain/matchday/matchDay';
 import { useT } from '@/hooks/useLanguage';
 import { useRowWords, type RowWords } from '@/hooks/useRowWords';
@@ -107,13 +108,15 @@ const CourtRow = memo(function CourtRow({
   readonly dim?: boolean;
 }) {
   const press = useCallback(() => onOpen?.(row, court), [onOpen, row, court]);
+  // A match with an empty seat has no sides to score: its row is not a control (task 8d-B; the web does not refuse it).
+  const opens = onOpen !== undefined && seated(row);
   return (
     <MatchRow
       {...(label === undefined ? {} : { label })}
       {...(spoken === undefined ? {} : { spoken })}
       {...(dim === true ? { dim } : {})}
       {...words(row)}
-      {...(onOpen === undefined ? {} : { onPress: press })}
+      {...(opens ? { onPress: press } : {})}
     />
   );
 });
@@ -216,6 +219,7 @@ const MoreRow = memo(function MoreRow({
       accessibilityRole="button"
       accessibilityLabel={word}
       aria-expanded={open}
+      accessibilityState={{ expanded: open }}
       onPress={press}
       style={styles.more}
     >

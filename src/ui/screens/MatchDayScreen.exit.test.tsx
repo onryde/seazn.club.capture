@@ -42,6 +42,7 @@ const WAITING: MatchDay = {
       divisionName: "Men's singles",
       label: 'Swiss',
       round: 4,
+      waiting: null,
     },
   ],
 };

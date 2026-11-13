@@ -41,6 +41,15 @@ export function nullable<T>(item: Item<T>): Item<T | null> {
   return (raw, at) => (raw === null ? ok(null) : item(raw, at));
 }
 
+/**
+ * A field the web added after the contract's first release and the phone reads either way: absent is null (a build
+ * still reads a staging web that does not send it), null is null, and a value is the item's to judge.
+ */
+export function optional<T>(item: Item<T>): Reader<T | null> {
+  const read = field(nullable(item));
+  return (source, key, at) => (source[key] === undefined ? ok(null) : read(source, key, at));
+}
+
 /** A value `judge` accepts, or the field refused with `reason`. */
 export function scalar<T>(judge: (raw: unknown) => T | undefined, reason: string): Item<T> {
   return (raw, at) => {

@@ -1241,5 +1241,6 @@
   "matchday.finished.more.one": "+{count} terminé de plus",
   "matchday.finished.more.other": "+{count} terminés de plus",
   "matchday.finished.less": "Voir moins",
-  "matchday.offlineOpen": "Hors ligne · ouvrez ce match une fois reconnecté"
+  "matchday.offlineOpen": "Hors ligne · ouvrez ce match une fois reconnecté",
+  "matchday.approve.waiting": "Poules terminées · {division} · terminez la phase sur le site web"
 }

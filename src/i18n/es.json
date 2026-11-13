@@ -1241,5 +1241,6 @@
   "matchday.finished.more.one": "+{count} terminado más",
   "matchday.finished.more.other": "+{count} terminados más",
   "matchday.finished.less": "Ver menos",
-  "matchday.offlineOpen": "Sin conexión · abre este partido cuando vuelvas a tener conexión"
+  "matchday.offlineOpen": "Sin conexión · abre este partido cuando vuelvas a tener conexión",
+  "matchday.approve.waiting": "Grupos terminados · {division} · completa la fase en la web"
 }

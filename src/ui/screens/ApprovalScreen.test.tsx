@@ -42,6 +42,7 @@ const SWISS: Approval = {
   divisionName: "Men's singles",
   label: 'Swiss',
   round: 4,
+  waiting: null,
 };
 const DRAW: Approval = {
   kind: 'draw',
@@ -49,6 +50,7 @@ const DRAW: Approval = {
   divisionName: "Men's singles",
   label: 'Finals',
   round: null,
+  waiting: null,
 };
 const DRAW_REVIEW: ApprovalReview = {
   kind: 'draw',

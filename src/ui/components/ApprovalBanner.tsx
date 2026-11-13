@@ -39,6 +39,9 @@ export const ApprovalBanner = memo(function ApprovalBanner({
  * a round of 1, which has no round before it to call complete (review M5: never "Round 0 complete").
  */
 function bannerLine({ approval, canApprove }: Banner, t: Translator['t']): string {
+  // A draw the web cannot seed yet (task 8d-B): its words are the same with or without the tick, and it has no button.
+  if (approval.waiting !== null)
+    return t('matchday.approve.waiting', { division: approval.divisionName });
   if (approval.kind === 'draw') {
     const division = approval.divisionName;
     return t(canApprove ? 'matchday.approve.draw' : 'matchday.approve.webOnly.draw', { division });

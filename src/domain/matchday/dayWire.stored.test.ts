@@ -58,6 +58,29 @@ describe('readStoredDay', () => {
     return court?.now as Record<string, unknown>;
   };
 
+  const waitingApproval = (): Record<string, unknown> => ({
+    kind: 'draw',
+    stageId: '3b8c9d0e-1f2a-4b3c-8d4e-6f7a8b9c0d1e',
+    divisionName: 'Open',
+    label: 'Finals',
+    round: null,
+  });
+
+  it('reads a copy kept before the round tag, the slots and waiting existed, as null', () => {
+    const copy = base();
+    const row = nowRow(copy);
+    for (const key of ['roundTag', 'homeSlot', 'awaySlot']) delete row[key];
+    copy.approvals.push(waitingApproval());
+    const day = readStoredDay(copy);
+    const court = day?.courts.find((c) => c.now !== null);
+    expect([court?.now?.roundTag, court?.now?.homeSlot, court?.now?.awaySlot]).toEqual([
+      null,
+      null,
+      null,
+    ]);
+    expect(day?.approvals.at(-1)?.waiting).toBeNull();
+  });
+
   it.each([
     [
       'a row status that is no status',
@@ -76,6 +99,17 @@ describe('readStoredDay', () => {
       },
     ],
     ['a fixture id that is no id', (c: ReturnType<typeof base>) => (nowRow(c).fixtureId = 'x')],
+    [
+      'a waiting that is no word',
+      (c: ReturnType<typeof base>) => c.approvals.push({ ...waitingApproval(), waiting: 'bogus' }),
+    ],
+    [
+      'a waiting in the wire’s spelling',
+      (c: ReturnType<typeof base>) =>
+        c.approvals.push({ ...waitingApproval(), waiting: 'stage_complete' }),
+    ],
+    ['a round tag that is a number', (c: ReturnType<typeof base>) => (nowRow(c).roundTag = 7)],
+    ['a slot that is a number', (c: ReturnType<typeof base>) => (nowRow(c).homeSlot = 7)],
     ['a row with no home', (c: ReturnType<typeof base>) => delete nowRow(c).home],
     [
       'a row time that is no time',

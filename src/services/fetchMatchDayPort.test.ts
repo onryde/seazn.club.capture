@@ -641,7 +641,8 @@ describe('what is no answer: offline', () => {
   it('the day reads a body up to 1 MiB, and one byte over is no answer, never one cut short', async () => {
     const padded = (bytes: number) => {
       const text = JSON.stringify({ ...DAY, pad: '' });
-      return text.replace('"pad":""', `"pad":"${'x'.repeat(bytes - text.length)}"`);
+      // The body's size is its UTF-8 bytes: the desk's tags ("QF·2") hold a two-byte middle dot.
+      return text.replace('"pad":""', `"pad":"${'x'.repeat(bytes - utf8Length(text))}"`);
     };
     expect(MATCHDAY_DAY_MAX_BYTES).toBe(1024 * 1024);
     const exact = portOver(answering(raw(200, padded(MATCHDAY_DAY_MAX_BYTES))));

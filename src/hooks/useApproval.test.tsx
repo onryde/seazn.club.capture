@@ -43,6 +43,7 @@ const waiting = (stage: string, kind: Approval['kind'] = 'swiss'): Approval => (
   divisionName: "Men's singles",
   label: 'Swiss',
   round: kind === 'swiss' ? 4 : null,
+  waiting: null,
 });
 const dayWaiting = (approvals: readonly Approval[]): MatchDay => ({
   ...FAKE_DAY,

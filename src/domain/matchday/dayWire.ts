@@ -19,6 +19,7 @@ import {
   nullable,
   objectOf,
   oneOf,
+  optional,
   successData,
   text,
   uuid,
@@ -57,14 +58,21 @@ const APPROVAL_KIND: ReadonlyMap<string, ApprovalKind> = new Map([
   ['draw', 'draw'],
 ]);
 
+const WAITING: ReadonlyMap<string, 'stageComplete'> = new Map([
+  ['stage_complete', 'stageComplete'],
+]);
+
 const row = objectOf<Row>((source, at) =>
   all({
     fixtureId: field(uuid)(source, 'fixture_id', at),
     sportKey: field(word)(source, 'sport_key', at),
     divisionName: field(text)(source, 'division_name', at),
     roundLabel: field(nullable(word))(source, 'round_label', at),
+    roundTag: optional(word)(source, 'round_tag', at),
     home: field(nullable(text))(source, 'home', at),
     away: field(nullable(text))(source, 'away', at),
+    homeSlot: optional(text)(source, 'home_slot', at),
+    awaySlot: optional(text)(source, 'away_slot', at),
     status: field(oneOf(ROW_STATUS))(source, 'status', at),
     scheduledAt: field(nullable(instant))(source, 'scheduled_at', at),
     summary: field(nullable(text))(source, 'summary', at),
@@ -92,6 +100,7 @@ const approval = objectOf<Approval>((source, at) =>
     divisionName: field(text)(source, 'division_name', at),
     label: field(text)(source, 'label', at),
     round: field(nullable(countingNumber))(source, 'round', at),
+    waiting: optional(oneOf(WAITING))(source, 'waiting', at),
   }),
 );
 
@@ -156,8 +165,11 @@ const WIRE_NAME: ReadonlyMap<string, string> = new Map([
   ['sportKey', 'sport_key'],
   ['divisionName', 'division_name'],
   ['roundLabel', 'round_label'],
+  ['roundTag', 'round_tag'],
+  ['homeSlot', 'home_slot'],
+  ['awaySlot', 'away_slot'],
   ['scheduledAt', 'scheduled_at'],
-  ...['kind', 'label', 'round', 'id', 'name'].map(same),
+  ...['kind', 'label', 'round', 'waiting', 'id', 'name'].map(same),
   ['stageId', 'stage_id'],
 ]);
 
@@ -165,10 +177,14 @@ function same(name: string): readonly [string, string] {
   return [name, name];
 }
 
-/** The phone's word for a status or a state, back in the wire's spelling. */
+/**
+ * The phone's word for a status, a state or a waiting, back in the wire's spelling. A word that is not the phone's
+ * becomes the empty text, which no list of words holds, so even an optional field refuses it (never reads as absent).
+ */
 const WIRE_WORD: ReadonlyMap<string, ReadonlyMap<string, string>> = new Map([
   ['status', backwards(ROW_STATUS)],
   ['state', backwards(COURT_STATE)],
+  ['waiting', backwards(WAITING)],
 ]);
 
 function backwards(words: ReadonlyMap<string, string>): ReadonlyMap<string, string> {
@@ -183,7 +199,7 @@ function wireOf(value: unknown, key: string): unknown {
   if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
   if (Array.isArray(value)) return value.map((item) => wireOf(item, ''));
   const words = WIRE_WORD.get(key);
-  if (words !== undefined && typeof value === 'string') return words.get(value) ?? null;
+  if (words !== undefined && typeof value === 'string') return words.get(value) ?? '';
   if (!isSource(value)) return value;
   const out: Source = {};
   for (const [name, item] of Object.entries(value)) {

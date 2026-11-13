@@ -29,8 +29,11 @@ const row = (fixtureId: string, scheduledAt: Date | null): Row => ({
   sportKey: 'badminton',
   divisionName: "Men's singles",
   roundLabel: 'R2',
+  roundTag: 'R2',
   home: 'Ng',
   away: null,
+  homeSlot: null,
+  awaySlot: null,
   status: 'upcoming',
   scheduledAt,
   summary: null,
@@ -65,6 +68,7 @@ const DAY: MatchDay = {
       divisionName: 'Open',
       label: 'Swiss',
       round: 4,
+      waiting: null,
     },
   ],
 };
@@ -417,16 +421,23 @@ describe('the copy’s version follows the shape it was written in', () => {
       sportKey: 1,
       divisionName: 1,
       roundLabel: 1,
+      roundTag: 1,
       home: 1,
       away: 1,
+      homeSlot: 1,
+      awaySlot: 1,
       status: 1,
       scheduledAt: 1,
       summary: 1,
     } satisfies Record<keyof Row, 1>,
-    approval: { kind: 1, stageId: 1, divisionName: 1, label: 1, round: 1 } satisfies Record<
-      keyof Approval,
-      1
-    >,
+    approval: {
+      kind: 1,
+      stageId: 1,
+      divisionName: 1,
+      label: 1,
+      round: 1,
+      waiting: 1,
+    } satisfies Record<keyof Approval, 1>,
   };
 
   /** Every key, at any depth, whose value can be a Date: the ones JSON writes as text and the read must revive. */

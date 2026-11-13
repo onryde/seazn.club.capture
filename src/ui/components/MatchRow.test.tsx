@@ -70,4 +70,77 @@ describe('MatchRow', () => {
     render(<MatchRow names="Singh v Murphy" detail={null} />);
     expect(screen.getByTestId('match-row').getAttribute('aria-label')).toBe('Singh v Murphy');
   });
+
+  // Task 8d-B, F-T8-3: the round chip, and F-T8-4: a seat's words dimmed.
+  describe('the round chip', () => {
+    it('stands first in the row and is read first: "SF·1, Now, Eva Novak v Bea Lund, 11:00"', () => {
+      render(<MatchRow chip="SF·1" label="Now" names="Eva Novak v Bea Lund" detail="11:00" />);
+      expect(screen.getByTestId('match-row').getAttribute('aria-label')).toBe(
+        'SF·1, Now, Eva Novak v Bea Lund, 11:00',
+      );
+      expect(screen.getByText('SF·1')).toBeTruthy();
+    });
+
+    it('is read first on a finished row too, before its spoken heading', () => {
+      render(<MatchRow chip="F" spoken="Finished" names="Ann v Cat" detail="21–15" dim />);
+      expect(screen.getByTestId('match-row').getAttribute('aria-label')).toBe(
+        'F, Finished, Ann v Cat, 21–15',
+      );
+    });
+
+    it('is not drawn, and not read, when there is none', () => {
+      render(<MatchRow chip={null} label="Now" names="Ng v Brown" detail={null} />);
+      expect(screen.queryByTestId('round-chip')).toBeNull();
+      expect(screen.getByTestId('match-row').getAttribute('aria-label')).toBe('Now, Ng v Brown');
+    });
+
+    it('is a plate of the board’s caps: ink2 on surface2 with a hairline, one line, ellipsis (never wraps)', () => {
+      render(<MatchRow chip="SF·1" names="Ng v Brown" detail={null} />);
+      const chip = getComputedStyle(screen.getByTestId('round-chip'));
+      expect([chip.backgroundColor, chip.borderTopColor, chip.borderTopWidth]).toEqual([
+        edgeOf(colour.surface2),
+        edgeOf(colour.rule),
+        '1px',
+      ]);
+      const word = getComputedStyle(screen.getByText('SF·1'));
+      expect([word.color, word.fontFamily, word.textTransform]).toEqual([
+        edgeOf(colour.ink2),
+        font.displaySemibold,
+        'uppercase',
+      ]);
+      expect([word.whiteSpace, word.textOverflow]).toEqual(['nowrap', 'ellipsis']);
+    });
+
+    it('shares the label’s column, so a row with a chip has the names room of a labelled row', () => {
+      const { rerender } = render(<MatchRow chip="R1" label="Now" names="A v B" detail={null} />);
+      const both = getComputedStyle(screen.getByTestId('round-chip').parentElement!).width;
+      expect(both).toBe(`${layout.matchDayRowLabel}px`);
+      rerender(<MatchRow chip="R1" spoken="Finished" names="A v B" detail={null} />);
+      expect(getComputedStyle(screen.getByTestId('round-chip').parentElement!).width).toBe(both);
+      expect(getComputedStyle(screen.getByTestId('round-chip')).maxWidth).toBe('100%');
+    });
+  });
+
+  describe('a seat that shows what it waits for', () => {
+    const parts = [
+      { text: 'Eva Novak', dim: false },
+      { text: ' v ', dim: false },
+      { text: 'Winner of SF·2', dim: true },
+    ];
+
+    it('dims the slot words in the inert ink and keeps the entrant in cream, read as one line', () => {
+      render(<MatchRow names="Eva Novak v Winner of SF·2" parts={parts} detail="11:00" />);
+      expect(getComputedStyle(screen.getByText('Winner of SF·2')).color).toBe(edgeOf(colour.ink3));
+      const whole = screen.getByText(/Eva Novak/);
+      expect(getComputedStyle(whole).color).toBe(edgeOf(colour.ink));
+      expect(screen.getByTestId('match-row').getAttribute('aria-label')).toBe(
+        'Eva Novak v Winner of SF·2, 11:00',
+      );
+    });
+
+    it('with no parts the names are one plain text', () => {
+      render(<MatchRow names="Eva Novak v Winner of SF·2" parts={null} detail={null} />);
+      expect(screen.getByText('Eva Novak v Winner of SF·2')).toBeTruthy();
+    });
+  });
 });

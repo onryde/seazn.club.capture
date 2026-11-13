@@ -1,15 +1,26 @@
 import { memo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
+import type { NamePart } from '@/domain/matchday/matchDay';
 import { Text } from '@/ui/components/Text';
 import { colour, layout, space } from '@/ui/theme/tokens';
 
 type MatchRowProps = {
+  /**
+   * The round chip at the row's left (the desk's tag, SF·1; task 8d-B, F-T8-3): in the label's column, above the label
+   * or alone, so a row with one has the names room of a labelled row. None when the row has no tag and no round.
+   */
+  readonly chip?: string | null;
   /** The row's label in its column at the left (Now, Next, Then); none for a row under a section's heading. */
   readonly label?: string;
   /** What a screen reader hears first when no label is drawn (Finished, under its heading). */
   readonly spoken?: string;
   /** "Ng v Brown": one line, cut with an ellipsis, so a card never grows. */
   readonly names: string;
+  /**
+   * The names in pieces, when a seat shows the words of what it waits for ("Winner of SF·1", task 8d-B, F-T8-4): those
+   * in the inert ink beside the entrant's name in cream. Null draws `names` whole. Never changes what is read.
+   */
+  readonly parts?: readonly NamePart[] | null;
   /**
    * At the right: the planned time or the score; none when the server has neither. One line, as wide as it needs until
    * the names are down to `matchDayNamesMin`, then cut with an ellipsis (review I2: the server's score can be the whole
@@ -28,7 +39,7 @@ type MatchRowProps = {
  * screen reader, read as one line ("Now, Ng v Brown, 14-9"). Without `onPress` it is not a control at all.
  */
 export const MatchRow = memo(function MatchRow(props: MatchRowProps) {
-  const said = [props.label ?? props.spoken, props.names, props.detail]
+  const said = [props.chip, props.label ?? props.spoken, props.names, props.detail]
     .filter((part): part is string => part !== undefined && part !== null)
     .join(', ');
   const body = <RowBody {...props} />;
@@ -51,16 +62,20 @@ export const MatchRow = memo(function MatchRow(props: MatchRowProps) {
   );
 });
 
-const RowBody = memo(function RowBody({ label, names, detail, dim = false }: MatchRowProps) {
+const RowBody = memo(function RowBody({
+  chip = null,
+  label,
+  names,
+  parts = null,
+  detail,
+  dim = false,
+}: MatchRowProps) {
+  const lead = chip === null && label === undefined ? null : <Lead chip={chip} label={label} />;
   return (
     <>
-      {label === undefined ? null : (
-        <Text variant="diagSection" numberOfLines={1} style={styles.label}>
-          {label}
-        </Text>
-      )}
+      {lead}
       <Text variant="rowNames" numberOfLines={1} style={dim ? styles.namesDim : styles.names}>
-        {names}
+        {parts === null ? names : parts.map(partOf)}
       </Text>
       {detail === null ? null : (
         <Text variant="diagValue" numberOfLines={1} style={dim ? styles.detailDim : styles.detail}>
@@ -68,6 +83,46 @@ const RowBody = memo(function RowBody({ label, names, detail, dim = false }: Mat
         </Text>
       )}
     </>
+  );
+});
+
+/** A seat's words (inert ink) or the template's, keyed by its place: the parts of one row never reorder. */
+function partOf(part: NamePart, index: number) {
+  return part.dim ? (
+    <Text key={index} variant="rowNames" style={styles.slot}>
+      {part.text}
+    </Text>
+  ) : (
+    part.text
+  );
+}
+
+/**
+ * The row's first column, `matchDayRowLabel` wide: the round chip over the label (Now, Next, Then), or the chip alone.
+ * A row with a label and no chip is the label as before.
+ */
+const Lead = memo(function Lead({
+  chip,
+  label,
+}: {
+  readonly chip: string | null;
+  readonly label: string | undefined;
+}) {
+  return (
+    <View style={styles.lead}>
+      {chip === null ? null : (
+        <View testID="round-chip" style={styles.chip}>
+          <Text variant="diagSection" numberOfLines={1} style={styles.chipWord}>
+            {chip}
+          </Text>
+        </View>
+      )}
+      {label === undefined ? null : (
+        <Text variant="diagSection" numberOfLines={1} style={styles.label}>
+          {label}
+        </Text>
+      )}
+    </View>
   );
 });
 
@@ -84,7 +139,18 @@ const styles = StyleSheet.create({
     gap: space.sm,
   },
   pressed: { backgroundColor: colour.pressFill },
-  label: { width: layout.matchDayRowLabel, color: colour.ink2 },
+  lead: { width: layout.matchDayRowLabel, gap: layout.matchDayChipGap },
+  label: { color: colour.ink2 },
+  chip: {
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+    paddingHorizontal: space.xs,
+    borderWidth: layout.cardBorder,
+    borderColor: colour.rule,
+    backgroundColor: colour.surface2,
+  },
+  chipWord: { color: colour.ink2 },
+  slot: { color: colour.ink3 },
   names: { flex: 1, minWidth: layout.matchDayNamesMin, color: colour.ink },
   namesDim: { flex: 1, minWidth: layout.matchDayNamesMin, color: colour.ink3 },
   detail: { flexShrink: 1, minWidth: 0, color: colour.ink },

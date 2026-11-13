@@ -1241,5 +1241,6 @@
   "matchday.finished.more.one": "+{count} more finished",
   "matchday.finished.more.other": "+{count} more finished",
   "matchday.finished.less": "Show less",
-  "matchday.offlineOpen": "Offline · open this match once you're back online"
+  "matchday.offlineOpen": "Offline · open this match once you're back online",
+  "matchday.approve.waiting": "Groups finished · {division} · complete the stage on the web desk"
 }
