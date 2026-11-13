@@ -103,7 +103,10 @@ export const CourtCard = memo(function CourtCard({
 
 type Open = ((row: Row, courtName: string) => void) | undefined;
 
-/** One row of a court, opening its match on a tap when the card was given a way to. */
+/**
+ * One row of a court, opening its match on a tap when the card was given a way to. `divided`: a hairline above it, for
+ * every match but the first of its section (owner, 2026-11-13: "why don't have divide line in match day screen?").
+ */
 const CourtRow = memo(function CourtRow({
   row,
   court,
@@ -112,7 +115,9 @@ const CourtRow = memo(function CourtRow({
   label,
   spoken,
   dim,
+  divided,
 }: {
+  readonly divided: boolean;
   readonly row: Row;
   readonly court: string;
   readonly words: (row: Row) => RowWords;
@@ -125,13 +130,15 @@ const CourtRow = memo(function CourtRow({
   // A match with an empty seat has no sides to score: its row is not a control (task 8d-B; the web does not refuse it).
   const opens = onOpen !== undefined && seated(row);
   return (
-    <MatchRow
-      {...(label === undefined ? {} : { label })}
-      {...(spoken === undefined ? {} : { spoken })}
-      {...(dim === true ? { dim } : {})}
-      {...words(row)}
-      {...(opens ? { onPress: press } : {})}
-    />
+    <View testID="court-row" style={divided ? styles.divider : null}>
+      <MatchRow
+        {...(label === undefined ? {} : { label })}
+        {...(spoken === undefined ? {} : { spoken })}
+        {...(dim === true ? { dim } : {})}
+        {...words(row)}
+        {...(opens ? { onPress: press } : {})}
+      />
+    </View>
   );
 });
 
@@ -219,6 +226,7 @@ const QueueRows = memo(function QueueRows({
     [card.next, t('matchday.row.next')],
     [card.then, t('matchday.row.then')],
   ] as const;
+  const first = queue.find(([row]) => row !== null)?.[0];
   return queue.map(([row, label]) =>
     row === null ? null : (
       <CourtRow
@@ -228,6 +236,7 @@ const QueueRows = memo(function QueueRows({
         label={label}
         words={words}
         onOpen={onOpen}
+        divided={row !== first}
       />
     ),
   );
@@ -263,9 +272,10 @@ const FinishedRows = memo(function FinishedRows({
       <Text variant="diagSection" style={styles.finished}>
         {heading}
       </Text>
-      {shown.map((row) => (
+      {shown.map((row, at) => (
         <CourtRow
           key={row.fixtureId}
+          divided={at > 0}
           row={row}
           court={court}
           spoken={heading}
@@ -334,6 +344,9 @@ const StateChip = memo(function StateChip({
   );
 });
 
+/** The light line between matches, as the call sheet draws it between candidates. */
+const hairline = { borderTopWidth: layout.cardBorder, borderTopColor: colour.rule } as const;
+
 const styles = StyleSheet.create({
   card: {
     paddingHorizontal: layout.matchDayCardPad,
@@ -346,7 +359,8 @@ const styles = StyleSheet.create({
   head: { minHeight: layout.touch, flexDirection: 'row', alignItems: 'center', gap: space.sm },
   headInfo: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: space.sm },
   name: { flex: 1, minWidth: 0 },
-  finished: { paddingTop: space.sm, color: colour.ink3 },
+  finished: { paddingTop: space.sm, color: colour.ink3, ...hairline },
+  divider: hairline,
   more: { minHeight: layout.touch, justifyContent: 'center' },
   moreWord: { color: colour.ink3 },
   chip: {

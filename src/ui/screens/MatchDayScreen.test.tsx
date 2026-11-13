@@ -244,6 +244,36 @@ describe('MatchDayScreen: the day by court (S4 design §5)', () => {
     expect(order).toEqual(['Next, Lee v Tan, 15:20', 'Finished, Ann v Cat, 21-15 21-18']);
   });
 
+  it('a light hairline divides a court’s matches and sets off Finished (owner: "why don’t have divide line in match day screen?")', async () => {
+    const finished = [
+      row('f-1', 'Ann', 'Cat', { status: 'finished', summary: '21-15 21-18' }),
+      row('f-2', 'Dee', 'Eve', { status: 'finished', summary: '21-9 21-7' }),
+    ];
+    const courts = [
+      court('c-1', 'Court 1', {
+        state: 'playing',
+        now: row('p-1', 'Ng', 'Brown', { status: 'inPlay' }),
+        next: [row('n-1', 'Lee', 'Tan'), row('n-2', 'Kim', 'Roe')],
+        finished,
+      }),
+    ];
+    await openList({ day: dayWith({ courts }) });
+    fireEvent.click(cardAt(0).getByRole('button', { name: /more finished/i }));
+    await settle();
+    const hairline = (element: Element) => {
+      const { borderTopWidth, borderTopStyle, borderTopColor } = style(element);
+      return [borderTopWidth, borderTopStyle, borderTopColor];
+    };
+    const line = ['1px', 'solid', edgeOf(colour.rule)];
+    const [now, next, then, done, doneToo] = cardAt(0).getAllByTestId('court-row');
+    // The first match sits under the court's head with no line; every match after it has one.
+    expect(style(now as Element).borderTopWidth).not.toBe('1px');
+    for (const one of [next, then, doneToo]) expect(hairline(one as Element)).toEqual(line);
+    // Finished is set off by its heading's line, so the first finished row under it needs none.
+    expect(hairline(cardAt(0).getByText(en['matchday.row.finished']))).toEqual(line);
+    expect(style(done as Element).borderTopWidth).not.toBe('1px');
+  });
+
   it('lists the matches on no court under "Not on a court yet" with their count, then the online boards', async () => {
     const noCourt = [row('x-1', 'Singh', 'Murphy', { scheduledAt: null })];
     const online = [
