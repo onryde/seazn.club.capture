@@ -247,9 +247,18 @@ describe('useMatchDay: polling (S4 design §5, every 15 s while on screen)', () 
     act(() => view.result.current.refresh());
     expect(dayCalls(view)).toHaveLength(2);
     view.matchDay.release();
+    // Final review I1: the trailing read is held too, so the stale answer has landed and nothing else has.
+    view.matchDay.hold();
     await settle();
     expect(dayCalls(view)).toHaveLength(3);
+    expect(firstCourt(view.result.current.day)).not.toBe('Court Z');
+    expect(firstCourt((await view.ports.matchDayStore.readCache(DAY_CODE))?.day)).not.toBe(
+      'Court Z',
+    );
+    view.matchDay.release();
+    await settle();
     expect(firstCourt(view.result.current.day)).toBe('Court A');
+    expect(firstCourt((await view.ports.matchDayStore.readCache(DAY_CODE))?.day)).toBe('Court A');
   });
 
   it('a poll that comes due while the last read is still out asks nothing more', async () => {
