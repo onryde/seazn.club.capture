@@ -465,7 +465,12 @@ describe('MatchDayScreen: the approval banner (S4 design §7)', () => {
       true,
       "Groups finished · Men's singles · Knockout bracket is ready",
     ],
-    ['a draw, web only', [draw], false, "Groups finished · Men's singles · bracket on the web desk"],
+    [
+      'a draw, web only',
+      [draw],
+      false,
+      "Groups finished · Men's singles · bracket on the web desk",
+    ],
     ['Swiss with no round', [{ ...swiss, round: null }], true, 'Swiss · pair on the web desk'],
     ['Swiss round 1 (review M5)', [{ ...swiss, round: 1 }], true, 'Swiss · pair on the web desk'],
     [
