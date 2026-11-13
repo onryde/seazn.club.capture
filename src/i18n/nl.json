@@ -415,7 +415,7 @@
   "scoring.sanction.confirm.body": "Een diskwalificatie beëindigt de wedstrijd.",
   "scoring.sanction.confirm.action": "Diskwalificatie vastleggen",
   "scoring.pad.countedOnce": "Eén keer geteld",
-  "scoring.pad.otherScorerSince": "Ander noteerde na",
+  "scoring.pad.otherScorerSince": "Andere scorer erna",
   "scoring.pad.undoWaiting": "Nog niet verstuurd",
   "scoring.pad.kicks.said": "{scored} van {taken} raak",
   "scoring.card.updateNeeded.update": "Bijwerken",

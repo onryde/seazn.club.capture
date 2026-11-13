@@ -415,7 +415,7 @@
   "scoring.sanction.confirm.body": "Una descalificación termina el partido.",
   "scoring.sanction.confirm.action": "Registrar descalificación",
   "scoring.pad.countedOnce": "Contado una vez",
-  "scoring.pad.otherScorerSince": "Otro registró después",
+  "scoring.pad.otherScorerSince": "Otro anotador después",
   "scoring.pad.undoWaiting": "Deshacer en espera",
   "scoring.pad.kicks.said": "{scored} marcados de {taken}",
   "scoring.card.updateNeeded.update": "Actualizar",
