@@ -252,13 +252,15 @@ describe('useMatchDay: polling (S4 design §5, every 15 s while on screen)', () 
     await settle();
     expect(dayCalls(view)).toHaveLength(3);
     expect(firstCourt(view.result.current.day)).not.toBe('Court Z');
-    expect(firstCourt((await view.ports.matchDayStore.readCache(DAY_CODE))?.day)).not.toBe(
+    expect(firstCourt((await view.ports.matchDayStore.readCache(DAY_CODE))?.day ?? null)).not.toBe(
       'Court Z',
     );
     view.matchDay.release();
     await settle();
     expect(firstCourt(view.result.current.day)).toBe('Court A');
-    expect(firstCourt((await view.ports.matchDayStore.readCache(DAY_CODE))?.day)).toBe('Court A');
+    expect(firstCourt((await view.ports.matchDayStore.readCache(DAY_CODE))?.day ?? null)).toBe(
+      'Court A',
+    );
   });
 
   it('a poll that comes due while the last read is still out asks nothing more', async () => {
