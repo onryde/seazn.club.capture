@@ -10,7 +10,7 @@ import type { Lang } from '@/i18n/language';
 import { FAKE_DAY } from '@/services/fakeMatchDayPort';
 import { createMemoryKeyValueStore } from '@/services/KeyValueStore';
 import { createLogger } from '@/services/logger';
-import { createMatchDayStore } from '@/services/matchDayStore';
+import { createMatchDayStore, MATCHDAY_KEYS } from '@/services/matchDayStore';
 import { createModeStore, STORE_KEYS } from '@/services/modeStore';
 import { createRingRecord } from '@/services/sessionRecord';
 import { HomeScreen } from '@/ui/screens/HomeScreen';
@@ -209,6 +209,74 @@ describe('the not-yet-open sheet (ruling A)', () => {
   });
 });
 
+describe('the opening kept with the code (fix round 1)', () => {
+  const OPENS_LINE = said('en', 'home.tile.matchday.opens', { day: 'Fri 13 Nov', time: '00:00' });
+  const hide = (home: Home) => {
+    act(() => {
+      home.back.press();
+    });
+  };
+
+  it('a scan before the day leaves the tile saying when it opens', async () => {
+    const home = await renderHome();
+    home.matchDay.answerDay({ ok: false, refusal: 'MD_NOT_OPEN', opensAt: OPENS_AT });
+    scanDay(home);
+    await screen.findByText(SHEET);
+    hide(home);
+    await screen.findByText(OPENS_LINE);
+    expect(screen.queryByText(en['home.tile.matchday.saved'])).toBeNull();
+  });
+
+  it('a tile tap on a saved code with no copy does the same', async () => {
+    const home = await renderHome(await savedDay(null));
+    await screen.findByText(en['home.tile.matchday.saved']);
+    home.matchDay.answerDay({ ok: false, refusal: 'MD_NOT_OPEN', opensAt: OPENS_AT });
+    fireEvent.click(matchDayTile());
+    await screen.findByText(SHEET);
+    hide(home);
+    await screen.findByText(OPENS_LINE);
+  });
+
+  it('an answer that names no opening keeps nothing: the tile says only that a code is saved', async () => {
+    const home = await renderHome(await savedDay(null));
+    home.matchDay.answerDay({ ok: false, refusal: 'MD_NOT_OPEN' });
+    fireEvent.click(matchDayTile());
+    await screen.findByText(word('en', 'matchday.notOpenSheet.unknown'));
+    expect(home.kv.entries.has(MATCHDAY_KEYS.opensAt)).toBe(false);
+    hide(home);
+    await screen.findByText(en['home.tile.matchday.saved']);
+  });
+
+  it('Close takes the kept opening with the code', async () => {
+    const home = await renderHome();
+    home.matchDay.answerDay({ ok: false, refusal: 'MD_NOT_OPEN', opensAt: OPENS_AT });
+    scanDay(home);
+    await screen.findByText(SHEET);
+    expect(home.kv.entries.has(MATCHDAY_KEYS.opensAt)).toBe(true);
+    fireEvent.click(closeButton());
+    await waitFor(() => expect(screen.queryByText(SHEET)).toBeNull());
+    expect(home.kv.entries.has(MATCHDAY_KEYS.opensAt)).toBe(false);
+    expect(screen.queryByText(OPENS_LINE)).toBeNull();
+    await screen.findByText(en['home.tile.matchday.hint']);
+  });
+
+  it('a phone that refuses the write still shows the sheet, and records it', async () => {
+    const home = await renderHome(await savedDay(null));
+    const set = home.kv.set;
+    vi.spyOn(home.kv, 'set').mockImplementation((key, value) =>
+      key === MATCHDAY_KEYS.opensAt ? Promise.reject(new Error('locked')) : set(key, value),
+    );
+    home.matchDay.answerDay({ ok: false, refusal: 'MD_NOT_OPEN', opensAt: OPENS_AT });
+    fireEvent.click(matchDayTile());
+    await screen.findByText(SHEET);
+    expect(readRecord(home.record)).toContainEqual(
+      expect.objectContaining({ event: 'matchday.cache-refused', fields: { op: 'opens-at' } }),
+    );
+    hide(home);
+    await screen.findByText(en['home.tile.matchday.saved']);
+  });
+});
+
 describe('the Match Day tile says what is saved (ruling B)', () => {
   const tileLine = (text: string) => screen.getByText(text);
   const before = {
@@ -233,7 +301,10 @@ describe('the Match Day tile says what is saved (ruling B)', () => {
   });
 
   it('from its day’s start to its end: Tap to open', async () => {
-    await renderHome({ ...(await savedDay(before)), clock: () => new Date('2026-11-13T09:00:00.000Z') });
+    await renderHome({
+      ...(await savedDay(before)),
+      clock: () => new Date('2026-11-13T09:00:00.000Z'),
+    });
     await screen.findByText(en['home.tile.matchday.tap']);
   });
 

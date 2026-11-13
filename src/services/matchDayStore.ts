@@ -12,6 +12,7 @@ export const MATCHDAY_KEYS = {
   opened: 'matchday.opened',
   open: 'matchday.open',
   sending: 'matchday.sending',
+  opensAt: 'matchday.opensAt',
 } as const;
 
 /**
@@ -41,6 +42,13 @@ export type CachedDay = { readonly day: MatchDay; readonly at: Date };
  */
 export type MatchDayStore = {
   readCache(code: SavedDayCode): Promise<CachedDay | null>;
+  /**
+   * When the code's day opens, as its MD_NOT_OPEN answer said (owner, 2026-11-12): kept for a code kept before its day,
+   * which has no copy yet. It belongs to its code (the token's tag); `clearCache` takes it with the copy. A read never
+   * rejects: what does not read is none. A refused write rejects its caller.
+   */
+  readOpensAt(code: SavedDayCode): Promise<Date | null>;
+  writeOpensAt(code: SavedDayCode, at: Date): Promise<void>;
   writeCache(code: SavedDayCode, day: MatchDay, at: Date): Promise<void>;
   clearCache(): Promise<void>;
   opened(): Promise<readonly string[]>;
@@ -145,10 +153,20 @@ export function createMatchDayStore(deps: {
         await files.write(TEMP, text);
         await files.move(TEMP, COPY);
       }),
+    readOpensAt: async (code) =>
+      readOpensAt(await kv.get(MATCHDAY_KEYS.opensAt).catch(() => null), code),
+    writeOpensAt: (code, at) =>
+      serial(() =>
+        kv.set(
+          MATCHDAY_KEYS.opensAt,
+          JSON.stringify({ tag: tokenTag(code.token), at: at.getTime() }),
+        ),
+      ),
     clearCache: () =>
       serial(async () => {
         await files.remove(COPY);
         await files.remove(TEMP);
+        await kv.delete(MATCHDAY_KEYS.opensAt);
       }),
     opened,
     openedKnown: async () => {
@@ -310,4 +328,17 @@ function oneAtATime(): <T>(task: () => Promise<T>) => Promise<T> {
     tail = run.catch(() => undefined);
     return run;
   };
+}
+
+/** The opening kept for this code, or null: nothing kept, another code's, or text that is not the shape written. */
+function readOpensAt(text: string | null, code: SavedDayCode): Date | null {
+  if (text === null) return null;
+  try {
+    const found: unknown = JSON.parse(text);
+    if (!isRecord(found) || found['tag'] !== tokenTag(code.token)) return null;
+    const at = found['at'];
+    return typeof at === 'number' && Number.isFinite(at) ? new Date(at) : null;
+  } catch {
+    return null;
+  }
 }

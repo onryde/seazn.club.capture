@@ -137,7 +137,7 @@ async function afterScan(
       return letGoOfReplaced(ports, code, before);
     case 'notYet':
       home.setPanel(null);
-      await keepUnopened(ports, home, code, verdict.news);
+      await keepUnopened(ports, home, code, dayCode, verdict.news);
       return letGoOfReplaced(ports, code, before);
     case 'stop':
       return home.setPanel({ kind: 'dayRefused', tapped: 'matchday', line: verdict.line });
@@ -184,6 +184,7 @@ async function keepUnopened(
   ports: Ports,
   home: Home,
   code: DayCode,
+  dayCode: SavedDayCode | null,
   news: HomeNews,
 ): Promise<void> {
   try {
@@ -191,15 +192,28 @@ async function keepUnopened(
   } catch {
     return home.saveFailed('open');
   }
-  showNotOpen(ports, home, news);
+  await showNotOpen(ports, home, dayCode, news);
 }
 
 /** The opening a not-yet-open answer named, or null when the server did not say. */
 const opensAtOf = (news: HomeNews): Date | null => (typeof news === 'string' ? null : news.at);
 
-/** The sheet over Home, and the record's line that it was shown (no token, no URL). */
-function showNotOpen(ports: Ports, home: Home, news: HomeNews): void {
-  home.setPanel({ kind: 'dayNotOpen', tapped: 'matchday', at: opensAtOf(news) });
+/**
+ * The sheet over Home, and the record's line that it was shown (no token, no URL). The opening is kept with the code
+ * for the tile's line (owner, 2026-11-12); a phone that refuses it is recorded and the sheet shows all the same.
+ */
+async function showNotOpen(
+  ports: Ports,
+  home: Home,
+  dayCode: SavedDayCode | null,
+  news: HomeNews,
+): Promise<void> {
+  const at = opensAtOf(news);
+  if (at !== null && dayCode !== null)
+    await ports.matchDayStore
+      .writeOpensAt(dayCode, at)
+      .catch(() => ports.logger.warn('matchday.cache-refused', { op: 'opens-at' }));
+  home.setPanel({ kind: 'dayNotOpen', tapped: 'matchday', at });
   ports.logger.info('matchday.notOpen', { action: 'shown' });
 }
 
@@ -228,7 +242,7 @@ export function useOpenSavedDay(
       const verdict = await askDay(ports, dayCode);
       home.setPanel(closeChecking);
       if (verdict.kind === 'stop') return stop(ports, home, saved, verdict.line, scan);
-      if (verdict.kind === 'notYet') return showNotOpen(ports, home, verdict.news);
+      if (verdict.kind === 'notYet') return showNotOpen(ports, home, dayCode, verdict.news);
       if (verdict.kind === 'open') await keepCopy(ports, dayCode, verdict.day);
       return home.openCode(recognised.code, null);
     },
@@ -315,7 +329,7 @@ function savedDayOf(ports: Ports): SavedCode | null {
 
 /**
  * What the Match Day tile's second line says while a code is saved (owner, 2026-11-12): before its day, when it opens
- * (from the day's last copy; a code kept before its day has no copy yet, so "Code saved"); from its start to its end, "Tap
+ * (from the day's last copy, else the opening its MD_NOT_OPEN answer named and the store kept; "Code saved" only with neither); from its start to its end, "Tap
  * to open". With no code, after the day's end or a code this build cannot read, null: the tile's own hint stands. The
  * copy is read when the code changes and when a panel closes (a scan writes it); the clock is read as Home renders.
  */
@@ -326,16 +340,22 @@ export function useMatchDayHint(saved: SavedCode | null, settled: boolean): stri
   const formatTime = useFormatTime();
   const raw = saved?.raw ?? null;
   const dayCode = raw === null ? null : dayCodeOf(raw, ports.hosts);
-  const [copy, setCopy] = useState<{ readonly raw: string; readonly day: MatchDay | null } | null>(
-    null,
-  );
+  const [copy, setCopy] = useState<{
+    readonly raw: string;
+    readonly day: MatchDay | null;
+    readonly opensAt: Date | null;
+  } | null>(null);
   useEffect(() => {
     if (raw === null || dayCode === null) return;
     let live = true;
-    const hold = (day: MatchDay | null) => live && setCopy({ raw, day });
-    ports.matchDayStore.readCache(dayCode).then(
-      (read) => hold(read?.day ?? null),
-      () => hold(null),
+    const hold = (day: MatchDay | null, opensAt: Date | null) =>
+      live && setCopy({ raw, day, opensAt });
+    Promise.all([
+      ports.matchDayStore.readCache(dayCode),
+      ports.matchDayStore.readOpensAt(dayCode),
+    ]).then(
+      ([read, kept]) => hold(read?.day ?? null, kept),
+      () => hold(null, null),
     );
     return () => {
       live = false;
@@ -343,14 +363,16 @@ export function useMatchDayHint(saved: SavedCode | null, settled: boolean): stri
     // `dayCode` is rebuilt from `raw` every render: the code's own text is the dependency.
   }, [ports, raw, settled]);
   if (raw === null || dayCode === null) return null;
-  const day = copy?.raw === raw ? copy.day : null;
+  const read = copy?.raw === raw ? copy : null;
   const now = ports.clock();
-  if (day === null) return t('home.tile.matchday.saved');
-  if (dayHasEnded(day, now)) return null;
-  if (day.opensAt.getTime() > now.getTime())
+  const day = read?.day ?? null;
+  if (day !== null && dayHasEnded(day, now)) return null;
+  const opensAt = day?.opensAt ?? read?.opensAt ?? null;
+  if (opensAt === null) return t('home.tile.matchday.saved');
+  if (opensAt.getTime() > now.getTime())
     return t('home.tile.matchday.opens', {
-      day: formatDay(day.opensAt, null),
-      time: formatTime(day.opensAt, null),
+      day: formatDay(opensAt, null),
+      time: formatTime(opensAt, null),
     });
   return t('home.tile.matchday.tap');
 }

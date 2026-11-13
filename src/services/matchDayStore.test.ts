@@ -488,6 +488,7 @@ describe('the matches opened from Match Day (`matchday.opened`, in the secure st
       opened: 'matchday.opened',
       open: 'matchday.open',
       sending: 'matchday.sending',
+      opensAt: 'matchday.opensAt',
     });
     expect(kv.entries.get('matchday.opened')).toBe(JSON.stringify([A]));
   });
@@ -794,5 +795,32 @@ describe('Exit’s part of the store (MD-2 Task 7)', () => {
     const { store } = storeOver({ kv });
     expect((await store.sending()).size).toBe(0);
     await expect(store.addSending(new Map([[A, 'Court 1']]))).rejects.toThrow('locked');
+  });
+});
+
+describe('the opening kept for a code kept before its day (owner, 2026-11-12)', () => {
+  const OPENS = new Date('2026-11-13T00:00:00.000Z');
+
+  it('reads back what was written, and nothing for another code', async () => {
+    const { store } = storeOver();
+    expect(await store.readOpensAt(CODE)).toBeNull();
+    await store.writeOpensAt(CODE, OPENS);
+    expect(await store.readOpensAt(CODE)).toEqual(OPENS);
+    expect(await store.readOpensAt(OTHER)).toBeNull();
+  });
+
+  it('keeps no token in the secure store', async () => {
+    const { store, kv } = storeOver();
+    await store.writeOpensAt(CODE, OPENS);
+    expect(await kv.get('matchday.opensAt')).not.toContain(FIXTURE_DAY_TOKEN);
+  });
+
+  it('is gone with the copy, and a stored value that is not its shape reads as none', async () => {
+    const { store, kv } = storeOver();
+    await store.writeOpensAt(CODE, OPENS);
+    await store.clearCache();
+    expect(await store.readOpensAt(CODE)).toBeNull();
+    await kv.set('matchday.opensAt', 'not json');
+    expect(await store.readOpensAt(CODE)).toBeNull();
   });
 });
