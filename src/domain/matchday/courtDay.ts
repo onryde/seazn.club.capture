@@ -8,6 +8,7 @@ import type { Court, CourtState, MatchDay, Row } from '@/domain/matchday/matchDa
 export type CourtDay = {
   readonly courtId: string;
   readonly name: string;
+  /** The venue line under the name: empty when the court's name already says it ("Court 1 (Sports Hall)"). */
   readonly venueName: string;
   readonly state: CourtState;
   readonly now: Row | null;
@@ -24,7 +25,7 @@ export function courtDay(court: Court): CourtDay {
   return {
     courtId: court.courtId,
     name: court.courtName,
-    venueName: court.venueName,
+    venueName: namesVenue(court) ? '' : court.venueName,
     state: court.state,
     now: court.now,
     upcoming: court.next,
@@ -32,6 +33,12 @@ export function courtDay(court: Court): CourtDay {
     latest: court.finished[0] ?? null,
     more: Math.max(0, court.finished.length - 1),
   };
+}
+
+/** Whether the court's name already carries its venue, as the web names a court shared by several venues' days. */
+function namesVenue(court: Court): boolean {
+  const venue = court.venueName.trim().toLowerCase();
+  return venue !== '' && court.courtName.toLowerCase().includes(venue);
 }
 
 /** The court `courtId` on the latest read of the day, or null once it is not on it (or there is no day yet). */

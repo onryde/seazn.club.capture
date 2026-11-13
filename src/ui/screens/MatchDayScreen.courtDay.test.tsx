@@ -215,6 +215,14 @@ describe('a court’s day: opened from its head', () => {
     expect(chip.parentElement?.children).toHaveLength(1);
   });
 
+  it('says the venue once when the court name already carries it', async () => {
+    await openList(dayWith([busy({ courtName: 'Court 2 · Hall A' })]));
+    await openDay('Court 2 · Hall A');
+    expect(inDay().queryByText('Hall A')).toBeNull();
+    const chip = inDay().getByText(en['matchday.court.playing']).parentElement as HTMLElement;
+    expect(chip.parentElement?.children).toHaveLength(1);
+  });
+
   it('with no match on and nothing queued, shows the state and no rows', async () => {
     await openList(dayWith([court(COURT_2, 'Court 2')]));
     await openDay();
