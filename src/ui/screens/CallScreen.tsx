@@ -134,9 +134,10 @@ const Candidates = memo(function Candidates({
   if (view.candidates.length === 0) return <Text variant="body">{t('matchday.call.none')}</Text>;
   return (
     <View style={styles.rows}>
-      {view.candidates.map((candidate) => (
+      {view.candidates.map((candidate, at) => (
         <CandidateRow
           key={candidate.match.fixtureId}
+          divided={at > 0}
           candidate={candidate}
           court={court}
           zone={zone}

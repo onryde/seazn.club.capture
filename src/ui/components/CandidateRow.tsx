@@ -8,7 +8,7 @@ import { useRowWords } from '@/hooks/useRowWords';
 import type { MessageKey } from '@/i18n/messages';
 import { MatchRow } from '@/ui/components/MatchRow';
 import { Text } from '@/ui/components/Text';
-import { colour, space } from '@/ui/theme/tokens';
+import { colour, layout, space } from '@/ui/theme/tokens';
 
 type CandidateRowProps = {
   readonly candidate: Candidate;
@@ -17,6 +17,8 @@ type CandidateRowProps = {
   /** The venue's zone, for the planned time. */
   readonly zone: string;
   readonly onPick: (candidate: Candidate) => void;
+  /** A hairline above it, between two matches (owner, 2026-11-13: "light divider between matches"); not the first. */
+  readonly divided?: boolean;
 };
 
 /**
@@ -29,6 +31,7 @@ export const CandidateRow = memo(function CandidateRow({
   court,
   zone,
   onPick,
+  divided = false,
 }: CandidateRowProps) {
   const { t } = useT();
   const words = useRowWords(zone)(candidate.match);
@@ -43,7 +46,7 @@ export const CandidateRow = memo(function CandidateRow({
   const detail = candidate.plannedAt === null ? null : time(candidate.plannedAt, zone);
   const blocked = reason !== null;
   return (
-    <View testID="candidate" style={styles.candidate}>
+    <View testID="candidate" style={divided ? dividedCandidate : styles.candidate}>
       <MatchRow
         chip={words.chip}
         names={words.names}
@@ -66,7 +69,10 @@ export const CandidateRow = memo(function CandidateRow({
 
 const styles = StyleSheet.create({
   candidate: { paddingBottom: space.sm },
+  divider: { paddingTop: space.sm, borderTopWidth: layout.cardBorder, borderTopColor: colour.rule },
   where: { color: colour.ink2 },
   whereDim: { color: colour.ink3 },
   blocked: { color: colour.ink3 },
 });
+
+const dividedCandidate = [styles.candidate, styles.divider];

@@ -14,9 +14,11 @@ import { FAKE_DAY } from '@/services/fakeMatchDayPort';
 import { STORE_KEYS } from '@/services/modeStore';
 import type { CallAnswer } from '@/services/matchDayPort';
 import { MatchDayScreen } from '@/ui/screens/MatchDayScreen';
+import { colour } from '@/ui/theme/tokens';
 import { createFakePorts, readRecord, TEST_NOW, type FakePorts } from '../../../test/fakePorts';
 import { dayLink, FIXTURE_DAY_TOKEN } from '../../../test/fixtures/dayCode';
 import { pressIn, pressOut } from '../../../test/press';
+import { edgeOf } from '../../../test/pressState';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
 // MD-2 Task 8e: calling a match to a court with a Match Day code (S4 design §7a), on react-native-web over the fake
@@ -225,6 +227,20 @@ describe('Call to {court}: the candidates', () => {
     expect(sheet().getByText('Next on Court 2')).toBeTruthy();
     expect(sheet().getByText('Next on Court 3')).toBeTruthy();
     expect(sheet().getByText(en['matchday.noCourt'])).toBeTruthy();
+  });
+
+  it('a light hairline divides the matches: above each but the first (owner, "light divider between matches")', async () => {
+    await openSheet();
+    const rows = sheet().getAllByTestId('candidate');
+    expect(rows.length).toBeGreaterThan(2);
+    const [first, ...rest] = rows.map((row) => getComputedStyle(row));
+    expect(first?.borderTopWidth ?? '').not.toBe('1px');
+    for (const row of rest)
+      expect([row.borderTopWidth, row.borderTopStyle, row.borderTopColor]).toEqual([
+        '1px',
+        'solid',
+        edgeOf(colour.rule),
+      ]);
   });
 
   it('a blocked match is dimmed with its reason and is not a control; the others are', async () => {
