@@ -98,7 +98,7 @@ The phone scores badminton (S2-1), table tennis (S2-2), chess (S2-3,
 `docs/specs/2026-11-07-s2-4-cricket-design.md`, rulings 64–85) football (S2-5,
 `docs/specs/2026-11-07-s2-5-football-design.md`, rulings 100–169), volleyball (S2-6,
 `docs/specs/2026-11-11-s2-6-volleyball-design.md`, rulings 170–189) and tennis (S2-7,
-`docs/specs/2026-11-12-s2-7-tennis-design.md`, rulings 215–242). Chess records one
+`docs/specs/2026-11-12-s2-7-tennis-design.md`, rulings 215–237, and 238–242 in `docs/specs/2026-11-13-s2-7-results.md`). Chess records one
 game's result only (57, 58), and for a drawn knockout game also its tie-break
 (ruling 63, `docs/specs/2026-11-05-s2-3b-chess-tiebreak-design.md`). Its key is the engine's shared `boardgame`, and
 every `boardgame` match is treated as chess (61). Forfeit, walkover, abandon
