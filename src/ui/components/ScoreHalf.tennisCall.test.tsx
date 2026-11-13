@@ -4,11 +4,13 @@ import type { PadHalf } from '@/domain/scoring/padView';
 import type { MessageKey } from '@/i18n/messages';
 import { ScoreHalf } from '@/ui/components/ScoreHalf';
 import { colour, plateInk } from '@/ui/theme/tokens';
+import { declaredStyle } from '../../../test/declaredStyle';
+import { layOut } from '../../../test/layOut';
 import { edgeOf, fillOf, paintOf } from '../../../test/pressState';
 import { renderWithPorts } from '../../../test/renderWithPorts';
 
-// A tennis half's call on its next point (owner, 2026-11-13): the lime plate in the scoreboard row after the set boxes and the
-// won-game dots, before "Tap". The kit draws what it is given; the pad's domain decides who is called (`tennisPointCall.test.ts`,
+// A tennis half's call on its next point (owner, 2026-11-13): the lime plate on its own line under the scoreboard row, always
+// kept ("own line, always kept": the score never moves). The kit draws what it is given; the pad's domain decides who is called (`tennisPointCall.test.ts`,
 // `tennisPad.call.test.ts`). The width it holds at 320 and 360 is `pointCallFit.test.ts`'s; how it looks is the device's.
 
 const T = 'scoring.tennis.board.';
@@ -74,15 +76,24 @@ describe('ScoreHalf: a tennis half’s call', () => {
     expect(screen.getByTestId('half-second').getAttribute('aria-label')).not.toMatch(/point/i);
   });
 
-  it('puts the plate in the scoreboard row after the set boxes and the dots, and before "Tap"', () => {
+  it('puts the plate on its own line under the boxes, the dots and Tap, never among the dots', () => {
     renderWithPorts(<ScoreHalf half={half('break')} flash={0} onTap={vi.fn()} />);
     const row = screen.getByTestId('scoreboard');
-    expect(within(row).getByTestId('call')).toBeTruthy();
-    const items = [...(screen.getByTestId('call').parentElement?.children ?? [])].map(
-      (child) => child.textContent,
-    );
-    expect(items).toEqual(['Sets', '6', '3', '1', '2', 'Break point']);
-    expect(row.textContent?.endsWith('Break pointTap')).toBe(true);
+    const line = within(row).getByTestId('call-line');
+    expect(within(line).getByTestId('call').textContent).toBe('Break point');
+    expect([...line.children].map((child) => child.textContent)).toEqual(['Break point']);
+    expect(row.lastElementChild).toBe(line);
+    expect(within(row).getAllByTestId('call')).toHaveLength(1);
+    expect(screen.getAllByTestId('game-dot').every((dot) => !line.contains(dot))).toBe(true);
+    expect(row.textContent?.endsWith('Break point')).toBe(true);
+  });
+
+  it('keeps the line when there is no call, so the row is the same shape with and without a plate', () => {
+    renderWithPorts(<ScoreHalf half={half(null)} flash={0} onTap={vi.fn()} />);
+    const line = screen.getByTestId('call-line');
+    expect(line.children).toHaveLength(0);
+    expect(declaredStyle(line, 'min-height')).toBe('17px');
+    expect(declaredStyle(line, 'margin-top')).toBe('2px');
   });
 
   it('is a lime plate with night ink, as the serving plate is', () => {
@@ -101,4 +112,34 @@ describe('ScoreHalf: a tennis half’s call', () => {
     expect(screen.getAllByTestId('call')).toHaveLength(1);
     expect(within(screen.getByTestId('half-first')).queryByTestId('call')).toBeNull();
   });
+
+  // The score never moves (owner ruling "own line, always kept"): a plate coming or going changes neither the row's shape nor the
+  // size the big call is chosen at, across the half heights and rows that decide it.
+  it.each([
+    [null, 198],
+    [null, 217],
+    [41, 198],
+    [41, 217],
+    [41, 240],
+    [67, 217],
+  ] as const)(
+    'holds the score still: the same row and the same size with and without a call (row %s, half %s)',
+    (row, height) => {
+      const sized = (call: 'break' | 'set' | 'match' | null) => {
+        const view = renderWithPorts(<ScoreHalf half={half(call)} flash={0} onTap={vi.fn()} />);
+        layOut(screen.getByTestId('half-second'), { width: 288, height });
+        if (row !== null) layOut(screen.getByTestId('scoreboard'), { width: 288, height: row });
+        const shape = [...screen.getByTestId('scoreboard').children].map((child) => [
+          child.getAttribute('data-testid'),
+          child.children.length === 0 ? 'empty' : 'filled',
+        ]);
+        const size = getComputedStyle(screen.getByTestId('score')).fontSize;
+        view.unmount();
+        return { size, rowShape: shape.map(([id]) => id) };
+      };
+      const none = sized(null);
+      for (const call of ['break', 'set', 'match'] as const) expect(sized(call)).toEqual(none);
+      expect(none.rowShape).toContain('call-line');
+    },
+  );
 });

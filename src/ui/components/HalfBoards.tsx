@@ -31,8 +31,15 @@ export function boardRoom(
   const server = serverShown ? typeScale.control.lineHeight : 0;
   if (board === null || board === undefined) return server;
   const bottom = Math.max(typeScale.control.lineHeight, typeScale.metricUnit.lineHeight);
-  return server + Math.max(0, (rowHeight ?? typeScale.boardScore.lineHeight) - bottom);
+  return server + Math.max(0, (rowHeight ?? typeScale.boardScore.lineHeight + CALL_LINE) - bottom);
 }
+
+/**
+ * The line a live scoreboard half always keeps under its row for the call on the next point (owner ruling, 2026-11-13: "own
+ * line, always kept": the score never moves when a plate comes or goes): a plate's line (`state`) and the dots' row gap. The
+ * measured row includes it, so the big call is sized with it already counted.
+ */
+export const CALL_LINE = typeScale.state.lineHeight + layout.padDotGap;
 
 /** The server's name under the side's names, the serving ball before it: one line, cut with an ellipsis rather than wrapped. */
 export const ServerLine = memo(function ServerLine({ words }: { readonly words: string }) {
@@ -48,9 +55,8 @@ export const ServerLine = memo(function ServerLine({ words }: { readonly words: 
 
 /**
  * The scoreboard's row (rulings 240, 242), one line while it fits: "Sets", a dark box for each set over, then the numbered dots
- * of the games this side won in the set under way (the games count), then the call on the next point (break, set or match
- * point) when there is one, then the hint at the end, which gives way first (an
- * ellipsis, down to nothing). Dots that do not fit beside the boxes wrap to a second line rather than shrink below `padDot`.
+ * of the games this side won in the set under way (the games count), then the hint at the end, which gives way first (an
+ * ellipsis, down to nothing). Under it, always, the call's own line (break, set or match point at its left, or empty). Dots that do not fit beside the boxes wrap to a second line rather than shrink below `padDot`.
  * With nothing to show the row keeps one box's height, so the first dot moves nothing.
  */
 export const ScoreboardRow = memo(function ScoreboardRow({
@@ -60,7 +66,7 @@ export const ScoreboardRow = memo(function ScoreboardRow({
   onHeight,
 }: {
   readonly board: Board;
-  /** The half's call on its next point (break, set or match point): a lime plate after the dots, before the hint. */
+  /** The half's call on its next point (break, set or match point): a lime plate on the line kept under the row. */
   readonly call: string | null;
   readonly hint: string | null;
   /** The row's height as laid out, for the score's size (`boardRoom`). */
@@ -68,38 +74,42 @@ export const ScoreboardRow = memo(function ScoreboardRow({
 }) {
   const words = usePadText();
   return (
-    <View testID="scoreboard" aria-hidden style={styles.row} onLayout={onHeight}>
-      <View style={styles.items}>
-        {board.sets.length === 0 ? null : (
-          <>
-            <Text variant="boardLabel" style={styles.label}>
-              {words(board.setsLabel)}
-            </Text>
-            {board.sets.map((games, at) => (
-              // A finished set's place is its identity: sets are only ever added at the end.
-              <View key={at} testID="board-set" style={styles.darkBox}>
-                <Text variant="boardScore" style={styles.darkDigits}>
-                  {games}
-                </Text>
-              </View>
-            ))}
-          </>
+    <View testID="scoreboard" aria-hidden onLayout={onHeight}>
+      <View style={styles.row}>
+        <View style={styles.items}>
+          {board.sets.length === 0 ? null : (
+            <>
+              <Text variant="boardLabel" style={styles.label}>
+                {words(board.setsLabel)}
+              </Text>
+              {board.sets.map((games, at) => (
+                // A finished set's place is its identity: sets are only ever added at the end.
+                <View key={at} testID="board-set" style={styles.darkBox}>
+                  <Text variant="boardScore" style={styles.darkDigits}>
+                    {games}
+                  </Text>
+                </View>
+              ))}
+            </>
+          )}
+          {(board.dots ?? NO_DOTS).map((game) => (
+            // A game's number is its identity.
+            <View key={game} testID="game-dot" style={styles.dot}>
+              <Text variant="dotNumber" style={styles.dotDigits}>
+                {game}
+              </Text>
+            </View>
+          ))}
+        </View>
+        {hint === null ? null : (
+          <Text variant="metricUnit" numberOfLines={1} style={styles.hint}>
+            {hint}
+          </Text>
         )}
-        {(board.dots ?? NO_DOTS).map((game) => (
-          // A game's number is its identity.
-          <View key={game} testID="game-dot" style={styles.dot}>
-            <Text variant="dotNumber" style={styles.dotDigits}>
-              {game}
-            </Text>
-          </View>
-        ))}
+      </View>
+      <View testID="call-line" style={styles.callLine}>
         {call === null ? null : <CallPlate words={call} />}
       </View>
-      {hint === null ? null : (
-        <Text variant="metricUnit" numberOfLines={1} style={styles.hint}>
-          {hint}
-        </Text>
-      )}
     </View>
   );
 });
@@ -163,6 +173,13 @@ const styles = StyleSheet.create({
     // Wrapped dot lines stand one dot gap apart, so a third line costs 22 dp, not 24.
     rowGap: layout.padDotGap,
     minHeight: typeScale.boardScore.lineHeight,
+  },
+  // The call's own line, kept whether a plate shows or not, the plate at its left: it never shares the dots' line.
+  callLine: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: layout.padDotGap,
+    minHeight: typeScale.state.lineHeight,
   },
   label: { flexShrink: 0, color: colour.ink3 },
   darkBox: {

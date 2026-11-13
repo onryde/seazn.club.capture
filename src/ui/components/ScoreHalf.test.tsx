@@ -816,18 +816,21 @@ describe('ScoreHalf as a tennis scoreboard row', () => {
     },
   });
 
-  // Review I1 (Task 18 fix round 1): the row's real height, wrapped dot lines included, is charged to the big call. A half 198 tall
-  // holds the call at 96 beside a one-line row (22: 4 dp over the 18 bottom row, so 194 needed); a two-line row (48) leaves 168.
+  // Review I1 (Task 18 fix round 1): the row's real height, wrapped dot lines included, is charged to the big call. A live row
+  // always keeps the call's own line (owner ruling, 2026-11-13: the score never moves for a plate), so a one-line row is 22 + 19
+  // = 41 tall measured, and a half holds the call at 96 beside it from 217 dp; at 198 it is the compact size whether the row is
+  // measured or not, and a two-line row (48 + 19) leaves the compact size at 198 too.
   it.each([
-    [null, typeScale.score.fontSize],
-    [22, typeScale.score.fontSize],
-    [48, typeScale.scoreCompact.fontSize],
-    [70, typeScale.scoreCompact.fontSize],
+    [null, 198, typeScale.scoreCompact.fontSize],
+    [41, 198, typeScale.scoreCompact.fontSize],
+    [41, 217, typeScale.score.fontSize],
+    [67, 217, typeScale.scoreCompact.fontSize],
+    [89, 198, typeScale.scoreCompact.fontSize],
   ] as const)(
-    'steps the call down for a scoreboard row %s tall in a half 198 tall',
-    (row, size) => {
+    'sets the call for a scoreboard row %s tall in a half %s tall at %spx',
+    (row, height, size) => {
       renderWithPorts(<ScoreHalf half={board([1, 3, 4], ['7', '6'])} flash={0} onTap={vi.fn()} />);
-      layOut(screen.getByTestId('half-first'), { width: 288, height: 198 });
+      layOut(screen.getByTestId('half-first'), { width: 288, height });
       if (row !== null) layOut(screen.getByTestId('scoreboard'), { width: 288, height: row });
       expect(getComputedStyle(screen.getByTestId('score')).fontSize).toBe(`${size}px`);
     },
