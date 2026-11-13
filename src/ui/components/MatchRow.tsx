@@ -78,7 +78,7 @@ const RowBody = memo(function RowBody({
           {label}
         </Text>
       )}
-      {chip === null ? null : <RoundChip tag={chip} />}
+      {chip === null ? null : <RoundChip tag={chip} dim={dim} />}
       <Text variant="rowNames" numberOfLines={1} style={dim ? styles.namesDim : styles.names}>
         {parts === null ? names : parts.map(partOf)}
       </Text>
@@ -102,11 +102,25 @@ function partOf(part: NamePart, index: number) {
   );
 }
 
-/** The round chip: the tag in caps on a hairlined plate, whole (it never shrinks; the names give way). */
-const RoundChip = memo(function RoundChip({ tag }: { readonly tag: string }) {
+/**
+ * The round chip: the tag in caps on a hairlined plate, whole (it never shrinks; the names give way). A match still to
+ * play wears the LED, a lime word in a lime outline; a finished (dimmed) one is quiet, so the two never read alike at a
+ * glance (owner, 2026-11-13: "use R1 or F1 … to highlight upcoming or next matches … with our green/lime").
+ */
+const RoundChip = memo(function RoundChip({
+  tag,
+  dim,
+}: {
+  readonly tag: string;
+  readonly dim: boolean;
+}) {
   return (
-    <View testID="round-chip" style={styles.chip}>
-      <Text variant="diagSection" numberOfLines={1} style={styles.chipWord}>
+    <View testID="round-chip" style={dim ? styles.chip : styles.chipUp}>
+      <Text
+        variant="diagSection"
+        numberOfLines={1}
+        style={dim ? styles.chipWord : styles.chipWordUp}
+      >
         {tag}
       </Text>
     </View>
@@ -136,7 +150,14 @@ const styles = StyleSheet.create({
     borderColor: colour.rule,
     backgroundColor: colour.surface2,
   },
-  chipWord: { color: colour.ink2 },
+  chipUp: {
+    flexShrink: 0,
+    paddingHorizontal: space.xs,
+    borderWidth: layout.cardBorder,
+    borderColor: colour.lime,
+  },
+  chipWord: { color: colour.ink3 },
+  chipWordUp: { color: colour.lime },
   slot: { color: colour.ink3 },
   names: { flex: 1, minWidth: layout.matchDayNamesMin, color: colour.ink },
   namesDim: { flex: 1, minWidth: layout.matchDayNamesMin, color: colour.ink3 },

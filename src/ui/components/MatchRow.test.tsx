@@ -115,21 +115,28 @@ describe('MatchRow', () => {
       expect(screen.getByTestId('match-row').getAttribute('aria-label')).toBe('Now, Ng v Brown');
     });
 
-    it('is a plate of the board’s caps: ink2 on surface2 with a hairline, one line, ellipsis (never wraps)', () => {
+    it('on a match still to play is the LED: a lime word in a lime outline, one line, ellipsis (owner: "R1 … with our green/lime")', () => {
       render(<MatchRow chip="SF·1" names="Ng v Brown" detail={null} />);
+      const chip = getComputedStyle(screen.getByTestId('round-chip'));
+      expect([chip.borderTopColor, chip.borderTopWidth]).toEqual([edgeOf(colour.lime), '1px']);
+      const word = getComputedStyle(screen.getByText('SF·1'));
+      expect([word.color, word.fontFamily, word.textTransform]).toEqual([
+        edgeOf(colour.lime),
+        font.displaySemibold,
+        'uppercase',
+      ]);
+      expect([word.whiteSpace, word.textOverflow]).toEqual(['nowrap', 'ellipsis']);
+    });
+
+    it('on a finished (dimmed) match is quiet: the inert ink on surface2 with a hairline, never lime', () => {
+      render(<MatchRow chip="R1" names="Ann v Cat" detail="2-1" dim />);
       const chip = getComputedStyle(screen.getByTestId('round-chip'));
       expect([chip.backgroundColor, chip.borderTopColor, chip.borderTopWidth]).toEqual([
         edgeOf(colour.surface2),
         edgeOf(colour.rule),
         '1px',
       ]);
-      const word = getComputedStyle(screen.getByText('SF·1'));
-      expect([word.color, word.fontFamily, word.textTransform]).toEqual([
-        edgeOf(colour.ink2),
-        font.displaySemibold,
-        'uppercase',
-      ]);
-      expect([word.whiteSpace, word.textOverflow]).toEqual(['nowrap', 'ellipsis']);
+      expect(getComputedStyle(screen.getByText('R1')).color).toBe(edgeOf(colour.ink3));
     });
 
     it('never shrinks (the names give way); the label hugs its word, and a row without one has none', () => {
