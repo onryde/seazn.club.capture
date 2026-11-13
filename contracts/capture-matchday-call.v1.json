@@ -520,7 +520,7 @@
       "additionalProperties": false
     },
     "undo": {
-      "description": "The Undo call's 200, DELETE /api/v1/match-day-code/fixtures/{fixtureId}/call: the match is back on the court and at the time it had before it was called, logged against the code.",
+      "description": "The Undo call's 200, DELETE /api/v1/match-day-code/fixtures/{fixtureId}/call: the match is back on the court and at the time it had before it was called, logged against the code. A code undoes only a call a Match Day code made (any code's), never the web desk's (MD_CALL_REFUSED not_code_call); the match must be in the code's scope where it is now, on the called court. The slot it goes back to is not judged against the code's scope: Undo puts back the organiser's plan, even on a court the code does not cover.",
       "type": "object",
       "properties": {
         "fixture_id": {
@@ -579,7 +579,7 @@
               "type": "string"
             },
             "reason": {
-              "description": "MD_CALL_REFUSED only: not_candidate_court (the court is not one the match's division plays on), player_busy (a player is playing, or called, on another court), court_busy (the court has a match playing or called, from any competition), started (the match has started or is over; for an Undo, it has started), not_ready (a side is still to be decided), not_called (Undo: the match is not called, or the web board has moved it since), frozen (the competition is read-only on its organisation's plan).",
+              "description": "MD_CALL_REFUSED only: not_candidate_court (the court is not one the match's division plays on), player_busy (a player is playing, or called, on another court), court_busy (the court has a match playing or called, from any competition), started (the match has started or is over; for an Undo, it has started), not_ready (a side is still to be decided), not_called (Undo: the match is not called, or the web board has moved it since), frozen (the competition is read-only on its organisation's plan), not_code_call (Undo: the match was called on the web desk, not by a Match Day code; undo it there).",
               "type": "string",
               "enum": [
                 "not_candidate_court",
@@ -588,7 +588,8 @@
                 "started",
                 "not_ready",
                 "not_called",
-                "frozen"
+                "frozen",
+                "not_code_call"
               ]
             },
             "person_name": {

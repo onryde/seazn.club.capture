@@ -1,10 +1,10 @@
 {
-  "web": "4a073d46a582799093001dfa9a695a2477ed972e",
+  "web": "17a33079f1dc156d70275d1e199d136e4a0efd64",
   "files": {
     "capture-beat.v1.json": "e14329132400d45cd38e03b19cf85189fe35acb0b8b9a51e7ca98879fe07c736",
     "capture-descriptor.v1.json": "5c9b09c422b092671ad3a842b02e5c18902c92fc290cbc562c91033555955b8b",
     "capture-matchday-approval.v1.json": "279ff1488a1108b3667f9e2f11f559579382f83b238d91da65440c810189f69c",
-    "capture-matchday-call.v1.json": "12d0ed81404d00748f1445c8a481dd67c93c9b9aaf1c0ee16c53ded39fcfade3",
+    "capture-matchday-call.v1.json": "5319376e947103d9e86e31303ab8015b3741ddb69d77f5fdcd824779a47eefa4",
     "capture-matchday-day.v1.json": "44b5fd9ae752df510a1c3a1eb464d05678ed726a6f9b84cce5b0a4a1aa166c4e",
     "capture-matchday-open.v1.json": "760028bf99e5cf74ee033f5613fa43477677cef318ecdf739c0b62e2fc21c0c0",
     "capture-qr.v2.json": "3292e33f84b693e5def6048012f6653ca7e31e1573fda3901da4fe67a62c5d43",
@@ -134,6 +134,7 @@
     "fixtures/capture-matchday-call.v1/refusal-invalid-unknown-reason.json": "11c140ea8b839b022460748d6a18e5ae876c2c47cef1561a7547ed1b4e36db49",
     "fixtures/capture-matchday-call.v1/refusal-valid-no-call.json": "7e15ed2042044edb760849870b454870d3f96de4f33101d66cf33844a822ce82",
     "fixtures/capture-matchday-call.v1/refusal-valid-not-called.json": "747c93834ec001407e61311fc7e2858cfca5b60e4b8c933da9f7bac45cf2efc5",
+    "fixtures/capture-matchday-call.v1/refusal-valid-not-code-call.json": "769e6c2d9d05809a8a8f7c88c52da7371ea2b673b7ccd5d9e7c8d95715ea7617",
     "fixtures/capture-matchday-call.v1/refusal-valid-not-open.json": "e24bb8836e7828618f8bc4826b23d182e4037aa47ee951d9ad6a89b290c2e821",
     "fixtures/capture-matchday-call.v1/refusal-valid-out-of-scope.json": "fbd11c1b38b5947caebb6aa66108492e9ef7a8b381070ea6fe23948146874c6b",
     "fixtures/capture-matchday-call.v1/refusal-valid-player-busy.json": "dc896af8b3069a4c69c0cd4ece6972755464c67a91604e74b9041bfb79079847",

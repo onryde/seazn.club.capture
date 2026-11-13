@@ -279,7 +279,9 @@ export type CallReason =
   | 'started'
   | 'notReady'
   | 'notCalled'
-  | 'frozen';
+  | 'frozen'
+  /** Undo only: the call was made on the web desk, and a code may undo only a call a code made. */
+  | 'notCodeCall';
 
 const REASON: ReadonlyMap<string, CallReason> = new Map([
   ['not_candidate_court', 'notCandidateCourt'],
@@ -289,6 +291,7 @@ const REASON: ReadonlyMap<string, CallReason> = new Map([
   ['not_ready', 'notReady'],
   ['not_called', 'notCalled'],
   ['frozen', 'frozen'],
+  ['not_code_call', 'notCodeCall'],
 ]);
 
 /**

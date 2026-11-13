@@ -15,7 +15,7 @@ import { listFiles, OURS } from '../scripts/vendor-contracts.mjs';
  * and the commit are copied below BY HAND from apps/web/src/server/api-v1/__tests__/capture-contract.test.ts:51-64,
  * so a re-vendor cannot quietly move both sides at once. WEB_COMMIT is the commit actually vendored (plan D1, D-10).
  *
- * The commit is 4a073d46a, web PR #1207, UNMERGED: re-pin to main's merge commit after it merges. It added the day
+ * The commit is 17a33079f, web PR #1207, UNMERGED: re-pin to main's merge commit after it merges. It added the day
  * read's `round_tag`, `home_slot`, `away_slot`, the approval's `waiting` and the code's `can_call`, and the call
  * contract (capture-matchday-call.v1: candidates, preview, call, Undo). Before it, 81c0446cc (web main, MD-1
  * merged as #1140; Task 6 added the approval review and approve, capture-matchday-approval.v1, with its fixtures,
@@ -24,7 +24,7 @@ import { listFiles, OURS } from '../scripts/vendor-contracts.mjs';
  *
  * relay-job.v1 sits beside them and is not the phone's: the script takes only the capture contracts.
  */
-const WEB_COMMIT = '4a073d46a582799093001dfa9a695a2477ed972e';
+const WEB_COMMIT = '17a33079f1dc156d70275d1e199d136e4a0efd64';
 const WEB_PINS: Readonly<Record<string, string>> = {
   'capture-qr.v2.json': '3292e33f84b693e5def6048012f6653ca7e31e1573fda3901da4fe67a62c5d43',
   'capture-descriptor.v1.json': '5c9b09c422b092671ad3a842b02e5c18902c92fc290cbc562c91033555955b8b',
@@ -40,7 +40,7 @@ const WEB_PINS: Readonly<Record<string, string>> = {
   'capture-matchday-approval.v1.json':
     '279ff1488a1108b3667f9e2f11f559579382f83b238d91da65440c810189f69c',
   'capture-matchday-call.v1.json':
-    '12d0ed81404d00748f1445c8a481dd67c93c9b9aaf1c0ee16c53ded39fcfade3',
+    '5319376e947103d9e86e31303ab8015b3741ddb69d77f5fdcd824779a47eefa4',
 };
 
 const root = new URL('../contracts/', import.meta.url);
@@ -56,9 +56,9 @@ const vendored = JSON.parse(readFileSync(new URL('VENDORED.json', root), 'utf8')
 const onDisk = listFiles(fileURLToPath(root)).filter((path) => !OURS.includes(path));
 
 describe('the vendored contracts, pinned (plan D spec §3.1, R7)', () => {
-  it('pins 277 files: the ten schemas and 267 fixtures (moves only with a re-vendor)', () => {
+  it('pins 278 files: the ten schemas and 268 fixtures (moves only with a re-vendor)', () => {
     const pinned = Object.keys(vendored.files);
-    expect(pinned).toHaveLength(277);
+    expect(pinned).toHaveLength(278);
     expect(pinned.filter((path) => !path.includes('/'))).toHaveLength(10);
   });
 

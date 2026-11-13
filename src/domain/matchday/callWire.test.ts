@@ -438,6 +438,10 @@ describe('parseCallRefusal', () => {
         courtName: 'Court 3',
       },
     ],
+    'refusal-valid-not-code-call': [
+      409,
+      { code: 'MD_CALL_REFUSED', reason: 'notCodeCall', personName: null, courtName: null },
+    ],
     'refusal-invalid-approval-word': [403, null],
     'refusal-invalid-desk-word': [409, null],
     'refusal-invalid-unknown-reason': [409, null],

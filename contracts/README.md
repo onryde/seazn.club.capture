@@ -6,12 +6,12 @@ folder (`capture-*` and `fixtures/capture-*`) at one commit, and nothing here is
 services' contracts there too (`relay-job.v1`, the compositor's); they are not the phone's and stay behind (owner,
 2026-10-26, amending §3.1).
 
-Vendored from web `4a073d46a582799093001dfa9a695a2477ed972e` on 2026-11-13: 10 schemas and 267 fixtures. This is
+Vendored from web `17a33079f1dc156d70275d1e199d136e4a0efd64` on 2026-11-13: 10 schemas and 268 fixtures. This is
 web PR #1207 (NOT merged: re-pin to main's merge commit after it merges). It changed the day read
 (`capture-matchday-day.v1`) additively: each row gains `round_tag`, `home_slot` and `away_slot`, each approval gains
 `waiting` (`stage_complete` or null), and the day gains `can_call` (a code minted with "Call matches to courts");
 `round_label` is unchanged. It added `capture-matchday-call.v1` (Task 8e: a free court's candidates, the call's
-preview, the call and its Undo) with its 25 fixtures. Before it, on 2026-11-08, `7c15a5a780e7310c8df56d4db9f97e13acc54aea`. Staging
+preview, the call and its Undo) with its 26 fixtures (after the web's security review: Undo may refuse `not_code_call`, a call the desk made). Before it, on 2026-11-08, `7c15a5a780e7310c8df56d4db9f97e13acc54aea`. Staging
 deploys the web's `main`. 7c15a5a78 (MD-1 complete, Task 6) added Match Day's approval review and approve,
 `capture-matchday-approval.v1`, with its 17 fixtures, and changed only the descriptions of the day read (a division
 whose schedule is locked lists no approval) and the open (an archived division's match is out of scope); no fixture
