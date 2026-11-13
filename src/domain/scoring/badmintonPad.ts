@@ -144,7 +144,7 @@ export type BadmintonDisplay = {
    */
   readonly serverPicked: boolean;
   /**
-   * Game point, match point or the golden point for each side's next rally, as the engine folds it (`setBasedPointCall`).
+   * Game point or match point for each side's next rally, as the engine folds it (`setBasedPointCall`).
    * Optional: a display that names none calls nothing.
    */
   readonly calls?: PointCalls['calls'];

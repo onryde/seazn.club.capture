@@ -44,7 +44,6 @@ describe('pointCallsOf: faults', () => {
     entrants: { first: HOME, second: AWAY },
     envelopes,
     state: foldMatch(badminton, engine.cfg, engine.lineups, envelopes),
-    golden: true,
     ...over,
   });
 

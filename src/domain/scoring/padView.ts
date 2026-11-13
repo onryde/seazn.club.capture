@@ -104,7 +104,7 @@ export type PadHalf<K extends string> = {
   readonly foot?: PadFoot<K> | null;
   /**
    * A call on the half's next point, a lime plate in the bottom row after the boxes (badminton and table tennis: game point,
-   * match point, the golden point). `text` is drawn, `said` is added to the half's name. Optional: only a sport that calls
+   * match point). `text` is drawn, `said` is added to the half's name. Optional: only a sport that calls
    * points gives one, and a half without it is drawn as before. Never given to a half that takes no tap.
    */
   readonly call?: PadCall<K> | null;

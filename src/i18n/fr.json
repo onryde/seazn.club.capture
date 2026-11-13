@@ -318,7 +318,6 @@
   "scoring.pad.tap": "Touchez",
   "scoring.pad.call.gamePoint": "Balle de jeu",
   "scoring.pad.call.matchPoint": "Balle de match",
-  "scoring.pad.call.goldenPoint": "Point décisif",
   "scoring.sync.sending.one": "Envoi de {count} saisie",
   "scoring.sync.sending.other": "Envoi de {count} saisies",
   "scoring.sync.offline.one": "Hors ligne · {count} saisie en attente",

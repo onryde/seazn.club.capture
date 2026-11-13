@@ -7,7 +7,7 @@ import { layout, space } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
 import { loadFont } from '../../../test/fontMetrics';
 
-// The call plate in a half's bottom row (owner, 2026-11-13: game point, match point and golden point, "inside the box"). The
+// The call plate in a half's bottom row (owner, 2026-11-13: game point and match point, "inside the box"). The
 // row is the finished games' boxes (never cut, owner ruling 16), a gap, the plate and "Tap", which gives way. The rooms are
 // written out from the tokens and the type scale, the widths measured from the fonts the app ships, the copy read from the
 // dictionaries; nothing is read from the components. Whether it looks right on a phone is the device check's.
@@ -18,7 +18,7 @@ const LANGUAGES = [
   ['fr', fr],
   ['nl', nl],
 ] as const;
-const CALLS = ['gamePoint', 'matchPoint', 'goldenPoint'] as const;
+const CALLS = ['gamePoint', 'matchPoint'] as const;
 const WIDTHS = [320, 360] as const;
 
 const barlow700 = loadFont('barlow-condensed-700');
@@ -81,33 +81,23 @@ describe('the call plate in the bottom row', () => {
     expect(kept(320, 4, word(es, 'matchPoint'))).toBeGreaterThan(0.9);
   });
 
-  it('holds five boxes (the best of 7 after five games) whole at 360, and at 320 shrinks nine words, none below 0.7 but one', () => {
+  it('holds five boxes (the best of 7 after five games) whole at 360, and at 320 shrinks five words, none below 0.7 but one', () => {
     expect(shrunk(360, 5)).toEqual([]);
     expect(shrunk(320, 5)).toEqual([
       'en matchPoint',
-      'en goldenPoint',
       'es gamePoint',
       'es matchPoint',
-      'es goldenPoint',
       'fr gamePoint',
       'fr matchPoint',
-      'fr goldenPoint',
-      'nl goldenPoint',
     ]);
     expect(below(0.7, 320, 5)).toEqual(['es matchPoint']);
   });
 
-  // Golden point is badminton's (at most four boxes in a best of 5), so its words never meet six boxes; game and match point
-  // are both sports'. Six boxes is table tennis's best of 7 in its deciding game, the widest row there is.
+  // Six boxes is table tennis's best of 7 in its deciding game, the widest row there is.
   it('shrinks Spanish and French “match” beside six boxes at 360, cutting none; at 320 it cannot fit the words (a device check)', () => {
-    expect(shrunk(360, 6)).toEqual([
-      'es gamePoint',
-      'es matchPoint',
-      'es goldenPoint',
-      'fr matchPoint',
-    ]);
+    expect(shrunk(360, 6)).toEqual(['es gamePoint', 'es matchPoint', 'fr matchPoint']);
     expect(below(0.7, 360, 6)).toEqual([]);
-    expect(below(0.7, 320, 6)).toHaveLength(11);
+    expect(below(0.7, 320, 6)).toHaveLength(7);
     expect(below(0.7, 320, 6)).not.toContain('nl gamePoint');
   });
 

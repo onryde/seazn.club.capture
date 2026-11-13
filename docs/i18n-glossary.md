@@ -844,16 +844,14 @@ and a value; no explanatory sentences. Committed without a `_review` marker.
 
 ### Point calls on the pad (badminton and table tennis, 2026-11-13)
 
-The lime plate in a half's bottom row, left of "Tap" (`scoring.pad.call.*`, shared by the two sports). Golden point follows the volleyball and tennis
-rows above (es _Punto decisivo_, fr _Point décisif_, nl _Gouden punt_), not a new term. Game and match follow how each language already says them in
+The lime plate in a half's bottom row, left of "Tap" (`scoring.pad.call.*`, shared by the two sports). Game and match follow how each language already says them in
 badminton and table tennis (es _juego_ and _partido_, fr _jeu_ and _match_, nl _game_ and _wedstrijd_ in running text, but the umpires' own
 _matchpunt_ and _gamepunt_ on a plate). **es, fr and nl are unreviewed drafts.**
 
-| English      | Español          | Français       | Nederlands  | Where                                                           |
-| ------------ | ---------------- | -------------- | ----------- | --------------------------------------------------------------- |
-| Game point   | Punto de juego   | Balle de jeu   | Gamepunt    | `scoring.pad.call.gamePoint`: the next point wins the game.     |
-| Match point  | Punto de partido | Balle de match | Matchpunt   | `scoring.pad.call.matchPoint`: the next point wins the match.   |
-| Golden point | Punto decisivo   | Point décisif  | Gouden punt | `scoring.pad.call.goldenPoint`: badminton's 29-29, both halves. |
+| English     | Español          | Français       | Nederlands | Where                                                         |
+| ----------- | ---------------- | -------------- | ---------- | ------------------------------------------------------------- |
+| Game point  | Punto de juego   | Balle de jeu   | Gamepunt   | `scoring.pad.call.gamePoint`: the next point wins the game.   |
+| Match point | Punto de partido | Balle de match | Matchpunt  | `scoring.pad.call.matchPoint`: the next point wins the match. |
 
 ## Translation review
 

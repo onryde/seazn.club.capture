@@ -15,7 +15,7 @@ import {
   type Spec,
 } from '../../../test/badmintonLedger';
 
-// Point calls for badminton (owner, 2026-11-12 and 13): game point, match point and the BWF golden point at 29-29, read off
+// Point calls for badminton (owner, 2026-11-12 and 13): game point and match point (BWF: at 29-29 both sides are "29 game point all"), read off
 // the engine by folding one more point for each side. Every expectation is the rule of badminton written out (BWF 7.3: a game
 // is to 21, two clear, and at 29-29 the side to 30 wins), never computed by the helper. Top half = home = `first`.
 
@@ -84,7 +84,7 @@ describe('badminton point calls: game point', () => {
     const cfg = { bestOf: 3, setTo: 15, finalSetTo: 15, cap: 21 };
     expect(calls(standing(14, 10), { cfg }).calls).toEqual({ first: 'game', second: null });
     expect(calls(standing(14, 14), { cfg }).calls).toEqual(NONE);
-    expect(calls(standing(20, 20), { cfg }).calls).toEqual({ first: 'golden', second: 'golden' });
+    expect(calls(standing(20, 20), { cfg }).calls).toEqual({ first: 'game', second: 'game' });
   });
 
   it('calls a doubles match alike', () => {
@@ -95,9 +95,9 @@ describe('badminton point calls: game point', () => {
   });
 });
 
-describe('badminton point calls: the golden point', () => {
-  it('calls both sides at 29-29: the next point wins the game whoever takes it (BWF 7.3)', () => {
-    expect(calls(standing(29, 29)).calls).toEqual({ first: 'golden', second: 'golden' });
+describe('badminton point calls: the cap-all', () => {
+  it('calls both sides game point at 29-29 (“29 game point all”): the next point wins the game whoever takes it', () => {
+    expect(calls(standing(29, 29)).calls).toEqual({ first: 'game', second: 'game' });
   });
 
   it('calls only the leader at 29-28: the 30th point wins, but the trailing side’s only levels', () => {
@@ -132,9 +132,9 @@ describe('badminton point calls: match point', () => {
     expect(calls(standing(29, 29, games)).calls).toEqual({ first: 'match', second: 'match' });
   });
 
-  it('calls the leader match and the other golden at 29-29 of game 2 with one game in hand: its point only wins a game', () => {
+  it('calls the leader match point and the other game point at 29-29 of game 2 with one game in hand: the trailing side’s point only wins a game', () => {
     const game1 = gameWon('H', 15);
-    expect(calls(standing(29, 29, game1)).calls).toEqual({ first: 'match', second: 'golden' });
+    expect(calls(standing(29, 29, game1)).calls).toEqual({ first: 'match', second: 'game' });
   });
 
   it('calls a best of 1 at 20-17 match point, a best of 5 at 2-1 up in game 4 match point', () => {
@@ -234,13 +234,10 @@ describe('badminton point calls: the pad’s halves', () => {
     expect(bottom?.call).toBeNull();
   });
 
-  it('gives both halves the golden plate at 29-29', () => {
+  it('gives both halves the game point plate at 29-29', () => {
     const halves = pad(calls(standing(29, 29)));
-    for (const half of halves)
-      expect(half.call).toEqual({
-        text: { key: 'scoring.pad.call.goldenPoint' },
-        said: { key: 'scoring.pad.call.goldenPoint' },
-      });
+    expect(halves).toHaveLength(2);
+    for (const half of halves) expect(half.call).toEqual(GAME);
   });
 
   it('gives no plate to a half that takes no tap: a disqualification waiting for its ending', () => {

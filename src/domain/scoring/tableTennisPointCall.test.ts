@@ -15,7 +15,7 @@ import {
 
 // Point calls for table tennis (owner, 2026-11-12 and 13): game point and match point, read off the engine by folding one
 // more point for each side. The rule written out here is ITTF 2.6: a game is to 11, two clear (so 10-10 has no call and 11-10
-// is only game point for the leader), a match the best of the games, and there is no cap and no golden point. Top half = home.
+// is only game point for the leader), a match the best of the games, and there is no cap. Top half = home.
 
 /** The winners of a game that stands `h`-`a`: the sides trade points, then the one ahead takes the rest. */
 const trade = (h: number, a: number): string =>
@@ -64,7 +64,7 @@ describe('table tennis point calls: game point', () => {
     expect(calls(standing(10, 11))).toEqual({ first: null, second: 'game' });
   });
 
-  it('calls nobody at 9-9, 0-0 or deep in deuce at 25-25: there is no cap and no golden point', () => {
+  it('calls nobody at 9-9, 0-0 or deep in deuce at 25-25: there is no cap', () => {
     for (const [h, a] of [
       [9, 9],
       [0, 0],

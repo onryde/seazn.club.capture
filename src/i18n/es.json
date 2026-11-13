@@ -318,7 +318,6 @@
   "scoring.pad.tap": "Toca",
   "scoring.pad.call.gamePoint": "Punto de juego",
   "scoring.pad.call.matchPoint": "Punto de partido",
-  "scoring.pad.call.goldenPoint": "Punto decisivo",
   "scoring.sync.sending.one": "Enviando {count} toque",
   "scoring.sync.sending.other": "Enviando {count} toques",
   "scoring.sync.offline.one": "Sin conexión · {count} toque en cola",

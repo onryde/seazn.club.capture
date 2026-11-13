@@ -38,16 +38,12 @@ const called = (key: MessageKey): PadHalf<MessageKey> => ({
 const WORDS = [
   ['en', 'scoring.pad.call.gamePoint', 'Game point'],
   ['en', 'scoring.pad.call.matchPoint', 'Match point'],
-  ['en', 'scoring.pad.call.goldenPoint', 'Golden point'],
   ['es', 'scoring.pad.call.gamePoint', 'Punto de juego'],
   ['es', 'scoring.pad.call.matchPoint', 'Punto de partido'],
-  ['es', 'scoring.pad.call.goldenPoint', 'Punto decisivo'],
   ['fr', 'scoring.pad.call.gamePoint', 'Balle de jeu'],
   ['fr', 'scoring.pad.call.matchPoint', 'Balle de match'],
-  ['fr', 'scoring.pad.call.goldenPoint', 'Point décisif'],
   ['nl', 'scoring.pad.call.gamePoint', 'Gamepunt'],
   ['nl', 'scoring.pad.call.matchPoint', 'Matchpunt'],
-  ['nl', 'scoring.pad.call.goldenPoint', 'Gouden punt'],
 ] as const;
 
 describe('ScoreHalf: a call on the next point', () => {

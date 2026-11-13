@@ -143,8 +143,7 @@ function displayOf(folding: SetBasedFolding<TableTennisDone>): TableTennisDispla
   const { match, stream, folded } = folding;
   const { state } = folded;
   const board = boardOf(state);
-  // Table tennis has no golden point: the cap is none, so a game is only won by two clear.
-  const { calls, fault } = pointCallsFrom(EVENTS, folding, false);
+  const { calls, fault } = pointCallsFrom(EVENTS, folding);
   return {
     sides: match.names.sides,
     context: match.context,
