@@ -1251,6 +1251,7 @@
   "matchday.call.loading": "Finding matches…",
   "matchday.call.none": "Nothing can start here now",
   "matchday.call.nextOn": "Next on {court}",
+  "matchday.call.queuedOn": "Queued on {court}",
   "matchday.call.calledTo": "Called to {court}",
   "matchday.call.busy": "{name} is playing on {court}",
   "matchday.call.busyNoCourt": "{name} is in another match",

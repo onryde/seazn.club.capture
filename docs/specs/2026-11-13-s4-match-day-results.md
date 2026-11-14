@@ -165,10 +165,44 @@ app-only screenshots and used test data in S.A.F.E:
 | 6   | Pass    | Back during the hold closed the sheet and called nothing. TalkBack was dropped from this pass (owner: "no need TalkBack").                                                                                                                                                                           |
 | 7   | Pass    | nl and fr fit in the list, the sheet, the preview and the hold plate. The app was put back to English afterwards.                                                                                                                                                                                    |
 
-### Still to run
+### The closing pass (14 Nov)
 
-The 320 dp pass, §7a rows 3 (refusal of a call made at the web desk), 4 and 5, and the device-only list above. TalkBack
-is out of this pass on the owner's word.
+Run on 14 Nov 2026 on build 1241 (from d1b0379e, PR #57: the court's day #55, the venue line #56 and the division line
+#57 on main 1.0.12), staging, portrait, with a code for "Club Day 14 Nov" (S.A.F.E; 5 divisions on 4 shared courts)
+minted and scanned by the owner. The controller drove the phone over adb (app-only screenshots) and the desk in Chrome.
+
+| Check                       | Result  | What the phone showed                                                                                                                                                                 |
+| --------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Division line               | Pass    | Every row names its division under the names (Men's Singles A, Women's Singles, …), ink2, dimmer on a finished row; a row reads "R1, Men's Singles A, Next, …".                       |
+| A court's day, full queue   | Pass    | Court 1: Next, Then and five more unlabelled, each with its division and time, then the latest finished. Android Back returned to the list. The venue is said once (#56).             |
+| A match opened from its day | Pass    | A row in Court 1's day opened its pad; ‹ returned to the list, the day closed.                                                                                                        |
+| 320 dp (`wm density 540`)   | Pass    | List, a court's day and the Call sheet fit: long names and "Court 1 (Sports H…" end in an ellipsis, nothing overlaps. Density reset afterwards.                                       |
+| §7a 3, a desk call          | Pass    | A call made on the desk showed as Now with Undo; Undo call → the sheet closed, the call stayed, and "Called from the web desk — ask the organiser to undo it" stood under the header. |
+| §7a 4                       | Pass    | Undo's sheet open, the desk undid the call: within a poll the sheet read "Court 1 (Sports Hall) is no longer called" with Close only.                                                 |
+| §7a 5                       | Partial | The refusal's line was gone after the next good read. The Offline line was not run: it needs the phone's network switched off.                                                        |
+| "+N more" in a court's day  | Not run | The day had one finished match per court. The same rows are tested in jsdom, and the list's "+2 more finished" was seen on 13 Nov.                                                    |
+
+Two findings, both web, neither blocking. Both are fixed, not yet seen on a device (web #1217 and this PR):
+
+- **F-T8-15** (web, day read): a call outlives its day. Court 3 was called from the phone on 13 Nov at 22:16, which
+  moved the match to 13 Nov; on 14 Nov the day read gave Court 3 `called` with `now: null` (the match is not on the
+  code's day), so the phone showed CALLED with nothing on the court and no Undo, while the desk showed the match and its
+  Undo. The controller undid it on the desk. Rec: the day read lists a called, unstarted match on a court in scope as
+  `now` whatever its date, or a call lapses at the end of its day.
+  _Fixed (web #1217):_ the day read lists a called, unstarted match on a covered court as `now` whatever its date, and
+  Undo works for the code that made the call. No phone code.
+- **F-T8-16** (web, copy): a candidate later in another court's queue reads "Next on Court 1" though it is third there
+  (desk and phone alike: the phone prints the web's `other_court`). Rec: "Queued on {court}" for any but the first.
+  _Fixed (web #1217 and this PR):_ the web sends `first_in_queue` on each candidate; the phone reads it (absent reads true)
+  and a later match of another court's queue says "Queued on {court}" (`matchday.call.queuedOn`); called still beats queued.
+
+### Status
+
+Match Day is closed on the phone (owner, 14 Nov: "close after tomorrow's test"). It needs the web on production before
+an organiser can use it: seazn.club answers 404 to the Match Day calls (last web production deploy v1.0.8-beta,
+11 Nov), so v1.0.12 on Play's internal track runs Match Day against staging only. Backlog: §7a 5's
+Offline line, the flaky `ScoreHalf.tennisStill` test (failed once under load), and the split of `HomeScreen.test.tsx`.
+TalkBack is out of this pass on the owner's word.
 
 Calling a match to a court (S4 design §7a; final review 8), on a local build, staging, in portrait:
 

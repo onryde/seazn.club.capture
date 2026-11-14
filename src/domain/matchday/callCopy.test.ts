@@ -109,6 +109,7 @@ const candidate = (over: Partial<Candidate>): Candidate =>
     source: 'thisCourt',
     fromCourtName: null,
     called: false,
+    firstInQueue: true,
     blocked: null,
     ...over,
   }) as Candidate;
@@ -128,6 +129,33 @@ describe('where a candidate is now', () => {
     expect(
       placeOf(
         candidate({ source: 'otherCourt', fromCourtName: 'Court 2', called: true }),
+        'Court 1',
+      ),
+    ).toEqual({ kind: 'calledTo', court: 'Court 2' });
+  });
+
+  it('a later match of another court’s queue is queued on it; this court’s own never is', () => {
+    expect(
+      placeOf(
+        candidate({ source: 'otherCourt', fromCourtName: 'Court 2', firstInQueue: false }),
+        'Court 1',
+      ),
+    ).toEqual({ kind: 'queuedOn', court: 'Court 2' });
+    expect(placeOf(candidate({ firstInQueue: false }), 'Court 1')).toEqual({
+      kind: 'nextOn',
+      court: 'Court 1',
+    });
+  });
+
+  it('called beats queued', () => {
+    expect(
+      placeOf(
+        candidate({
+          source: 'otherCourt',
+          fromCourtName: 'Court 2',
+          called: true,
+          firstInQueue: false,
+        }),
         'Court 1',
       ),
     ).toEqual({ kind: 'calledTo', court: 'Court 2' });

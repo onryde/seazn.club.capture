@@ -222,6 +222,7 @@ describe('the Call sheet names the division', () => {
     source: 'thisCourt',
     fromCourtName: null,
     called: false,
+    firstInQueue: true,
     plannedAt: null,
     waitingMinutes: 0,
     behindMinutes: 0,

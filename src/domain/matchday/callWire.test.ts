@@ -81,6 +81,7 @@ describe('parseCandidates reads the root fixtures', () => {
             source: 'thisCourt',
             fromCourtName: null,
             called: false,
+            firstInQueue: false,
             plannedAt: new Date('2026-11-07T11:30:00.000Z'),
             waitingMinutes: 0,
             behindMinutes: 0,
@@ -97,6 +98,7 @@ describe('parseCandidates reads the root fixtures', () => {
             source: 'noCourt',
             fromCourtName: null,
             called: false,
+            firstInQueue: false,
             plannedAt: null,
             waitingMinutes: 0,
             behindMinutes: 0,
@@ -113,6 +115,7 @@ describe('parseCandidates reads the root fixtures', () => {
             source: 'otherCourt',
             fromCourtName: 'Court 2',
             called: true,
+            firstInQueue: false,
             plannedAt: new Date('2026-11-07T11:00:00.000Z'),
             waitingMinutes: 25,
             behindMinutes: 10,
@@ -191,6 +194,29 @@ describe('parseCandidates reads the root fixtures', () => {
     expect(read(() => undefined)).toBe(true);
     expect(read((c) => (c.called = false))).toBe(false);
     expect(read((c) => delete c.called)).toBe(false);
+  });
+
+  it('reads first_in_queue as written, and absent as true (a web before the field)', () => {
+    const read = (mutate: (c: Record<string, unknown>) => void) => {
+      const data = wire('valid');
+      mutate(data.candidates[2] as Record<string, unknown>);
+      const result = parseCandidates(answered(data));
+      return result.ok ? result.value.candidates[2]?.firstInQueue : result.error;
+    };
+    expect(read((c) => (c.first_in_queue = true))).toBe(true);
+    expect(read((c) => (c.first_in_queue = false))).toBe(false);
+    expect(read((c) => delete c.first_in_queue)).toBe(true);
+  });
+
+  it('refuses a first_in_queue that is not a boolean, or null', () => {
+    for (const bad of ['yes', 1, null]) {
+      const data = wire('valid');
+      (data.candidates[2] as Record<string, unknown>).first_in_queue = bad;
+      const result = parseCandidates(answered(data));
+      expect(result.ok ? null : result.error).toMatchObject({
+        field: 'candidates[2].first_in_queue',
+      });
+    }
   });
 
   it('refuses a called that is not a boolean, or null', () => {

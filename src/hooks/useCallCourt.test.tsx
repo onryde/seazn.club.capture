@@ -43,6 +43,7 @@ const PICK: Candidate = {
   source: 'thisCourt',
   fromCourtName: null,
   called: false,
+  firstInQueue: true,
   plannedAt: null,
   waitingMinutes: 0,
   behindMinutes: 0,
