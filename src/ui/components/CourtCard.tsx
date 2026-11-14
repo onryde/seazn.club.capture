@@ -30,6 +30,8 @@ type CourtCardProps = {
   readonly stake: Stake;
   /** The venue's zone, for the planned times. */
   readonly zone: string;
+  /** The day lists more than one division (`showsDivision`): every row names its own. */
+  readonly withDivision?: boolean;
   /** A tap on one of the court's rows (Task 5): the match opens. Without it the rows are read-only. */
   readonly onOpen?: (row: Row, courtName: string) => void;
   /** Where the card sits in its column, once laid out: the list scrolls to the court it came back from. */
@@ -60,6 +62,7 @@ export const CourtCard = memo(function CourtCard({
   card,
   stake,
   zone,
+  withDivision = false,
   onOpen,
   onSlot,
   opened,
@@ -71,7 +74,7 @@ export const CourtCard = memo(function CourtCard({
   onOpenDay,
 }: CourtCardProps) {
   const { t } = useT();
-  const words = useRowWords(zone);
+  const words = useRowWords(zone, withDivision);
   const state = t(STATE_WORD[card.state]);
   const placed = useCallback(
     (event: LayoutChangeEvent) => onSlot?.(card.name, event.nativeEvent.layout.y),

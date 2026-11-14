@@ -24,6 +24,8 @@ type CallScreenProps = {
   readonly free: boolean;
   /** The venue's zone, for the planned times. */
   readonly zone: string;
+  /** The day lists more than one division (`showsDivision`): a match names its own. */
+  readonly withDivision: boolean;
   /** Reads the day again (the list's own read), after a call or a refusal that changes it. */
   readonly refresh: () => void;
   readonly onClose: () => void;
@@ -40,6 +42,7 @@ export const CallScreen = memo(function CallScreen({
   court,
   free,
   zone,
+  withDivision,
   refresh,
   onClose,
 }: CallScreenProps) {
@@ -66,7 +69,11 @@ export const CallScreen = memo(function CallScreen({
         />
       </View>
       <ScrollView style={styles.body} contentContainerStyle={styles.column}>
-        {gone ? <NoLongerFree court={court} /> : <Body view={view} court={court} zone={zone} />}
+        {gone ? (
+          <NoLongerFree court={court} />
+        ) : (
+          <Body view={view} court={court} zone={zone} withDivision={withDivision} />
+        )}
       </ScrollView>
       <View style={styles.footer}>
         {gone ? (
@@ -101,18 +108,20 @@ const Body = memo(function Body({
   view,
   court,
   zone,
+  withDivision,
 }: {
   readonly view: CallView;
   readonly court: string;
   readonly zone: string;
+  readonly withDivision: boolean;
 }) {
   return (
     <>
       {view.notice === null ? null : <Notice line={view.notice} />}
       {view.step === 'preview' && view.picked !== null ? (
-        <Preview view={view} picked={view.picked} zone={zone} />
+        <Preview view={view} picked={view.picked} zone={zone} withDivision={withDivision} />
       ) : (
-        <Candidates view={view} court={court} zone={zone} />
+        <Candidates view={view} court={court} zone={zone} withDivision={withDivision} />
       )}
     </>
   );
@@ -122,10 +131,12 @@ const Candidates = memo(function Candidates({
   view,
   court,
   zone,
+  withDivision,
 }: {
   readonly view: CallView;
   readonly court: string;
   readonly zone: string;
+  readonly withDivision: boolean;
 }) {
   const { t } = useT();
   if (view.list === 'loading') return <Text variant="body">{t('matchday.call.loading')}</Text>;
@@ -141,6 +152,7 @@ const Candidates = memo(function Candidates({
           candidate={candidate}
           court={court}
           zone={zone}
+          withDivision={withDivision}
           onPick={view.pick}
         />
       ))}
@@ -153,17 +165,25 @@ const Preview = memo(function Preview({
   view,
   picked,
   zone,
+  withDivision,
 }: {
   readonly view: CallView;
   readonly picked: Candidate;
   readonly zone: string;
+  readonly withDivision: boolean;
 }) {
   const { t } = useT();
-  const words = useRowWords(zone)(picked.match);
+  const words = useRowWords(zone, withDivision)(picked.match);
   return (
     <>
       <View style={styles.rows}>
-        <MatchRow chip={words.chip} names={words.names} parts={words.parts} detail={null} />
+        <MatchRow
+          chip={words.chip}
+          names={words.names}
+          parts={words.parts}
+          division={words.division}
+          detail={null}
+        />
       </View>
       {view.preview === 'loading' ? (
         <Text variant="body">{t('matchday.call.checking')}</Text>

@@ -14,6 +14,8 @@ type CourtDayScreenProps = {
   readonly day: CourtDay;
   /** The venue's zone, for the planned times. */
   readonly zone: string;
+  /** The day lists more than one division (`showsDivision`): every row names its own. */
+  readonly withDivision: boolean;
   /** A tap on a match: it opens, as on the court's card (the list's own `open`). */
   readonly onOpen: (row: Row, courtName: string) => void;
   /** The matches whose link this phone holds: only these finished rows open. */
@@ -33,12 +35,13 @@ const QUEUE_LABEL: readonly (MessageKey | null)[] = ['matchday.row.next', 'match
 export const CourtDayScreen = memo(function CourtDayScreen({
   day,
   zone,
+  withDivision,
   onOpen,
   opened,
   onClose,
 }: CourtDayScreenProps) {
   const { t } = useT();
-  const words = useRowWords(zone);
+  const words = useRowWords(zone, withDivision);
   const [expanded, setExpanded] = useState(false);
   const flip = useCallback(() => setExpanded((now) => !now), []);
   return (

@@ -11,6 +11,8 @@ export type RowWords = {
   /** The names in pieces when a seat shows what it waits for, so those words can be dimmed; else null. */
   readonly parts: readonly NamePart[] | null;
   readonly detail: string | null;
+  /** The match's division, only when the day lists more than one and this match has a name for it; else null. */
+  readonly division: string | null;
 };
 
 /** Stand-ins for the two seats while the row's template is split around them; no dictionary holds either. */
@@ -20,9 +22,10 @@ const AWAY = '\u0002';
 /**
  * A row's words: "Ng v Brown". A seat with no entrant says what the web desk says it waits for ("Winner of SF·2"),
  * dimmed, and "To be decided" only when the web has no words for it either (never TBD); at the right the planned time,
- * in the venue's zone `zone` (named when it is not the phone's), or the score as the server wrote it.
+ * in the venue's zone `zone` (named when it is not the phone's), or the score as the server wrote it. `withDivision`
+ * (`showsDivision` of the day) adds the match's division under the names.
  */
-export function useRowWords(zone: string): (row: Row) => RowWords {
+export function useRowWords(zone: string, withDivision = false): (row: Row) => RowWords {
   const { t } = useT();
   const time = useFormatTime();
   return useCallback(
@@ -45,15 +48,17 @@ export function useRowWords(zone: string): (row: Row) => RowWords {
         : null;
       const chip = roundChipOf(row);
       const detail = rowDetail(row);
-      if (detail === null) return { chip, names, parts, detail: null };
+      const division = withDivision && row.divisionName !== '' ? row.divisionName : null;
+      if (detail === null) return { chip, names, parts, detail: null, division };
       return {
         chip,
         names,
         parts,
+        division,
         detail: detail.kind === 'time' ? time(detail.at, zone) : detail.text,
       };
     },
-    [t, time, zone],
+    [t, time, zone, withDivision],
   );
 }
 
