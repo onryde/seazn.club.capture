@@ -95,6 +95,7 @@ const RowBody = memo(function RowBody({
           <Text variant="rowNames" numberOfLines={1} style={dim ? styles.ink3 : styles.ink}>
             {named}
           </Text>
+          {/* `control`, not the 12 dp `metricUnit`: the division is read at arm's length outdoors, in ink2. */}
           <Text
             variant="control"
             testID="match-division"
