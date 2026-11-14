@@ -1,10 +1,10 @@
 {
-  "web": "1f27d2f77aa119c3db8da09b404b274ab079a0c0",
+  "web": "a976b266c4929d2fc6c9c36d1f86a66555f91fe6",
   "files": {
     "capture-beat.v1.json": "e14329132400d45cd38e03b19cf85189fe35acb0b8b9a51e7ca98879fe07c736",
     "capture-descriptor.v1.json": "5c9b09c422b092671ad3a842b02e5c18902c92fc290cbc562c91033555955b8b",
     "capture-matchday-approval.v1.json": "279ff1488a1108b3667f9e2f11f559579382f83b238d91da65440c810189f69c",
-    "capture-matchday-call.v1.json": "91cd75948e7bf55c329aa232af29fa52408870ce3d3873ce3708114c51dc2286",
+    "capture-matchday-call.v1.json": "7399e140267a75443b6576e493ef446c84f89922c20f02e8d4b08854f87df1c8",
     "capture-matchday-day.v1.json": "283a252050a42618752803baead43e18df6822a9e23588f80e04e5ebecd46332",
     "capture-matchday-open.v1.json": "760028bf99e5cf74ee033f5613fa43477677cef318ecdf739c0b62e2fc21c0c0",
     "capture-qr.v2.json": "3292e33f84b693e5def6048012f6653ca7e31e1573fda3901da4fe67a62c5d43",
