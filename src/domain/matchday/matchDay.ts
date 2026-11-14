@@ -266,3 +266,17 @@ export function noonOf(day: string): Date {
 export function isEmptyDay(day: MatchDay): boolean {
   return day.courts.length === 0 && day.noCourt.length === 0 && day.online.length === 0;
 }
+
+/**
+ * Whether a row names its division: only when the day lists more than one (owner, 2026-11-14: five divisions share
+ * four courts, and a row said no division). The set is over every row of every court, the matches on no court and
+ * the online boards; an empty name is no division, so it never counts and never draws.
+ */
+export function showsDivision(day: MatchDay): boolean {
+  const rows = [
+    ...day.courts.flatMap((c) => [...(c.now === null ? [] : [c.now]), ...c.next, ...c.finished]),
+    ...day.noCourt,
+    ...day.online,
+  ];
+  return new Set(rows.map((r) => r.divisionName).filter((name) => name !== '')).size > 1;
+}

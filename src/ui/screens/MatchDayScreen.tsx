@@ -7,6 +7,7 @@ import {
   noCourtStake,
   noonOf,
   sendingByCourt,
+  showsDivision,
   venuesOf,
   type Approval,
   type MatchDay,
@@ -78,6 +79,7 @@ export function MatchDayScreen() {
     if (!quiet()) exit.ask();
   }, [quiet, exit]);
   const { viewing, openDay, closeDay, leaveDay } = useCourtDayView(bounce, list.day);
+  const withDivision = useMemo(() => list.day !== null && showsDivision(list.day), [list.day]);
   const covered =
     reviewing !== null ||
     exit.sheet !== null ||
@@ -140,6 +142,7 @@ export function MatchDayScreen() {
         <CourtDayScreen
           day={viewing}
           zone={list.day.tz}
+          withDivision={withDivision}
           onOpen={openFromDay}
           opened={opened}
           onClose={closeDay}
@@ -151,6 +154,7 @@ export function MatchDayScreen() {
           court={calling.name}
           free={list.day.courts.some((c) => c.courtId === calling.courtId && c.state === 'free')}
           zone={list.day.tz}
+          withDivision={withDivision}
           refresh={list.refresh}
           onClose={closeCall}
         />
@@ -446,6 +450,7 @@ const DayList = memo(function DayList({
   const { t } = useT();
   const { scroller, onSlot } = useScrollToCourt(cameBackTo);
   const banner = useMemo(() => bannerFor(day), [day]);
+  const withDivision = useMemo(() => showsDivision(day), [day]);
   const offlineAt = list.state === 'offline' ? list.updatedAt : null;
   // react-native-web draws no pull and drops its props: the spinner is the device check's, its rule
   // `usePullRefresh`'s (tested). Try again and the poll call the same `refresh`.
@@ -481,14 +486,21 @@ const DayList = memo(function DayList({
         opened={opened}
         callTo={callTo}
         openDay={openDay}
+        withDivision={withDivision}
       />
       <RowSection
         title={`${t('matchday.noCourt')} · ${day.noCourt.length}`}
         rows={day.noCourt}
         zone={day.tz}
+        withDivision={withDivision}
         stake={noCourtStake(day, list.unsent)}
       />
-      <RowSection title={t('matchday.online')} rows={day.online} zone={day.tz} />
+      <RowSection
+        title={t('matchday.online')}
+        rows={day.online}
+        zone={day.tz}
+        withDivision={withDivision}
+      />
       {isEmptyDay(day) ? <Text variant="body">{t('matchday.empty')}</Text> : null}
     </ScrollView>
   );
@@ -548,7 +560,9 @@ const Courts = memo(function Courts({
   opened,
   callTo,
   openDay,
+  withDivision,
 }: {
+  readonly withDivision: boolean;
   readonly callTo: CallTo;
   readonly openDay: BodyProps['openDay'];
   readonly day: MatchDay;
@@ -573,6 +587,7 @@ const Courts = memo(function Courts({
           card={card}
           stake={sending.get(card.courtId) ?? NO_STAKE}
           zone={day.tz}
+          withDivision={withDivision}
           onOpen={open}
           onSlot={onSlot}
           opened={opened}
@@ -680,14 +695,16 @@ const RowSection = memo(function RowSection({
   title,
   rows,
   zone,
+  withDivision,
   stake,
 }: {
   readonly title: string;
   readonly rows: readonly Row[];
   readonly zone: string;
+  readonly withDivision: boolean;
   readonly stake?: Stake;
 }) {
-  const words = useRowWords(zone);
+  const words = useRowWords(zone, withDivision);
   if (rows.length === 0) return null;
   return (
     <View style={styles.section}>

@@ -28,6 +28,11 @@ type MatchRowProps = {
    * scoreboard headline).
    */
   readonly detail: string | null;
+  /**
+   * The match's division, under the names (owner, 2026-11-14): one line, cut with an ellipsis. Null when the day lists
+   * one division or the match has no name for it. A screen reader hears it after the round.
+   */
+  readonly division?: string | null;
   /** A finished match: drawn in the inert ink. */
   readonly dim?: boolean;
   /** Task 5 opens a match from its row; an online board's row never gets one (S4 design §5). */
@@ -40,7 +45,7 @@ type MatchRowProps = {
  * screen reader, read as one line ("Now, Ng v Brown, 14-9"). Without `onPress` it is not a control at all.
  */
 export const MatchRow = memo(function MatchRow(props: MatchRowProps) {
-  const said = [props.chip, props.label ?? props.spoken, props.names, props.detail]
+  const said = [props.chip, props.division, props.label ?? props.spoken, props.names, props.detail]
     .filter((part): part is string => part !== undefined && part !== null)
     .join(', ');
   const body = <RowBody {...props} />;
@@ -69,8 +74,10 @@ const RowBody = memo(function RowBody({
   names,
   parts = null,
   detail,
+  division = null,
   dim = false,
 }: MatchRowProps) {
+  const named = parts === null ? names : parts.map(partOf);
   return (
     <>
       {label === undefined ? null : (
@@ -79,9 +86,25 @@ const RowBody = memo(function RowBody({
         </Text>
       )}
       {chip === null ? null : <RoundChip tag={chip} dim={dim} />}
-      <Text variant="rowNames" numberOfLines={1} style={dim ? styles.namesDim : styles.names}>
-        {parts === null ? names : parts.map(partOf)}
-      </Text>
+      {division === null ? (
+        <Text variant="rowNames" numberOfLines={1} style={dim ? styles.namesDim : styles.names}>
+          {named}
+        </Text>
+      ) : (
+        <View style={styles.stack}>
+          <Text variant="rowNames" numberOfLines={1} style={dim ? styles.ink3 : styles.ink}>
+            {named}
+          </Text>
+          <Text
+            variant="control"
+            testID="match-division"
+            numberOfLines={1}
+            style={dim ? styles.ink3 : styles.ink2}
+          >
+            {division}
+          </Text>
+        </View>
+      )}
       {detail === null ? null : (
         <Text variant="diagValue" numberOfLines={1} style={dim ? styles.detailDim : styles.detail}>
           {detail}
@@ -161,6 +184,10 @@ const styles = StyleSheet.create({
   slot: { color: colour.ink3 },
   names: { flex: 1, minWidth: layout.matchDayNamesMin, color: colour.ink },
   namesDim: { flex: 1, minWidth: layout.matchDayNamesMin, color: colour.ink3 },
+  stack: { flex: 1, minWidth: layout.matchDayNamesMin },
+  ink: { color: colour.ink },
+  ink2: { color: colour.ink2 },
+  ink3: { color: colour.ink3 },
   detail: { flexShrink: 1, minWidth: 0, color: colour.ink },
   detailDim: { flexShrink: 1, minWidth: 0, color: colour.ink3 },
 });

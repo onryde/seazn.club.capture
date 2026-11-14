@@ -16,6 +16,8 @@ type CandidateRowProps = {
   readonly court: string;
   /** The venue's zone, for the planned time. */
   readonly zone: string;
+  /** The day lists more than one division (`showsDivision`). */
+  readonly withDivision: boolean;
   readonly onPick: (candidate: Candidate) => void;
   /** A hairline above it, between two matches (owner, 2026-11-13: "light divider between matches"); not the first. */
   readonly divided?: boolean;
@@ -30,11 +32,12 @@ export const CandidateRow = memo(function CandidateRow({
   candidate,
   court,
   zone,
+  withDivision,
   onPick,
   divided = false,
 }: CandidateRowProps) {
   const { t } = useT();
-  const words = useRowWords(zone)(candidate.match);
+  const words = useRowWords(zone, withDivision)(candidate.match);
   const time = useFormatTime();
   const place = placeOf(candidate, court);
   const where =
@@ -53,6 +56,7 @@ export const CandidateRow = memo(function CandidateRow({
         chip={words.chip}
         names={words.names}
         parts={words.parts}
+        division={words.division}
         detail={detail}
         dim={blocked}
         {...(blocked ? {} : { onPress: press })}

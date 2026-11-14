@@ -10,6 +10,7 @@ import {
   roundChipOf,
   rowDetail,
   seated,
+  showsDivision,
   noCourtStake,
   sendingByCourt,
   totalStake,
@@ -487,5 +488,54 @@ describe('seated: a match opens only with both seats filled (task 8d-B)', () => 
 
   it('a slot label does not seat a match', () => {
     expect(seated({ ...PATEL, home: null, homeSlot: 'Winner of Group A' })).toBe(false);
+  });
+});
+
+describe('showsDivision', () => {
+  const in_ = (division: string, id = division): Row => ({
+    ...row(id, 'A', 'B'),
+    divisionName: division,
+  });
+
+  it('is false for a day of one division, however many matches it has', () => {
+    const one = day({
+      courts: [court('Court 1', { now: in_('Open', 'a'), next: [in_('Open', 'b')] })],
+      noCourt: [in_('Open', 'c')],
+    });
+    expect(showsDivision(one)).toBe(false);
+  });
+
+  it('is true for two divisions on one court', () => {
+    const two = day({ courts: [court('Court 1', { now: in_('Open'), next: [in_('U15')] })] });
+    expect(showsDivision(two)).toBe(true);
+  });
+
+  it('counts divisions across courts, finished matches, no-court and online rows alike', () => {
+    expect(
+      showsDivision(
+        day({ courts: [court('Court 1', { finished: [in_('Open')] })], noCourt: [in_('U15')] }),
+      ),
+    ).toBe(true);
+    expect(showsDivision(day({ noCourt: [in_('Open')], online: [in_('Rapid')] }))).toBe(true);
+    expect(
+      showsDivision(
+        day({
+          courts: [
+            court('Court 1', { finished: [in_('Open', 'x')] }),
+            court('Court 2', { finished: [in_('Open', 'y')] }),
+          ],
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it('is false for an empty day and ignores empty names', () => {
+    expect(showsDivision(day())).toBe(false);
+    expect(
+      showsDivision(
+        day({ courts: [court('Court 1', { now: in_('Open'), next: [in_('', 'z')] })] }),
+      ),
+    ).toBe(false);
+    expect(showsDivision(day({ noCourt: [in_('', 'p'), in_('', 'q')] }))).toBe(false);
   });
 });
