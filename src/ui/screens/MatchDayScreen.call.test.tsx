@@ -64,6 +64,7 @@ const candidate = (match: Row, more: Partial<Candidate> = {}): Candidate => ({
   source: 'thisCourt',
   fromCourtName: null,
   called: false,
+  firstInQueue: true,
   plannedAt: new Date('2026-10-03T14:20:00.000Z'),
   waitingMinutes: 0,
   behindMinutes: 0,
@@ -255,6 +256,55 @@ describe('Call to {court}: the candidates', () => {
     expect(
       sheet().queryByText(en['matchday.call.calledTo'].replace('{court}', 'Court 2')),
     ).toBeNull();
+  });
+
+  it('a later match of another court’s queue reads "Queued on", the first "Next on", a called one "Called to" (F-T8-16)', async () => {
+    const FIRST = candidate(row(ANN, 'Kim', 'Lee'), {
+      source: 'otherCourt',
+      fromCourtName: 'Court 2',
+    });
+    const LATER = candidate(row(EVE, 'Eve', 'Fay'), {
+      source: 'otherCourt',
+      fromCourtName: 'Court 2',
+      firstInQueue: false,
+    });
+    const CALLED_LATER = candidate(row(BUSY, 'Ann Archer', 'Cat'), {
+      source: 'otherCourt',
+      fromCourtName: 'Court 3',
+      called: true,
+      firstInQueue: false,
+    });
+    await openSheet({
+      prepare: (f) => f.matchDay.answerCandidates(candidates(FIRST, LATER, CALLED_LATER)),
+    });
+    expect(
+      sheet().getAllByText(en['matchday.call.nextOn'].replace('{court}', 'Court 2')),
+    ).toHaveLength(1);
+    expect(
+      sheet().getAllByText(en['matchday.call.queuedOn'].replace('{court}', 'Court 2')),
+    ).toHaveLength(1);
+    expect(
+      sheet().getByText(en['matchday.call.calledTo'].replace('{court}', 'Court 3')),
+    ).toBeTruthy();
+    expect(
+      sheet().queryByText(en['matchday.call.queuedOn'].replace('{court}', 'Court 3')),
+    ).toBeNull();
+    expect(en['matchday.call.queuedOn']).toBe('Queued on {court}');
+  });
+
+  it('es: a later match reads its own words', async () => {
+    const LATER = candidate(row(EVE, 'Eve', 'Fay'), {
+      source: 'otherCourt',
+      fromCourtName: 'Court 2',
+      firstInQueue: false,
+    });
+    await openSheet({
+      lang: 'es',
+      prepare: (f) => f.matchDay.answerCandidates(candidates(LATER)),
+    });
+    expect(
+      sheet().getByText(word('es', 'matchday.call.queuedOn', { court: 'Court 2' })),
+    ).toBeTruthy();
   });
 
   it('a light hairline divides the matches: above each but the first (owner, "light divider between matches")', async () => {

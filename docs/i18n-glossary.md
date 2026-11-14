@@ -982,7 +982,9 @@ court's name 23 dp at 320 (`matchDayFit.test.ts`). A screen reader still hears t
 
 A candidate's place line (F-T8-12): `matchday.call.nextOn` _Next on {court}_ (es _Siguiente en_, fr _Suivant sur_, nl _Volgende op_) when
 it is queued next there, `matchday.call.calledTo` _Called to {court}_ (es _Convocado a_, fr _Appelé sur_, nl _Opgeroepen naar_) when it is
-already called onto that court and not started, the same word as the court's own _Called_ chip.
+already called onto that court and not started, the same word as the court's own _Called_ chip, and `matchday.call.queuedOn` _Queued on
+{court}_ (es _En cola en_, fr _En attente sur_, nl _In de wachtrij op_; the web desk's `matchDay.candidate.where.queuedOn`, verbatim) when it is a
+later match of another court's queue (F-T8-16). Called beats queued.
 
 ## Translation review
 

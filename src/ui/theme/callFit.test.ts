@@ -143,6 +143,7 @@ describe('the call sheet’s words fit (320 and 360 dp, four languages)', () => 
       for (const lang of LANGS)
         for (const key of [
           'matchday.call.nextOn',
+          'matchday.call.queuedOn',
           'matchday.call.calledTo',
           'matchday.noCourt',
           'matchday.call.busy',

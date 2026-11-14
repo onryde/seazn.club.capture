@@ -182,21 +182,25 @@ minted and scanned by the owner. The controller drove the phone over adb (app-on
 | §7a 5                       | Partial | The refusal's line was gone after the next good read. The Offline line was not run: it needs the phone's network switched off.                                                        |
 | "+N more" in a court's day  | Not run | The day had one finished match per court. The same rows are tested in jsdom, and the list's "+2 more finished" was seen on 13 Nov.                                                    |
 
-Two findings, both web, neither blocking:
+Two findings, both web, neither blocking. Both are fixed, not yet seen on a device (web #1217 and this PR):
 
 - **F-T8-15** (web, day read): a call outlives its day. Court 3 was called from the phone on 13 Nov at 22:16, which
   moved the match to 13 Nov; on 14 Nov the day read gave Court 3 `called` with `now: null` (the match is not on the
   code's day), so the phone showed CALLED with nothing on the court and no Undo, while the desk showed the match and its
   Undo. The controller undid it on the desk. Rec: the day read lists a called, unstarted match on a court in scope as
   `now` whatever its date, or a call lapses at the end of its day.
+  _Fixed (web #1217):_ the day read lists a called, unstarted match on a covered court as `now` whatever its date, and
+  Undo works for the code that made the call. No phone code.
 - **F-T8-16** (web, copy): a candidate later in another court's queue reads "Next on Court 1" though it is third there
   (desk and phone alike: the phone prints the web's `other_court`). Rec: "Queued on {court}" for any but the first.
+  _Fixed (web #1217 and this PR):_ the web sends `first_in_queue` on each candidate; the phone reads it (absent reads true)
+  and a later match of another court's queue says "Queued on {court}" (`matchday.call.queuedOn`); called still beats queued.
 
 ### Status
 
 Match Day is closed on the phone (owner, 14 Nov: "close after tomorrow's test"). It needs the web on production before
 an organiser can use it: seazn.club answers 404 to the Match Day calls (last web production deploy v1.0.8-beta,
-11 Nov), so v1.0.12 on Play's internal track runs Match Day against staging only. Backlog: F-T8-15, F-T8-16, §7a 5's
+11 Nov), so v1.0.12 on Play's internal track runs Match Day against staging only. Backlog: §7a 5's
 Offline line, the flaky `ScoreHalf.tennisStill` test (failed once under load), and the split of `HomeScreen.test.tsx`.
 TalkBack is out of this pass on the owner's word.
 

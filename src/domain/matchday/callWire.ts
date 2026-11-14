@@ -46,6 +46,8 @@ export type Candidate = {
   readonly fromCourtName: string | null;
   /** `otherCourt` and the match is called onto that court, not started. Absent on the wire reads false. */
   readonly called: boolean;
+  /** `otherCourt`: it is that court's very next match. Absent on the wire reads true (a web before the field). */
+  readonly firstInQueue: boolean;
   readonly plannedAt: Date | null;
   readonly waitingMinutes: number;
   readonly behindMinutes: number;
@@ -147,12 +149,18 @@ const calledFlag: Reader<boolean> = (source, key, at) => {
   return source[key] === undefined ? ok(false) : field(flag)(source, key, at);
 };
 
+/** `first_in_queue` came with F-T8-16: absent is true, so a web without it keeps saying "Next on". */
+const firstInQueueFlag: Reader<boolean> = (source, key, at) => {
+  return source[key] === undefined ? ok(true) : field(flag)(source, key, at);
+};
+
 const candidate = objectOf<Candidate>((source, at) =>
   all({
     match: field(matchRow)(source, 'match', at),
     source: field(oneOf(SOURCE))(source, 'source', at),
     fromCourtName: field(nullable(text))(source, 'from_court_name', at),
     called: calledFlag(source, 'called', at),
+    firstInQueue: firstInQueueFlag(source, 'first_in_queue', at),
     plannedAt: field(nullable(instant))(source, 'planned_at', at),
     waitingMinutes: field(wholeNumber)(source, 'waiting_minutes', at),
     behindMinutes: field(wholeNumber)(source, 'behind_minutes', at),

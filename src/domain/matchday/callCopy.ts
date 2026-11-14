@@ -91,15 +91,19 @@ export function blockedLine(candidate: Candidate): Line | null {
 /** Where a candidate is now: its court's queue, or not on a court yet. */
 export type Place =
   | { readonly kind: 'nextOn'; readonly court: string }
+  | { readonly kind: 'queuedOn'; readonly court: string }
   | { readonly kind: 'calledTo'; readonly court: string }
   | { readonly kind: 'noCourt' };
 
 /**
  * `thisCourt` waits on the court the sheet is about, `otherCourt` on another (queued next there, or `called` onto it and
- * not started: calling it here moves it); none on no court.
+ * not started: calling it here moves it); none on no court. Called beats queued; a later match of another court's queue
+ * is queued on it, not next (F-T8-16).
  */
 export function placeOf(candidate: Candidate, court: string): Place {
   if (candidate.source === 'noCourt') return { kind: 'noCourt' };
   const where = candidate.source === 'thisCourt' ? court : (candidate.fromCourtName ?? court);
-  return { kind: candidate.called ? 'calledTo' : 'nextOn', court: where };
+  if (candidate.called) return { kind: 'calledTo', court: where };
+  const later = candidate.source === 'otherCourt' && !candidate.firstInQueue;
+  return { kind: later ? 'queuedOn' : 'nextOn', court: where };
 }

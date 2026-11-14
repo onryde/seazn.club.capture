@@ -28,6 +28,12 @@ type CandidateRowProps = {
  * empty seat) and its planned time, with where it is now under them ("Next on Court 2", "Called to Court 2", "Not on a court yet"). A
  * candidate whose player is in a match elsewhere is dimmed, says so, and is not a control at all: no press, no role.
  */
+const PLACE_KEY = {
+  nextOn: 'matchday.call.nextOn',
+  queuedOn: 'matchday.call.queuedOn',
+  calledTo: 'matchday.call.calledTo',
+} as const;
+
 export const CandidateRow = memo(function CandidateRow({
   candidate,
   court,
@@ -43,9 +49,7 @@ export const CandidateRow = memo(function CandidateRow({
   const where =
     place.kind === 'noCourt'
       ? t('matchday.noCourt')
-      : t(place.kind === 'calledTo' ? 'matchday.call.calledTo' : 'matchday.call.nextOn', {
-          court: place.court,
-        });
+      : t(PLACE_KEY[place.kind], { court: place.court });
   const reason = blockedLine(candidate);
   const press = useCallback(() => onPick(candidate), [onPick, candidate]);
   const detail = candidate.plannedAt === null ? null : time(candidate.plannedAt, zone);
