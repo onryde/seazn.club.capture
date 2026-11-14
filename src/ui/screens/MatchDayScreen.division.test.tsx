@@ -104,9 +104,9 @@ async function openList(day: MatchDay, lang: Lang = 'en') {
 }
 const settle = (ms = 0) => act(() => vi.advanceTimersByTimeAsync(ms));
 const divisions = (scope: ReturnType<typeof within> | typeof screen = screen) =>
-  scope.queryAllByTestId('match-division').map((one) => one.textContent);
+  scope.queryAllByTestId('match-division').map((one: HTMLElement) => one.textContent);
 const labelsIn = (scope: ReturnType<typeof within> | typeof screen = screen) =>
-  scope.getAllByTestId('match-row').map((one) => one.getAttribute('aria-label'));
+  scope.getAllByTestId('match-row').map((one: HTMLElement) => one.getAttribute('aria-label'));
 
 beforeEach(() => vi.useFakeTimers({ now: TEST_NOW }));
 afterEach(() => vi.useRealTimers());
