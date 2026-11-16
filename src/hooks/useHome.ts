@@ -74,6 +74,7 @@ import type { Translator } from '@/i18n/translate';
 import type { CodeScannerPort, ScanResult, ScanUnavailableReason } from '@/scanner/CodeScannerPort';
 import type { Logger } from '@/services/logger';
 import type { ModeStore, ModeStoreSnapshot } from '@/services/modeStore';
+import { savedStream } from '@/hooks/savedStream';
 
 /** A scan that did not simply open: what the panel explains. */
 export type PanelOutcome = Exclude<ScanOutcome, { kind: 'open' }>;
@@ -182,11 +183,6 @@ const SCANNER_MESSAGE: Readonly<Record<ScanUnavailableReason, MessageKey>> = {
 };
 
 const DID_NOT_OPEN: ScanResult = { outcome: 'unavailable', reason: 'failed' };
-
-function savedStream(store: ModeStore): SavedCode | null {
-  const snapshot = store.getSnapshot();
-  return snapshot.status === 'ready' ? (snapshot.saved.codes.stream ?? null) : null;
-}
 
 /**
  * Home's behaviour (spec §3): tap, scan, recognise, then open or explain.

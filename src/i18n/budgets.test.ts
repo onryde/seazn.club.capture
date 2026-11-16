@@ -49,6 +49,10 @@ const BUDGETS: readonly (readonly [keys: RegExp, max: number])[] = [
   // The link is the Settings icon's accessible name, in the icon row (spec §3).
   [/^stream\.link\./, 14],
   [/^stream\.back$/, 20],
+  // Court stream (spec 2026-11-14 §6.4): ⋯'s accessible name, and Leave's two plates. The question's title and body are
+  // measured by leaveCourtFit.test.ts, not counted.
+  [/^stream\.court\.more$/, 14],
+  [/^stream\.court\.(leave|stay)$/, 16],
 ];
 
 const WIDEST: Readonly<Record<string, string>> = {

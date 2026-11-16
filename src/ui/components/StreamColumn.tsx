@@ -28,6 +28,8 @@ type ColumnProps = {
   readonly onScoringLink: () => void;
   /** The scoring panel is up over the camera half: the button is pressed in (B5). */
   readonly scoringOpen: boolean;
+  /** Exit's ⋯ on a court code that waits (court stream §6.4, O5); null elsewhere: no button. Stable, so the memo skips. */
+  readonly onMore: (() => void) | null;
 };
 
 /**
@@ -75,6 +77,7 @@ export const StreamColumn = memo(function StreamColumn(props: ColumnProps) {
         canLeave={props.canLeave}
         onHome={props.onHome}
         onSettings={props.onSettings}
+        onMore={props.onMore}
       />
       <ColumnAction
         action={view.action}
@@ -100,6 +103,8 @@ type IconRowProps = Omit<PeekProps, 'onPeek'> & {
   readonly canLeave: boolean;
   readonly onHome: () => void;
   readonly onSettings: () => void;
+  /** Exit's ⋯, last in the row, on a court code that waits; null draws no button. */
+  readonly onMore: (() => void) | null;
 };
 
 /**
@@ -109,6 +114,7 @@ type IconRowProps = Omit<PeekProps, 'onPeek'> & {
  * Take photo (§8) and Remote scoring (§10) are present or absent, never dimmed, and travel together as the
  * camera-side pair, Remote scoring last of the two: after Home before air, and after Settings on air, ahead of
  * What viewers see. Remote scoring is pressed in while its panel is up (B5).
+ * On a court code that waits, More (Exit's ⋯, court stream §6.4) is last: five buttons, never on air.
  * With What viewers see hidden (the owner's ruling, 2026-10-09) the on-air row ends at Remote scoring, and no cell
  * flexes: the buttons pack from the start, as the four do before air.
  * Primitives and stable handlers, so memo skips (M7).
@@ -149,6 +155,9 @@ const IconRow = memo(function IconRow(props: IconRowProps) {
         <IconButton glyph="home" label={t('stream.home')} onPress={props.onHome} />
       ) : null}
       {props.onAir ? null : camera}
+      {props.onMore === null ? null : (
+        <IconButton glyph="more" label={t('stream.court.more')} onPress={props.onMore} />
+      )}
     </View>
   );
 });

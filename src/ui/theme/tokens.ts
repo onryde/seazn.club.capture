@@ -618,7 +618,8 @@ type ControlsCells = Readonly<
 /**
  * The controls half's width (owner, 2026-10-08, option "A": the controls half takes the width its content needs and
  * the camera half takes the rest). It is the WIDEST ROW of the half, in any state, plus the half's padding either side:
- *  - icons before air: Settings, Home, Take photo, Remote scoring, four 48 dp buttons and three gaps (216);
+ *  - icons before air: Settings, Home, Take photo, Remote scoring, four 48 dp buttons and three gaps (216); on a court
+ *    code that waits, More (Exit's ⋯) is a fifth, last: five buttons and four gaps (272);
  *  - icons on air: Settings, Take photo, Remote scoring and the peek, three buttons, three gaps and the peek's cell (269),
  *    with What viewers see built in. Hidden, as shipped (the owner's ruling, 2026-10-09), the row is the three buttons
  *    and two gaps (160), narrower than the row before air, so it is not counted; the peek's row is, so the switch can
@@ -636,6 +637,8 @@ type ControlsCells = Readonly<
 export function controlsHalfWidth(cells: ControlsCells): number {
   const widest = Math.max(
     4 * cells.iconButton + 3 * space.sm,
+    // A court code that waits adds More (Exit's ⋯) to the row before air: five buttons (court stream §6.4).
+    5 * cells.iconButton + 4 * space.sm,
     3 * cells.iconButton + 3 * space.sm + cells.peekCell,
     3 * cells.chip + 3 * space.sm + cells.autoChip,
     2 * cells.clockCell + space.sm,

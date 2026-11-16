@@ -4,12 +4,15 @@ import { cutNextLabel } from '@/domain/session/nextLine';
 import { columnLineKey, LINE_TIER, type LineTier } from '@/hooks/statusKey';
 import { useT } from '@/hooks/useLanguage';
 import { useEndedToHome } from '@/hooks/useEndedNotice';
+import { useBackCloses } from '@/hooks/useBackCloses';
+import { useCourtExit, type CourtExit } from '@/hooks/useCourtExit';
 import { useStreamLeave } from '@/hooks/useStreamLeave';
 import { useStreamLinks } from '@/hooks/useStreamLinks';
 import { useScoringLink } from '@/hooks/useScoringLink';
 import { useStreamSettings } from '@/hooks/useStreamSettings';
 import { useViewerCheck, type ViewerCheckView } from '@/hooks/useViewerCheck';
 import { useViewfinder, type Viewfinder } from '@/hooks/useViewfinder';
+import { LeaveCourtSheet } from '@/ui/components/LeaveCourtSheet';
 import { StreamColumn } from '@/ui/components/StreamColumn';
 import { StreamStage } from '@/ui/components/StreamStage';
 import { FEATURES } from '@/ui/features';
@@ -41,6 +44,8 @@ export function StreamScreen({ viewerCheck = FEATURES.viewerCheck }: ScreenProps
   const links = useStreamLinks();
   const scoring = useScoringLink(view.plate === 'trouble');
   const line = useColumnLine(view, leave.blocked);
+  const exit = useCourtExit(view.court, view.kind);
+  useBackCloses(exit.open, exit.stay);
   const halves: HalvesProps = {
     view,
     line,
@@ -49,6 +54,7 @@ export function StreamScreen({ viewerCheck = FEATURES.viewerCheck }: ScreenProps
     canLeave: leave.canLeave,
     onHome: leave.leave,
     onSettings: links.settings,
+    exit,
   };
   return viewerCheck ? <HalvesWithViewer {...halves} /> : <Halves {...halves} viewer={null} />;
 }
@@ -62,6 +68,8 @@ type HalvesProps = {
   readonly canLeave: boolean;
   readonly onHome: () => void;
   readonly onSettings: () => void;
+  /** Exit on a court code that waits (court stream §6.4): its ⋯ and its question. */
+  readonly exit: CourtExit;
 };
 
 /**
@@ -80,26 +88,38 @@ function HalvesWithViewer(props: HalvesProps) {
 
 /** The camera half and the controls half. `viewer` is null with What viewers see hidden (`FEATURES.viewerCheck`). */
 function Halves(props: HalvesProps & { readonly viewer: ViewerCheckView | null }) {
-  const { view, line, scoring, viewer } = props;
+  const { view, line, scoring, viewer, exit } = props;
   return (
-    <View testID="viewfinder" style={props.mirrored ? styles.mirrored : styles.halves}>
-      <StreamStage
-        line={line.text}
-        lineTier={line.tier}
-        viewer={viewer}
-        scoring={scoring.view}
-        scoringSecondsLeft={scoring.secondsLeft}
-        onHideScoring={scoring.hide}
-      />
-      <StreamColumn
-        view={view}
-        viewer={viewer}
-        canLeave={props.canLeave}
-        onHome={props.onHome}
-        onSettings={props.onSettings}
-        onScoringLink={scoring.open}
-        scoringOpen={scoring.view.kind !== 'hidden'}
-      />
+    <View testID="viewfinder-screen" style={styles.screen}>
+      {/* The halves are hidden from a screen reader while the Leave question covers them, as Match Day's list is (§6.4). */}
+      <View
+        testID="viewfinder"
+        style={props.mirrored ? styles.mirrored : styles.halves}
+        aria-hidden={exit.open}
+        importantForAccessibility={exit.open ? 'no-hide-descendants' : 'auto'}
+      >
+        <StreamStage
+          line={line.text}
+          lineTier={line.tier}
+          viewer={viewer}
+          scoring={scoring.view}
+          scoringSecondsLeft={scoring.secondsLeft}
+          onHideScoring={scoring.hide}
+        />
+        <StreamColumn
+          view={view}
+          viewer={viewer}
+          canLeave={props.canLeave}
+          onHome={props.onHome}
+          onSettings={props.onSettings}
+          onScoringLink={scoring.open}
+          scoringOpen={scoring.view.kind !== 'hidden'}
+          onMore={exit.offered ? exit.ask : null}
+        />
+      </View>
+      {exit.open && view.court !== null ? (
+        <LeaveCourtSheet court={view.court} onStay={exit.stay} onLeave={exit.leave} />
+      ) : null}
     </View>
   );
 }
@@ -127,6 +147,7 @@ function useColumnLine(view: Viewfinder, blocked: boolean): ColumnLine {
 }
 
 const styles = StyleSheet.create({
+  screen: { flex: 1 },
   halves: { flex: 1, flexDirection: 'row' },
   mirrored: { flex: 1, flexDirection: 'row-reverse' },
 });

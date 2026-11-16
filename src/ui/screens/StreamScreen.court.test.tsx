@@ -1,7 +1,13 @@
-import { act, screen } from '@testing-library/react';
+import { act, fireEvent, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import en from '@/i18n/en.json';
+import fr from '@/i18n/fr.json';
+import { UNPAIR_GIVE_UP_MS } from '@/hooks/useUnpair';
+import { STORE_KEYS } from '@/services/modeStore';
+import { readRecord } from '../../../test/fakePorts';
 import { renderViewfinder } from '../../../test/renderViewfinder';
+import { refusingStore } from '../../../test/refusingStore';
+import { encodeSavedCode } from '@/domain/mode/savedCode';
 import { savedCourtCode } from '../../../test/fixtures/savedStream';
 
 // Court stream (spec 2026-11-14 §6.2): the waiting screen on a court code. Copy is read from the dictionaries, the time
@@ -160,5 +166,148 @@ describe('a court phone on air', () => {
     act(() => view.engine.setPairing({ next: { label: 'C v D', scheduledStart: null } }));
     act(() => view.engine.scene('fell-back'));
     expect(message()).toBe(en['stream.status.fellBack']);
+  });
+});
+
+// Court stream (spec 2026-11-14 §6.4, O5, O12): Exit via ⋯ on the waiting screen. Every name is read from the dictionaries.
+describe('Exit on the court code’s waiting screen', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const more = () => screen.queryByRole('button', { name: en['stream.court.more'] });
+  const leaveTitle = () => screen.queryByText('Leave Court 2?');
+  const stay = () => screen.getByRole('button', { name: en['stream.court.stay'] });
+  const leave = () => screen.getByRole('button', { name: en['stream.court.leave'] });
+  const sent = (view: Awaited<ReturnType<typeof waiting>>, kind: string) =>
+    view.engine.intents.filter((intent) => intent.kind === kind);
+  const flush = () => act(() => vi.advanceTimersByTimeAsync(10));
+  const hidden = () => screen.getByTestId('viewfinder').getAttribute('aria-hidden');
+
+  it('shows a More button on a court code while it waits, and asks first when it is pressed', async () => {
+    const view = await waiting();
+    expect(more()).not.toBeNull();
+    expect(leaveTitle()).toBeNull();
+    fireEvent.click(more() as HTMLElement);
+    expect(leaveTitle()).not.toBeNull();
+    expect(screen.getByText(en['stream.court.leaveBody'])).toBeTruthy();
+    // Nothing is sent to the engine by asking.
+    expect(sent(view, 'unpair')).toEqual([]);
+  });
+
+  it('puts More last in the row of five', async () => {
+    await waiting();
+    const names = Array.from(
+      screen.getByTestId('icon-row').querySelectorAll('[role="button"]'),
+    ).map((button) => button.getAttribute('aria-label'));
+    expect(names).toHaveLength(5);
+    expect(names.at(-1)).toBe(en['stream.court.more']);
+  });
+
+  it('has no More on a fixture code, on air on a court code, or while arming', async () => {
+    await renderViewfinder({}, { quiet: true });
+    expect(more()).toBeNull();
+    const view = await waiting();
+    expect(more()).not.toBeNull();
+    act(() => view.engine.hear({ word: 'go-live', cause: 'organiser' }));
+    expect(view.engine.getSnapshot().state.kind).not.toBe('paired');
+    expect(more()).toBeNull();
+    act(() => view.engine.scene('live'));
+    expect(more()).toBeNull();
+  });
+
+  it('Stay closes the question and sends nothing to the engine', async () => {
+    const view = await waiting();
+    fireEvent.click(more() as HTMLElement);
+    fireEvent.click(stay());
+    expect(leaveTitle()).toBeNull();
+    expect(view.engine.intents.map((intent) => intent.kind)).toEqual(['pair']);
+    expect(view.navigation.current()).toBe('stream');
+  });
+
+  it('Back means Stay while it is open', async () => {
+    const view = await waiting();
+    fireEvent.click(more() as HTMLElement);
+    let handled = false;
+    act(() => {
+      handled = view.back.press();
+    });
+    expect(handled).toBe(true);
+    expect(leaveTitle()).toBeNull();
+    expect(view.navigation.current()).toBe('stream');
+  });
+
+  it('Leave unpairs, forgets the saved code, then goes Home; a second press sends one unpair', async () => {
+    const view = await waiting();
+    fireEvent.click(more() as HTMLElement);
+    fireEvent.click(leave());
+    await flush();
+    expect(sent(view, 'unpair')).toHaveLength(1);
+    expect(view.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
+    expect(view.navigation.current()).toBe('home');
+  });
+
+  // Review Focus 4: a remote Go live arrives while the Leave sheet is open.
+  it('closes the Leave sheet when the engine arms, and never unpairs', async () => {
+    const view = await waiting();
+    fireEvent.click(more() as HTMLElement);
+    expect(leaveTitle()).not.toBeNull();
+    act(() => view.engine.hear({ word: 'go-live', cause: 'organiser' }));
+    expect(leaveTitle()).toBeNull();
+    expect(sent(view, 'unpair')).toEqual([]);
+    await flush();
+    expect(sent(view, 'unpair')).toEqual([]);
+    expect(view.navigation.current()).toBe('stream');
+  });
+
+  it('hides the halves from a screen reader while the sheet is open, and shows them once it closes', async () => {
+    await waiting();
+    const halves = () => screen.getByTestId('viewfinder');
+    expect(halves().getAttribute('aria-hidden')).not.toBe('true');
+    fireEvent.click(more() as HTMLElement);
+    expect(hidden()).toBe('true');
+    fireEvent.click(stay());
+    expect(hidden()).not.toBe('true');
+  });
+
+  describe('a refused forget', () => {
+    const rejections: unknown[] = [];
+    const onRejection = (reason: unknown) => rejections.push(reason);
+    beforeEach(() => {
+      rejections.length = 0;
+      process.on('unhandledRejection', onRejection);
+    });
+    afterEach(() => process.off('unhandledRejection', onRejection));
+
+    it('stays on Live Stream and says so in the record', async () => {
+      const seed = {
+        [STORE_KEYS.active]: 'stream',
+        [STORE_KEYS.code('stream')]: encodeSavedCode(savedCourtCode()),
+      };
+      const modeStore = refusingStore(seed, (key) => key === STORE_KEYS.code('stream'));
+      const view = await renderViewfinder(
+        { modeStore, kvSeed: {} },
+        { saved: savedCourtCode(), quiet: true },
+      );
+      act(() => view.engine.scene('court-waiting'));
+      fireEvent.click(more() as HTMLElement);
+      fireEvent.click(leave());
+      await flush();
+      await act(() => vi.advanceTimersByTimeAsync(UNPAIR_GIVE_UP_MS));
+      expect(
+        readRecord(view.record).filter((line) => line.event === 'store.write-refused'),
+      ).toEqual([expect.objectContaining({ level: 'warn', fields: { action: 'court-leave' } })]);
+      expect(view.navigation.current()).toBe('stream');
+      expect(rejections).toEqual([]);
+    });
+  });
+
+  it('reads in French', async () => {
+    const view = await renderViewfinder(
+      { deviceLanguages: ['fr'] },
+      { saved: savedCourtCode(), quiet: true },
+    );
+    act(() => view.engine.scene('court-waiting'));
+    fireEvent.click(screen.getByRole('button', { name: fr['stream.court.more'] }));
+    expect(screen.getByText('Quitter Court 2 ?')).toBeTruthy();
   });
 });

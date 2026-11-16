@@ -1,0 +1,49 @@
+import { useCallback, useEffect, useState } from 'react';
+import type { SessionState } from '@/domain/session/SessionState';
+import { savedStream } from '@/hooks/savedStream';
+import { usePorts } from '@/hooks/usePorts';
+import { useUnpair } from '@/hooks/useUnpair';
+
+type Kind = SessionState['kind'];
+
+export type CourtExit = {
+  /** Exit is on the screen: a court code, waiting (Paired). Never on air, never while arming (O5). */
+  readonly offered: boolean;
+  /** The Leave question is showing. Forced shut whenever Exit is not offered, so an arming engine closes it. */
+  readonly open: boolean;
+  ask(): void;
+  stay(): void;
+  leave(): void;
+};
+
+/**
+ * Exit on a court code's waiting screen (court stream spec 2026-11-14 §6.4, O5, O12): the only way off a court, and it
+ * asks first. Leave follows Home's Forget: unpair, forget the saved code once the engine is Idle, then Home. A remote Go
+ * live that wins the race stands (`held`), and the code is kept. A second Leave while one is under way is dropped by
+ * `useUnpair`. The question belongs to the waiting screen: once the engine arms it closes for good, and it is not
+ * still open when the match ends and the court waits again.
+ */
+export function useCourtExit(court: string | null, kind: Kind): CourtExit {
+  const { modeStore, navigation, logger } = usePorts();
+  const unpair = useUnpair();
+  const [asked, setAsked] = useState(false);
+  const offered = court !== null && kind === 'paired';
+  useEffect(() => {
+    if (!offered) setAsked(false);
+  }, [offered]);
+  const ask = useCallback(() => setAsked(true), []);
+  const stay = useCallback(() => setAsked(false), []);
+  const leave = useCallback(() => {
+    setAsked(false);
+    const code = savedStream(modeStore); // the code on screen when Leave was pressed (C4b-I2)
+    if (code === null) return;
+    unpair('forget', (outcome) => {
+      if (outcome === 'held') return; // a remote Go live won the race: the broadcast stands
+      void modeStore.forget(code).then(
+        (forgot) => (forgot ? navigation.go('home') : undefined),
+        () => logger.warn('store.write-refused', { action: 'court-leave' }),
+      );
+    });
+  }, [modeStore, navigation, logger, unpair]);
+  return { offered, open: offered && asked, ask, stay, leave };
+}
