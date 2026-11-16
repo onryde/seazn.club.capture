@@ -88,7 +88,7 @@ function HalvesWithViewer(props: HalvesProps) {
 
 /** The camera half and the controls half. `viewer` is null with What viewers see hidden (`FEATURES.viewerCheck`). */
 function Halves(props: HalvesProps & { readonly viewer: ViewerCheckView | null }) {
-  const { view, line, scoring, viewer, exit } = props;
+  const { view, exit } = props;
   return (
     <View testID="viewfinder-screen" style={styles.screen}>
       {/* The halves are hidden from a screen reader while the Leave question covers them, as Match Day's list is (§6.4). */}
@@ -98,24 +98,7 @@ function Halves(props: HalvesProps & { readonly viewer: ViewerCheckView | null }
         aria-hidden={exit.open}
         importantForAccessibility={exit.open ? 'no-hide-descendants' : 'auto'}
       >
-        <StreamStage
-          line={line.text}
-          lineTier={line.tier}
-          viewer={viewer}
-          scoring={scoring.view}
-          scoringSecondsLeft={scoring.secondsLeft}
-          onHideScoring={scoring.hide}
-        />
-        <StreamColumn
-          view={view}
-          viewer={viewer}
-          canLeave={props.canLeave}
-          onHome={props.onHome}
-          onSettings={props.onSettings}
-          onScoringLink={scoring.open}
-          scoringOpen={scoring.view.kind !== 'hidden'}
-          onMore={exit.offered ? exit.ask : null}
-        />
+        <TwoHalves {...props} />
       </View>
       {exit.open && view.court !== null ? (
         <LeaveCourtSheet court={view.court} onStay={exit.stay} onLeave={exit.leave} />
@@ -124,13 +107,40 @@ function Halves(props: HalvesProps & { readonly viewer: ViewerCheckView | null }
   );
 }
 
+/** The camera half, then the controls half: the two children of the viewfinder's row. */
+function TwoHalves(props: HalvesProps & { readonly viewer: ViewerCheckView | null }) {
+  const { view, line, scoring, viewer, exit } = props;
+  return (
+    <>
+      <StreamStage
+        line={line.text}
+        lineTier={line.tier}
+        viewer={viewer}
+        scoring={scoring.view}
+        scoringSecondsLeft={scoring.secondsLeft}
+        onHideScoring={scoring.hide}
+      />
+      <StreamColumn
+        view={view}
+        viewer={viewer}
+        canLeave={props.canLeave}
+        onHome={props.onHome}
+        onSettings={props.onSettings}
+        onScoringLink={scoring.open}
+        scoringOpen={scoring.view.kind !== 'hidden'}
+        onMore={exit.offered ? exit.ask : null}
+      />
+    </>
+  );
+}
+
 type ColumnLine = { readonly text: string; readonly tier: LineTier };
 
 /**
  * The one true sentence: the status line, or Back's refusal over a calm one
  * (ruling I2), with its tier (`LINE_TIER`: an urgent line always wins the strip's one
- * message line, a routine one gives way to a caption). `{destination}` and a court's `{label}` are cut at 24, the
- * width every budget counts. It is said in the status strip, under the shot, and made here once.
+ * message line, a routine one gives way to a caption). `{destination}` is cut at 24, the width every budget counts, and a court's
+ * `{label}` by how wide it draws (`cutNextLabel`). It is said in the status strip, under the shot, and made here once.
  */
 function useColumnLine(view: Viewfinder, blocked: boolean): ColumnLine {
   const { t } = useT();

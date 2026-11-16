@@ -79,8 +79,11 @@ describe('the Leave question fits at 728 × 328 in four languages', () => {
     expect(2 * 200 + space.sm).toBeLessThanOrEqual(ROOM);
   });
 
-  it('is shorter than the screen it covers, with the phone’s height as laid out', () => {
+  it('is shorter than the screen it covers, in every language, with the longest court name and the plates a touch target', () => {
+    // The first test holds the sheet to three quarters of the screen; this is the bound the sheet must never pass.
+    for (const lang of LANGS) expect(sheetHeight(lang, LONGEST).height, lang).toBeLessThan(HEIGHT);
+    // A plate is at least the touch size the layout asks for (the lime Button's 56 and the outline's, one row).
+    expect(PLATE).toBeGreaterThanOrEqual(layout.touch);
     expect(HEIGHT).toBe(328);
-    expect(layout.touch).toBe(48);
   });
 });
