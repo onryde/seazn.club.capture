@@ -3,7 +3,7 @@ import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
 import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
-import { cutNextLabel } from '@/domain/session/nextLine';
+import { advanceOf, cutNextLabel } from '@/domain/session/nextLine';
 import { font, layout } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
 import { loadFont } from '../../../test/fontMetrics';
@@ -41,7 +41,7 @@ const DESTINATIONS = {
 } as const;
 
 /** The Next line's fills (court stream §6.2): a realistic label as the line cuts it, and a time with its zone. */
-const NEXT_LABEL = cutNextLabel('Example Town v Sample Cricket Club'); // "Example Town v Sample C…"
+const NEXT_LABEL = cutNextLabel('Example Town v Sample Cricket Club'); // "Example Town v Sample Crick…"
 const NEXT_TIME = '14:32 CEST';
 
 const geist400 = loadFont('geist-400');
@@ -275,7 +275,8 @@ describe('the strip’s one message line, measured in every language (owner, 202
   });
 
   // Court stream (spec 2026-11-14 §6.2): what a court phone says while it waits is ONE line at the owner's phone's 386 dp, in
-  // all four languages, the time visible (I4): the label is cut at 24 so the time is never the part an ellipsis eats.
+  // all four languages, the time visible (I4): the label is cut by how wide it draws (`cutNextLabel`), so the time is
+  // never the part an ellipsis eats.
   it('fits the court waiting lines on ONE line at 386 dp in all four languages, the time visible', () => {
     const KEYS = [
       'stream.status.courtNextAt',
@@ -285,27 +286,95 @@ describe('the strip’s one message line, measured in every language (owner, 202
     ];
     const rows = REALISTIC.filter((row) => KEYS.includes(row.key));
     expect(rows).toHaveLength(16);
+    expect(NEXT_LABEL).toBe('Example Town v Sample Crick…');
     expect(
       rows.filter(
         (row) => row.key === 'stream.status.courtNextAt' && !row.text.endsWith(NEXT_TIME),
       ),
     ).toEqual([]);
     expect(rows.filter((row) => row.width > PHONE).map(name)).toEqual([]);
-    // The pathological label, 24 of the widest capital with the widest time, is cut at the owner's phone in every language,
-    // as the waiting line's own 24-W destination is (the rows above): the cut label keeps the time inside 48 characters,
-    // and real labels are far narrower than a row of W.
-    const w24 = LANGUAGES.map(([lang, dictionary]) => {
-      const text = (dictionary['stream.status.courtNextAt'] as string)
-        .replaceAll('{label}', DESTINATIONS.w24)
-        .replaceAll('{time}', NEXT_TIME);
-      return { lang, cut: geist400.width(text, typeScale.body.fontSize) > PHONE };
+  });
+
+  // P3 review m2: the label's CHARACTER count is not its width, and organisers type team names in capitals. Every label
+  // below, as the line cuts it, leaves the whole line (with the widest time and zone) inside 386 dp in every language:
+  // realistic ones in capitals and not, then the worst a label can be of each kind of glyph.
+  describe('the Next line keeps its time at 386 dp whatever the label is', () => {
+    const lineWidth = (dictionary: Record<string, string>, label: string, key: string) =>
+      geist400.width(
+        (dictionary[key] as string)
+          .replaceAll('{label}', cutNextLabel(label))
+          .replaceAll('{time}', NEXT_TIME),
+        typeScale.body.fontSize,
+      );
+    const REAL_LABELS = [
+      'WOLVERHAMPTON WANDERERS',
+      'MANCHESTER UNITED FC U12',
+      'EXAMPLE TOWN V SAMPLE CRICKET CLUB',
+      'Wolverhampton Wanderers',
+      'Atlético Madrid v Málaga CF',
+      'Example Town v Sample Cricket Club',
+      'Centre Court, Show Arena',
+    ];
+    // The worst of each class: the widest capital, the widest lower-case, the widest digit, a symbol, a wide ligature,
+    // a glyph the font lacks, and a mix of the widest of each.
+    const WORST_LABELS = [
+      'W'.repeat(60),
+      'm'.repeat(60),
+      '0'.repeat(60),
+      '@'.repeat(60),
+      'Œ'.repeat(60),
+      '字'.repeat(60),
+      'WmW@mW0WmW@mW0WmW@mW0WmW@mW0',
+    ];
+
+    it.each(LANGUAGES)(
+      '%s: every label leaves the time on the line, with and without a time',
+      (_lang, dictionary) => {
+        for (const label of [...REAL_LABELS, ...WORST_LABELS])
+          for (const key of ['stream.status.courtNextAt', 'stream.status.courtNext']) {
+            const width = lineWidth(dictionary, label, key);
+            expect({ label, key, fits: width <= PHONE }).toEqual({ label, key, fits: true });
+          }
+      },
+    );
+
+    // Anti-vacuity: the cut is what saves it, a 24-character count would not (24 of the widest capital is 340 dp
+    // of label), and a realistic capitals label is cut only where the line would otherwise not fit.
+    it('is the cut that fits it: uncut, a row of 24 capitals is wider than the line in every language', () => {
+      for (const [lang, dictionary] of LANGUAGES) {
+        const uncut = (dictionary['stream.status.courtNextAt'] as string)
+          .replaceAll('{label}', 'W'.repeat(24))
+          .replaceAll('{time}', NEXT_TIME);
+        expect(geist400.width(uncut, typeScale.body.fontSize) > PHONE, lang).toBe(true);
+        expect(cutNextLabel('W'.repeat(24)), lang).not.toBe('W'.repeat(24));
+      }
     });
-    expect(w24).toEqual([
-      { lang: 'en', cut: true },
-      { lang: 'es', cut: true },
-      { lang: 'fr', cut: true },
-      { lang: 'nl', cut: true },
-    ]);
+
+    it('does not cut a label that fits: 24 characters of mixed case and of capitals with room, in the tightest language', () => {
+      for (const label of [
+        'Example Town v Sample CC',
+        'MANCHESTER UNITED FC U12',
+        'Centre Court, Show Arena',
+      ])
+        expect(cutNextLabel(label)).toBe(label);
+    });
+
+    // The advances written in nextLine.ts are an upper bound of the font file's, glyph by glyph over U+0020 to U+017F
+    // (the Latin letters, digits and punctuation a team's name has), so the sums above bound the real line.
+    it('has an advance for every glyph of U+0020 to U+017F no smaller than the font’s own', () => {
+      const size = typeScale.body.fontSize;
+      const short: string[] = [];
+      let checked = 0;
+      for (let code = 0x20; code <= 0x17f; code += 1) {
+        if (code >= 0x7f && code < 0xa0) continue;
+        const letter = String.fromCodePoint(code);
+        checked += 1;
+        if ((geist400.width(letter, size) / size) * 1000 > advanceOf(letter))
+          short.push(`${letter} U+${code.toString(16)}`);
+      }
+      expect(short).toEqual([]);
+      expect(checked).toBe(319);
+    });
   });
 
   // The heat caption with What viewers see hidden (the owner's ruling, 2026-10-09): both wordings are ONE line at 298 dp

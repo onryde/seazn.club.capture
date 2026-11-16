@@ -4,7 +4,6 @@ import es from '@/i18n/es.json';
 import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
 import { DESTINATION_CAP } from '@/domain/session/destination';
-import { NEXT_LABEL_CAP } from '@/domain/session/nextLine';
 
 /**
  * Copy budgets for the HUD column (S0 R-budget; spec §6 "the longest one on
@@ -64,8 +63,9 @@ const WIDEST: Readonly<Record<string, string>> = {
   seconds: '300',
   // Amendment §2, footnote 1: `cutDestination` never lets the name past 24.
   destination: 'X'.repeat(DESTINATION_CAP),
-  // Court stream: `cutNextLabel` never lets the next match's label past 24, an ellipsis last (the widest capital).
-  label: `${'W'.repeat(NEXT_LABEL_CAP - 1)}…`,
+  // Court stream: `cutNextLabel` cuts by width, not by count (stripTextFit.test.ts proves the line fits at 386 dp). A
+  // label's characters are counted here as 24 of the widest capital, more than any realistic label has.
+  label: `${'W'.repeat(23)}…`,
 };
 
 const fill = (text: string) =>

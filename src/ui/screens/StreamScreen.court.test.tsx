@@ -96,7 +96,7 @@ describe('the court code’s waiting screen', () => {
     expect(message()).toBe(en['stream.status.waitingDestination']);
   });
 
-  it('cuts a long next label at 24 characters so the start time stays on the line', async () => {
+  it('cuts a long next label by its width so the start time stays on the line', async () => {
     const view = await waiting();
     act(() =>
       view.engine.setPairing({
@@ -106,7 +106,21 @@ describe('the court code’s waiting screen', () => {
         },
       }),
     );
-    expect(message()).toBe('Next: Example Town v Sample C… · 14:00');
+    expect(message()).toBe('Next: Example Town v Sample Crick… · 14:00');
+  });
+
+  // P3 review m2: organisers type names in capitals, which draw half as wide again as the same letters in mixed case.
+  it('cuts a label in capitals sooner than the same letters in mixed case, and keeps the time', async () => {
+    const view = await waiting();
+    const start = new Date('2026-11-14T14:00:00Z');
+    act(() =>
+      view.engine.setPairing({ next: { label: 'WOLVERHAMPTON WANDERERS', scheduledStart: start } }),
+    );
+    expect(message()).toBe('Next: WOLVERHAMPTON WANDER… · 14:00');
+    act(() =>
+      view.engine.setPairing({ next: { label: 'Wolverhampton Wanderers', scheduledStart: start } }),
+    );
+    expect(message()).toBe('Next: Wolverhampton Wanderers · 14:00');
   });
 
   // Review Focus 5, after an interruption: a match that ended normally gives way to the Next line all afternoon.
