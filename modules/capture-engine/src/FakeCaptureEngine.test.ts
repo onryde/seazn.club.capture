@@ -909,6 +909,37 @@ describe('court codes', () => {
     expect(snapshot().lastEnd).toBeNull();
   });
 
+  // P2 review m3: native resets the court with each pair request, so a fixture pair after a court one holds none,
+  // even when the court was set by setPairing (which the fake keeps for every later pairing).
+  it('gives a fixture pair no court or next, whatever setPairing set before', () => {
+    engine.setPairing({ court: 'Court 2', next: NEXT });
+    pair(KIT_CODE_B);
+    expect(snapshot().pairing).toMatchObject({ court: null, next: null });
+    // A court's pair keeps what setPairing set for it.
+    engine.send({ kind: 'unpair' });
+    pair(COURT);
+    expect(snapshot().pairing).toMatchObject({ court: 'Court 2', next: NEXT });
+  });
+
+  // P2 review m2: a scene's own pairing fields end with the scene.
+  it('drops court-waiting’s court and next when the next scene plays', () => {
+    engine.scene('court-waiting');
+    engine.scene('paired-ready');
+    expect(snapshot().pairing).toMatchObject({ court: null, next: null });
+    // A court from the pair stays through a later scene: it is the pairing's, not the scene's.
+    engine.send({ kind: 'unpair' });
+    pair(COURT);
+    engine.scene('live');
+    expect(snapshot().pairing?.court).toBe('Court 2');
+  });
+
+  it('keeps a field setPairing changed after the scene, through the next scene', () => {
+    engine.scene('court-waiting');
+    engine.setPairing({ next: { ...NEXT, label: 'Another v Match' } });
+    engine.scene('paired-ready');
+    expect(snapshot().pairing).toMatchObject({ court: null, next: { label: 'Another v Match' } });
+  });
+
   // O12 (owner, 2026-11-15): no one-tap Forget on a court's notification; a late tap is ignored, as native's.
   it('ignores the notification’s Forget on a court pairing, and keeps it paired', () => {
     pair(COURT);

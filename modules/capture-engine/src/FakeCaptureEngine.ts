@@ -517,6 +517,11 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
   const primary: Transport = 'srt';
   let permissions: PermissionAnswer = 'grant';
   let waiting: Partial<PairingInfo> = {};
+  /**
+   * What a scene's own `pairing` fields replaced, so the next scene puts them back: a scene's override ends with the
+   * scene (P2 review m2). A pair, a rest and `setPairing` (for the fields it changes) clear it.
+   */
+  let sceneUndo: Partial<PairingInfo> = {};
   const intentKinds: EngineIntent['kind'][] = [];
   const listeners = new Set<() => void>();
   let pending: ReturnType<typeof setTimeout> | null = null;
@@ -591,9 +596,13 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
         ? { stageLabel: intent.stageLabel }
         : {}),
       // Native seeds the court from the pair (court stream §6.1), so a court code's pairing is one before any GET.
-      ...(intent.court !== undefined ? { court: intent.court } : {}),
+      // Native resets both with each pair request, so a fixture pair holds neither, whatever `setPairing` set
+      // before (P2 review m3): `waiting` is kept for a court's pair only.
+      court: intent.court ?? null,
+      next: intent.court === undefined ? null : (waiting.next ?? null),
       automatic: intent.automatic,
     };
+    sceneUndo = {};
     if (permissions === 'hold') {
       return show({ kind: 'pairing' }, { ...AT_REST, pairing, ready: NOT_READY });
     }
@@ -713,8 +722,17 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
 
   const play = (scene: Scene): void => {
     cancelPending();
-    const held = { ...(snapshot.pairing ?? { ...FAKE_PAIRING, ...waiting }), ...scene.pairing };
     const resting = scene.state.kind === 'idle';
+    const base =
+      snapshot.pairing === null
+        ? { ...FAKE_PAIRING, ...waiting }
+        : { ...snapshot.pairing, ...sceneUndo };
+    const held = { ...base, ...scene.pairing };
+    sceneUndo = resting
+      ? {}
+      : (Object.fromEntries(
+          Object.keys(scene.pairing ?? {}).map((key) => [key, base[key as keyof PairingInfo]]),
+        ) as Partial<PairingInfo>);
     // A pairing native left was paired first: on native an unpair is always reached through
     // Pairing, which names none (review C5, re-review round 1).
     if (resting) show({ kind: 'pairing' }, { ...AT_REST, pairing: held, ready: NOT_READY });
@@ -786,6 +804,7 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     setPermissions,
     setPairing: (change) => {
       waiting = { ...waiting, ...change };
+      for (const key of Object.keys(change)) delete sceneUndo[key as keyof PairingInfo];
       if (snapshot.pairing !== null) publish({ pairing: { ...snapshot.pairing, ...change } });
     },
     notificationForget: () => {
