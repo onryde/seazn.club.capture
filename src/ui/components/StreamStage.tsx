@@ -7,6 +7,7 @@ import {
   selectShedding,
   topAdvisory,
 } from '@/hooks/advisory';
+import { selectCourtWaiting } from '@/hooks/engineSelectors';
 import type { LineTier } from '@/hooks/statusKey';
 import { useEngineSelector } from '@/hooks/useCaptureEngine';
 import { usePorts } from '@/hooks/usePorts';
@@ -17,7 +18,12 @@ import { PreviewBoundary } from '@/ui/components/PreviewBoundary';
 import { ScoringLinkPanel } from '@/ui/components/ScoringLinkPanel';
 import { StatusStrip } from '@/ui/components/StatusStrip';
 import { ViewerCover } from '@/ui/components/ViewerCover';
-import { cameraBoxSize, stripReserve, type BoxSize } from '@/ui/theme/cameraBox';
+import {
+  cameraBoxSize,
+  stripReserve,
+  STRIP_RESERVE_NO_LABEL,
+  type BoxSize,
+} from '@/ui/theme/cameraBox';
 import { colour, layout } from '@/ui/theme/tokens';
 
 type StageProps = {
@@ -61,13 +67,16 @@ type StageProps = {
  * `half` or `labelHeight`. Before the label is measured (0) the reserve is the
  * worst case, so the strip is never short. The half reports its size once laid
  * out; until then the box is the full-width 16:9 one, for the frame before the
- * first layout.
+ * first layout. A court code waiting between matches draws no label, so its picture is sized against the strip without
+ * that row (`STRIP_RESERVE_NO_LABEL`), not the worst case an unmeasured label stands for (P3 review m1).
  */
 export const StreamStage = memo(function StreamStage(props: StageProps) {
   const shed = useEngineSelector(selectShedding);
   const charging = useEngineSelector(selectCharging);
   const keepOpen = useEngineSelector(selectKeepOpen);
   const live = useEngineSelector(selectPublishing);
+  // A court code waiting between matches draws no label (the Next line names the match): its strip is shorter by that row.
+  const courtWaiting = useEngineSelector(selectCourtWaiting);
   const advisory = topAdvisory({
     shed,
     charging,
@@ -91,10 +100,10 @@ export const StreamStage = memo(function StreamStage(props: StageProps) {
         : cameraBoxSize({
             halfWidth: half.width,
             height: half.height,
-            stripContent: stripReserve(labelHeight),
+            stripContent: courtWaiting ? STRIP_RESERVE_NO_LABEL : stripReserve(labelHeight),
             aspect: layout.previewAspect,
           }),
-    [half, labelHeight],
+    [half, labelHeight, courtWaiting],
   );
   return (
     <View testID="camera-half" style={styles.half} onLayout={onLayout}>

@@ -154,8 +154,8 @@ describe('the status strip always shows the round line, whenever there is one (o
 });
 
 // Court stream (spec 2026-11-14 §6.2, I4): a court code's round line leads with the court's name, and while the court
-// waits (Paired) the match label is not drawn: the Next line names the match. The label's height, the picture's one
-// input, is then said as 0 (unmeasured), and the label row comes back on air.
+// waits (Paired) the match label is not drawn: the Next line names the match. The strip says no height then (the stage
+// sizes the picture against a strip with no label row, STRIP_RESERVE_NO_LABEL), and the label row comes back on air.
 describe('the status strip on a court code', () => {
   const courtStrip = (pairing: Partial<PairingInfo>, onLabelHeight?: (height: number) => void) => {
     standIn.report = undefined;
@@ -176,11 +176,11 @@ describe('the status strip on a court code', () => {
     expect(line()?.textContent).toBe('Court 2 · Semi-final');
   });
 
-  it('hides the match label while paired, and says its height is 0 (unmeasured)', () => {
+  it('hides the match label while paired, and reports no label height (there is no label to measure)', () => {
     const heights: number[] = [];
     courtStrip({ court: 'Court 2' }, (height) => heights.push(height));
     expect(screen.queryByTestId('match-label')).toBeNull();
-    expect(heights).toContain(0);
+    expect(heights).toEqual([]);
   });
 
   it('brings the match label back on air, and keeps the court on the round line', () => {

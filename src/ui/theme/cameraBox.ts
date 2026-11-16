@@ -50,6 +50,18 @@ export function stripReserve(labelHeight: number): number {
 }
 
 /**
+ * The strip's reserve with no match label drawn: a court code waiting between matches, where the Next line names the match
+ * (court stream spec 2026-11-14 §6.2, I4). The padding, the round line's slot, one gap and the message line: the
+ * label's row and its gap are not there, so the picture is the size a one-line strip lets it be, not the worst case that
+ * an unmeasured label is sized against. The label comes back, measured, on air.
+ */
+export const STRIP_RESERVE_NO_LABEL =
+  2 * layout.stripPadV +
+  layout.stageLines * typeScale.metricUnit.lineHeight +
+  layout.stripGap +
+  layout.messageLines * typeScale.body.lineHeight;
+
+/**
  * The label at its worst, whatever the width (C2, D2 §4.4): two sides of at most `labelSideLines` (2) lines each, at
  * the one `label` size, 4 × 22 = 88. It derives from the per-side cap (ledger P10), so the cap and the reserve cannot
  * drift apart. A label that does not split into sides is one row of at most 2 lines, so never the worst.

@@ -5,6 +5,7 @@ import fr from '@/i18n/fr.json';
 import { UNPAIR_GIVE_UP_MS } from '@/hooks/useUnpair';
 import { STORE_KEYS } from '@/services/modeStore';
 import { readRecord } from '../../../test/fakePorts';
+import { layOut } from '../../../test/layOut';
 import { renderViewfinder } from '../../../test/renderViewfinder';
 import { refusingStore } from '../../../test/refusingStore';
 import { encodeSavedCode } from '@/domain/mode/savedCode';
@@ -44,6 +45,26 @@ describe('the court code’s waiting screen', () => {
     expect(screen.getByTestId('match-label')).toBeTruthy();
     // The round line still names the court on air.
     expect(roundLine()).toBe('Court 2');
+  });
+
+  // P3 review m1, spec §6.2 "the camera half stays as today while waiting": no label row, so the picture is not sized
+  // against the worst case (154 dp) that an unmeasured label stands for. 728 x 328 as laid out (N35): the camera half
+  // is 418 x 328. Against 154 the box would be 309.3 x 174; with no label row (60 dp) it is the whole half, 418 x 235.125.
+  it('sizes the picture for a strip with no label row, then for the label once the match is live', async () => {
+    const view = await waiting();
+    layOut(screen.getByTestId('camera-half'), { width: 418, height: 328 });
+    const box = () => getComputedStyle(screen.getByTestId('camera-box'));
+    expect([box().width, box().height]).toEqual(['418px', '235.125px']);
+    act(() => view.engine.scene('live'));
+    // On air, before the label is measured, the picture is sized against the worst case, as it always was (154 dp).
+    expect(Number.parseFloat(box().height)).toBeCloseTo(174, 2);
+    layOut(screen.getByTestId('match-label'), { width: 300, height: 44 });
+    // A two-line label (44) reserves 110: 387.56 x 218, as it always did on air.
+    expect(Number.parseFloat(box().height)).toBeCloseTo(218, 2);
+    expect(Number.parseFloat(box().width)).toBeCloseTo(387.5555556, 2);
+    // And back to waiting at the end of the match: the label row is gone again, and so is its reserve.
+    act(() => view.engine.scene('court-waiting'));
+    expect([box().width, box().height]).toEqual(['418px', '235.125px']);
   });
 
   // Four questions (2): an empty input, each in turn.

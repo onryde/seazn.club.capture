@@ -1,4 +1,4 @@
-import { memo, useEffect } from 'react';
+import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { ADVISORY_KEY, type Advisory } from '@/hooks/advisory';
 import { selectCourtWaiting, selectRoundLine } from '@/hooks/engineSelectors';
@@ -51,10 +51,6 @@ export const StatusStrip = memo(function StatusStrip({
   const round = useEngineSelector(selectRoundLine);
   // A court code waiting between matches: the Next line names the match, so the label is not shown twice (I4).
   const courtWaiting = useEngineSelector(selectCourtWaiting);
-  // The label's height is the picture's one input: with no label drawn, there is none to report (it is unmeasured).
-  useEffect(() => {
-    if (courtWaiting) onLabelHeight?.(0);
-  }, [courtWaiting, onLabelHeight]);
   return (
     <View testID="status-strip" style={styles.strip}>
       {round !== null ? <StageLine text={round} /> : null}
