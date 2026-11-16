@@ -181,6 +181,17 @@ class SnapshotWireTest {
         val snapshot = bare(SnapshotState.Paired, 1_790_000_007_000).copy(pairing = PairingView(name, true, waiting), ready = allReady, camera = CameraState.OWN)
         SnapshotWire.of(snapshot, PlatformFacts(survivesBackground = true), clean)
       },
+      // Court stream (spec 2026-11-14 §6.1, §5.3): a court pairing's court, and the beat's next with a start, then none.
+      "paired-court-with-next" to {
+        val waiting = waiting().copy(courtName = "Court 2", next = NextMatch("Northside v Riverside", 1_793_538_000))
+        val snapshot = bare(SnapshotState.Paired, 1_790_000_008_000).copy(pairing = PairingView(name, true, waiting), ready = allReady, camera = CameraState.OWN)
+        SnapshotWire.of(snapshot, PlatformFacts(survivesBackground = true), clean)
+      },
+      "paired-court-no-next" to {
+        val waiting = waiting().copy(courtName = "Court 2")
+        val snapshot = bare(SnapshotState.Paired, 1_790_000_009_000).copy(pairing = PairingView(name, true, waiting), ready = allReady, camera = CameraState.OWN)
+        SnapshotWire.of(snapshot, PlatformFacts(survivesBackground = true), clean)
+      },
     )
 
   /** `{ ...base, ...overrides }` when the case's value is an object; `null` stays `null`. */
@@ -244,7 +255,7 @@ class SnapshotWireTest {
   @Test
   fun `carries 3, 5, 6 each native snapshot becomes the shared wire`() {
     val cases = cases()
-    assertEquals(17, cases.size, "the vector file's seventeen cases")
+    assertEquals(19, cases.size, "the vector file's nineteen cases")
     assertEquals(cases.map { it.first }.toSet(), builders.keys, "one builder per case")
     for ((name, expected) in cases) assertJsonEquals(expected, JSONObject(WireJson.encode(builders.getValue(name)())), name)
   }
@@ -447,6 +458,8 @@ class SnapshotWireTest {
   private val full =
     Sources(
       live.copy(
+        // A court pairing with a next, so a change to the court or to either half of next can show.
+        pairing = live.pairing!!.copy(waiting = live.pairing!!.waiting.copy(courtName = "Court 1", next = NextMatch("Example Town v Sample CC", 1_793_534_400))),
         refusal = Refusal.NO_CREDIT,
         lastEnd = LastEnd.NO_SIGNAL,
         unpaired = Unpaired(UnpairReason.TAKEN, name),
@@ -527,6 +540,9 @@ class SnapshotWireTest {
       "pairing.waiting.destinationName" to { s -> s.waiting { copy(destinationName = null) } },
       "pairing.waiting.pollSeconds" to { s -> s.waiting { copy(pollSeconds = 60) } },
       "pairing.waiting.stageLabel" to { s -> s.waiting { copy(stageLabel = "Open · SF") } },
+      "pairing.waiting.courtName" to { s -> s.waiting { copy(courtName = "Court 2") } },
+      "pairing.waiting.next.label" to { s -> s.waiting { copy(next = next!!.copy(label = "A v B")) } },
+      "pairing.waiting.next.scheduledStartEpochS" to { s -> s.waiting { copy(next = next!!.copy(scheduledStartEpochS = null)) } },
       "broadcast.sid" to { s -> s.broadcast { copy(sid = "sess_43") } },
       "broadcast.cause" to { s -> s.broadcast { copy(cause = Cause.OPERATOR) } },
       "broadcast.playbackUrl" to { s -> s.broadcast { copy(playbackUrl = "$playbackUrl?x") } },
@@ -566,10 +582,6 @@ class SnapshotWireTest {
       "device.charging" to ("a copy: the projection sets the snapshot's charging from it, and that crosses" to { s -> s.device { copy(charging = false) } }),
       "device.shed" to ("a copy: the projection sets the snapshot's shed from it, and that crosses" to { s -> s.device { copy(shed = ShedStep.ENCODE) } }),
       "pairing.waiting.stageFor" to ("the match the stage was read with: the engine's own check against a beat's label, never shown" to { s -> s.waiting { copy(stageFor = "Sample CC v Example Town") } }),
-      // Court stream plan Task 2 reads these; its Task 4 crosses them and moves them to [crosses].
-      "pairing.waiting.courtName" to ("read, not crossed yet (court stream plan Task 4)" to { s -> s.waiting { copy(courtName = "Court 2") } }),
-      "pairing.waiting.next.label" to ("read, not crossed yet (court stream plan Task 4)" to { s -> s.waiting { copy(next = NextMatch("A v B", null)) } }),
-      "pairing.waiting.next.scheduledStartEpochS" to ("read, not crossed yet (court stream plan Task 4)" to { s -> s.waiting { copy(next = NextMatch("A v B", 1_793_534_400)) } }),
     )
 
   @Test

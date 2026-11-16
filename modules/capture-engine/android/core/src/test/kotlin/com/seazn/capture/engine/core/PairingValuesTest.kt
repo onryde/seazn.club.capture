@@ -2,6 +2,7 @@ package com.seazn.capture.engine.core
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class PairingValuesTest {
@@ -95,5 +96,43 @@ class PairingValuesTest {
     assertEquals(Cause.ORGANISER, Cause.startedBy("organiser"))
     assertEquals(Cause.ORGANISER, Cause.startedBy("rejoin"))
     assertEquals(Cause.ORGANISER, Cause.startedBy(null))
+  }
+
+  // Court stream (spec 2026-11-14 §6.1, §5.3): the merge rules. A beat carries no court, and a descriptor no next.
+  private val held = Configs.waiting().copy(courtName = "Court 2", next = NextMatch("A v B", 1_793_534_400))
+
+  /** A beat's answer as Bodies reads it: no zone (D4), no court, and [next] as the beat said. */
+  private fun beat(next: NextMatch?) = Configs.waiting().copy(venueTimezone = "", next = next)
+
+  @Test
+  fun `a beat keeps the held court, and its next replaces the held one - none clears it`() {
+    val bare = beat(next = null)
+    assertEquals("Court 2", bare.overBeat(held).courtName, "a beat carries no court")
+    // A beat with no next clears it: the court has no next streamed match now.
+    assertNull(bare.overBeat(held).next)
+    val next = NextMatch("C v D", null)
+    assertEquals(next, beat(next).overBeat(held).next)
+    // Four questions (1): the same next twice leaves it unchanged, and a third beat without one clears it.
+    val twice = beat(next).overBeat(beat(next).overBeat(held))
+    assertEquals(next, twice.next)
+    assertEquals("Court 2", twice.courtName)
+    assertNull(bare.overBeat(twice).next)
+    assertEquals("Court 2", bare.overBeat(twice).courtName)
+    // A fixture's code: no court held, none after.
+    assertNull(beat(next).overBeat(Configs.waiting()).courtName)
+  }
+
+  @Test
+  fun `a descriptor's court replaces the held one, its silence keeps it, and it keeps the held next`() {
+    val descriptor = Configs.waiting().copy(venueTimezone = "Europe/Madrid")
+    assertEquals("Court 3", descriptor.copy(courtName = "Court 3").over(held).courtName)
+    // Never a fixture's code by silence: a court pairing stays one (spec §3).
+    assertEquals("Court 2", descriptor.over(held).courtName)
+    // A descriptor never carries next (capture-descriptor.v1): the beat's stands. Four questions (3): at a reconnect too.
+    assertEquals(NextMatch("A v B", 1_793_534_400), descriptor.over(held).next)
+    assertEquals(NextMatch("A v B", 1_793_534_400), descriptor.copy(next = NextMatch("X v Y", null)).over(held).next)
+    // The zone rule is as before: the descriptor's zone replaces the held one, and an empty one keeps it.
+    assertEquals("Europe/Madrid", descriptor.over(held).venueTimezone)
+    assertEquals("Europe/London", descriptor.copy(venueTimezone = "").over(held).venueTimezone)
   }
 }

@@ -225,6 +225,8 @@ export const FAKE_PAIRING: PairingInfo = {
   destinationName: 'YouTube · Fake CC',
   pollSeconds: 60,
   stageLabel: null,
+  court: null,
+  next: null,
 };
 
 const broadcastFor = (pairing: PairingInfo, cause: Cause): BroadcastInfo => ({

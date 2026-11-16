@@ -138,20 +138,25 @@ data class WaitingFields(
   val next: NextMatch? = null,
 ) {
   /**
-   * These fields over the ones [held]: the venue's zone is the engine's to keep. A beat's answer carries
-   * none (D4, read as ""), so an empty zone keeps the one held; any other replaces it.
+   * These fields over the ones [held], as a descriptor lands: the venue's zone is the engine's to keep. A beat's answer
+   * carries none (D4, read as ""), so an empty zone keeps the one held; any other replaces it. A court the answer
+   * names replaces the held one, and silence keeps it, so a court pairing never becomes a fixture's by an answer that
+   * omits the court (court stream spec 2026-11-14 §3). A descriptor never carries `next`, so the held one stands.
    */
-  fun over(held: WaitingFields): WaitingFields = if (venueTimezone.isEmpty()) copy(venueTimezone = held.venueTimezone) else this
+  fun over(held: WaitingFields): WaitingFields =
+    copy(venueTimezone = venueTimezone.ifEmpty { held.venueTimezone }, courtName = courtName ?: held.courtName, next = held.next)
 
   /**
    * A beat's answer over what is held. The beat carries no `stage` (capture-beat.v1), so the held stage
    * stays while this answer's [label] is the match it was read with, and goes when the label moved: the
    * stable code may now point at the next match, and the old round line would be a wrong fact on the tripod.
+   * The beat carries no `court` either, so the held court stays ([over]); its `next` is the court's next streamed
+   * match now, so it replaces the held one, and a beat with none clears it (court stream §5.3).
    */
   fun overBeat(held: WaitingFields): WaitingFields {
     val merged = over(held)
     val still = held.stageLabel != null && held.stageFor == label
-    return merged.copy(stageLabel = held.stageLabel.takeIf { still }, stageFor = held.stageFor.takeIf { still })
+    return merged.copy(stageLabel = held.stageLabel.takeIf { still }, stageFor = held.stageFor.takeIf { still }, next = next)
   }
 
   companion object {

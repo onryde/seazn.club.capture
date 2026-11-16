@@ -22,9 +22,18 @@ const PAIRING = {
   destinationName: 'YouTube · Example Town CC',
   pollSeconds: 10,
   stageLabel: null,
+  court: null,
+  next: null,
 };
 // W28: the pairing of the case that carries a round line, by hand from its override { stageLabel: 'Open · QF' }.
 const PAIRING_STAGED = { ...PAIRING, stageLabel: 'Open · QF' };
+// Court stream (spec 2026-11-14 §6.1, §5.3): by hand from the court cases' overrides. 1793538000 s is 13:00 UTC.
+const PAIRING_COURT = {
+  ...PAIRING,
+  court: 'Court 2',
+  next: { label: 'Northside v Riverside', scheduledStart: new Date('2026-11-01T13:00:00Z') },
+};
+const PAIRING_COURT_NO_NEXT = { ...PAIRING, court: 'Court 2' };
 const BROADCAST = {
   sid: 'sess_42',
   cause: 'organiser',
@@ -248,12 +257,32 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
     reportedAtMs: 1_790_000_007_000,
     survivesBackground: true,
   },
+  'paired-court-with-next': {
+    ...REST,
+    state: { kind: 'paired' },
+    pairing: PAIRING_COURT,
+    broadcast: null,
+    ready: READY,
+    camera: 'own',
+    reportedAtMs: 1_790_000_008_000,
+    survivesBackground: true,
+  },
+  'paired-court-no-next': {
+    ...REST,
+    state: { kind: 'paired' },
+    pairing: PAIRING_COURT_NO_NEXT,
+    broadcast: null,
+    ready: READY,
+    camera: 'own',
+    reportedAtMs: 1_790_000_009_000,
+    survivesBackground: true,
+  },
 };
 
 describe('carries 2-6: the snapshot wire, as native writes it (Task 12)', () => {
   // The file's count, so an emptied or truncated file cannot pass by sweeping nothing (PV12).
-  it('has an expectation for each of the 17 cases, and a case for every expectation', () => {
-    expect(vectors.cases).toHaveLength(17);
+  it('has an expectation for each of the 19 cases, and a case for every expectation', () => {
+    expect(vectors.cases).toHaveLength(19);
     expect(vectors.cases.map((c) => c.name).sort()).toEqual(Object.keys(EXPECTED).sort());
   });
 
@@ -333,6 +362,67 @@ describe('carries 2-6: the snapshot wire, as native writes it (Task 12)', () => 
     expect(toEngineSnapshot({ ...staged, pairing: without })).toBeNull();
     refused += 1;
     expect(refused).toBe(5);
+  });
+
+  // Court stream (spec §3, Global Constraints): a malformed court is never no court, so the snapshot is malformed whole.
+  it.each([
+    ['an empty court', ''],
+    ['a court of 81 characters', 'x'.repeat(81)],
+    ['a court of 80 characters and an emoji', 'x'.repeat(80) + '🏸'],
+    ['a court that is a number', 7],
+    ['a court that is an object', { name: 'Court 2' }],
+  ])('reads a pairing with %s as no snapshot', (_why, court) => {
+    const wire = vectorWire('paired-court-with-next');
+    expect(toEngineSnapshot({ ...wire, pairing: { ...wire.pairing, court } })).toBeNull();
+  });
+
+  it('reads a court of 80 characters, counted in code points, and a pairing without the key as no snapshot', () => {
+    const wire = vectorWire('paired-court-no-next');
+    const wide = 'x'.repeat(79) + '🏸';
+    expect(
+      toEngineSnapshot({ ...wire, pairing: { ...wire.pairing, court: wide } })?.pairing?.court,
+    ).toBe(wide);
+    const { court: _gone, ...without } = wire.pairing as Record<string, unknown>;
+    expect(toEngineSnapshot({ ...wire, pairing: without })).toBeNull();
+  });
+
+  // Court stream (spec §5.3): next is display only, so a bad one reads as none and the snapshot stands.
+  it.each([
+    ['a number', 5],
+    ['an empty label', { label: '', scheduledStart: null }],
+    ['a label of 201 characters', { label: 'x'.repeat(201), scheduledStart: null }],
+    ['a label that is not text', { label: 7, scheduledStart: null }],
+    ['a start in text', { label: 'A v B', scheduledStart: '1793538000' }],
+    ['no start key', { label: 'A v B' }],
+    ['no next key', undefined],
+  ])('reads a next that is %s as no next, and keeps the snapshot', (_why, next) => {
+    const wire = vectorWire('paired-court-with-next');
+    const pairing: Record<string, unknown> = { ...wire.pairing, next };
+    if (next === undefined) delete pairing.next;
+    const snapshot = toEngineSnapshot({ ...wire, pairing });
+    expect(snapshot?.pairing).toEqual({ ...PAIRING_COURT, next: null });
+  });
+
+  it('reads a next with no start, and a label of 200 characters, counted in code points', () => {
+    const wire = vectorWire('paired-court-with-next');
+    const label = '🏸'.repeat(200);
+    const read = toEngineSnapshot({
+      ...wire,
+      pairing: { ...wire.pairing, next: { label, scheduledStart: null } },
+    });
+    expect(read?.pairing?.next).toEqual({ label, scheduledStart: null });
+  });
+
+  // Four questions (1): the same next twice is the same pairing object, so a selector over it does not re-render.
+  it('hands back the same court pairing while its JSON is unchanged, and a new one when next goes', () => {
+    const cache = createWireCache();
+    const wire = vectorWire('paired-court-with-next');
+    const first = toEngineSnapshot(wire, cache) as EngineSnapshot;
+    const second = toEngineSnapshot({ ...wire, reportedAtMs: wire.reportedAtMs + 1000 }, cache);
+    expect(second?.pairing).toBe(first.pairing);
+    const cleared = toEngineSnapshot({ ...wire, pairing: { ...wire.pairing, next: null } }, cache);
+    expect(cleared?.pairing?.next).toBeNull();
+    expect(cleared?.pairing?.court).toBe('Court 2');
   });
 
   const idle = () => vectorWire('idle');

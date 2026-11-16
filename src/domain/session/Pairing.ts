@@ -26,6 +26,9 @@ export function firstNotReady(ready: Readiness): NotReady | null {
   return NOT_READY_ORDER.find((check) => !ready[check]) ?? null;
 }
 
+/** A court's next streamed match, from the beat's `next` (court stream spec 2026-11-14 §5.3). Display only. */
+export type NextMatch = { readonly label: string; readonly scheduledStart: Date | null };
+
 /** What the snapshot names the pairing by, and its waiting fields (amendment, The engine port). */
 export type PairingInfo = {
   readonly code: string;
@@ -40,6 +43,13 @@ export type PairingInfo = {
   readonly pollSeconds: number;
   /** The descriptor's `stage.label` (W28) for the match in hand, shown verbatim; null with none. Display only. */
   readonly stageLabel: string | null;
+  /**
+   * The court's name on a court code (court stream §6.1), null on a fixture's code. The pairing is a court pairing
+   * exactly when this is not null; native decides what that changes, JS only words it (AGENTS §2).
+   */
+  readonly court: string | null;
+  /** The court's next streamed match, from the last beat (§5.3); null when none. Display only. */
+  readonly next: NextMatch | null;
 };
 
 /** The broadcast's non-secret fields, while one is held. `cred` never crosses the bridge (A1, A5). */

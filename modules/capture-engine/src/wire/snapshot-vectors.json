@@ -1,5 +1,5 @@
 {
-  "about": "Native Snapshot → wire (SnapshotWireTest.kt) and wire → EngineSnapshot (snapshotWire.test.ts). A case's telemetry, pairing and broadcast are { ...base, ...case.wire.<field> } when an object. Every case is a snapshot native can send. telemetryKeys are the keys of telemetry, srt and heartbeat, which JS hands through unchanged. Change only with both.",
+  "about": "Native Snapshot → wire (SnapshotWireTest.kt) and wire → EngineSnapshot (snapshotWire.test.ts). A case's telemetry, pairing and broadcast are { ...base, ...case.wire.<field> } when an object. Every case is a snapshot native can send. telemetryKeys are the keys of telemetry, srt and heartbeat, which JS hands through unchanged. pairing.court is a court code's court name (court stream spec 2026-11-14 §6.1), null on a fixture's code; pairing.next is the beat's next streamed match {label, scheduledStart: epoch seconds or null}, or null. Change only with both.",
   "vocabulary": {
     "state": [
       "idle",
@@ -120,7 +120,9 @@
     "autoAllowed": true,
     "destinationName": "YouTube · Example Town CC",
     "pollSeconds": 10,
-    "stageLabel": null
+    "stageLabel": null,
+    "court": null,
+    "next": null
   },
   "broadcastBase": {
     "sid": "sess_42",
@@ -494,6 +496,43 @@
         "codeEndedPending": false,
         "camera": "own",
         "reportedAtMs": 1790000007000,
+        "survivesBackground": true,
+        "telemetry": {}
+      }
+    },
+    {
+      "name": "paired-court-with-next",
+      "wire": {
+        "state": { "kind": "paired" },
+        "pairing": {
+          "court": "Court 2",
+          "next": { "label": "Northside v Riverside", "scheduledStart": 1793538000 }
+        },
+        "broadcast": null,
+        "ready": { "camera": true, "sound": true, "network": true, "held": true },
+        "refusal": null,
+        "lastEnd": null,
+        "unpaired": null,
+        "codeEndedPending": false,
+        "camera": "own",
+        "reportedAtMs": 1790000008000,
+        "survivesBackground": true,
+        "telemetry": {}
+      }
+    },
+    {
+      "name": "paired-court-no-next",
+      "wire": {
+        "state": { "kind": "paired" },
+        "pairing": { "court": "Court 2" },
+        "broadcast": null,
+        "ready": { "camera": true, "sound": true, "network": true, "held": true },
+        "refusal": null,
+        "lastEnd": null,
+        "unpaired": null,
+        "codeEndedPending": false,
+        "camera": "own",
+        "reportedAtMs": 1790000009000,
         "survivesBackground": true,
         "telemetry": {}
       }

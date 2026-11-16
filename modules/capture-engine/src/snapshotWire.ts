@@ -2,6 +2,7 @@ import type {
   BroadcastInfo,
   Cause,
   LastEnd,
+  NextMatch,
   NotReady,
   PairingInfo,
   Readiness,
@@ -247,6 +248,30 @@ function toUnpaired(value: unknown): Unpaired | null | undefined {
   return { reason, code, slot, tokenTag };
 }
 
+/** Code points, as native counts the bounds it wrote (a 🏸 is one character, two UTF-16 units). */
+const characters = (text: string) => [...text].length;
+const textWithin = (value: unknown, max: number): value is string =>
+  isText(value) && characters(value) >= 1 && characters(value) <= max;
+
+/**
+ * The court (court stream spec 2026-11-14 §6.1): null, or the name native held to 1 to 80 characters. Anything else is
+ * undefined, which makes the pairing, and so the snapshot, malformed: a malformed court is never read as no court.
+ */
+function toCourt(value: unknown): string | null | undefined {
+  if (value === null) return null;
+  return textWithin(value, 80) ? value : undefined;
+}
+
+/** The court's next streamed match (§5.3), display only: anything but a label of 1 to 200 and a start is none. */
+function toNext(value: unknown): NextMatch | null {
+  if (!isObject(value) || !textWithin(value.label, 200)) return null;
+  const { scheduledStart } = value;
+  if (scheduledStart === null) return { label: value.label, scheduledStart: null };
+  return isNumber(scheduledStart)
+    ? { label: value.label, scheduledStart: new Date(scheduledStart * 1000) }
+    : null;
+}
+
 /** Epoch seconds across the bridge (amendment, The engine port), a Date here. */
 function toPairing(value: Wire): PairingInfo | undefined {
   const { code, slot, tokenTag, automatic, label, venueTimezone, scheduledStart, autoAllowed } =
@@ -258,6 +283,8 @@ function toPairing(value: Wire): PairingInfo | undefined {
   if (scheduledStart !== null && !isNumber(scheduledStart)) return undefined;
   if (!textOrNull(destinationName)) return undefined;
   if (!textOrNull(stageLabel)) return undefined;
+  const court = toCourt(value.court);
+  if (court === undefined) return undefined;
   return {
     code,
     slot,
@@ -270,6 +297,8 @@ function toPairing(value: Wire): PairingInfo | undefined {
     destinationName,
     pollSeconds,
     stageLabel,
+    court,
+    next: toNext(value.next),
   };
 }
 

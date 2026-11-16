@@ -111,6 +111,39 @@ class PairingTest {
       assertEquals(30, rig.phase.pairing!!.waiting.pollSeconds, sent)
     }
   }
+
+  private val MachineRig.court: String?
+    get() = snapshot.pairing?.waiting?.courtName
+
+  private val MachineRig.next: NextMatch?
+    get() = snapshot.pairing?.waiting?.next
+
+  /** Court stream (spec 2026-11-14 §6.1, §5.3): the court and next through a pairing, beat by beat and at Arming. */
+  @Test
+  fun `a court pairing keeps its court over every beat and descriptor, and shows the last beat's next`() {
+    val r = Configs.pairRequest()
+    val request = PairRequest(r.code, r.slot, r.token, r.codeUrl, r.heartbeatUrl, r.startUrl, r.language, r.automatic, r.claim, r.environment, court = "Court 2")
+    val rig = MachineRig(request = request)
+    // The descriptor at Arming carries the court but never a next (capture-descriptor.v1).
+    rig.codes = { if (rig.phase is Phase.Arming) CodeAnswer.Open("sess_42", "warming", Configs.descriptor(), Configs.waiting().copy(courtName = "Court 2")) else null }
+    rig.paired()
+    assertEquals("Court 2", rig.court, "seeded by the pair, before any GET")
+    assertNull(rig.next)
+    val next = NextMatch("C v D", 1_793_538_000)
+    rig.heard(Configs.waiting().copy(venueTimezone = "", next = next))
+    assertEquals(next, rig.next)
+    assertEquals("Court 2", rig.court, "a beat carries no court")
+    // The go-live beat names the next match too; the descriptor at Arming keeps it and the court.
+    rig.heard(Configs.waiting().copy(venueTimezone = "", next = next), "go-live", "sess_42")
+    assertIs<Phase.Armed>(rig.phase)
+    assertEquals(next, rig.next, "a descriptor never carries next")
+    assertEquals("Court 2", rig.court)
+    // A beat with no next clears it: the court has no next streamed match now.
+    rig.heard(Configs.waiting().copy(venueTimezone = ""), "live", "sess_42")
+    assertNull(rig.next)
+    assertEquals("Court 2", rig.court)
+  }
+
   /**
    * Final review I-2b: the session shape's waiting fields unreadable at Arming. The broadcast still opens on
    * the pairing's fields, and the record names the field, once a pairing whichever answer brought it.
