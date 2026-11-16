@@ -22,6 +22,12 @@ export type WaitingFields = {
   readonly heartbeatUrl: string;
   readonly startUrl: string;
   readonly stage: StageRead | null;
+  /**
+   * The descriptor's `court.name` on a court code (court stream spec 2026-11-14 §6.1); null on a fixture's code. Saved
+   * with the code, so a re-pair after process death is a court pairing before any GET. The beat's `next` is native's:
+   * the scan's GET never carries it.
+   */
+  readonly court: string | null;
 };
 
 /**
@@ -45,6 +51,7 @@ const ZONE = { min: 1, max: 64 };
 const DESTINATION = { min: 1, max: 80 };
 const POLL = { min: 5, max: 300 };
 const STAGE = { min: 1, max: 40 };
+const COURT = { min: 1, max: 80 };
 
 /** capture-descriptor.v1 `stage.role.kind`'s values (R-F20): an open string, of which only these show a line. */
 export const STAGE_KINDS: ReadonlySet<string> = new Set([
@@ -105,6 +112,17 @@ function readStage(value: unknown): StageRead | null {
 }
 
 /**
+ * capture-descriptor.v1 `court`: absent or null is no court; an object whose `name` is 1 to 80 characters is that name;
+ * anything else is BAD, which refuses the whole answer, never no court: a fixture-style Stop on a court phone would
+ * unlink the court (spec §3). A key the phone does not use is ignored, as Bodies.read ignores it.
+ */
+function readCourt(value: unknown): Optional<string> {
+  return optional(value, (court) =>
+    isRecord(court) && textWithin(court.name, COURT) ? court.name : null,
+  );
+}
+
+/**
  * The waiting fields, or null when the answer cannot be trusted whole: a
  * field missing, of the wrong type or outside the schema's bounds, or a beat
  * or start URL off the build's host (its Bearer would go there). `overlayUrl`
@@ -122,7 +140,8 @@ export function parseWaitingFields(input: unknown, host: string): WaitingFields 
   const destinationName = optional(input.destinationName, (value) =>
     textWithin(value, DESTINATION) ? value : null,
   );
-  if (scheduledStart === BAD || destinationName === BAD) return null;
+  const court = readCourt(input.court);
+  if (scheduledStart === BAD || destinationName === BAD || court === BAD) return null;
   return {
     code,
     label,
@@ -134,14 +153,17 @@ export function parseWaitingFields(input: unknown, host: string): WaitingFields 
     heartbeatUrl,
     startUrl,
     stage: readStage(input.stage),
+    court,
   };
 }
 
 /** The server's own shape, epoch seconds included, so a saved code is read back by the one parser. */
 export function waitingToWire(fields: WaitingFields): Record<string, unknown> {
-  const { scheduledStart, stage, ...rest } = fields;
+  const { scheduledStart, stage, court, ...rest } = fields;
   const seconds = scheduledStart === null ? null : Math.floor(scheduledStart.getTime() / 1000);
   // A saved stage is `{ role: { kind }, label }`: what the one parser reads back, kind rule included. `code` and `pool` are not read.
   const saved = stage === null ? {} : { stage: { role: { kind: stage.kind }, label: stage.label } };
-  return { ...rest, scheduledStart: seconds, ...saved };
+  // A saved court is `{ name }`, the descriptor's own shape; a fixture's code saves no `court` key, as before this build.
+  const courtWire = court === null ? {} : { court: { name: court } };
+  return { ...rest, scheduledStart: seconds, ...saved, ...courtWire };
 }

@@ -1,5 +1,5 @@
 {
-  "about": "The waiting fields (amendment, Contract shapes), read by Bodies.waiting (Kotlin) and parseWaitingFields (TS). env is the build's. expected null means unreadable. Kotlin reads label..pollSeconds and skips jsOnly rows; TS also reads code, heartbeatUrl and startUrl, which only it keeps, and skips kotlinOnly rows, which are shaped as a beat's answer (capture-beat.v1 $defs.answer): only Kotlin reads those. Every other row is shaped as capture-descriptor.v1's waiting branch. A field absent or null where the schema allows it is null; a field of the wrong type, or outside the schema's bounds, makes the whole unreadable (a length counts characters, that is code points, as JSON Schema counts them); overlayUrl is the descriptor's and neither reader returns it, whatever its value (D2 §4.1). A descriptor may carry an optional stage (capture-descriptor.v1, W28): expected.stageLabel is its label, shown verbatim, only when its role.kind is one of wire/stage-kinds.json and the label is 1 to 40 characters (code points); any other stage, or none, is null, and never makes the row unreadable. A beat has no stage. Change only with both.",
+  "about": "The waiting fields (amendment, Contract shapes), read by Bodies.waiting (Kotlin) and parseWaitingFields (TS). env is the build's. expected null means unreadable. Kotlin reads label..pollSeconds and skips jsOnly rows; TS also reads code, heartbeatUrl and startUrl, which only it keeps, and skips kotlinOnly rows, which are shaped as a beat's answer (capture-beat.v1 $defs.answer): only Kotlin reads those. Every other row is shaped as capture-descriptor.v1's waiting branch. A field absent or null where the schema allows it is null; a field of the wrong type, or outside the schema's bounds, makes the whole unreadable (a length counts characters, that is code points, as JSON Schema counts them); overlayUrl is the descriptor's and neither reader returns it, whatever its value (D2 §4.1). A descriptor may carry an optional stage (capture-descriptor.v1, W28): expected.stageLabel is its label, shown verbatim, only when its role.kind is one of wire/stage-kinds.json and the label is 1 to 40 characters (code points); any other stage, or none, is null, and never makes the row unreadable. A beat has no stage. A court code's descriptor carries an optional court (capture-descriptor.v1, court stream spec 2026-11-14 §6.1): expected.court is its name, 1 to 80 characters (code points); court absent or null is null; any other court (an empty or over-long name, a name that is not a string, a court that is not an object) makes the whole unreadable, never no court. A beat has no court. Change only with both.",
   "cases": [
     {
       "why": "every field",
@@ -26,6 +26,7 @@
         "pollSeconds": 60,
         "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
         "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "court": null,
         "stageLabel": null
       }
     },
@@ -53,6 +54,7 @@
         "pollSeconds": 10,
         "heartbeatUrl": "https://stg.seazn.club/b",
         "startUrl": "https://stg.seazn.club/s",
+        "court": null,
         "stageLabel": null
       }
     },
@@ -80,6 +82,7 @@
         "pollSeconds": 300,
         "heartbeatUrl": "https://seazn.club/b",
         "startUrl": "https://seazn.club/s",
+        "court": null,
         "stageLabel": null
       }
     },
@@ -203,6 +206,7 @@
         "heartbeatUrl": "https://stg.seazn.club/b",
         "startUrl": "https://stg.seazn.club/s",
         "scheduledStart": null,
+        "court": null,
         "stageLabel": null
       }
     },
@@ -262,6 +266,7 @@
         "pollSeconds": 10,
         "heartbeatUrl": "https://stg.seazn.club/b",
         "startUrl": "https://stg.seazn.club/s",
+        "court": null,
         "stageLabel": null
       }
     },
@@ -321,6 +326,7 @@
         "pollSeconds": 10,
         "heartbeatUrl": "https://stg.seazn.club/b",
         "startUrl": "https://stg.seazn.club/s",
+        "court": null,
         "stageLabel": null
       }
     },
@@ -397,6 +403,7 @@
         "pollSeconds": 10,
         "heartbeatUrl": "https://stg.seazn.club/b",
         "startUrl": "https://stg.seazn.club/s",
+        "court": null,
         "stageLabel": null
       }
     },
@@ -451,6 +458,7 @@
         "autoAllowed": false,
         "destinationName": "YouTube · Example Town CC",
         "pollSeconds": 5,
+        "court": null,
         "stageLabel": null
       }
     },
@@ -473,6 +481,7 @@
         "autoAllowed": true,
         "destinationName": null,
         "pollSeconds": 60,
+        "court": null,
         "stageLabel": null
       }
     },
@@ -557,6 +566,7 @@
         "pollSeconds": 60,
         "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
         "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "court": null,
         "stageLabel": "Open · QF"
       }
     },
@@ -594,6 +604,7 @@
         "pollSeconds": 60,
         "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
         "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "court": null,
         "stageLabel": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
       }
     },
@@ -629,6 +640,7 @@
         "pollSeconds": 60,
         "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
         "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "court": null,
         "stageLabel": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx🏏"
       }
     },
@@ -664,6 +676,7 @@
         "pollSeconds": 60,
         "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
         "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "court": null,
         "stageLabel": null
       }
     },
@@ -699,6 +712,7 @@
         "pollSeconds": 60,
         "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
         "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "court": null,
         "stageLabel": null
       }
     },
@@ -733,6 +747,7 @@
         "pollSeconds": 60,
         "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
         "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "court": null,
         "stageLabel": null
       }
     },
@@ -762,6 +777,7 @@
         "pollSeconds": 60,
         "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
         "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "court": null,
         "stageLabel": null
       }
     },
@@ -791,6 +807,7 @@
         "pollSeconds": 60,
         "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
         "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "court": null,
         "stageLabel": null
       }
     },
@@ -826,6 +843,7 @@
         "pollSeconds": 60,
         "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
         "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "court": null,
         "stageLabel": null
       }
     },
@@ -858,6 +876,7 @@
         "pollSeconds": 60,
         "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
         "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "court": null,
         "stageLabel": null
       }
     },
@@ -893,6 +912,7 @@
         "pollSeconds": 60,
         "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
         "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "court": null,
         "stageLabel": null
       }
     },
@@ -922,6 +942,7 @@
         "pollSeconds": 60,
         "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
         "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "court": null,
         "stageLabel": null
       }
     },
@@ -957,6 +978,7 @@
         "pollSeconds": 60,
         "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
         "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "court": null,
         "stageLabel": null
       }
     },
@@ -990,6 +1012,7 @@
         "pollSeconds": 60,
         "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
         "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "court": null,
         "stageLabel": null
       }
     },
@@ -1023,6 +1046,7 @@
         "pollSeconds": 60,
         "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
         "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "court": null,
         "stageLabel": null
       }
     },
@@ -1051,6 +1075,188 @@
         "pollSeconds": 60,
         "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
         "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "court": null,
+        "stageLabel": null
+      }
+    },
+    {
+      "why": "court: a court code's court is read, its name verbatim",
+      "env": "staging",
+      "fields": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "court": {
+          "name": "Court 2"
+        }
+      },
+      "expected": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "court": "Court 2",
+        "stageLabel": null
+      }
+    },
+    {
+      "why": "court: absent is no court, as on every fixture's code",
+      "env": "staging",
+      "fields": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start"
+      },
+      "expected": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "court": null,
+        "stageLabel": null
+      }
+    },
+    {
+      "why": "court: null is no court",
+      "env": "staging",
+      "fields": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "court": null
+      },
+      "expected": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "court": null,
+        "stageLabel": null
+      }
+    },
+    {
+      "why": "court: an empty name is unreadable, never no court (a fixture-style Stop would unlink the court)",
+      "env": "staging",
+      "fields": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "court": {
+          "name": ""
+        }
+      },
+      "expected": null
+    },
+    {
+      "why": "court: a name over 80 characters is unreadable",
+      "env": "staging",
+      "fields": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "court": {
+          "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        }
+      },
+      "expected": null
+    },
+    {
+      "why": "court: a string, not an object, is unreadable",
+      "env": "staging",
+      "fields": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "court": "Court 2"
+      },
+      "expected": null
+    },
+    {
+      "why": "court: a name of 80 characters outside the BMP is read: 160 UTF-16 units, 80 characters",
+      "env": "staging",
+      "fields": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": "https://stg.seazn.club/overlay/fixtures/f1",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "court": {
+          "name": "🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸"
+        }
+      },
+      "expected": {
+        "code": "fx42hmnp7k2q",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1790003600,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "pollSeconds": 60,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/fx42hmnp7k2q/start",
+        "court": "🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸🏸",
         "stageLabel": null
       }
     }

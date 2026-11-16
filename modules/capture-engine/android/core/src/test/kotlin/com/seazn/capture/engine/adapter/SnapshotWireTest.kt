@@ -566,6 +566,10 @@ class SnapshotWireTest {
       "device.charging" to ("a copy: the projection sets the snapshot's charging from it, and that crosses" to { s -> s.device { copy(charging = false) } }),
       "device.shed" to ("a copy: the projection sets the snapshot's shed from it, and that crosses" to { s -> s.device { copy(shed = ShedStep.ENCODE) } }),
       "pairing.waiting.stageFor" to ("the match the stage was read with: the engine's own check against a beat's label, never shown" to { s -> s.waiting { copy(stageFor = "Sample CC v Example Town") } }),
+      // Court stream plan Task 2 reads these; its Task 4 crosses them and moves them to [crosses].
+      "pairing.waiting.courtName" to ("read, not crossed yet (court stream plan Task 4)" to { s -> s.waiting { copy(courtName = "Court 2") } }),
+      "pairing.waiting.next.label" to ("read, not crossed yet (court stream plan Task 4)" to { s -> s.waiting { copy(next = NextMatch("A v B", null)) } }),
+      "pairing.waiting.next.scheduledStartEpochS" to ("read, not crossed yet (court stream plan Task 4)" to { s -> s.waiting { copy(next = NextMatch("A v B", 1_793_534_400)) } }),
     )
 
   @Test

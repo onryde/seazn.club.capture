@@ -107,6 +107,8 @@ describe('saved codes, v3 (amendment §3)', () => {
           scheduledStart: new Date(1790003600_000),
           // A record written before the stage existed has no such key: it reads as none.
           stage: null,
+          // Nor before the court (court stream §6.1): it reads as a fixture's code, as it was.
+          court: null,
         },
         codeUrl: CODE_URL,
         tapToPair: false,

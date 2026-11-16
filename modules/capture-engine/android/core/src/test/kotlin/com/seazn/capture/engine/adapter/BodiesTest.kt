@@ -21,11 +21,12 @@ class BodiesTest {
   @Test
   fun `the waiting fields, every shared case`() {
     val cases = waiting.getJSONArray("cases")
-    // The file's rows: 43, of which 3 are JS's alone (PV12: a truncated file cannot pass).
-    assertEquals(43, cases.length())
+    // The file's rows: 50, of which 3 are JS's alone (PV12: a truncated file cannot pass).
+    assertEquals(50, cases.length())
     var read = 0
     var beats = 0
     var staged = 0
+    var courted = 0
     for (i in 0 until cases.length()) {
       val case = cases.getJSONObject(i)
       if (case.optBoolean("jsOnly")) continue
@@ -45,6 +46,7 @@ class BodiesTest {
       }
       val e = case.getJSONObject("expected")
       if (!e.isNull("stageLabel")) staged += 1
+      if (!e.isNull("court")) courted += 1
       val expected =
         WaitingFields(
           e.getString("label"),
@@ -56,13 +58,99 @@ class BodiesTest {
           if (e.isNull("stageLabel")) null else e.getString("stageLabel"),
           // The stage is only true of the match it was read with: that match's label.
           if (e.isNull("stageLabel")) null else e.getString("label"),
+          courtName = if (e.isNull("court")) null else e.getString("court"),
         )
       assertEquals(expected, got, why)
     }
-    assertEquals(40, read)
+    assertEquals(47, read)
     assertEquals(2, beats)
     // The rows that show a round line: the sweep cannot pass by reading every stage as none.
     assertEquals(3, staged)
+    // The rows that read a court: nor by reading every court as none.
+    assertEquals(2, courted)
+  }
+
+  @Test
+  fun `the web's court fixtures - a court is read, an empty name is unreadable, a key the phone does not use is ignored`() {
+    fun fixture(name: String) = Bodies.code(200, Vendored.text("fixtures/capture-descriptor.v1/$name.json"), null, Environment.STAGING)
+    assertEquals("Court 2", (fixture("valid-waiting-court") as CodeAnswer.Waiting).waiting.courtName)
+    // Never no court: a fixture-style Stop on a court phone would unlink the court (court stream spec §3).
+    assertEquals(CodeAnswer.Unreadable("waiting"), fixture("invalid-court-name-empty"))
+    // The schema refuses the extra `id`; the reader ignores what it does not use (the QR's tampered.json, D-2).
+    assertEquals("Court 2", (fixture("invalid-court-extra-key") as CodeAnswer.Waiting).waiting.courtName)
+  }
+
+  @Test
+  fun `a refused court is named court, and a session shape carries the court too`() {
+    val refused = answeredBeat(200, beat("waiting").dropLast(1) + ""","court":{"name":""}}""")
+    assertEquals("court", refused.reply?.waitingUnreadable)
+    assertNull(refused.reply?.waiting)
+    val session = JSONObject(PairWire.SESSION).put("court", JSONObject().put("name", "Court 2")).toString()
+    assertEquals("Court 2", (Bodies.code(200, session, null, Environment.STAGING) as CodeAnswer.Open).waiting?.courtName)
+  }
+
+  /** A beat of [state] with [next] spliced in as raw JSON, as the server would send it. */
+  private fun withNext(next: String, state: String = "waiting"): HeartbeatResponse.Answered {
+    val body = if (state == "waiting") beat(state) else beat(state, "sid" to SID)
+    return answeredBeat(200, body.dropLast(1) + ""","next":$next}""")
+  }
+
+  @Test
+  fun `a beat's next is read - its label and its start in epoch seconds, or none`() {
+    val label = "Example Town v Sample CC"
+    assertEquals(NextMatch(label, 1793534400L), withNext("""{"label":"$label","scheduledStart":1793534400}""").reply?.waiting?.next)
+    assertEquals(NextMatch(label, null), withNext("""{"label":"$label","scheduledStart":null}""").reply?.waiting?.next)
+    // On a live beat too, at the schema's lowest start: what comes after the match on air.
+    assertEquals(NextMatch(label, 1L), withNext("""{"label":"$label","scheduledStart":1}""", state = "live").reply?.waiting?.next)
+    // 200 characters outside the BMP: 400 UTF-16 units, read.
+    val wide = "🏸".repeat(200)
+    assertEquals(wide, withNext("""{"label":"$wide","scheduledStart":null}""").reply?.waiting?.next?.label)
+    assertNull(answeredBeat(200, beat("waiting")).reply?.waiting?.next)
+  }
+
+  @Test
+  fun `a beat's next is display only - any defect is no next, and the beat stays readable`() {
+    val bad =
+      listOf(
+        "null",
+        "5",
+        """"Example Town v Sample CC"""",
+        "[]",
+        """{"label":"","scheduledStart":null}""",
+        """{"label":"${"x".repeat(201)}","scheduledStart":null}""",
+        """{"label":7,"scheduledStart":null}""",
+        """{"scheduledStart":null}""",
+        """{"label":"A v B"}""",
+        """{"label":"A v B","scheduledStart":0}""",
+        """{"label":"A v B","scheduledStart":1.5}""",
+        """{"label":"A v B","scheduledStart":"1793534400"}""",
+        """{"label":"A v B","scheduledStart":9007199254740992}""",
+      )
+    for (next in bad) {
+      val reply = withNext(next).reply
+      assertNull(reply?.waiting?.next, next)
+      assertEquals("L", reply?.waiting?.label, next)
+      assertNull(reply?.waitingUnreadable, next)
+    }
+    assertEquals(13, bad.size)
+  }
+
+  @Test
+  fun `the web's next fixtures - read, a null next is none, a key the phone does not use is ignored`() {
+    fun fixture(name: String) = assertIs<HeartbeatResponse.Answered>(Bodies.beat(200, Vendored.text("fixtures/capture-beat.v1/$name.json"), null, Environment.STAGING)).reply?.waiting
+    assertEquals(NextMatch("Northside Hawks v Riverside Rovers", 1790863200L), fixture("answer-valid-waiting-next")?.next)
+    assertEquals(NextMatch("Match 4", null), fixture("answer-valid-live-next-unscheduled")?.next)
+    assertEquals(NextMatch("Match 4", null), fixture("answer-invalid-next-extra-key")?.next)
+    val nulled = fixture("answer-invalid-null-next")
+    assertNull(nulled?.next)
+    assertEquals("Match 3", nulled?.label)
+  }
+
+  @Test
+  fun `the same beat read twice reads the same next`() {
+    val body = beat("waiting").dropLast(1) + ""","next":{"label":"A v B","scheduledStart":null}}"""
+    assertEquals(Bodies.beat(200, body, null, Environment.STAGING), Bodies.beat(200, body, null, Environment.STAGING))
+    assertEquals(NextMatch("A v B", null), answeredBeat(200, body).reply?.waiting?.next)
   }
 
   @Test

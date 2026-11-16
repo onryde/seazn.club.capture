@@ -29,6 +29,7 @@ export function sampleWaiting(
     heartbeatUrl: `${codeUrl(origin, code)}/beats`,
     startUrl: `${codeUrl(origin, code)}/start`,
     stage: null,
+    court: null,
     ...overrides,
   };
 }

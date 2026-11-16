@@ -7,6 +7,7 @@ import com.seazn.capture.engine.core.Environment
 import com.seazn.capture.engine.core.HeartbeatResponse
 import com.seazn.capture.engine.core.Hosts
 import com.seazn.capture.engine.core.IngestTarget
+import com.seazn.capture.engine.core.NextMatch
 import com.seazn.capture.engine.core.Refusal
 import com.seazn.capture.engine.core.RtmpsTarget
 import com.seazn.capture.engine.core.ScoreUpdates
@@ -77,6 +78,12 @@ object Bodies {
   private val ZONE = 1..64
   private val DESTINATION = 1..80
 
+  /** capture-descriptor.v1 `court.name` (court stream §6.1): 1 to 80 characters, in code points. */
+  private val COURT = 1..80
+
+  /** capture-beat.v1 `next.label` (court stream §5.3): 1 to 200 characters, in code points. */
+  private val NEXT_LABEL = 1..200
+
   /** capture-descriptor.v1 `stage.label`: 1 to 40 characters, in code points. */
   private val STAGE_LABEL = 1..40
   private val POLL = 5..300
@@ -144,7 +151,12 @@ object Bodies {
    */
   fun waiting(fields: Map<String, Any?>, env: Environment): WaitingFields? = read(fields, env).fields
 
-  /** [waiting], naming the first field refused (final review I-2b). Each field is judged in [WAITING_KEYS]' order. */
+  /**
+   * [waiting], naming the first field refused (final review I-2b). Each field is judged in [WAITING_KEYS]' order, then
+   * `court`, which only a court code's descriptor sends and so is no waiting key a beat owes. A malformed `court` is
+   * refused, never read as no court (court stream spec 2026-11-14 §3: a fixture-style Stop would unlink the court).
+   * `next` is display only, so it is read last and never refuses the answer.
+   */
   private fun read(fields: Map<String, Any?>, env: Environment): WaitingRead {
     fun unreadable(field: String) = WaitingRead(null, field)
     val label = text(fields["label"], LABEL) ?: return unreadable("label")
@@ -153,10 +165,25 @@ object Bodies {
     val zone = optional(fields["venueTimezone"]) { text(it, ZONE) }
     val start = optional(fields["scheduledStart"]) { epoch -> whole(epoch)?.takeIf { it in 1..MAX_SAFE } }
     val destination = optional(fields["destinationName"]) { text(it, DESTINATION) }
-    val optionals = listOf("venueTimezone" to zone, "scheduledStart" to start, "destinationName" to destination)
+    val court = optional(fields["court"]) { text((it as? Map<*, *>)?.get("name"), COURT) }
+    val optionals = listOf("venueTimezone" to zone, "scheduledStart" to start, "destinationName" to destination, "court" to court)
     optionals.firstOrNull { it.second is Field.Bad }?.let { return unreadable(it.first) }
     val stage = stageLabel(fields["stage"])
-    return WaitingRead(WaitingFields(label, zone.orNull() ?: "", start.orNull(), auto, destination.orNull(), poll, stage, stage?.let { label }), null)
+    val waiting = WaitingFields(label, zone.orNull() ?: "", start.orNull(), auto, destination.orNull(), poll, stage, stage?.let { label })
+    return WaitingRead(waiting.copy(courtName = court.orNull(), next = nextMatch(fields["next"])), null)
+  }
+
+  /**
+   * capture-beat.v1 `next` (court stream §5.3): `label` of 1 to 200 characters (code points) and `scheduledStart`, epoch
+   * seconds from 1 or null, both required. Display only, so any defect is no next, and never makes the answer
+   * unreadable. A key the phone does not use is ignored, as every reader here ignores one.
+   */
+  private fun nextMatch(value: Any?): NextMatch? {
+    val next = value as? Map<*, *> ?: return null
+    val label = text(next["label"], NEXT_LABEL) ?: return null
+    if (!next.containsKey("scheduledStart")) return null
+    val start = next["scheduledStart"] ?: return NextMatch(label, null)
+    return whole(start)?.takeIf { it in 1..MAX_SAFE }?.let { NextMatch(label, it) }
   }
 
   /**

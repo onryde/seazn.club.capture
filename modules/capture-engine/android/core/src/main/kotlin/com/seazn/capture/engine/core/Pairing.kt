@@ -110,6 +110,9 @@ data class PhoneFacts(val phoneId: String, val appVersion: String, val model: St
   }
 }
 
+/** A court's next streamed match, from a beat's `next` (capture-beat.v1, court stream §5.3): shown, never acted on. */
+data class NextMatch(val label: String, val scheduledStartEpochS: Long?)
+
 /**
  * The fields the server sends on every 2xx answer, beat or code (amendment, _Contract shapes_).
  * [pollSeconds] is the server's, unclamped: [BeatCadence] clamps it where it is used.
@@ -125,6 +128,14 @@ data class WaitingFields(
   val stageLabel: String? = null,
   /** The match [label] the stage was read with: a stage is only true of that match (the code is stable, so a beat can move the label). */
   val stageFor: String? = null,
+  /**
+   * The descriptor's `court.name` (court stream spec 2026-11-14 §6.1), on a court code only; null on a fixture's code. A
+   * pairing is a court pairing exactly when this is not null, and a malformed court never reads as null: it makes the
+   * waiting fields unreadable.
+   */
+  val courtName: String? = null,
+  /** The beat's `next` (court stream §5.3): the court's next streamed match. Display only; null when none or malformed. */
+  val next: NextMatch? = null,
 ) {
   /**
    * These fields over the ones [held]: the venue's zone is the engine's to keep. A beat's answer carries
