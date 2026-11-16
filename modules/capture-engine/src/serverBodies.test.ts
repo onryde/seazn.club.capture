@@ -71,10 +71,11 @@ describe('the native tests answer with the web contract shapes', () => {
   });
 
   // The file's count, so an emptied or truncated file cannot pass by sweeping nothing (PV12).
-  it('sweeps all 8 bodies, PairWire four and the host four', () => {
+  it('sweeps all 14 bodies, PairWire four, the host four and the court six', () => {
     expect(bodies.map((b) => b.name.split('/')[0])).toEqual([
       ...Array(4).fill('pair-wire'),
       ...Array(4).fill('host'),
+      ...Array(6).fill('court'),
     ]);
   });
 
@@ -101,6 +102,19 @@ describe('the native tests answer with the web contract shapes', () => {
     ['a code answer with no heartbeatUrl', 'pair-wire/code-warming', { heartbeatUrl: undefined }],
     ['a code answer with no startUrl', 'host/code-warming', { startUrl: undefined }],
     ['a start answer with a stray key', 'host/start-ok', { startedBy: 'organiser' }],
+    // Court stream (spec 2026-11-14 §6.1, §5.3, §5.6): the bounds the readers hold, each the schema's too.
+    ['a court with an empty name', 'court/code-waiting', { court: { name: '' } }],
+    ['a court of 81 characters', 'court/code-waiting', { court: { name: 'x'.repeat(81) } }],
+    ['a court of null', 'court/code-waiting', { court: null }],
+    ['a court with a stray key', 'court/code-waiting', { court: { name: 'Court 2', id: 'c2' } }],
+    ['a next of null', 'court/beat-waiting-next', { next: null }],
+    [
+      'a next with an empty label',
+      'court/beat-live-next',
+      { next: { label: '', scheduledStart: null } },
+    ],
+    ['a next with no scheduledStart', 'court/beat-waiting-next', { next: { label: 'A v B' } }],
+    ['a scoring label of 201 characters', 'court/scoring-ok-label', { label: 'x'.repeat(201) }],
   ] as const)('%s is refused', (_why, name, change) => {
     const row = named(name);
     const body: Record<string, unknown> = { ...row.body, ...change };

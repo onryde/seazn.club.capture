@@ -38,7 +38,8 @@ writes to the assumed shapes below.
     points (`CAPTURE_COURT_NAME_MAX = 80`). On a fixture code it is omitted, never null;
   - beat answer (`capture-beat.v1#/$defs/answer`), on every answer branch, court codes only: optional
     `next: { label: string, scheduledStart: integer|null }`. `label` is 1–200 code points, and `scheduledStart`
-    is epoch seconds or null. `next` is omitted, never null, when the court has no next streamed match;
+    is epoch seconds or null (the vendored schema: an integer of at least 1, both keys required, no other key).
+    Checked against web `c0577abb78` in Task 1: every other shape in this list matches the vendored schemas. `next` is omitted, never null, when the court has no next streamed match;
   - scoring-link `ok` (`capture-scoring-link.v1#/$defs/ok`): `{url, label?}`, with `label` 1–200 code points.
     The schema makes it optional; this server always sends it;
   - `no_match` is a new shared refusal word, used on court codes only. Scoring-link answers it with a 409 when
