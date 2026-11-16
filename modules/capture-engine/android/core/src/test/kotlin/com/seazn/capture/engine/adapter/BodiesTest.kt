@@ -21,8 +21,8 @@ class BodiesTest {
   @Test
   fun `the waiting fields, every shared case`() {
     val cases = waiting.getJSONArray("cases")
-    // The file's rows: 50, of which 3 are JS's alone (PV12: a truncated file cannot pass).
-    assertEquals(50, cases.length())
+    // The file's rows: 51, of which 3 are JS's alone (PV12: a truncated file cannot pass).
+    assertEquals(51, cases.length())
     var read = 0
     var beats = 0
     var staged = 0
@@ -62,12 +62,12 @@ class BodiesTest {
         )
       assertEquals(expected, got, why)
     }
-    assertEquals(47, read)
+    assertEquals(48, read)
     assertEquals(2, beats)
     // The rows that show a round line: the sweep cannot pass by reading every stage as none.
     assertEquals(3, staged)
-    // The rows that read a court: nor by reading every court as none.
-    assertEquals(2, courted)
+    // The rows that read a court: nor by reading every court as none. One carries a key the phone does not use.
+    assertEquals(3, courted)
   }
 
   @Test
@@ -87,6 +87,11 @@ class BodiesTest {
     assertNull(refused.reply?.waiting)
     val session = JSONObject(PairWire.SESSION).put("court", JSONObject().put("name", "Court 2")).toString()
     assertEquals("Court 2", (Bodies.code(200, session, null, Environment.STAGING) as CodeAnswer.Open).waiting?.courtName)
+    // P1 review M3: a session shape whose court is malformed still opens, with no waiting fields to land, named court.
+    val bad = JSONObject(PairWire.SESSION).put("court", JSONObject().put("name", "")).toString()
+    val opened = assertIs<CodeAnswer.Open>(Bodies.code(200, bad, null, Environment.STAGING))
+    assertNull(opened.waiting)
+    assertEquals("court", opened.waitingUnreadable)
   }
 
   /** A beat of [state] with [next] spliced in as raw JSON, as the server would send it. */

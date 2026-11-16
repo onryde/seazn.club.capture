@@ -395,6 +395,12 @@ describe('carries 2-6: the snapshot wire, as native writes it (Task 12)', () => 
     ['a start in text', { label: 'A v B', scheduledStart: '1793538000' }],
     ['no start key', { label: 'A v B' }],
     ['no next key', undefined],
+    // P1 review M5: native writes a whole number of seconds from 1 (Bodies), so anything else is no next.
+    ['a start of 0', { label: 'A v B', scheduledStart: 0 }],
+    ['a negative start', { label: 'A v B', scheduledStart: -1793538000 }],
+    ['a start with a fraction', { label: 'A v B', scheduledStart: 1793538000.5 }],
+    ['a start past 2^53 - 1', { label: 'A v B', scheduledStart: Number.MAX_SAFE_INTEGER + 1 }],
+    ['a start no Date holds', { label: 'A v B', scheduledStart: 9_000_000_000_000 }],
   ])('reads a next that is %s as no next, and keeps the snapshot', (_why, next) => {
     const wire = vectorWire('paired-court-with-next');
     const pairing: Record<string, unknown> = { ...wire.pairing, next };
@@ -411,6 +417,15 @@ describe('carries 2-6: the snapshot wire, as native writes it (Task 12)', () => 
       pairing: { ...wire.pairing, next: { label, scheduledStart: null } },
     });
     expect(read?.pairing?.next).toEqual({ label, scheduledStart: null });
+  });
+
+  it('reads a next at the lowest start native writes, 1 s after the epoch', () => {
+    const wire = vectorWire('paired-court-with-next');
+    const read = toEngineSnapshot({
+      ...wire,
+      pairing: { ...wire.pairing, next: { label: 'A v B', scheduledStart: 1 } },
+    });
+    expect(read?.pairing?.next).toEqual({ label: 'A v B', scheduledStart: new Date(1000) });
   });
 
   // Four questions (1): the same next twice is the same pairing object, so a selector over it does not re-render.

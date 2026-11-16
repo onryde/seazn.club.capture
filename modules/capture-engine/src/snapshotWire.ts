@@ -262,14 +262,20 @@ function toCourt(value: unknown): string | null | undefined {
   return textWithin(value, 80) ? value : undefined;
 }
 
-/** The court's next streamed match (§5.3), display only: anything but a label of 1 to 200 and a start is none. */
+const isEpochSeconds = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 1;
+
+/**
+ * The court's next streamed match (§5.3), display only: anything but a label of 1 to 200 and a start is none. The start
+ * is null, or whole epoch seconds from 1 as native writes it (Bodies) and a Date holds (P1 review M5).
+ */
 function toNext(value: unknown): NextMatch | null {
   if (!isObject(value) || !textWithin(value.label, 200)) return null;
   const { scheduledStart } = value;
   if (scheduledStart === null) return { label: value.label, scheduledStart: null };
-  return isNumber(scheduledStart)
-    ? { label: value.label, scheduledStart: new Date(scheduledStart * 1000) }
-    : null;
+  if (!isEpochSeconds(scheduledStart)) return null;
+  const at = new Date(scheduledStart * 1000);
+  return Number.isNaN(at.getTime()) ? null : { label: value.label, scheduledStart: at };
 }
 
 /** Epoch seconds across the bridge (amendment, The engine port), a Date here. */

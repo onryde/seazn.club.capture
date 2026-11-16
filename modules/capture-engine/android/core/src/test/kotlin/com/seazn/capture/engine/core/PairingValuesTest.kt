@@ -122,6 +122,16 @@ class PairingValuesTest {
     assertNull(beat(next).overBeat(Configs.waiting()).courtName)
   }
 
+  /**
+   * P1 review M1: the schema bars `court` on every beat answer, so a beat that carries one anyway (an off-contract
+   * server) never renames the court, nor makes a fixture's pairing a court's: a beat keeps the court (spec §5.3).
+   */
+  @Test
+  fun `a beat that carries a court anyway keeps the held one`() {
+    assertEquals("Court 2", beat(null).copy(courtName = "Court 9").overBeat(held).courtName)
+    assertNull(beat(null).copy(courtName = "Court 9").overBeat(Configs.waiting()).courtName, "a fixture's pairing stays one")
+  }
+
   @Test
   fun `a descriptor's court replaces the held one, its silence keeps it, and it keeps the held next`() {
     val descriptor = Configs.waiting().copy(venueTimezone = "Europe/Madrid")

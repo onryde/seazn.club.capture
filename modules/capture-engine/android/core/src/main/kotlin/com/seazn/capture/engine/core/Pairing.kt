@@ -150,13 +150,14 @@ data class WaitingFields(
    * A beat's answer over what is held. The beat carries no `stage` (capture-beat.v1), so the held stage
    * stays while this answer's [label] is the match it was read with, and goes when the label moved: the
    * stable code may now point at the next match, and the old round line would be a wrong fact on the tripod.
-   * The beat carries no `court` either, so the held court stays ([over]); its `next` is the court's next streamed
-   * match now, so it replaces the held one, and a beat with none clears it (court stream §5.3).
+   * The beat carries no `court` either, so the held court stays, even when an off-contract beat names one (P1 review
+   * M1: the schema bars it on every answer branch); its `next` is the court's next streamed match now, so it replaces
+   * the held one, and a beat with none clears it (court stream §5.3).
    */
   fun overBeat(held: WaitingFields): WaitingFields {
     val merged = over(held)
     val still = held.stageLabel != null && held.stageFor == label
-    return merged.copy(stageLabel = held.stageLabel.takeIf { still }, stageFor = held.stageFor.takeIf { still }, next = next)
+    return merged.copy(stageLabel = held.stageLabel.takeIf { still }, stageFor = held.stageFor.takeIf { still }, courtName = held.courtName, next = next)
   }
 
   companion object {

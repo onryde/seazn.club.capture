@@ -145,6 +145,23 @@ class PairingTest {
   }
 
   /**
+   * P1 review M3: an Arming session shape whose one defect is a malformed court lands no waiting fields (Bodies reads
+   * them unreadable, named `court`), so the held court stands: a malformed court is never no court (spec §3).
+   */
+  @Test
+  fun `the held court survives an Arming descriptor whose court is unreadable`() {
+    val r = Configs.pairRequest()
+    val request = PairRequest(r.code, r.slot, r.token, r.codeUrl, r.heartbeatUrl, r.startUrl, r.language, r.automatic, r.claim, r.environment, court = "Court 2")
+    val rig = MachineRig(request = request)
+    rig.codes = { if (rig.phase is Phase.Arming) CodeAnswer.Open("sess_42", "warming", Configs.descriptor(), null, waitingUnreadable = "court") else null }
+    rig.paired()
+    rig.heard(Configs.waiting().copy(venueTimezone = ""), "go-live", "sess_42")
+    assertIs<Phase.Armed>(rig.phase, "it still opens")
+    assertEquals("Court 2", rig.court)
+    assertEquals(listOf("source" to "descriptor", "field" to "court"), rig.records("waiting-unreadable").single().fields)
+  }
+
+  /**
    * Final review I-2b: the session shape's waiting fields unreadable at Arming. The broadcast still opens on
    * the pairing's fields, and the record names the field, once a pairing whichever answer brought it.
    */
