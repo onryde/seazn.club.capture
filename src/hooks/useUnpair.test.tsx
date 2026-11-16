@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { UNPAIR_GIVE_UP_MS, useUnpair, type UnpairOutcome } from '@/hooks/useUnpair';
+import { codeStays, UNPAIR_GIVE_UP_MS, useUnpair, type UnpairOutcome } from '@/hooks/useUnpair';
 import { createFakePorts, readRecord, type FakePorts } from '../../test/fakePorts';
 import { savedStreamCode } from '../../test/fixtures/savedStream';
 import { holdIntents } from '../../test/holdIntents';
@@ -295,12 +295,36 @@ describe('useUnpair', () => {
       const native = holdIntents(fakes.engine, ['unpair']);
       const owner = unpairer(fakes);
       const next = unpairer(fakes);
-      act(() => owner.result.current('forget'));
+      const outcomes: UnpairOutcome[] = [];
+      act(() => owner.result.current('forget', (outcome) => outcomes.push(outcome)));
       owner.unmount();
+      // `left`, not `gave-up`: a Forget whose screen went still forgets (P4 review I1 keeps the code on a give-up only).
+      expect(outcomes).toEqual(['left']);
       act(() => vi.advanceTimersByTime(UNPAIR_GIVE_UP_MS + 1));
+      expect(outcomes).toEqual(['left']);
       expect(events(fakes)).not.toContain('unpair.gave-up');
       act(() => next.result.current('orphan'));
       expect(native.held()).toEqual(['unpair', 'unpair']);
+    });
+  });
+
+  // P4 review I1: native ignores an unpair while the operator's start is in flight, so a give-up with the engine still
+  // paired may yet arm: Forget and a court Leave keep the code then. Every row is from the review, none from the code.
+  describe('codeStays', () => {
+    it.each([
+      ['held', 'live', true],
+      ['gave-up', 'paired', true],
+      ['gave-up', 'live', true],
+      ['gave-up', 'stopped', true],
+      ['gave-up', 'idle', false],
+      ['left', 'paired', false],
+      ['idle', 'idle', false],
+    ] as const)('%s with the engine %s: %s', (outcome, status, stays) => {
+      const fakes = createFakePorts();
+      if (status === 'paired') pair(fakes);
+      if (status === 'live') fakes.engine.scene('live');
+      if (status === 'stopped') fakes.engine.scene('stopped');
+      expect(codeStays(outcome, fakes.engine)).toBe(stays);
     });
   });
 

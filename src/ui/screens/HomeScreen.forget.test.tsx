@@ -121,20 +121,33 @@ describe('Forget while the code is paired (I1)', () => {
     expect(intentKinds(app)).not.toContain('stop');
   });
 
-  // CD26: native never answers. The operator asked, so the code goes; the
-  // engine still paired is then an orphan, unpaired at the next settle.
-  it('forgets the code when native never answers within 5 s, and records the give-up', async () => {
+  // CD26: native never answers, and the give-up is recorded. P4 review I1 (court stream): native ignores an unpair
+  // while the operator's start is in flight (Pairings.kt), so an engine still paired at the give-up keeps its code: a
+  // start then accepted arms with it, and the card still offers Forget, one tap to try again.
+  it('keeps the code and the card when native never answers within 5 s, and records the give-up', async () => {
     const app = await pairedThenHome();
     const native = holdIntents(app.engine, ['unpair']);
     forget();
-    await flush(UNPAIR_GIVE_UP_MS - 100);
-    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
-    await flush(200);
-    expect(savedKeys(app)).toEqual([]);
+    await flush(UNPAIR_GIVE_UP_MS + 100);
     expect(readRecord(app.record).map((entry) => entry.event)).toContain('unpair.gave-up');
-    await backgroundAndBack(app);
-    expect(native.held()).toEqual(['unpair', 'unpair']);
+    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
     expect(app.nav.current()).toBe('home');
+    expect(screen.getByRole('button', { name: 'Forget' })).toBeTruthy();
+    forget();
+    await flush();
+    expect(native.held()).toEqual(['unpair', 'unpair']);
+  });
+
+  it('keeps the code when a start is accepted after the give-up, and shows its broadcast', async () => {
+    const app = await pairedThenHome();
+    holdIntents(app.engine, ['unpair']);
+    forget();
+    await flush(UNPAIR_GIVE_UP_MS + 100);
+    act(() => app.engine.hear({ word: 'go-live', cause: 'organiser' }));
+    await flush();
+    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
+    expect(app.engine.getSnapshot().state.kind).not.toBe('idle');
+    expect(app.nav.current()).toBe('stream');
   });
 
   // Second call: a double tap before the card goes clears the pairing once.

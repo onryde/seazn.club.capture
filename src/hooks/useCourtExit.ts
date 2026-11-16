@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { SessionState } from '@/domain/session/SessionState';
 import { savedStream } from '@/hooks/savedStream';
 import { usePorts } from '@/hooks/usePorts';
-import { useUnpair } from '@/hooks/useUnpair';
+import { codeStays, useUnpair } from '@/hooks/useUnpair';
 
 type Kind = SessionState['kind'];
 
@@ -19,13 +19,14 @@ export type CourtExit = {
 /**
  * Exit on a court code's waiting screen (court stream spec 2026-11-14 §6.4, O5, O12): the only way off a court, and it
  * asks first. Leave follows Home's Forget: unpair, forget the saved code once the engine is Idle, then Home. A remote Go
- * live that wins the race stands (`held`), and the code is kept. A refused forget is never silent (S0 R19): the engine
+ * live that wins the race stands (`held`), and the code is kept; so is it when the unpair gives up with the engine not
+ * Idle (`codeStays`). A refused forget is never silent (S0 R19): the engine
  * is Idle by then, so it goes Home with "couldn't save" posted there. A second Leave while one is under way is dropped by
  * `useUnpair`. The question belongs to the waiting screen: once the engine arms it closes for good, and it is not
  * still open when the match ends and the court waits again.
  */
 export function useCourtExit(court: string | null, kind: Kind): CourtExit {
-  const { modeStore, navigation, logger, homeNews } = usePorts();
+  const { engine, modeStore, navigation, logger, homeNews } = usePorts();
   const unpair = useUnpair();
   const [asked, setAsked] = useState(false);
   const offered = court !== null && kind === 'paired';
@@ -39,7 +40,9 @@ export function useCourtExit(court: string | null, kind: Kind): CourtExit {
     const code = savedStream(modeStore); // the code on screen when Leave was pressed (C4b-I2)
     if (code === null) return;
     unpair('forget', (outcome) => {
-      if (outcome === 'held') return; // a remote Go live won the race: the broadcast stands
+      // A Go live won the race (the broadcast stands), or native never answered with the engine still paired, its
+      // start perhaps in flight: the code and the screen stay, with Exit (P4 review I1).
+      if (codeStays(outcome, engine)) return;
       void modeStore.forget(code).then(
         (forgot) => (forgot ? navigation.go('home') : undefined),
         () => {
@@ -51,6 +54,6 @@ export function useCourtExit(court: string | null, kind: Kind): CourtExit {
         },
       );
     });
-  }, [modeStore, navigation, logger, homeNews, unpair]);
+  }, [engine, modeStore, navigation, logger, homeNews, unpair]);
   return { offered, open: offered && asked, ask, stay, leave };
 }

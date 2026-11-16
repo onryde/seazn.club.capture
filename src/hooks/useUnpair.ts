@@ -10,9 +10,22 @@ export const UNPAIR_GIVE_UP_MS = 5_000;
 
 /** Why the engine is cleared: its code was forgotten, no saved code owns it, or another mode is opening (A7). */
 export type UnpairCause = 'forget' | 'orphan' | 'otherMode';
-/** `held`: a broadcast is held (a remote Go live raced the unpair, and native ignored it): it stands. */
-export type UnpairOutcome = 'idle' | 'held' | 'gave-up';
+/**
+ * `held`: a broadcast is held (a remote Go live raced the unpair, and native ignored it): it stands. `gave-up`: native
+ * did not answer within 5 s. `left`: the caller unmounted first, which ends its clearing with no record line.
+ */
+export type UnpairOutcome = 'idle' | 'held' | 'gave-up' | 'left';
 type Done = (outcome: UnpairOutcome) => void;
+
+/**
+ * Whether a Forget or a court Leave keeps the code it was asked to drop: a broadcast is held (`held`), or the 5 s
+ * bound gave up with the engine still not Idle. Native ignores an unpair while the operator's start is in flight
+ * (`Pairings.unpair`), so the give-up comes first and that start may yet arm: it arms with its code, and the operator
+ * has one more tap to try again (P4 review I1). A caller that left first (`left`) still forgets, as it always did.
+ */
+export const codeStays = (outcome: UnpairOutcome, engine: CaptureEnginePort): boolean =>
+  outcome === 'held' ||
+  (outcome === 'gave-up' && selectEngineStatus(engine.getSnapshot()) !== 'idle');
 
 /**
  * The clearing under way on each engine, whoever started it (final fix round
@@ -31,7 +44,7 @@ export const clearingUnderWay = (engine: CaptureEnginePort): boolean => underWay
  * snapshot (intents, not RPC; AGENTS §2). It never pairs. One clearing per
  * engine at a time: a call while one is under way, from any caller, is
  * dropped. Bounded at 5 s (CD26, P9). A caller that unmounts ends the clearing
- * it started, as `gave-up` with no record line, and frees the engine.
+ * it started, as `left` with no record line, and frees the engine.
  */
 export function useUnpair(): (cause: UnpairCause, done?: Done) => void {
   const { engine, logger } = usePorts();
@@ -99,5 +112,5 @@ function clear(
   };
   unsubscribe = engine.subscribe(step);
   step();
-  return ended ? null : () => end('gave-up');
+  return ended ? null : () => end('left');
 }

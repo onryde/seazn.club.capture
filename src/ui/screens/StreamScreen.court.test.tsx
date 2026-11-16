@@ -9,6 +9,7 @@ import { layOut } from '../../../test/layOut';
 import { renderViewfinder } from '../../../test/renderViewfinder';
 import { refusingStore } from '../../../test/refusingStore';
 import { encodeSavedCode } from '@/domain/mode/savedCode';
+import { holdIntents } from '../../../test/holdIntents';
 import { savedCourtCode } from '../../../test/fixtures/savedStream';
 
 // Court stream (spec 2026-11-14 §6.2): the waiting screen on a court code. Copy is read from the dictionaries, the time
@@ -279,6 +280,34 @@ describe('Exit on the court code’s waiting screen', () => {
     expect(sent(view, 'unpair')).toHaveLength(1);
     expect(view.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
     expect(view.navigation.current()).toBe('home');
+  });
+
+  // P4 review I1: native ignores an unpair while the operator's start is in flight (Pairings.kt), so Leave gives up at
+  // 5 s with the engine still paired. The code and the screen stay, Exit with them, and a start that is then accepted
+  // arms with its code; a second Leave tries again.
+  it('keeps the code and the screen when native never answers the unpair, so an accepted start arms with its code', async () => {
+    const view = await waiting();
+    const native = holdIntents(view.engine, ['unpair']);
+    fireEvent.click(more() as HTMLElement);
+    fireEvent.click(leave());
+    await flush();
+    await act(() => vi.advanceTimersByTimeAsync(UNPAIR_GIVE_UP_MS));
+    expect(readRecord(view.record).map((line) => line.event)).toContain('unpair.gave-up');
+    expect(view.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
+    expect(view.navigation.current()).toBe('stream');
+    expect(more()).not.toBeNull();
+    // One more Leave: a second unpair, since this clearing is a new one.
+    fireEvent.click(more() as HTMLElement);
+    fireEvent.click(leave());
+    await flush();
+    expect(native.held()).toEqual(['unpair', 'unpair']);
+    // The start is accepted before that one gives up: the broadcast arms, with its code, on this screen.
+    act(() => view.engine.hear({ word: 'go-live', cause: 'organiser' }));
+    await act(() => vi.advanceTimersByTimeAsync(UNPAIR_GIVE_UP_MS));
+    expect(view.engine.getSnapshot().state.kind).not.toBe('paired');
+    expect(view.engine.getSnapshot().state.kind).not.toBe('idle');
+    expect(view.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
+    expect(view.navigation.current()).toBe('stream');
   });
 
   // Review Focus 4: a remote Go live arrives while the Leave sheet is open.

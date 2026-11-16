@@ -44,7 +44,7 @@ import {
   type SetPanel,
 } from '@/hooks/useCodeCheck';
 import type { ScoringCode } from '@/hooks/useScoringCheck';
-import { useUnpair } from '@/hooks/useUnpair';
+import { codeStays, useUnpair } from '@/hooks/useUnpair';
 import { useFormatDay, useFormatTime } from '@/hooks/useFormatTime';
 import { useT } from '@/hooks/useLanguage';
 import { usePairing } from '@/hooks/usePairing';
@@ -675,16 +675,14 @@ function useContinue(setStatusKey: SetStatusKey, saveFailed: SaveFailed): () => 
  * so nothing is left to reopen or go live on. The amendment (Identity rules
  * in JS): unpair first, and forget the code once the engine is Idle. If a
  * remote Go live raced the tap, the broadcast stands, the code is kept, and
- * the route rule shows /stream. A give-up (CD26) forgets: the operator asked,
- * and an engine still paired is then an orphan, unpaired at the next settle.
- * A refused forget keeps the code, with the engine already Idle.
- *
- * I1 (never a viewfinder for a forgotten code): a foreground before native
- * answers reopens /stream on the still-paired code, which unmounts Home and
- * ends the unpair as a give-up. The forget then lands Home again.
+ * the route rule shows /stream. A give-up (CD26) with the engine still not
+ * Idle keeps the code too (`codeStays`, P4 review I1): native ignores an unpair
+ * while the operator's start is in flight, which may yet arm, and the card
+ * still offers Forget. A refused forget keeps the code, with the engine
+ * already Idle.
  */
 function useForget(setStatusKey: SetStatusKey, saveFailed: SaveFailed): () => void {
-  const { modeStore, navigation } = usePorts();
+  const { engine, modeStore, navigation } = usePorts();
   const unpair = useUnpair();
   return useCallback(() => {
     // C4b-I2: the code on the card when Forget was pressed. A code scanned
@@ -693,7 +691,7 @@ function useForget(setStatusKey: SetStatusKey, saveFailed: SaveFailed): () => vo
     const code = savedStream(modeStore);
     if (code === null) return;
     unpair('forget', (outcome) => {
-      if (outcome === 'held') return;
+      if (codeStays(outcome, engine)) return;
       void modeStore.forget(code).then(
         (forgot) => {
           if (!forgot) return;
@@ -703,7 +701,7 @@ function useForget(setStatusKey: SetStatusKey, saveFailed: SaveFailed): () => vo
         () => saveFailed('forget'),
       );
     });
-  }, [modeStore, navigation, setStatusKey, saveFailed, unpair]);
+  }, [engine, modeStore, navigation, setStatusKey, saveFailed, unpair]);
 }
 
 /**
