@@ -186,27 +186,44 @@ describe('Home: another mode while paired (A7)', () => {
     expect(saved(h)?.active).toBe('stream');
   });
 
-  // Review C5 m-1, CD26: native never answers, so the unpair is given up. The operator asked, so
-  // the stream code is forgotten (an engine still paired is then an orphan, cleared at the next
-  // settle); the other mode is asked for again, since the phone is still paired.
-  it('forgets the stream code when native never answers the unpair', async () => {
+  // Review C5 m-1, CD26: native never answers, so the unpair is given up. Ruling RP9 (P4 review I1): native ignores an
+  // unpair while the operator's start is in flight, so a give-up with the engine still paired keeps the stream code,
+  // stays on Home and opens nothing; the operator can ask again, and a start accepted meanwhile arms with its code.
+  it('keeps the stream code and opens nothing when native never answers the unpair', async () => {
     const h = await home({ paired: true });
     await openScoring(h);
     const held = holdIntents(h.engine, ['unpair']);
     act(() => actions(h).confirmUnpair());
-    await flush(UNPAIR_GIVE_UP_MS - 20);
-    expect(saved(h)?.codes.stream).toBeDefined();
-    await flush(40);
+    await flush(UNPAIR_GIVE_UP_MS + 20);
     expect(held.held()).toEqual(['unpair']);
     expect(h.engine.getSnapshot().state.kind).toBe('paired');
-    expect(saved(h)?.codes.stream).toBeUndefined();
+    expect(readRecord(h.record)).toContainEqual(
+      expect.objectContaining({ event: 'unpair.gave-up', fields: { action: 'otherMode' } }),
+    );
+    expect(saved(h)?.codes.stream).toBeDefined();
     expect(saved(h)?.codes.scoring).toBeUndefined();
-    expect(view(h).panel).toEqual({
-      kind: 'unpairConfirm',
-      tapped: 'scoring',
-      code: scoring,
-      scoring: { kind: 'scan', match: MATCH, sportKey: 'badminton' },
-    });
+    expect(saved(h)?.active).toBe('stream');
+    expect(view(h).panel).toBeNull();
+    // The operator asks again: the sheet, and a new unpair on Confirm.
+    await openScoring(h);
+    expect(view(h).panel?.kind).toBe('unpairConfirm');
+    act(() => actions(h).confirmUnpair());
+    await flush();
+    expect(held.held()).toEqual(['unpair', 'unpair']);
+  });
+
+  it('keeps the stream code when a start is accepted after the give-up', async () => {
+    const h = await home({ paired: true });
+    await openScoring(h);
+    holdIntents(h.engine, ['unpair']);
+    act(() => actions(h).confirmUnpair());
+    await flush(UNPAIR_GIVE_UP_MS + 20);
+    act(() => h.engine.hear({ word: 'go-live', cause: 'organiser' }));
+    await flush();
+    expect(h.engine.getSnapshot().state.kind).not.toBe('idle');
+    expect(saved(h)?.codes.stream).toBeDefined();
+    expect(saved(h)?.codes.scoring).toBeUndefined();
+    expect(saved(h)?.active).toBe('stream');
   });
 
   it('opens the other mode at once with nothing paired', async () => {

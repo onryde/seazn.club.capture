@@ -343,10 +343,13 @@ function openScoring(
  * A7's sheet. Confirm unpairs (`useUnpair('otherMode')`), forgets the stream
  * code once the engine is Idle, as the operator's Stop does (Process death and
  * reopen), then opens the other mode. A Go live that raced it holds the
- * broadcast: the code is kept and nothing opens. A refused forget is never
- * silent (R19): the line says so, and the other mode does not open. The sheet
- * closes as Cancel when the engine leaves Paired under it; a panel that
- * replaced it in the same moment (Task 29's unpair) is left standing.
+ * broadcast: the code is kept and nothing opens. So does a give-up with the
+ * engine not Idle (`codeStays`, ruling RP9): native ignores an unpair while
+ * the operator's start is in flight, so Home stays and the operator can ask
+ * again. A refused forget is never silent (R19): the line says so, and the
+ * other mode does not open. The sheet closes as Cancel when the engine leaves
+ * Paired under it; a panel that replaced it in the same moment (Task 29's
+ * unpair) is left standing.
  */
 function useUnpairConfirm(
   panel: HomePanel | null,
@@ -354,7 +357,7 @@ function useUnpairConfirm(
   openCode: OpenCode,
   saveFailed: SaveFailed,
 ): { confirm: () => void; cancel: () => void } {
-  const { modeStore } = usePorts();
+  const { engine, modeStore } = usePorts();
   const unpair = useUnpair();
   const status = useEngineSelector(selectEngineStatus);
   const open = panel?.kind === 'unpairConfirm' ? panel : null;
@@ -365,7 +368,7 @@ function useUnpairConfirm(
     if (open === null) return;
     setPanel(closeSheet);
     unpair('otherMode', (outcome) => {
-      if (outcome === 'held') return;
+      if (codeStays(outcome, engine)) return;
       const code = savedStream(modeStore);
       const forgot = code === null ? Promise.resolve(true) : modeStore.forget(code);
       forgot
@@ -375,7 +378,7 @@ function useUnpairConfirm(
         )
         .catch(ignoreUnexpected);
     });
-  }, [open, setPanel, unpair, modeStore, openCode, saveFailed]);
+  }, [open, setPanel, unpair, engine, modeStore, openCode, saveFailed]);
   const cancel = useCallback(() => setPanel(null), [setPanel]);
   return { confirm, cancel };
 }
