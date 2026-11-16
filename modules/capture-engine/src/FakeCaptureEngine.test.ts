@@ -489,10 +489,11 @@ describe('scenes: every state spec §6 and the amendment list', () => {
     fatal: { kind: 'ended', reason: 'fatal-error' },
     shed: { kind: 'publishing' },
     'unpaired-replaced': { kind: 'idle' },
+    'court-waiting': { kind: 'paired' },
   };
 
   it('lists every scene once, for the dev controls', () => {
-    expect(FAKE_SCENES).toHaveLength(24);
+    expect(FAKE_SCENES).toHaveLength(25);
     expect([...FAKE_SCENES].sort()).toEqual(Object.keys(EXPECTED).sort());
   });
 
@@ -702,6 +703,7 @@ describe('whose camera is on air (carry 10)', () => {
     fatal: null,
     shed: 'own',
     'unpaired-replaced': null,
+    'court-waiting': 'own',
   };
 
   it.each(FAKE_SCENES)('%s', (scene) => {
@@ -832,5 +834,87 @@ describe('surviving the background (CD18)', () => {
     expect(snapshot().survivesBackground).toBe(false);
     wait(1_000);
     expect(snapshot().survivesBackground).toBe(false);
+  });
+});
+
+/**
+ * Court stream (spec 2026-11-14 §6.1, §6.3, O5, O12), as native's CourtTest and ForgetTest: a court pairing's Stop ends
+ * this match only, back to Paired with `stopped`, unless a 401 was held; a fixture's live Stop still ends the pairing.
+ */
+describe('court codes', () => {
+  const COURT: PairIntent = { ...KIT_CODE_A, court: 'Court 2' };
+  const NEXT = {
+    label: 'Example Town v Sample CC',
+    scheduledStart: new Date('2026-11-14T14:00:00Z'),
+  };
+  const courtLive = () => {
+    pair(COURT);
+    engine.send({ kind: 'start' });
+    wait(1_000);
+    expect(state().kind).toBe('publishing');
+  };
+
+  it('seeds the pairing’s court from the pair, and a fixture’s pair holds none', () => {
+    pair(COURT);
+    expect(snapshot().pairing?.court).toBe('Court 2');
+    // An empty input: a court with no next streamed match yet.
+    expect(snapshot().pairing?.next).toBeNull();
+    engine.send({ kind: 'unpair' });
+    pair(KIT_CODE_B);
+    expect(snapshot().pairing?.court).toBeNull();
+  });
+
+  it('goes back to paired, stopped, on a live Stop on a court, keeping the pairing; a second Stop does nothing', () => {
+    courtLive();
+    engine.send({ kind: 'stop' });
+    expect(state()).toEqual({ kind: 'paired' });
+    expect([snapshot().lastEnd, snapshot().broadcast]).toEqual(['stopped', null]);
+    expect(snapshot().pairing).toMatchObject({ court: 'Court 2', tokenTag: TAG_A });
+    expect(snapshot().unpaired).toBeNull();
+    engine.send({ kind: 'stop' });
+    wait(5_000);
+    expect(state()).toEqual({ kind: 'paired' });
+    expect(snapshot().lastEnd).toBe('stopped');
+  });
+
+  it('still ends the pairing on a fixture’s live Stop (the twin)', () => {
+    onAirLive();
+    expect(snapshot().pairing?.court).toBeNull();
+    engine.send({ kind: 'stop' });
+    expect(state()).toMatchObject({ kind: 'ended', reason: 'operator-stopped' });
+  });
+
+  // Review Focus 1: the organiser withdraws the court link mid-match, then the volunteer holds Stop.
+  it('ends a court’s pairing when stopped after a held 401, as native does', () => {
+    courtLive();
+    engine.hear({ word: 'code-ended' });
+    expect(snapshot().codeEndedPending).toBe(true);
+    engine.send({ kind: 'stop' });
+    expect(state()).toMatchObject({ kind: 'ended', reason: 'operator-stopped' });
+  });
+
+  it('lets a test set the court’s next match, and clear it', () => {
+    pair(COURT);
+    engine.setPairing({ next: NEXT });
+    expect(snapshot().pairing?.next).toEqual(NEXT);
+    expect(snapshot().pairing?.court).toBe('Court 2');
+    engine.setPairing({ next: null });
+    expect(snapshot().pairing?.next).toBeNull();
+  });
+
+  it('plays court-waiting: paired on Court 2, with the next streamed match and its start', () => {
+    engine.scene('court-waiting');
+    expect(state()).toEqual({ kind: 'paired' });
+    expect(snapshot().pairing).toMatchObject({ court: 'Court 2', next: NEXT });
+    expect(snapshot().lastEnd).toBeNull();
+  });
+
+  // O12 (owner, 2026-11-15): no one-tap Forget on a court's notification; a late tap is ignored, as native's.
+  it('ignores the notification’s Forget on a court pairing, and keeps it paired', () => {
+    pair(COURT);
+    engine.notificationForget();
+    expect(state()).toEqual({ kind: 'paired' });
+    expect(snapshot().unpaired).toBeNull();
+    expect(snapshot().pairing?.court).toBe('Court 2');
   });
 });

@@ -155,6 +155,7 @@
   "stream.action.holdLabel": "{label}. Press and hold for 3 seconds.",
   "stream.action.stopLabel": "Hold to stop",
   "stream.action.stopUnpairLabel": "Hold to stop and unpair",
+  "stream.action.stopMatchLabel": "Hold to stop this match",
   "stream.chip.camera": "Camera",
   "stream.chip.sound": "Mic",
   "stream.chip.network": "Network",

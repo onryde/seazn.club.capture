@@ -82,6 +82,13 @@ export const selectVenueZone = (snapshot: EngineSnapshot) =>
 /** When the match is scheduled to start, as epoch ms (a primitive); null with none. */
 export const selectScheduledStartMs = (snapshot: EngineSnapshot) =>
   snapshot.pairing?.scheduledStart?.getTime() ?? null;
+/** The court's name on a court code's pairing (court stream spec 2026-11-14 §6.1); null on a fixture's code. */
+export const selectCourt = (snapshot: EngineSnapshot) => snapshot.pairing?.court ?? null;
+/** The court's next streamed match (§5.3, a beat's `next`), display only: its label, or null with none. */
+export const selectNextLabel = (snapshot: EngineSnapshot) => snapshot.pairing?.next?.label ?? null;
+/** When the court's next streamed match is scheduled to start, as epoch ms (a primitive); null with none. */
+export const selectNextStartMs = (snapshot: EngineSnapshot) =>
+  snapshot.pairing?.next?.scheduledStart?.getTime() ?? null;
 /** AUTO shows only when automatic mode is on at both ends (A4): the organiser's and the phone's. */
 export const selectAutomaticOn = (snapshot: EngineSnapshot) =>
   snapshot.pairing !== null && snapshot.pairing.autoAllowed && snapshot.pairing.automatic;

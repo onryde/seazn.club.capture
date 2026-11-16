@@ -155,6 +155,7 @@
   "stream.action.holdLabel": "{label}. Maintenez appuyé 3 secondes.",
   "stream.action.stopLabel": "Maintenez appuyé pour arrêter",
   "stream.action.stopUnpairLabel": "Maintenez appuyé pour arrêter et dissocier",
+  "stream.action.stopMatchLabel": "Maintenez appuyé pour arrêter ce match",
   "stream.chip.camera": "Caméra",
   "stream.chip.sound": "Micro",
   "stream.chip.network": "Réseau",

@@ -79,6 +79,7 @@ export const StreamColumn = memo(function StreamColumn(props: ColumnProps) {
       <ColumnAction
         action={view.action}
         stopUnpairs={view.stopUnpairs}
+        court={view.court !== null}
         goLiveOff={view.kind !== 'paired' || view.blocker !== null}
         reason={view.kind === 'paired' ? view.reason : null}
         start={view.start}
@@ -203,6 +204,8 @@ type ActionProps = {
   readonly action: ViewfinderAction;
   /** Stop ends the pairing too (live); before the first frame it ends the broadcast only (owner decision 1). */
   readonly stopUnpairs: boolean;
+  /** A court code's Stop ends this match only, live or not (court stream §6.3, O5). */
+  readonly court: boolean;
   /** Go live is off: before the engine is armed, or with a chip off. */
   readonly goLiveOff: boolean;
   /**
@@ -213,6 +216,12 @@ type ActionProps = {
   readonly start: () => void;
   readonly stop: () => void;
 };
+
+/** What Stop ends, for a screen reader: this match on a court code, else the pairing once live, else the broadcast. */
+function stopLabel(props: Pick<ActionProps, 'court' | 'stopUnpairs'>) {
+  if (props.court) return 'stream.action.stopMatchLabel';
+  return props.stopUnpairs ? 'stream.action.stopUnpairLabel' : 'stream.action.stopLabel';
+}
 
 /**
  * Go live before air, Stop on it; after it, nothing: Ended leaves for Home (spec §5).
@@ -230,11 +239,8 @@ const ColumnAction = memo(function ColumnAction(props: ActionProps) {
       key={props.action}
       label={t(stop ? 'stream.action.stop' : 'stream.action.goLive')}
       // A3: Stop ends the broadcast and, once live, the pairing, and says which to a screen reader (owner decision 1).
-      a11yLabel={
-        stop
-          ? t(props.stopUnpairs ? 'stream.action.stopUnpairLabel' : 'stream.action.stopLabel')
-          : undefined
-      }
+      // On a court code it ends this match only, and says so (court stream §6.3).
+      a11yLabel={stop ? t(stopLabel(props)) : undefined}
       tone={stop ? 'stop' : 'go'}
       disabled={!stop && props.goLiveOff}
       reason={props.reason === null ? null : t(props.reason)}

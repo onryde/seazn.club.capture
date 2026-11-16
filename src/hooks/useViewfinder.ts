@@ -3,6 +3,7 @@ import type { SessionState } from '@/domain/session/SessionState';
 import { selectShedding } from '@/hooks/advisory';
 import {
   selectAutomaticOn,
+  selectCourt,
   selectDestination,
   selectPlaybackUrl,
   selectScheduledStartMs,
@@ -49,10 +50,13 @@ export type Viewfinder = {
   readonly reason: BlockerKey | null;
   readonly action: ViewfinderAction;
   /**
-   * Stop ends the pairing too: the broadcast went live. Owner decision 1 (2026-10-05): a Stop before the first
-   * frame (Arming, Armed, Connecting) ends the broadcast only, and the pairing stays Paired.
+   * Stop ends the pairing too: the broadcast went live, on a fixture's code. Owner decision 1 (2026-10-05): a Stop
+   * before the first frame (Arming, Armed, Connecting) ends the broadcast only, and the pairing stays Paired. A court
+   * code's Stop never ends the pairing (court stream §6.3, O5): native's `stop` takes the court's match only.
    */
   readonly stopUnpairs: boolean;
+  /** The court's name on a court code (court stream §6.1), null on a fixture's: its Stop ends this match only. */
+  readonly court: string | null;
   readonly onAir: boolean;
   /** The camera picture shows, so Take photo is offered: Paired and on air (design follow-up §8, the owner's scope cut). */
   readonly shutter: boolean;
@@ -112,9 +116,20 @@ export function useViewfinder(): Viewfinder {
   const playable = useEngineSelector(selectPlaybackUrl) !== null;
   const shed = useEngineSelector(selectShedding);
   const engineSilent = useEngineSilent();
+  const court = useEngineSelector(selectCourt);
   return useMemo(
     () => ({
-      ...project({ kind, preflight, blocker, engineKey, playable, shed, waiting, engineSilent }),
+      ...project({
+        kind,
+        preflight,
+        blocker,
+        engineKey,
+        playable,
+        shed,
+        waiting,
+        engineSilent,
+        court,
+      }),
       ...countdown,
       ...intents,
     }),
@@ -127,6 +142,7 @@ export function useViewfinder(): Viewfinder {
       shed,
       waiting,
       engineSilent,
+      court,
       countdown,
       intents,
     ],
@@ -143,6 +159,7 @@ type ProjectInput = {
   readonly waiting: WaitingFields;
   /** CD17: no report for three seconds while native holds a pairing. */
   readonly engineSilent: boolean;
+  readonly court: string | null;
 };
 
 /**
@@ -154,7 +171,7 @@ type ProjectInput = {
 function project(
   input: ProjectInput,
 ): Omit<Viewfinder, 'holdRemaining' | 'holdWindow' | 'start' | 'stop'> {
-  const { kind, blocker, waiting, engineSilent } = input;
+  const { kind, blocker, waiting, engineSilent, court } = input;
   const action = ACTION[kind];
   return {
     kind,
@@ -164,7 +181,8 @@ function project(
     blocker,
     reason: blockerReason(blocker),
     action,
-    stopUnpairs: LIVE.has(kind),
+    stopUnpairs: LIVE.has(kind) && court === null,
+    court,
     onAir: action === 'stop',
     shutter: kind === 'paired' || action === 'stop',
     scoring: kind === 'paired' || action === 'stop',

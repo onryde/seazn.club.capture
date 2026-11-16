@@ -19,12 +19,15 @@ import {
   selectAutomaticOn,
   selectBroadcastHeld,
   selectCodeEndedPending,
+  selectCourt,
   selectDelivery,
   selectDestination,
   selectEndReason,
   selectHoldsOrientation,
   selectLabel,
   selectMeterSegments,
+  selectNextLabel,
+  selectNextStartMs,
   selectPlaybackUrl,
   selectScheduledStartMs,
   selectStageLine,
@@ -260,6 +263,26 @@ describe('the held name (amendment, Identity rules)', () => {
 describe('the waiting fields the viewfinder shows (Task 28)', () => {
   const withPairing = (change: Partial<PairingInfo>) =>
     snapshot(PAIRED, {}, { pairing: { ...FAKE_PAIRING, ...change } });
+
+  // Court stream (spec 2026-11-14 §6.1, §6.2): the court and its next streamed match, as primitives.
+  it('reads the court’s name, or null on a fixture’s code and with no pairing', () => {
+    expect(selectCourt(withPairing({ court: 'Court 2' }))).toBe('Court 2');
+    expect(selectCourt(withPairing({ court: null }))).toBeNull();
+    expect(selectCourt(snapshot({ kind: 'idle' }))).toBeNull();
+  });
+
+  it('reads the next match’s label and start as primitives, or null with none', () => {
+    const at = new Date('2026-11-14T14:00:00Z');
+    const next = withPairing({ court: 'Court 2', next: { label: 'C v D', scheduledStart: at } });
+    expect([selectNextLabel(next), selectNextStartMs(next)]).toEqual(['C v D', 1_794_664_800_000]);
+    const unscheduled = withPairing({ next: { label: 'C v D', scheduledStart: null } });
+    expect([selectNextLabel(unscheduled), selectNextStartMs(unscheduled)]).toEqual(['C v D', null]);
+    // An empty input: a court with no next streamed match, and no pairing at all.
+    const none = withPairing({ court: 'Court 2', next: null });
+    expect([selectNextLabel(none), selectNextStartMs(none)]).toEqual([null, null]);
+    const idle = snapshot({ kind: 'idle' });
+    expect([selectNextLabel(idle), selectNextStartMs(idle)]).toEqual([null, null]);
+  });
 
   it('reads the scheduled start as epoch ms, a primitive, or null with none', () => {
     const at = new Date('2026-10-03T13:30:00Z');

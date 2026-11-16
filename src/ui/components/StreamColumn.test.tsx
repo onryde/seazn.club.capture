@@ -38,6 +38,7 @@ const viewOf = (overrides: Partial<Viewfinder>): Viewfinder => ({
   reason: null,
   action: 'goLive',
   stopUnpairs: false,
+  court: null,
   onAir: false,
   shutter: false,
   scoring: false,
