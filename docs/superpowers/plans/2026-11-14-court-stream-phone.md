@@ -451,7 +451,7 @@ court, because the notification's Forget has no question (R7).
 - Modify: `src/hooks/engineSelectors.ts` (`selectRoundLine` replaces `selectStageLine`'s use in the strip)
 - Modify: `src/ui/components/StatusStrip.tsx` (reads `selectRoundLine`; hides `MatchLabel` on a court code while
   paired)
-- Create: `src/domain/session/nextLine.ts` (`NEXT_LABEL_CAP`, `cutNextLabel`)
+- Create: `src/domain/session/nextLine.ts` (`NEXT_LABEL_ROOM`, `cutNextLabel`)
 - Modify: `src/i18n/budgets.test.ts` (fills `{label}` and `{time}`)
 - Modify: `src/hooks/statusKey.ts` (`pairedKey`, `LINE_TIER`)
 - Modify: `src/hooks/useViewfinder.ts` (`nextLabel`, `nextAt`), `src/ui/screens/StreamScreen.tsx:113-123` (`useColumnLine` vars `label`, `time`)
@@ -470,11 +470,12 @@ court, because the notification's Forget has no question (R7).
     by `StageLine`'s ellipsis;
   - `Viewfinder.nextLabel: string | null`;
   - `Viewfinder.nextAt: string | null`, formatted by `useFormatTime` in the venue's zone;
-  - `NEXT_LABEL_CAP = 24` and `cutNextLabel(label: string): string` in `src/domain/session/nextLine.ts`, on
-    `cutDestination`'s rule: a label longer than 24 code points becomes its first 23 and "…". `useColumnLine`
-    passes `label: cutNextLabel(nextLabel)`. The whole line, "Next: " + 24 + " · " + a 10-character time, is then
-    at most 48 characters in every language, so the time is never the part an ellipsis eats (I4). The panel title
-    (Task 10) uses the same cut;
+  - `NEXT_LABEL_ROOM` and `cutNextLabel(label: string): string` in `src/domain/session/nextLine.ts`: a label
+    wider than the room, as it draws in the status font, is cut to what fits beside "…". `useColumnLine` passes
+    `label: cutNextLabel(nextLabel)`. The whole line is then one line at the owner's phone's 386 dp in every
+    language, so the time is never the part an ellipsis eats (I4). The panel title (Task 10) uses the same cut.
+    Revised 2026-11-16 (P3 review m2, RP8): the cut is by measured width, not by 24 characters, since 24 capitals
+    draw half as wide again as 24 lower-case letters;
   - **The match label is not shown twice (I4).** On a court code while `kind === 'paired'`, `StatusStrip` does not
     render `MatchLabel`, and calls `onLabelHeight(0)`; the Next line names the match. On air the label row is back,
     as today. Consequence, accepted: the picture is sized again once at each go-live, when the label row appears,
@@ -510,12 +511,12 @@ court, because the notification's Forget has no question (R7).
   - `statusTier.test.ts` lists the four keys by hand as `routine`.
   - Screen on the `court-waiting` scene: the round line reads "COURT 2" (caps by style; assert the text "Court 2"),
     and the message line reads "Next: Example Town v Sample CC · <time from formatTime's own test vector>".
-  - `nextLine.test.ts`: a 60-character label → 23 characters and "…", and the en line built from it ends in
-    "· 14:32"; a 24-character label stays whole.
+  - `nextLine.test.ts`: a 60-character label is cut to what fits beside "…", and the en line built from it ends in
+    "· 14:32"; a label that fits the room stays whole (RP8: measured by width, not counted).
   - Screen on the `court-waiting` scene: there is no `match-label` node while paired; the label row is there
     after the fake goes live.
-  - `budgets.test.ts`: fill `{label}` with a 24-character cut label, `${'W'.repeat(23)}…`, and `{time}` with
-    "14:32 CEST". Every new `stream.status.court*` key is within the `stream.status.` row's 48 in all four
+  - `budgets.test.ts`: fill `{label}` with `${'W'.repeat(23)}…`, 24 of the widest capital (a count budget only;
+    the cut is by width, RP8), and `{time}` with "14:32 CEST". Every new `stream.status.court*` key is within the `stream.status.` row's 48 in all four
     languages.
 
   **Four questions:**
@@ -737,7 +738,7 @@ export function useCourtExit(court: string | null, kind: Kind): CourtExit {
   - the panel title is `stream.scoring.titleMatch` with `{label: cutNextLabel(label)}` (Task 7) when
     `label !== null`, otherwise `stream.scoring.title`. One line;
   - `budgets.test.ts` gets the row `[/^stream\.scoring\.titleMatch$/, 32]`, beside `(title|hidesIn)` at
-    `:40`, with `{label}` filled by Task 7's 24-character cut. The new `stream.status.refusedNoMatch` falls under
+    `:40`, with `{label}` filled as the `stream.status.` rows fill it. The new `stream.status.refusedNoMatch` falls under
     the `stream.status.` row's 48: es "Ningún partido emitido en juego en esta pista" is 45;
   - `Bodies.scoringLink` adds `status in 400..499 && code == "no_match"` → `Refused("no_match", null)`, ordered
     before the 401/404 line. `label` is 1–200 code points, else null, and never refuses a link;

@@ -75,6 +75,15 @@ once and serves every Go live of the match (A1, A5). S1 designs those screens.
 (Scan is now Home's Live Stream tile plus the system scanner, not a screen,
 and S1 redraws this list.)
 
+Live Stream also pairs to a **court code** (court stream design,
+`docs/specs/2026-11-14-court-stream-design.md`, O1–O14): one scan per court per
+day, and each streamed match on the court is its own broadcast, one video per
+match. Stop ends the match, not the pairing, and the phone waits for the
+court's next streamed match. Exit (⋯ on the waiting screen, which asks first)
+is the only way off a court. A pairing is a court's exactly when native's
+`PairingState.isCourt` holds (the snapshot's `pairing.court`); nothing else
+decides it.
+
 No accounts, no login, no fixture browsing, no chat, no replays, no gallery,
 no in-app payments, and no upload but one: the session record, sent to Seazn
 on the operator's tap (R3 of the D3 findings design; owner, 2026-10-11), not
@@ -176,7 +185,7 @@ page in the main repo, not here. Do not grow the app to accommodate them.
   own with no path to the session's failure path, and is never read by the
   machine, the snapshot or the heartbeat. The second is `scoringLink` (design
   follow-up §10): one call that resolves the Remote scoring link, or one of
-  six refusal words, to the caller that asked, within native's 16 s backstop
+  seven refusal words, to the caller that asked, within native's 16 s backstop
   (`BridgeCore.ANSWER_BACKSTOP_MS`); the app gives up at 12 s, and a late
   answer is dropped. It carries no session state and is never read by the
   machine, the snapshot or the heartbeat. Neither call runs on the machine's
@@ -185,8 +194,10 @@ page in the main repo, not here. Do not grow the app to accommodate them.
   caller throws answers `unavailable` and never reaches the failure path.
   `scoringLink` answers a scoring credential: its URL is never in a snapshot,
   the record, a beat or a store, it goes to the one caller that asked, and its
-  secret is masked in both records before the caller has it. These are the
-  only two such calls.
+  secret is masked in both records before the caller has it. On a court code
+  the answer may carry the match's label (the court's next called match, O10),
+  shown on the panel and never written to the record; `no_match` is the
+  seventh word. These are the only two such calls.
 - **Never build a second state machine in TypeScript.** The aggregate lives in
   native. The TS layer is a _projection_ of native events. Two authorities
   disagree at 3-1 in the 40th over. The rule is about the capture session.
@@ -445,7 +456,9 @@ Three rules travel with these tokens:
   while the trouble already stands is honoured (the operator saw the warning
   and chose), and the panel then covers the strip for up to 10 s. The icon row
   on air is Settings, Take photo, Remote scoring, and no cell flexes: the three
-  buttons pack from the start, as the four do before air. _What viewers see_ is
+  buttons pack from the start, as the four do before air, and as the five do
+  before air on a court code (Settings, Home, Take photo, Remote scoring and ⋯,
+  272 dp, inside the 278 the controls half gives). _What viewers see_ is
   hidden (the owner's ruling, 2026-10-09, below); built in, it is a fourth cell
   that ends the row and takes its remaining width, so Remote scoring is third
   of four, and the controls half is still sized to hold it. The match label is
@@ -469,6 +482,14 @@ Three rules travel with these tokens:
   with no round line leaves that 22 dp empty: the price of a picture that does
   not move when the line comes and goes (the controller's ruling, 2026-10-08;
   design follow-up §2).
+  On a court code (court stream §6.2) the round line leads with the court's
+  name. While paired the match label row is hidden and the message line's Next
+  line names the court's next streamed match ("Next: A v B · 14:00"), its label
+  cut by how wide it draws (`cutNextLabel`), never by a count of characters, so
+  the time always shows; on air the label row is back. On a court code the
+  scoring panel is titled with the answer's label ("Score A v B"), cut the same
+  way, and hides when `selectCourtMatchKey` (the held sid, the match label and
+  the next match) changes, so an answer for the old match is never shown.
 - Every QR carries the Seazn logo in the centre at error correction H
   (`src/domain/qr/seaznQr.ts`); the app draws it from a pure plan, at a whole
   number of dp per module. Nobody screenshots a QR; the app adds no screenshot
@@ -484,7 +505,9 @@ Three rules travel with these tokens:
   the gesture never has to be relearned mid-match. A start from the console,
   from automatic mode, or a rejoin needs no hold: the operator is not there to
   hold it, and the server's Go live is the decision (A2, A10). The Stop hold
-  ends the broadcast and unpairs (A3).
+  ends the broadcast and unpairs (A3). On a court code it ends this match only
+  and the court waits again (O5), and its label says so: "Hold to stop this
+  match".
 - **What viewers see is built, and hidden** (the owner's ruling, 2026-10-09:
   "keep all code and just hide button then when later stage like when org
   reqeust we can implemnt"). One compile-time switch, `FEATURES.viewerCheck`
@@ -685,7 +708,12 @@ thermal member. Only transport trouble degrades a session.
   ignored and recorded. While the operator's own Go live is in flight the
   phone is still paired, so the action still shows, and a tap there is
   ignored and recorded (`intent-ignored {intent: forget, phase: paired}`; M1
-  of the Batch 4 review, the controller's ruling, 2026-10-12).
+  of the Batch 4 review, the controller's ruling, 2026-10-12). Native's
+  `unpair` (Home's Forget, a court's Leave) has the same guard. A court's
+  pairing carries no Forget, on the notification or on Home's Continue card
+  (O12; owner, 2026-11-15 and 2026-11-16): Exit (⋯, which asks first) is the
+  only way off a court, and a late Forget tap on one is ignored and recorded
+  with `court: true`.
 - While paired and waiting, the screen is kept on and dimmed after 30 s idle
   (Live Stream only: on Home it is not kept on; N36, open, owner 2026-10-13);
   this is the default path for a remote Go live. The foreground service and wake

@@ -174,7 +174,9 @@ death still knows it is a court code (revised at planning).
 ### 6.2 Waiting screen
 Live Stream's paired·waiting viewfinder, on a court code:
 - title line: "Court 2";
-- match line: "Next: A v B · 14:00", or "No streamed match yet" when `next` is absent;
+- match line: "Next: A v B · 14:00", or "No streamed match yet" when `next` is absent. The label is
+  cut by how wide it draws, never by a count of characters, so the time always shows (revised
+  2026-11-16, RP8);
 - *Tap to score* on the existing *Remote scoring* button (O8); the panel shows for 10 s as today.
 The camera half stays as today while waiting. While live on a court code, the strip's
 routine line shows "Next: C v D · 14:30" from the beat's `next`. Copy in en/es/fr/nl.
