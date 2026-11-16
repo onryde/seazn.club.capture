@@ -81,9 +81,9 @@ function schemaOf(path: 'beat' | 'start', status: number): [Record<string, unkno
 }
 
 describe('the server script (Task 27)', () => {
-  it('sweeps every ServerSays: 9 last ends, 5 refusals, 20 in all, 16 scripted and 4 refused', () => {
-    expect([LAST_ENDS.length, REFUSALS.length]).toEqual([9, 5]);
-    expect([EVERY_SAYING.length, scripted.length, refused.length]).toEqual([20, 16, 4]);
+  it('sweeps every ServerSays: 9 last ends, 6 refusals, 21 in all, 17 scripted and 4 refused', () => {
+    expect([LAST_ENDS.length, REFUSALS.length]).toEqual([9, 6]);
+    expect([EVERY_SAYING.length, scripted.length, refused.length]).toEqual([21, 17, 4]);
   });
 
   it.each(scripted.map((says) => [JSON.stringify(says), says] as const))(
@@ -115,7 +115,7 @@ describe('the server script (Task 27)', () => {
       status,
       STATUS_OF.get(code),
     ]);
-    expect(statuses).toHaveLength(3);
+    expect(statuses).toHaveLength(4);
     for (const [status, contract] of statuses) expect(status).toBe(contract);
     expect(scriptFor({ word: 'code-ended' }).status).toBe(STATUS_OF.get('code_ended'));
   });

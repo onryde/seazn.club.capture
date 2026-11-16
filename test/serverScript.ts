@@ -16,6 +16,7 @@ export const SERVER_END: Readonly<Partial<Record<LastEnd, string>>> = {
 /** The status `POST start` refuses with, for each refusal the server says (capture-start.v1's refusal). */
 export const REFUSAL_STATUS: Readonly<Partial<Record<Refusal, number>>> = {
   no_destination: 409,
+  no_match: 409,
   no_credit: 402,
   not_entitled: 403,
 };
