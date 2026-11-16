@@ -19,6 +19,7 @@
   "home.continue.waiting": "Wachten op de start",
   "home.continue.open": "Doorgaan",
   "home.continue.forget": "Vergeten",
+  "home.continue.court": "{court} · {mode}",
   "home.scoring.dismiss": "Verwijderen",
   "home.scoring.matchFallback": "een andere wedstrijd",
   "home.scoring.unsent.one": "{count} tap nog niet verstuurd",

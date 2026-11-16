@@ -28,6 +28,7 @@ import {
   selectHeldCode,
   selectHeldSlot,
   selectHeldTokenTag,
+  selectCourt,
   selectLabel,
   selectStateKind,
   selectUnpairedKey,
@@ -521,10 +522,11 @@ function useContinueCopy(code: SavedCode | null): ContinueCopy | null {
   const heldSlot = useEngineSelector(selectHeldSlot);
   const heldTag = useEngineSelector(selectHeldTokenTag);
   const heldLabel = useEngineSelector(selectLabel);
+  const heldCourt = useEngineSelector(selectCourt);
   if (code === null) return null;
   const held = { code: heldCode, slot: heldSlot, tokenTag: heldTag };
   const validTill = code.expiresAt === null ? null : format(code.expiresAt, venueZone(code));
-  return continueCard({ pairing, saved: code, engine, held, heldLabel, validTill });
+  return continueCard({ pairing, saved: code, engine, held, heldLabel, heldCourt, validTill });
 }
 
 /**

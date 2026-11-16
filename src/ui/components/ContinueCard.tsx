@@ -25,6 +25,7 @@ export const ContinueCard = memo(function ContinueCard(props: {
 }) {
   const { t } = useT();
   const { title, detail } = cardText(props.mode, props.copy, t);
+  const forget = holdsCourt(props.copy) ? undefined : props.onForget;
   const heading = (
     <Text variant="state" style={styles.title}>
       {title}
@@ -34,8 +35,8 @@ export const ContinueCard = memo(function ContinueCard(props: {
   const actions = (
     <View style={styles.actions}>
       <Button label={t('home.continue.open')} onPress={props.onContinue} />
-      {props.onForget === undefined ? null : (
-        <GhostButton label={t('home.continue.forget')} onPress={props.onForget} />
+      {forget === undefined ? null : (
+        <GhostButton label={t('home.continue.forget')} onPress={forget} />
       )}
     </View>
   );
@@ -59,24 +60,36 @@ export const ContinueCard = memo(function ContinueCard(props: {
   );
 });
 
+/**
+ * A phone that holds a court (court stream spec 2026-11-14 §6.5, RP4; O5, O12): paired or pairing to a court code. Its
+ * card has no Forget, because the only way off a court is Exit on the waiting screen, which asks first. A saved court
+ * code the engine does not hold has nothing to leave, so it keeps Forget, as a code that is stuck must be clearable.
+ */
+const holdsCourt = (copy: ContinueCopy) => copy.kind !== 'saved' && copy.court !== null;
+
 /** CD39: a code with no `exp` says its slot alone, never "code valid till ." */
 function cardText(
   mode: Mode,
   copy: ContinueCopy,
   t: Translator['t'],
 ): { title: string; detail: string | null } {
+  // A court code is named by its court (§6.5); every other card keeps its own title.
+  const named = (title: string) =>
+    copy.court === null
+      ? title
+      : t('home.continue.court', { court: copy.court, mode: t(MODE_NAME[mode]) });
   const title = t('home.continue.title', { mode: t(MODE_NAME[mode]) });
   // Review C5 I-4: in the stream screen's own words for Pairing.
-  if (copy.kind === 'pairing') return { title, detail: t('stream.status.pairing') };
+  if (copy.kind === 'pairing') return { title: named(title), detail: t('stream.status.pairing') };
   if (copy.kind === 'paired') {
     return {
-      title: t('home.continue.paired', { label: copy.label }),
+      title: named(t('home.continue.paired', { label: copy.label })),
       detail: t('home.continue.waiting'),
     };
   }
   const slot = copy.slot ?? '–';
   return {
-    title,
+    title: named(title),
     detail:
       copy.validTill === null
         ? t('home.continue.slot', { slot })

@@ -19,6 +19,7 @@
   "home.continue.waiting": "Waiting for Go live",
   "home.continue.open": "Continue",
   "home.continue.forget": "Forget",
+  "home.continue.court": "{court} · {mode}",
   "home.scoring.dismiss": "Dismiss",
   "home.scoring.matchFallback": "another match",
   "home.scoring.unsent.one": "{count} tap not sent yet",

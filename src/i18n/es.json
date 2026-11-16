@@ -19,6 +19,7 @@
   "home.continue.waiting": "Esperando el directo",
   "home.continue.open": "Continuar",
   "home.continue.forget": "Olvidar",
+  "home.continue.court": "{court} · {mode}",
   "home.scoring.dismiss": "Descartar",
   "home.scoring.matchFallback": "otro partido",
   "home.scoring.unsent.one": "{count} toque aún sin enviar",
