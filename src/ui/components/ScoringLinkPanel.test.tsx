@@ -37,6 +37,7 @@ const SENTENCE: Readonly<Record<ScoringWord, MessageKey>> = {
   code_ended: 'stream.scoring.refused.codeEnded',
   replaced: 'stream.scoring.refused.replaced',
   match_finished: 'stream.scoring.refused.matchFinished',
+  no_match: 'stream.scoring.refused.noMatch',
   not_entitled: 'stream.scoring.refused.notEntitled',
   rate_limited: 'stream.scoring.refused.rateLimited',
   unavailable: 'stream.scoring.refused.unavailable',
@@ -44,7 +45,7 @@ const SENTENCE: Readonly<Record<ScoringWord, MessageKey>> = {
 
 const HIDDEN: ScoringLinkView = { kind: 'hidden' };
 const ASKING: ScoringLinkView = { kind: 'asking' };
-const SHOWN: ScoringLinkView = { kind: 'shown', url: FAKE_SCORING_URL };
+const SHOWN: ScoringLinkView = { kind: 'shown', url: FAKE_SCORING_URL, label: null };
 const refused = (word: ScoringWord, retryAfterS: number | null = null): ScoringLinkView => ({
   kind: 'refused',
   word,
@@ -120,9 +121,9 @@ describe('ScoringLinkPanel (spec §10, Q-C2)', () => {
   });
 
   it.each(LANGS)(
-    '%s: each of the six refusal words says its own sentence and draws no code',
+    '%s: each of the seven refusal words says its own sentence and draws no code',
     (lang) => {
-      expect(SCORING_WORDS).toHaveLength(6);
+      expect(SCORING_WORDS).toHaveLength(7);
       for (const word of SCORING_WORDS) {
         const retryAfterS = word === 'rate_limited' ? 30 : null;
         const view = panelFor(refused(word, retryAfterS), { lang });
@@ -151,12 +152,50 @@ describe('ScoringLinkPanel (spec §10, Q-C2)', () => {
     },
   );
 
-  it('checked six sentences and the bare rate limit in each of four languages (anti-vacuity)', () => {
-    expect(sentencesChecked).toBe(4 * (6 + 1));
+  it('checked seven sentences and the bare rate limit in each of four languages (anti-vacuity)', () => {
+    expect(sentencesChecked).toBe(4 * (7 + 1));
+    // Court stream §5.6's English, pinned.
+    expect(say('en', 'stream.scoring.refused.noMatch')).toBe('No match called to this court yet');
     // The English the rate limit is written in, pinned.
     expect(say('en', 'stream.scoring.refused.rateLimited', { seconds: 30 })).toBe(
       'Try again in 30 s',
     );
+  });
+
+  // Court stream §5.6: a link that names its match is titled with it, on one line; the label is cut by how wide it
+  // draws, as the Next line cuts it, and the line's own ellipsis takes what still does not fit.
+  it.each(LANGS)('%s: a link that names its match is titled with it, on one line', (lang) => {
+    panelFor({ kind: 'shown', url: FAKE_SCORING_URL, label: 'Example Town v Sample CC' }, { lang });
+    // getByText normalises the node's U+00A0 (French "Score\u00a0:") to a space, but not the matcher's.
+    const title = within(panel()).getByText(
+      say(lang, 'stream.scoring.titleMatch', { label: 'Example Town v Sample CC' }).replace(
+        /\s+/g,
+        ' ',
+      ),
+    );
+    expect(within(panel()).queryByText(say(lang, 'stream.scoring.title'))).toBeNull();
+    const style = getComputedStyle(title);
+    expect([style.whiteSpace, style.textOverflow]).toEqual(['nowrap', 'ellipsis']);
+  });
+
+  it('the English title, pinned, and a long label cut as the Next line cuts it', () => {
+    const view = panelFor({
+      kind: 'shown',
+      url: FAKE_SCORING_URL,
+      label: 'Example Town v Sample CC',
+    });
+    expect(within(panel()).getByText('Score Example Town v Sample CC')).toBeTruthy();
+    view.unmount();
+    panelFor({ kind: 'shown', url: FAKE_SCORING_URL, label: 'Example Town v Sample Cricket Club' });
+    expect(within(panel()).getByText('Score Example Town v Sample Crick…')).toBeTruthy();
+  });
+
+  it('a link with no label, asking and a refusal keep the plain title (four questions 2)', () => {
+    for (const view of [SHOWN, ASKING, refused('no_match')]) {
+      const shown = panelFor(view);
+      expect(within(panel()).getByText(en['stream.scoring.title']), view.kind).toBeTruthy();
+      shown.unmount();
+    }
   });
 
   it('Hide calls onHide once, is a 48 dp button, and a second press is a second call', () => {
@@ -208,7 +247,7 @@ describe('ScoringLinkPanel (spec §10, Q-C2)', () => {
     for (const secondsLeft of [10, 9, 8]) {
       view.rerender(
         <ScoringLinkPanel
-          view={{ kind: 'shown', url: FAKE_SCORING_URL }}
+          view={{ kind: 'shown', url: FAKE_SCORING_URL, label: null }}
           secondsLeft={secondsLeft}
           onHide={vi.fn()}
         />,
@@ -218,7 +257,11 @@ describe('ScoringLinkPanel (spec §10, Q-C2)', () => {
     // The positive pair: another link is another plan.
     const other = `https://stg.seazn.club/score/dl_${'Z'.repeat(43)}`;
     view.rerender(
-      <ScoringLinkPanel view={{ kind: 'shown', url: other }} secondsLeft={7} onHide={vi.fn()} />,
+      <ScoringLinkPanel
+        view={{ kind: 'shown', url: other, label: null }}
+        secondsLeft={7}
+        onHide={vi.fn()}
+      />,
     );
     expect(plan).toHaveBeenCalledTimes(2);
   });
@@ -241,7 +284,11 @@ describe('ScoringLinkPanel draws the code of the link it was handed', () => {
     expect(within(panel()).getByTestId('seazn-qr').dataset.digest).toBe(wantFirst);
 
     view.rerender(
-      <ScoringLinkPanel view={{ kind: 'shown', url: other }} secondsLeft={9} onHide={vi.fn()} />,
+      <ScoringLinkPanel
+        view={{ kind: 'shown', url: other, label: null }}
+        secondsLeft={9}
+        onHide={vi.fn()}
+      />,
     );
     expect(plan).toHaveBeenLastCalledWith(other);
     expect(within(panel()).getByTestId('seazn-qr').dataset.digest).toBe(wantNext);

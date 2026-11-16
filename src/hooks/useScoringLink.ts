@@ -18,7 +18,8 @@ export const SCORING_RETRY_MAX_S = 300;
 export type ScoringLinkView =
   | { readonly kind: 'hidden' }
   | { readonly kind: 'asking' }
-  | { readonly kind: 'shown'; readonly url: string }
+  /** `label` names the match the link scores (court stream §5.6), or null when the server named none. */
+  | { readonly kind: 'shown'; readonly url: string; readonly label: string | null }
   | {
       readonly kind: 'refused';
       readonly word: ScoringWord;
@@ -114,8 +115,8 @@ export function useScoringLink(trouble: boolean) {
       if (retryAfterS !== null) blockedUntil.current = clock().getTime() + retryAfterS * 1000;
       if (token !== ask.current) return; // hidden meanwhile: not wanted, never shown
       if (outcome.kind === 'ok') {
-        logger.info('scoring.shown'); // the words only: the url is never a log field
-        show({ kind: 'shown', url: outcome.url });
+        logger.info('scoring.shown'); // the words only: the url and the label are never log fields
+        show({ kind: 'shown', url: outcome.url, label: outcome.label });
         return;
       }
       logger.warn('scoring.refused', { reason: outcome.word, retryAfterS });

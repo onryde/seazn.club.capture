@@ -41,6 +41,14 @@ describe('a court phone waiting between matches (pairedKey on a court code)', ()
     expect(key(snapshot)).toBe('stream.status.refusedCredit');
   });
 
+  // Court stream (capture-start.v1's 409 no_match): a start refused because the court has no streamed match in play, until the next start.
+  it('says a start refused no_match over the Next line, and the Next line once it clears', () => {
+    const refused = court({ next: NEXT_AT }, { refusal: 'no_match' satisfies Refusal });
+    expect(key(refused)).toBe('stream.status.refusedNoMatch');
+    expect(LINE_TIER[key(refused)]).toBe('urgent');
+    expect(key({ ...refused, refusal: null })).toBe('stream.status.courtNextAt');
+  });
+
   it('says a failure end next, over the Next line', () => {
     expect(key(court({ next: NEXT_AT }, { lastEnd: 'no-signal' }))).toBe(
       'stream.status.stoppedNoSignal',

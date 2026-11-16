@@ -28,7 +28,38 @@ afterEach(() => vi.useRealTimers());
 
 describe('readAnswer, the pure reading of what native resolved', () => {
   const ROWS: readonly (readonly [string, unknown, ScoringLinkOutcome])[] = [
-    ['a link', { outcome: 'ok', url: URL_OK }, { kind: 'ok', url: URL_OK }],
+    ['a link', { outcome: 'ok', url: URL_OK }, { kind: 'ok', url: URL_OK, label: null }],
+    // Court stream §5.6: the match's label, 1–200 code points, re-read as native reads it; a bad one is none.
+    [
+      'a link with its match’s label',
+      { outcome: 'ok', url: URL_OK, label: 'Example Town v Sample CC' },
+      { kind: 'ok', url: URL_OK, label: 'Example Town v Sample CC' },
+    ],
+    [
+      'a link with an empty label',
+      { outcome: 'ok', url: URL_OK, label: '' },
+      { kind: 'ok', url: URL_OK, label: null },
+    ],
+    [
+      'a link with a label that is not a string',
+      { outcome: 'ok', url: URL_OK, label: 3 },
+      { kind: 'ok', url: URL_OK, label: null },
+    ],
+    [
+      'a link with a 201-character label',
+      { outcome: 'ok', url: URL_OK, label: 'x'.repeat(201) },
+      { kind: 'ok', url: URL_OK, label: null },
+    ],
+    [
+      'a link with a label of 200 code points, one astral (201 UTF-16 units)',
+      { outcome: 'ok', url: URL_OK, label: `${'x'.repeat(199)}🏸` },
+      { kind: 'ok', url: URL_OK, label: `${'x'.repeat(199)}🏸` },
+    ],
+    [
+      'a refusal with a label (ignored)',
+      { outcome: 'no_match', label: 'L' },
+      refused('no_match', null),
+    ],
     ['a refusal', { outcome: 'replaced' }, refused('replaced', null)],
     [
       'a rate limit with its Retry-After',
@@ -88,7 +119,7 @@ describe('readAnswer, the pure reading of what native resolved', () => {
     [
       'ok with an upper-case host, which is the build’s host',
       { outcome: 'ok', url: `https://STG.seazn.club/score/${SECRET}` },
-      { kind: 'ok', url: `https://STG.seazn.club/score/${SECRET}` },
+      { kind: 'ok', url: `https://STG.seazn.club/score/${SECRET}`, label: null },
     ],
     [
       'a refusal that carries a url (ignored)',
@@ -106,8 +137,8 @@ describe('readAnswer, the pure reading of what native resolved', () => {
     expect(readAnswer(said, HOST)).toEqual(read);
   });
 
-  it('sweeps all 24 rows (anti-vacuity)', () => {
-    expect(ROWS).toHaveLength(24);
+  it('sweeps all 30 rows (anti-vacuity)', () => {
+    expect(ROWS).toHaveLength(30);
   });
 
   it('a build that trusts no host (an empty host) reads every link as unavailable', () => {
@@ -118,7 +149,7 @@ describe('readAnswer, the pure reading of what native resolved', () => {
     const expected = new Set(vectors.cases.map((row) => row.expected));
     expect(expected.delete('ok')).toBe(true);
     expect([...expected].sort()).toEqual([...SCORING_WORDS].sort());
-    expect(SCORING_WORDS).toHaveLength(6);
+    expect(SCORING_WORDS).toHaveLength(7);
     // Each word, said alone, is read as itself: a word dropped from the set would read as unavailable.
     for (const word of SCORING_WORDS)
       expect(readAnswer({ outcome: word }, HOST), word).toEqual(refused(word, null));
@@ -134,19 +165,22 @@ describe('the JS gate and the Kotlin gate, over the shared vectors (Review Focus
     (row) => row.status >= 200 && row.status < 300 && 'body' in row && 'url' in (row.body ?? {}),
   );
 
-  it('sweeps the 7 rows that carry a url, 3 ok and 4 refused', () => {
-    expect(withUrl).toHaveLength(7);
-    expect(withUrl.filter((row) => row.expected === 'ok')).toHaveLength(3);
+  it('sweeps the 12 rows that carry a url, 8 ok and 4 refused', () => {
+    expect(withUrl).toHaveLength(12);
+    expect(withUrl.filter((row) => row.expected === 'ok')).toHaveLength(8);
     expect(withUrl.filter((row) => row.expected !== 'ok')).toHaveLength(4);
   });
 
   it.each(withUrl.map((row) => [row.why, row] as const))('%s', (_why, row) => {
-    const url = (row.body as { url: string }).url;
+    const { url, label } = row.body as { url: string; label?: unknown };
+    // Native hands a label over only when it kept one; a hostile native that passes the server's own is re-read.
     const read = readAnswer(
-      { outcome: 'ok', url },
+      { outcome: 'ok', url, label },
       seaznHosts(row.env === 'production' ? 'production' : 'staging')[0]!,
     );
     expect(read.kind === 'ok').toBe(row.expected === 'ok');
+    if (read.kind === 'ok')
+      expect(read.label).toBe((row as { expectedLabel?: string | null }).expectedLabel ?? null);
   });
 });
 
@@ -160,10 +194,10 @@ describe('the scoring-link port (spec §10, R-F3)', () => {
     const module = new FakeNativeModule();
     module.scoringAnswer = { outcome: 'ok', url: URL_OK };
     const port = portOver(module);
-    await expect(port.request()).resolves.toEqual({ kind: 'ok', url: URL_OK });
+    await expect(port.request()).resolves.toEqual({ kind: 'ok', url: URL_OK, label: null });
     expect(module.scoringCalls).toBe(1);
     expect(vi.getTimerCount()).toBe(0);
-    await expect(port.request()).resolves.toEqual({ kind: 'ok', url: URL_OK });
+    await expect(port.request()).resolves.toEqual({ kind: 'ok', url: URL_OK, label: null });
     expect(module.scoringCalls).toBe(2);
     expect(vi.getTimerCount()).toBe(0);
   });
@@ -302,8 +336,8 @@ describe('the scoring-link port (spec §10, R-F3)', () => {
     const third = await port.request();
     expect([first, second, third]).toEqual([
       refused('rate_limited', 30),
-      { kind: 'ok', url: URL_OK },
-      { kind: 'ok', url: URL_OK },
+      { kind: 'ok', url: URL_OK, label: null },
+      { kind: 'ok', url: URL_OK, label: null },
     ]);
     expect(module.scoringCalls).toBe(3);
     expect(protect.mock.calls).toEqual([[SECRET], [SECRET]]);
@@ -321,7 +355,7 @@ describe('the scoring-link port (spec §10, R-F3)', () => {
     pending[1]!({ outcome: 'replaced' });
     pending[0]!({ outcome: 'ok', url: URL_OK });
     await expect(second).resolves.toEqual(refused('replaced', null));
-    await expect(first).resolves.toEqual({ kind: 'ok', url: URL_OK });
+    await expect(first).resolves.toEqual({ kind: 'ok', url: URL_OK, label: null });
     expect(vi.getTimerCount()).toBe(0);
   });
 });

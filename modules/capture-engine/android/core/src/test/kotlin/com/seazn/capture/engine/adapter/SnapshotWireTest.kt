@@ -187,6 +187,14 @@ class SnapshotWireTest {
         val snapshot = bare(SnapshotState.Paired, 1_790_000_008_000).copy(pairing = PairingView(name, true, waiting), ready = allReady, camera = CameraState.OWN)
         SnapshotWire.of(snapshot, PlatformFacts(survivesBackground = true), clean)
       },
+      // Court stream (capture-start.v1): the start's no_match, said on the court's paired line until the next start.
+      "paired-refused-no-match" to {
+        val waiting = waiting().copy(courtName = "Court 2")
+        val snapshot =
+          bare(SnapshotState.Paired, 1_790_000_009_500)
+            .copy(pairing = PairingView(name, true, waiting), ready = allReady, refusal = Refusal.NO_MATCH, camera = CameraState.OWN)
+        SnapshotWire.of(snapshot, PlatformFacts(survivesBackground = true), clean)
+      },
       "paired-court-no-next" to {
         val waiting = waiting().copy(courtName = "Court 2")
         val snapshot = bare(SnapshotState.Paired, 1_790_000_009_000).copy(pairing = PairingView(name, true, waiting), ready = allReady, camera = CameraState.OWN)
@@ -255,7 +263,7 @@ class SnapshotWireTest {
   @Test
   fun `carries 3, 5, 6 each native snapshot becomes the shared wire`() {
     val cases = cases()
-    assertEquals(19, cases.size, "the vector file's nineteen cases")
+    assertEquals(20, cases.size, "the vector file's twenty cases")
     assertEquals(cases.map { it.first }.toSet(), builders.keys, "one builder per case")
     for ((name, expected) in cases) assertJsonEquals(expected, JSONObject(WireJson.encode(builders.getValue(name)())), name)
   }

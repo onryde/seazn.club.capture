@@ -70,7 +70,13 @@ export type BroadcastInfo = {
 };
 
 /** A refused or failed start, until the next start or the end of the pairing. */
-export type Refusal = 'no_destination' | 'no_credit' | 'not_entitled' | 'unknown' | 'start-failed';
+export type Refusal =
+  | 'no_destination'
+  | 'no_credit'
+  | 'not_entitled'
+  | 'no_match' // capture-start.v1's 409: a court with no streamed match in play
+  | 'unknown'
+  | 'start-failed';
 
 /** Why the last broadcast ended without the operator, while back in Paired. */
 export type LastEnd =

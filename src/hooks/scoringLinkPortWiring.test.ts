@@ -24,7 +24,11 @@ const parsed = (lines: readonly string[]) => lines.map(parseRecordLine);
 
 describe('which scoring-link port the composition root wires (spec §10, RP3)', () => {
   const ANSWERS = [
-    ['a link', { outcome: 'ok', url: FAKE_SCORING_URL }, { kind: 'ok', url: FAKE_SCORING_URL }],
+    [
+      'a link',
+      { outcome: 'ok', url: FAKE_SCORING_URL },
+      { kind: 'ok', url: FAKE_SCORING_URL, label: null },
+    ],
     [
       'a refusal',
       { outcome: 'replaced' },

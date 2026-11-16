@@ -87,7 +87,7 @@ describe('the scoring link over the real Kotlin core (JVM host)', () => {
       protect: (secret) => protectedSecrets.push(secret),
       host: 'stg.seazn.club',
     });
-    await expect(port.request()).resolves.toEqual({ kind: 'ok', url: HOST_LINK });
+    await expect(port.request()).resolves.toEqual({ kind: 'ok', url: HOST_LINK, label: null });
     await h.settle!();
     const secret = scoringSecret(HOST_LINK);
     expect(protectedSecrets).toEqual([secret]);

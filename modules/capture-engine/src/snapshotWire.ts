@@ -42,7 +42,14 @@ export const WIRE_VOCABULARY = {
   endReason: new Set(['operator-stopped', 'fatal-error']),
   cause: new Set(['organiser', 'automatic', 'operator', 'rejoin']),
   notReady: new Set(['camera', 'sound', 'network', 'held']),
-  refusal: new Set(['no_destination', 'no_credit', 'not_entitled', 'unknown', 'start-failed']),
+  refusal: new Set([
+    'no_destination',
+    'no_credit',
+    'not_entitled',
+    'no_match',
+    'unknown',
+    'start-failed',
+  ]),
   lastEnd: new Set([
     'stopped-by-organiser',
     'stopped-automatically',

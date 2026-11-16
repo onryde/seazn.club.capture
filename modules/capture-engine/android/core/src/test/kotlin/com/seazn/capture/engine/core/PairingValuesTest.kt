@@ -63,6 +63,7 @@ class PairingValuesTest {
     assertEquals(Refusal.NO_DESTINATION, Refusal.of("no_destination"))
     assertEquals(Refusal.NO_CREDIT, Refusal.of("no_credit"))
     assertEquals(Refusal.NOT_ENTITLED, Refusal.of("not_entitled"))
+    assertEquals(Refusal.NO_MATCH, Refusal.of("no_match"))
     assertEquals(Refusal.UNKNOWN, Refusal.of("org_suspended"))
     assertEquals(Refusal.UNKNOWN, Refusal.of("start-failed"))
     assertEquals(Refusal.UNKNOWN, Refusal.of(null))

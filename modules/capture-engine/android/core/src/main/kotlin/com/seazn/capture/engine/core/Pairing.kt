@@ -44,6 +44,8 @@ enum class Refusal(override val wire: String) : Wire {
   NO_DESTINATION("no_destination"),
   NO_CREDIT("no_credit"),
   NOT_ENTITLED("not_entitled"),
+  /** Court stream (capture-start.v1's 409): a court code with no streamed match in play (a court's start only). */
+  NO_MATCH("no_match"),
   UNKNOWN("unknown"),
   START_FAILED("start-failed");
 

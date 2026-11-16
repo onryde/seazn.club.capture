@@ -46,6 +46,7 @@ const REFUSED: Readonly<Record<Refusal, StatusKey>> = {
   no_destination: 'stream.status.refusedDestination',
   no_credit: 'stream.status.refusedCredit',
   not_entitled: 'stream.status.refusedEntitlement',
+  no_match: 'stream.status.refusedNoMatch',
   unknown: 'stream.status.refusedUnknown',
   'start-failed': 'stream.status.startFailed',
 };
@@ -253,6 +254,7 @@ export const LINE_TIER: Readonly<Record<LineKey, LineTier>> = {
   'stream.status.refusedDestination': 'urgent',
   'stream.status.refusedCredit': 'urgent',
   'stream.status.refusedEntitlement': 'urgent',
+  'stream.status.refusedNoMatch': 'urgent',
   'stream.status.refusedUnknown': 'urgent',
   'stream.status.startFailed': 'urgent',
   'stream.status.startRetrying': 'urgent',

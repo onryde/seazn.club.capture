@@ -1,5 +1,6 @@
 package com.seazn.capture.engine.core
 
+import com.seazn.capture.engine.adapter.Bodies
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -203,5 +204,41 @@ class CourtTest {
     rig.advance(1_000)
     assertTrue(rig.phase.pairing!!.isCourt, "the descriptor named it")
     assertStoppedHere(rig, rig.send(Input.Stop), "court from the descriptor")
+  }
+
+  /**
+   * Court stream (capture-start.v1): a court with no streamed match in play answers the operator's start 409 no_match. The pairing
+   * stays Paired with the refusal, as every refusal does, until the next start clears it (four questions 1 and 3).
+   */
+  @Test
+  fun `a start refused no_match stays Paired with its refusal, and the next start clears it`() {
+    val rig = MachineRig(request = court()).paired()
+    rig.hear("waiting")
+    rig.ready()
+    rig.starts = { Bodies.start(409, """{"code":"no_match","message":"m"}""") }
+    rig.send(Input.Start)
+    assertEquals(Refusal.NO_MATCH, assertIs<Phase.Paired>(rig.phase).pairing.refusal)
+    assertEquals(Refusal.NO_MATCH, rig.snapshot.refusal)
+    assertNull(rig.snapshot.unpaired)
+    assertTrue(rig.phase.pairing!!.isCourt, "still the court's pairing")
+    rig.codes = null
+    rig.starts = { StartAnswer.Started("sess_42") }
+    rig.send(Input.Start)
+    assertIs<Phase.Arming>(rig.phase)
+    assertNull(rig.snapshot.refusal, "the retry cleared it")
+  }
+
+  /** A descriptor GET at Arming that answers 409 no_match is no evidence: never the code's end. */
+  @Test
+  fun `a descriptor 409 no_match at Arming never ends the code`() {
+    val rig = MachineRig(request = court())
+    rig.codes = { if (rig.phase is Phase.Arming) Bodies.code(409, """{"code":"no_match","message":"m"}""", null, Environment.STAGING) else null }
+    rig.paired()
+    rig.hear("go-live", sid = "sess_42", startedBy = "automatic")
+    assertTrue(rig.sent<Command.FetchCode>().isNotEmpty(), "the descriptor was asked")
+    assertTrue(rig.phase !is Phase.Idle, "${rig.phase.name}")
+    assertNull(rig.snapshot.unpaired)
+    assertTrue(rig.records("unpaired").isEmpty())
+    assertTrue(rig.phase.pairing!!.isCourt)
   }
 }

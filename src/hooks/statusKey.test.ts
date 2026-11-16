@@ -197,6 +197,7 @@ describe('the paired and starting lines (amendment §2)', () => {
     ['no_destination', 'stream.status.refusedDestination'],
     ['no_credit', 'stream.status.refusedCredit'],
     ['not_entitled', 'stream.status.refusedEntitlement'],
+    ['no_match', 'stream.status.refusedNoMatch'],
     ['unknown', 'stream.status.refusedUnknown'],
     ['start-failed', 'stream.status.startFailed'],
   ];
@@ -282,7 +283,7 @@ describe('the paired and starting lines (amendment §2)', () => {
   ];
 
   it('sweeps every row of the table (PV12: zero rows is a failure)', () => {
-    expect(ROWS).toHaveLength(40);
+    expect(ROWS).toHaveLength(41);
   });
 
   it.each(ROWS)('%s says %s', (_name, change, key) => {

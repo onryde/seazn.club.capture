@@ -132,6 +132,7 @@ describe('fake scoring link', () => {
     await expect(scoringLink.request()).resolves.toEqual({
       kind: 'ok',
       url: FAKE_SCORING_URL,
+      label: null,
     });
     await scoringLink.request();
     expect(scoringLink.calls).toBe(2);

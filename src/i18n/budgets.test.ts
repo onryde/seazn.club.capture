@@ -40,6 +40,8 @@ const BUDGETS: readonly (readonly [keys: RegExp, max: number])[] = [
   // countdown (B3), the sentences, and Hide, which the What viewers see cover reads too (D2 §4.3).
   [/^stream\.scoring\.open$/, 20],
   [/^stream\.scoring\.(title|hidesIn)$/, 24],
+  // Court stream §5.6: the panel's title naming its match, `{label}` filled with the widest cut (below).
+  [/^stream\.scoring\.titleMatch$/, 32],
   [/^stream\.scoring\.refused\./, 56],
   // `code` is a screen-reader name, but a row per key keeps a new key from being added unbudgeted.
   [/^stream\.scoring\.(hint|asking|code)$/, 48],

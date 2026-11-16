@@ -1,8 +1,8 @@
 import { httpsHost } from '@/domain/credentials/wire';
 
 /**
- * Spec §10 and R-F3: this match's Remote scoring link. One bounded request whose answer is a link or one of six
- * words. It carries no session state and is never read by the engine. The second of the two calls that answer
+ * Spec §10 and R-F3: this match's Remote scoring link. One bounded request whose answer is a link (with the match's
+ * label, when the server names it: court stream §5.6) or one of seven words. It carries no session state and is never read by the engine. The second of the two calls that answer
  * (the first is the photo port; AGENTS §2, recorded).
  */
 
@@ -11,6 +11,7 @@ export const SCORING_WORDS = [
   'code_ended',
   'replaced',
   'match_finished',
+  'no_match', // court stream §5.6: a court code with no match queued on the court
   'not_entitled',
   'rate_limited',
   'unavailable',
@@ -18,7 +19,7 @@ export const SCORING_WORDS = [
 export type ScoringWord = (typeof SCORING_WORDS)[number];
 
 export type ScoringLinkOutcome =
-  | { readonly kind: 'ok'; readonly url: string }
+  | { readonly kind: 'ok'; readonly url: string; readonly label: string | null }
   | { readonly kind: 'refused'; readonly word: ScoringWord; readonly retryAfterS: number | null };
 
 /** One ask per tap (spec §10). The URL is a scoring credential: it lives in the promise's value and nowhere else. */
@@ -44,6 +45,16 @@ export const scoringSecret = (url: string): string => url.slice(url.lastIndexOf(
 const isWord = (value: unknown): value is ScoringWord =>
   SCORING_WORDS.some((word) => word === value);
 
+/** capture-scoring-link.v1 `$defs.ok.label`: 1–200 code points, as native's `Bodies` counts them. */
+const LABEL_MAX = 200;
+
+/** The match's label, display only: a bad one is no label, never a refused link. */
+const labelOf = (value: unknown): string | null => {
+  if (typeof value !== 'string') return null;
+  const length = [...value].length;
+  return length >= 1 && length <= LABEL_MAX ? value : null;
+};
+
 /**
  * What native resolved, as an outcome. Native has already judged the server's answer; this holds the same rules
  * again, because a link is never drawn on trust (Review Focus 5): the shape is the contract's and the host is the
@@ -52,10 +63,10 @@ const isWord = (value: unknown): value is ScoringWord =>
  */
 export function readAnswer(value: unknown, host: string): ScoringLinkOutcome {
   if (typeof value !== 'object' || value === null) return UNAVAILABLE;
-  const { outcome, url, retryAfterS } = value as Record<string, unknown>;
+  const { outcome, url, label, retryAfterS } = value as Record<string, unknown>;
   if (outcome === 'ok') {
     const good = typeof url === 'string' && SCORING_URL.test(url) && httpsHost(url) === host;
-    return good ? { kind: 'ok', url } : UNAVAILABLE;
+    return good ? { kind: 'ok', url, label: labelOf(label) } : UNAVAILABLE;
   }
   if (!isWord(outcome)) return UNAVAILABLE;
   const retry =

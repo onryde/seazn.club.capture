@@ -483,6 +483,13 @@ class BodiesTest {
     assertEquals(HeartbeatResponse.Answered(401, NO_REPLY, null), Bodies.beat(401, """{"code":"code_ended"}""", null, Environment.STAGING))
     assertEquals(HeartbeatResponse.Answered(404, NO_REPLY, null), Bodies.beat(404, refusal("not_a_stream_code"), null, Environment.STAGING))
     assertEquals(StartAnswer.CodeEnded, Bodies.start(401, """{"code":"code_ended"}"""))
+    // Court stream (§5.6, capture-start.v1): no_match is a court's start and scoring-link word. On the descriptor GET it is never the
+    // code's end: a 409 is a status that is no evidence (Arming retries), and a 404 naming it is not the server's
+    // not_a_stream_code, so no answer at all.
+    val noMatch = """{"code":"no_match","message":"m"}"""
+    assertEquals(CodeAnswer.Status(409, null, null), Bodies.code(409, noMatch, null, Environment.STAGING))
+    assertEquals(ServerWord.NoEvidence, ServerWord.ofCode(Bodies.code(409, noMatch, null, Environment.STAGING), named = SID))
+    assertEquals(CodeAnswer.Unreachable("404-not-refusal"), Bodies.code(404, noMatch, null, Environment.STAGING))
     // A start's 404 ends nothing (a start error), so it needs no refusal, and a 403 is unchanged.
     assertEquals(StartAnswer.Failed("404"), Bodies.start(404, PORTAL))
     assertEquals(CodeAnswer.Status(403, null, null), Bodies.code(403, PORTAL, null, Environment.STAGING))
@@ -586,6 +593,8 @@ class BodiesTest {
     assertEquals(StartAnswer.Refused(Refusal.UNKNOWN, "Club suspended"), Bodies.start(403, """{"code":"club_suspended","message":"Club suspended"}"""))
     assertEquals(StartAnswer.Refused(Refusal.UNKNOWN, "This match is already live."), Bodies.start(409, """{"code":"active_session","message":"This match is already live."}"""))
     assertEquals(StartAnswer.Refused(Refusal.UNKNOWN, null), Bodies.start(400, """{"code":"bad_request"}"""))
+    // Court stream (capture-start.v1): a court with no streamed match in play answers start 409 no_match, its own refusal.
+    assertEquals(StartAnswer.Refused(Refusal.NO_MATCH, "m"), Bodies.start(409, """{"code":"no_match","message":"m"}"""))
     // The line is the code's, never the status's: a known code reads the same under another 4xx.
     assertEquals(StartAnswer.Refused(Refusal.NO_CREDIT, "m"), Bodies.start(403, """{"code":"no_credit","message":"m"}"""))
     assertEquals(StartAnswer.Failed("404"), Bodies.start(404, ""))
@@ -890,7 +899,8 @@ class BodiesTest {
   @Test
   fun `the scoring-link answers one reading, over the vector rows`() {
     val rows = Shared.read("wire/scoring-link-vectors.json").getJSONArray("cases")
-    assertEquals(19, rows.length())
+    assertEquals(27, rows.length())
+    var labelled = 0
     var checked = 0
     for (i in 0 until rows.length()) {
       val row = rows.getJSONObject(i)
@@ -904,11 +914,17 @@ class BodiesTest {
       }
       // An ok row hands the server's own url over untouched: the QR encodes what the server issued, not a rewrite of it.
       if (row.getString("expected") == "ok") {
-        assertEquals(row.getJSONObject("body").getString("url"), assertIs<ScoringLinkAnswer.Link>(answer, row.getString("why")).url, row.getString("why"))
+        val link = assertIs<ScoringLinkAnswer.Link>(answer, row.getString("why"))
+        assertEquals(row.getJSONObject("body").getString("url"), link.url, row.getString("why"))
+        // Court stream §5.6: the match's label, 1–200 code points, or none; a bad one never refuses the link.
+        val label = if (row.has("expectedLabel") && !row.isNull("expectedLabel")) row.getString("expectedLabel") else null
+        assertEquals(label, link.label, row.getString("why"))
+        if (label != null) labelled += 1
       }
       checked += 1
     }
-    assertEquals(19, checked)
+    assertEquals(27, checked)
+    assertEquals(2, labelled, "rows whose label is kept")
   }
 
   private fun answeredBeat(status: Int, body: String): HeartbeatResponse.Answered = assertIs<HeartbeatResponse.Answered>(Bodies.beat(status, body, null, Environment.STAGING))

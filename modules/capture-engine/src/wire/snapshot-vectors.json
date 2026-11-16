@@ -25,7 +25,14 @@
     "endReason": ["operator-stopped", "fatal-error"],
     "cause": ["organiser", "automatic", "operator", "rejoin"],
     "notReady": ["camera", "sound", "network", "held"],
-    "refusal": ["no_destination", "no_credit", "not_entitled", "unknown", "start-failed"],
+    "refusal": [
+      "no_destination",
+      "no_credit",
+      "not_entitled",
+      "no_match",
+      "unknown",
+      "start-failed"
+    ],
     "lastEnd": [
       "stopped-by-organiser",
       "stopped-automatically",
@@ -533,6 +540,23 @@
         "codeEndedPending": false,
         "camera": "own",
         "reportedAtMs": 1790000009000,
+        "survivesBackground": true,
+        "telemetry": {}
+      }
+    },
+    {
+      "name": "paired-refused-no-match",
+      "wire": {
+        "state": { "kind": "paired" },
+        "pairing": { "court": "Court 2" },
+        "broadcast": null,
+        "ready": { "camera": true, "sound": true, "network": true, "held": true },
+        "refusal": "no_match",
+        "lastEnd": null,
+        "unpaired": null,
+        "codeEndedPending": false,
+        "camera": "own",
+        "reportedAtMs": 1790000009500,
         "survivesBackground": true,
         "telemetry": {}
       }

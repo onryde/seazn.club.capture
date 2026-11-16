@@ -133,6 +133,9 @@ class ScoringLinkTest {
         Triple(409, """{"code":"match_finished","message":"m"}""", "match_finished"),
         Triple(402, """{"code":"not_entitled","message":"m"}""", "not_entitled"),
         Triple(503, """{"code":"unavailable","message":"m"}""", "unavailable"),
+        // Court stream §5.6: no match queued on the court, by its code under 409 or 404 alike (never code_ended).
+        Triple(409, """{"code":"no_match","message":"m"}""", "no_match"),
+        Triple(404, """{"code":"no_match","message":"m"}""", "no_match"),
       )
     for ((status, body, word) in table) {
       answering(status, body)
@@ -145,7 +148,7 @@ class ScoringLinkTest {
     tap()
     scheduler.advanceBy(0)
     assertEquals(mapOf("outcome" to "rate_limited", "retryAfterS" to 30.0), got.last())
-    assertEquals(6, got.size)
+    assertEquals(8, got.size)
   }
 
   @Test
@@ -245,10 +248,44 @@ class ScoringLinkTest {
       assertFalse(text.contains(secret), "the secret is in ${text.take(80)}")
   }
 
+  /**
+   * Court stream §5.6: the answer may name its match. The label goes to the caller beside the url and nowhere else: the
+   * record line is the word and the status, as ever, and a link with no label hands no `label` key over.
+   */
+  @Test
+  fun `the match's label is handed over with the link, and never reaches the record`() {
+    paired()
+    // Not the pairing's own label (the snapshot carries that one): the next called match's, as on a court (O10).
+    val label = "Northside v Riverside"
+    answering(200, """{"url":"$url","label":"$label"}""")
+    tap()
+    scheduler.advanceBy(0)
+    assertEquals(listOf<Map<String, Any?>>(mapOf("outcome" to "ok", "url" to url, "label" to label)), got)
+    val line = scoringLines().single()
+    assertEquals(setOf("at", "kind", "result", "status"), line.keySet())
+    for (text in platform.lines + platform.snapshots.map { it.toString() } + core.current().toString())
+      assertFalse(text.contains(label), "the label is in: ${text.take(80)}")
+    // Four questions (2): a link with no label, or a bad one, carries no label key at all.
+    for (body in listOf(ok, """{"url":"$url","label":""}""", """{"url":"$url","label":3}""")) {
+      answering(200, body)
+      tap()
+      scheduler.advanceBy(0)
+      assertEquals(mapOf("outcome" to "ok", "url" to url), got.last(), body)
+    }
+    assertEquals(4, got.size)
+  }
+
+  @Test
+  fun `the wire holds label only when there is one`() {
+    assertEquals(mapOf("outcome" to "ok", "url" to url, "label" to "L"), ScoringLinks.wire(ScoringLinkAnswer.Link(url, "L")))
+    assertEquals(mapOf("outcome" to "ok", "url" to url), ScoringLinks.wire(ScoringLinkAnswer.Link(url, null)))
+    assertFalse(ScoringLinkAnswer.Link(url, "Example Town v Sample CC").toString().contains(secret))
+  }
+
   /** m1. The answers' own `toString` is on the path of every log of a value and every failure message. */
   @Test
   fun `m1 a link prints a length and never its url, alone or inside a collection or a message`() {
-    val link = ScoringLinkAnswer.Link(url)
+    val link = ScoringLinkAnswer.Link(url, null)
     val printed =
       listOf(link.toString(), "$link", listOf(link).toString(), mapOf("answer" to link).toString(), "failed on $link", String.format("%s", link))
     assertEquals(6, printed.size)

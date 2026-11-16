@@ -267,6 +267,18 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
     reportedAtMs: 1_790_000_008_000,
     survivesBackground: true,
   },
+  // Court stream (capture-start.v1): the start's no_match, said on the court's paired line until the next start.
+  'paired-refused-no-match': {
+    ...REST,
+    refusal: 'no_match',
+    state: { kind: 'paired' },
+    pairing: PAIRING_COURT_NO_NEXT,
+    broadcast: null,
+    ready: READY,
+    camera: 'own',
+    reportedAtMs: 1_790_000_009_500,
+    survivesBackground: true,
+  },
   'paired-court-no-next': {
     ...REST,
     state: { kind: 'paired' },
@@ -281,8 +293,8 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
 
 describe('carries 2-6: the snapshot wire, as native writes it (Task 12)', () => {
   // The file's count, so an emptied or truncated file cannot pass by sweeping nothing (PV12).
-  it('has an expectation for each of the 19 cases, and a case for every expectation', () => {
-    expect(vectors.cases).toHaveLength(19);
+  it('has an expectation for each of the 20 cases, and a case for every expectation', () => {
+    expect(vectors.cases).toHaveLength(20);
     expect(vectors.cases.map((c) => c.name).sort()).toEqual(Object.keys(EXPECTED).sort());
   });
 

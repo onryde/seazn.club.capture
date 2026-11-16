@@ -1,6 +1,7 @@
 import { memo, useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { seaznQrPlan } from '@/domain/qr/seaznQr';
+import { cutNextLabel } from '@/domain/session/nextLine';
 import { SCORING_SHOW_SECONDS, type ScoringLinkView } from '@/hooks/useScoringLink';
 import { useT } from '@/hooks/useLanguage';
 import type { MessageKey } from '@/i18n/messages';
@@ -14,6 +15,7 @@ const REFUSED: Readonly<Record<ScoringWord, MessageKey>> = {
   code_ended: 'stream.scoring.refused.codeEnded',
   replaced: 'stream.scoring.refused.replaced',
   match_finished: 'stream.scoring.refused.matchFinished',
+  no_match: 'stream.scoring.refused.noMatch',
   not_entitled: 'stream.scoring.refused.notEntitled',
   rate_limited: 'stream.scoring.refused.rateLimited',
   unavailable: 'stream.scoring.refused.unavailable',
@@ -41,13 +43,19 @@ export const ScoringLinkPanel = memo(function ScoringLinkPanel({
 }: PanelProps) {
   const { t } = useT();
   const url = view.kind === 'shown' ? view.url : null;
+  const label = view.kind === 'shown' ? view.label : null;
   const plan = useMemo(() => (url === null ? null : seaznQrPlan(url)), [url]);
   if (view.kind === 'hidden') return null;
   const counting = view.kind === 'shown' || view.kind === 'refused';
+  // Court stream §5.6: the match the link scores, cut as the Next line cuts it; one line, its ellipsis taking the rest.
+  const title =
+    label === null
+      ? t('stream.scoring.title')
+      : t('stream.scoring.titleMatch', { label: cutNextLabel(label) });
   return (
     <View testID="scoring-panel" style={styles.panel}>
-      <Text variant="panelTitle" style={styles.title}>
-        {t('stream.scoring.title')}
+      <Text variant="panelTitle" numberOfLines={1} style={styles.title}>
+        {title}
       </Text>
       {plan === null ? null : (
         <>
