@@ -27,10 +27,11 @@ import {
   selectLabel,
   selectMeterSegments,
   selectNextLabel,
+  selectCourtWaiting,
   selectNextStartMs,
   selectPlaybackUrl,
   selectScheduledStartMs,
-  selectStageLine,
+  selectRoundLine,
   selectUnpairedKey,
   selectUnpairedReason,
   selectVenueZone,
@@ -328,17 +329,42 @@ describe('the round line selector (spec §2)', () => {
   const paired = (over: Partial<PairingInfo>) =>
     snapshot(PAIRED, {}, { pairing: { ...FAKE_PAIRING, ...over } });
 
-  it('selectStageLine is the pairing’s stage label, only while a match label is known, and null otherwise', () => {
-    expect(selectStageLine(paired({ label: 'A v B', stageLabel: 'Open · QF' }))).toBe('Open · QF');
-    expect(selectStageLine(paired({ label: '', stageLabel: 'Open · QF' }))).toBeNull();
-    expect(selectStageLine(paired({ label: 'A v B', stageLabel: null }))).toBeNull();
-    expect(selectStageLine(paired({ label: 'A v B', stageLabel: 'x'.repeat(41) }))).toBeNull();
-    expect(selectStageLine(snapshot(PAIRED, {}, { pairing: null }))).toBeNull();
+  it('selectRoundLine is the pairing’s stage label, only while a match label is known, and null otherwise', () => {
+    expect(selectRoundLine(paired({ label: 'A v B', stageLabel: 'Open · QF' }))).toBe('Open · QF');
+    expect(selectRoundLine(paired({ label: '', stageLabel: 'Open · QF' }))).toBeNull();
+    expect(selectRoundLine(paired({ label: 'A v B', stageLabel: null }))).toBeNull();
+    expect(selectRoundLine(paired({ label: 'A v B', stageLabel: 'x'.repeat(41) }))).toBeNull();
+    expect(selectRoundLine(snapshot(PAIRED, {}, { pairing: null }))).toBeNull();
+  });
+
+  // Court stream (spec 2026-11-14 §6.2): the court leads the round line, and stands alone with no stage.
+  it('selectRoundLine leads with the court on a court code, with or without a stage', () => {
+    expect(selectRoundLine(paired({ court: 'Court 2', stageLabel: 'Semi-final' }))).toBe(
+      'Court 2 · Semi-final',
+    );
+    expect(selectRoundLine(paired({ court: 'Court 2', stageLabel: null }))).toBe('Court 2');
+    // An empty input: no match label yet drops the stage but keeps the court.
+    expect(selectRoundLine(paired({ court: 'Court 2', label: '', stageLabel: 'Semi-final' }))).toBe(
+      'Court 2',
+    );
+    expect(selectRoundLine(paired({ court: null, stageLabel: 'Semi-final' }))).toBe('Semi-final');
+  });
+
+  it('selectCourtWaiting is a court code that is paired, and nothing else (I4)', () => {
+    expect(selectCourtWaiting(paired({ court: 'Court 2' }))).toBe(true);
+    expect(selectCourtWaiting(paired({ court: null }))).toBe(false);
+    const arming = snapshot(
+      { kind: 'arming', cause: 'operator', retrying: false },
+      {},
+      { pairing: { ...FAKE_PAIRING, court: 'Court 2' } },
+    );
+    expect(selectCourtWaiting(arming)).toBe(false);
+    expect(selectCourtWaiting(snapshot(PAIRED, {}, { pairing: null }))).toBe(false);
   });
 
   // The seam, driven through its real producer: the wire native sends (the shared vector), read by the real
   // snapshot reader, then by the selector the status strip uses. The expected line is the vector's own.
-  it('selectStageLine reads the line a native snapshot carries: the shared vector, through toEngineSnapshot', () => {
+  it('selectRoundLine reads the line a native snapshot carries: the shared vector, through toEngineSnapshot', () => {
     const named = (name: string) => vectors.cases.find((row) => row.name === name);
     const sent = named('paired-with-stage-label')?.wire.pairing?.stageLabel;
     // The vector really carries a line, and a paired case that carries none (the shared base) is its pair.
@@ -349,11 +375,11 @@ describe('the round line selector (spec §2)', () => {
     const read = toEngineSnapshot(vectorWire('paired-with-stage-label'));
     expect(read).not.toBeNull();
     expect(read?.pairing?.label).toBe(vectors.pairingBase.label);
-    expect(selectStageLine(read as EngineSnapshot)).toBe(sent);
+    expect(selectRoundLine(read as EngineSnapshot)).toBe(sent);
 
     const bare = toEngineSnapshot(vectorWire('paired-after-organiser-stop'));
     expect(bare?.pairing?.label).toBe(vectors.pairingBase.label);
-    expect(selectStageLine(bare as EngineSnapshot)).toBeNull();
+    expect(selectRoundLine(bare as EngineSnapshot)).toBeNull();
   });
 
   it('a known match label is the broadcast’s too: selectLabel reads it before the pairing’s', () => {
@@ -362,7 +388,7 @@ describe('the round line selector (spec §2)', () => {
       {},
       { pairing: { ...FAKE_PAIRING, label: '', stageLabel: 'Open · QF' }, broadcast: BROADCAST },
     );
-    expect(selectStageLine(live)).toBe('Open · QF');
+    expect(selectRoundLine(live)).toBe('Open · QF');
   });
 });
 

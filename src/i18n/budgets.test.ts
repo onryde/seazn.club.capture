@@ -4,6 +4,7 @@ import es from '@/i18n/es.json';
 import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
 import { DESTINATION_CAP } from '@/domain/session/destination';
+import { NEXT_LABEL_CAP } from '@/domain/session/nextLine';
 
 /**
  * Copy budgets for the HUD column (S0 R-budget; spec §6 "the longest one on
@@ -59,6 +60,8 @@ const WIDEST: Readonly<Record<string, string>> = {
   seconds: '300',
   // Amendment §2, footnote 1: `cutDestination` never lets the name past 24.
   destination: 'X'.repeat(DESTINATION_CAP),
+  // Court stream: `cutNextLabel` never lets the next match's label past 24, an ellipsis last (the widest capital).
+  label: `${'W'.repeat(NEXT_LABEL_CAP - 1)}…`,
 };
 
 const fill = (text: string) =>
@@ -77,5 +80,25 @@ describe.each([
       const text = fill(dictionary[key] ?? '');
       expect({ key, text, fits: text.length <= max }).toEqual({ key, text, fits: true });
     }
+  });
+});
+
+// Court stream (spec 2026-11-14 §6.2): the four lines a court phone says while it waits are in the status row's 48, with
+// the label cut as the line cuts it and a time with its zone. Named, so the row above can never match none of them.
+describe.each([
+  ['en', en],
+  ['es', es],
+  ['fr', fr],
+  ['nl', nl],
+] as const)('%s court waiting lines', (_lang, dictionary: Readonly<Record<string, string>>) => {
+  it('has the four stream.status.court* keys, each within 48 characters filled with the widest values', () => {
+    const keys = Object.keys(dictionary).filter((key) => key.startsWith('stream.status.court'));
+    expect(keys.sort()).toEqual([
+      'stream.status.courtAutomaticOff',
+      'stream.status.courtNext',
+      'stream.status.courtNextAt',
+      'stream.status.courtNone',
+    ]);
+    for (const key of keys) expect(fill(dictionary[key] ?? '').length).toBeLessThanOrEqual(48);
   });
 });

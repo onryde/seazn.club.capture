@@ -552,7 +552,7 @@ describe('Back’s line on air (ruling I2)', () => {
   });
 
   // N2: built from the dictionary, so a status line added later is covered
-  // without anyone remembering this list. Only the five calm lines yield.
+  // without anyone remembering this list. Only the seven calm lines yield: the five, and a court's two Next lines on air.
   it('is outranked by every other status line in the dictionary', () => {
     const calm = [
       'stream.status.connecting',
@@ -560,6 +560,8 @@ describe('Back’s line on air (ruling I2)', () => {
       'stream.status.goingLiveOrganiser',
       'stream.status.goingLiveMatch',
       'stream.status.rejoining',
+      'stream.status.courtNextAt',
+      'stream.status.courtNext',
     ];
     const others = Object.keys(en).filter(
       (key) => key.startsWith('stream.status.') && !calm.includes(key),

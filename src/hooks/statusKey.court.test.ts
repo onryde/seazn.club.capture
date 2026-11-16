@@ -1,0 +1,175 @@
+import { describe, expect, it } from 'vitest';
+import type { LastEnd, PairingInfo, Refusal } from '@/domain/session/Pairing';
+import type { SessionState } from '@/domain/session/SessionState';
+import type { EngineSnapshot } from '@/engine/CaptureEnginePort';
+import { createFakeCaptureEngine } from '@/engine/FakeCaptureEngine';
+import { columnLineKey, LINE_TIER, selectStatusKey } from '@/hooks/statusKey';
+
+// Court stream (spec 2026-11-14 §6.2). The expectations are written from the plan's order (refusal, a failure end,
+// no destination, automatic off, next with a start, next without, no next), never read back from the function.
+const PAIRED_READY: EngineSnapshot = (() => {
+  const engine = createFakeCaptureEngine(() => 1_790_000_000_000);
+  engine.scene('paired-ready');
+  const reported = engine.getSnapshot();
+  engine.dispose();
+  return reported;
+})();
+
+const NEXT_AT = {
+  label: 'Example Town v Sample CC',
+  scheduledStart: new Date('2026-11-14T14:00:00Z'),
+};
+const NEXT_NO_START = { label: 'Example Town v Sample CC', scheduledStart: null };
+
+function pairedWith(
+  pairing: Partial<PairingInfo>,
+  change: Partial<EngineSnapshot> = {},
+): EngineSnapshot {
+  if (PAIRED_READY.pairing === null) throw new Error('the paired scene holds a pairing');
+  return { ...PAIRED_READY, ...change, pairing: { ...PAIRED_READY.pairing, ...pairing } };
+}
+const court = (pairing: Partial<PairingInfo> = {}, change: Partial<EngineSnapshot> = {}) =>
+  pairedWith({ court: 'Court 2', ...pairing }, change);
+const key = (snapshot: EngineSnapshot) => selectStatusKey(snapshot);
+
+describe('a court phone waiting between matches (pairedKey on a court code)', () => {
+  it('says a refusal first, over everything else on the list', () => {
+    const snapshot = court(
+      { next: NEXT_AT, destinationName: null },
+      { refusal: 'no_credit', lastEnd: 'no-signal' },
+    );
+    expect(key(snapshot)).toBe('stream.status.refusedCredit');
+  });
+
+  it('says a failure end next, over the Next line', () => {
+    expect(key(court({ next: NEXT_AT }, { lastEnd: 'no-signal' }))).toBe(
+      'stream.status.stoppedNoSignal',
+    );
+  });
+
+  it('says there is no destination, before automatic and before the Next line', () => {
+    const snapshot = court({ destinationName: null, automatic: false, next: NEXT_AT });
+    expect(key(snapshot)).toBe('stream.status.waitingDestination');
+  });
+
+  it('says Automatic off when the phone’s automatic mode is off, before the Next line', () => {
+    expect(key(court({ automatic: false, next: NEXT_AT }))).toBe('stream.status.courtAutomaticOff');
+  });
+
+  it('says the next match and its start when it has one', () => {
+    expect(key(court({ next: NEXT_AT }))).toBe('stream.status.courtNextAt');
+  });
+
+  it('says the next match alone when it has no start yet', () => {
+    expect(key(court({ next: NEXT_NO_START }))).toBe('stream.status.courtNext');
+  });
+
+  // An empty input: nothing is queued on the court.
+  it('says no streamed match yet with no next', () => {
+    expect(key(court({ next: null }))).toBe('stream.status.courtNone');
+  });
+
+  it('says the same key twice for the same snapshot (a second call)', () => {
+    const snapshot = court({ next: NEXT_AT });
+    expect([key(snapshot), key(snapshot)]).toEqual([
+      'stream.status.courtNextAt',
+      'stream.status.courtNextAt',
+    ]);
+  });
+});
+
+// Review Focus 5: after a match ended normally, the phone shows the Next line, not "Match finished" all afternoon.
+describe('a calm last end gives way to the Next line on a court code; a failure end does not', () => {
+  it.each<[LastEnd, 'calm' | 'failure', string]>([
+    ['stopped-automatically', 'calm', 'stream.status.courtNextAt'],
+    ['stopped-by-organiser', 'calm', 'stream.status.courtNextAt'],
+    ['stopped', 'calm', 'stream.status.courtNextAt'],
+    ['no-signal', 'failure', 'stream.status.stoppedNoSignal'],
+    ['destination-refused', 'failure', 'stream.status.stoppedRefused'],
+    ['max-duration', 'failure', 'stream.status.stoppedMaxDuration'],
+    ['phone-lost', 'failure', 'stream.status.stoppedPhoneLost'],
+    ['ended-by-seazn', 'failure', 'stream.status.stoppedBySeazn'],
+    ['hold-window-expired', 'failure', 'stream.status.stoppedHoldWindow'],
+  ])('%s (%s) says %s', (lastEnd, _kind, expected) => {
+    expect(key(court({ next: NEXT_AT }, { lastEnd }))).toBe(expected);
+  });
+
+  it('keeps a calm end on a fixture code: the stopped line, as today', () => {
+    const fixture = pairedWith({ court: null }, { lastEnd: 'stopped-automatically' });
+    expect(key(fixture)).toBe('stream.status.stoppedMatch');
+    expect(key(pairedWith({ court: null }, { lastEnd: 'stopped-by-organiser' }))).toBe(
+      'stream.status.stoppedOrganiser',
+    );
+    expect(key(pairedWith({ court: null }, { lastEnd: 'stopped' }))).toBe('stream.status.stopped');
+  });
+
+  it('is the Next line again after a calm end and a refusal that has cleared (after an interruption)', () => {
+    const refused = court(
+      { next: NEXT_AT },
+      { lastEnd: 'stopped', refusal: 'unknown' satisfies Refusal },
+    );
+    expect(key(refused)).toBe('stream.status.refusedUnknown');
+    expect(key({ ...refused, refusal: null })).toBe('stream.status.courtNextAt');
+  });
+});
+
+describe('a fixture code is unchanged', () => {
+  it.each<[Partial<PairingInfo>, string]>([
+    [{ court: null, next: NEXT_AT }, 'stream.status.waitingGoLive'],
+    [{ court: null, automatic: false }, 'stream.status.waitingGoLive'],
+    [{ court: null, destinationName: null }, 'stream.status.waitingDestination'],
+  ])('%j', (pairing, expected) => {
+    expect(key(pairedWith(pairing))).toBe(expected);
+  });
+});
+
+describe('on air on a court code', () => {
+  const publishing: SessionState = { kind: 'publishing', transport: 'srt', sinceEpochMs: 1 };
+  const live = (pairing: Partial<PairingInfo>, state: SessionState = publishing) =>
+    court(pairing, { state });
+
+  it('the live court line names the next match, with its start when it has one', () => {
+    expect(key(live({ next: NEXT_AT }))).toBe('stream.status.courtNextAt');
+    expect(key(live({ next: NEXT_NO_START }))).toBe('stream.status.courtNext');
+  });
+
+  it('says Live with no next match', () => {
+    expect(key(live({ next: null }))).toBe('stream.status.live');
+  });
+
+  it('keeps an urgent line over the Next line: degraded and reconnecting say their own', () => {
+    const degraded: SessionState = {
+      kind: 'degraded',
+      transport: 'srt',
+      reason: 'poor-uplink',
+      sinceEpochMs: 1,
+    };
+    const holding: SessionState = {
+      kind: 'reconnecting',
+      cause: 'uplink-lost',
+      holdRemainingSeconds: 38,
+      holdWindowSeconds: 183,
+      sinceEpochMs: 1,
+    };
+    expect(key(live({ next: NEXT_AT }, degraded))).toBe('stream.status.weakSignal');
+    expect(key(live({ next: NEXT_AT }, holding))).toBe('stream.status.holding');
+  });
+
+  it('is unchanged on a fixture code, which never sends next', () => {
+    expect(key(live({ court: null, next: NEXT_AT }))).toBe('stream.status.live');
+  });
+
+  // The caption beating it is the strip's rule, tested on screen (StreamScreen.paired.test.tsx); here, the tier it rests on.
+  it('is a routine line, so an advisory caption beats it', () => {
+    expect(LINE_TIER[key(live({ next: NEXT_AT }))]).toBe('routine');
+    expect(LINE_TIER[key(live({ next: null }))]).toBe('routine');
+  });
+
+  it('lets Back’s "hold Stop" stand in for the Next line, as for Live (ruling I2)', () => {
+    expect(columnLineKey('stream.status.courtNextAt', true)).toBe('stream.leaveOnAir');
+    expect(columnLineKey('stream.status.courtNext', true)).toBe('stream.leaveOnAir');
+    // Waiting between matches is not on air: it is not a calm on-air line, so Back says nothing over it.
+    expect(columnLineKey('stream.status.courtNone', true)).toBe('stream.status.courtNone');
+    expect(columnLineKey('stream.status.courtNextAt', false)).toBe('stream.status.courtNextAt');
+  });
+});

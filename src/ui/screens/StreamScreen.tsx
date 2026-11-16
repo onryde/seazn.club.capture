@@ -1,5 +1,6 @@
 import { StyleSheet, View } from 'react-native';
 import { cutDestination } from '@/domain/session/destination';
+import { cutNextLabel } from '@/domain/session/nextLine';
 import { columnLineKey, LINE_TIER, type LineTier } from '@/hooks/statusKey';
 import { useT } from '@/hooks/useLanguage';
 import { useEndedToHome } from '@/hooks/useEndedNotice';
@@ -108,7 +109,7 @@ type ColumnLine = { readonly text: string; readonly tier: LineTier };
 /**
  * The one true sentence: the status line, or Back's refusal over a calm one
  * (ruling I2), with its tier (`LINE_TIER`: an urgent line always wins the strip's one
- * message line, a routine one gives way to a caption). `{destination}` is cut at 24, the
+ * message line, a routine one gives way to a caption). `{destination}` and a court's `{label}` are cut at 24, the
  * width every budget counts. It is said in the status strip, under the shot, and made here once.
  */
 function useColumnLine(view: Viewfinder, blocked: boolean): ColumnLine {
@@ -117,6 +118,9 @@ function useColumnLine(view: Viewfinder, blocked: boolean): ColumnLine {
     remaining: view.holdRemaining ?? '',
     window: view.holdWindow ?? '',
     destination: view.destination === null ? '' : cutDestination(view.destination),
+    // A court's Next line (§6.2, I4): the label cut at 24 so the time is never the part an ellipsis eats.
+    label: view.nextLabel === null ? '' : cutNextLabel(view.nextLabel),
+    time: view.nextAt ?? '',
   };
   const key = columnLineKey(view.statusKey, blocked);
   return { text: t(key, vars), tier: LINE_TIER[key] };

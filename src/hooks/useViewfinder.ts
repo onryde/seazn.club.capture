@@ -5,6 +5,8 @@ import {
   selectAutomaticOn,
   selectCourt,
   selectDestination,
+  selectNextLabel,
+  selectNextStartMs,
   selectPlaybackUrl,
   selectScheduledStartMs,
   selectStateKind,
@@ -75,6 +77,10 @@ export type Viewfinder = {
   readonly auto: boolean;
   /** The pre-picked destination, uncut; the column cuts it for the line. Null with none. */
   readonly destination: string | null;
+  /** The court's next streamed match, uncut (the column cuts it for the Next line, `cutNextLabel`). Null with none. */
+  readonly nextLabel: string | null;
+  /** When that match starts, in the venue's zone (court stream §6.2); null with none or no start. */
+  readonly nextAt: string | null;
   start(): void;
   stop(): void;
 };
@@ -196,11 +202,13 @@ type WaitingFields = {
   readonly startsAt: string | null;
   readonly auto: boolean;
   readonly destination: string | null;
+  readonly nextLabel: string | null;
+  readonly nextAt: string | null;
 };
 
 /**
  * Amendment §2, Viewfinder paired: "Starts {time}" in the venue's zone, AUTO,
- * and the destination. Primitives from the snapshot, formatted here, memoised
+ * the destination, and a court's next match with its start (§6.2). Primitives from the snapshot, formatted here, memoised
  * on them (M7): a 1 Hz tick that changes none of them changes nothing.
  */
 function useWaitingFields(): WaitingFields {
@@ -208,14 +216,18 @@ function useWaitingFields(): WaitingFields {
   const zone = useEngineSelector(selectVenueZone);
   const auto = useEngineSelector(selectAutomaticOn);
   const destination = useEngineSelector(selectDestination);
+  const nextLabel = useEngineSelector(selectNextLabel);
+  const nextStartMs = useEngineSelector(selectNextStartMs);
   const formatTime = useFormatTime();
   return useMemo(
     () => ({
       startsAt: startMs === null ? null : formatTime(new Date(startMs), zone),
       auto,
       destination,
+      nextLabel,
+      nextAt: nextStartMs === null ? null : formatTime(new Date(nextStartMs), zone),
     }),
-    [startMs, zone, auto, destination, formatTime],
+    [startMs, zone, auto, destination, nextLabel, nextStartMs, formatTime],
   );
 }
 
