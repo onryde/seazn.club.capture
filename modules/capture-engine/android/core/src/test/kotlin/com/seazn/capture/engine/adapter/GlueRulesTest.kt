@@ -467,12 +467,18 @@ class GlueRulesTest {
 
   /**
    * R6: the action is on the notification only while the pairing waits, as `NotificationText.forgetShown` decides from
-   * the kind last shown; it is an explicit, immutable broadcast to the receiver.
+   * the kind last shown and, since O12 (owner, 2026-11-15), whether that pairing is a court's, read from the same
+   * snapshot wire by `NotificationText.court` on every update; it is an explicit, immutable broadcast to the receiver.
    */
   @Test
   fun `R6 the notification carries Forget only behind forgetShown, as an explicit immutable broadcast`() {
-    val current = body(glue("PairingKeeper.kt"), "fun current(): Notification")
-    val gate = assertNotNull(Regex("""if \(NotificationText\.forgetShown\(shownKind as\? String\)\) \{""").find(current), current)
+    val keeper = glue("PairingKeeper.kt")
+    val current = body(keeper, "fun current(): Notification")
+    val gate = assertNotNull(Regex("""if \(NotificationText\.forgetShown\(shownKind as\? String, court = shownCourt\)\) \{""").find(current), current)
+    val update = body(keeper, "fun update(wire: Map<String, Any?>)")
+    assertEquals(1, Regex("""val court = NotificationText\.court\(wire\)""").findAll(update).count(), update)
+    assertEquals(1, Regex("""shownCourt = court\b""").findAll(update).count(), update)
+    assertTrue(Regex("""if \(kind == shownKind && court == shownCourt && """).containsMatchIn(update), "a court change posts at once: $update")
     assertTrue("builder.addAction(" in body(current.substring(gate.range.first), "if ("), "the action is inside the gate: $current")
     assertEquals(1, Regex("""\.addAction\(""").findAll(glue("PairingKeeper.kt")).count(), "one action")
     assertTrue(Regex("""Intent\(context, ForgetReceiver::class\.java\)\.setAction\(ForgetReceiver\.ACTION\)""").containsMatchIn(current), current)

@@ -79,10 +79,15 @@ internal object Pairings {
    * The shade and the screen can be touched at once, and a start the server accepts after an unpair is a broadcast
    * with no phone, so that tap is ignored too. Home's Forget (`unpair`) is unchanged: it cannot be reached while
    * holding Go live.
+   *
+   * O12 (owner, 2026-11-15): a court's notification carries no Forget, so a tap that lands on a court pairing anyway
+   * (posted before the court was known, or late) is ignored and recorded, naming the court: Exit, which asks first, is
+   * the only way off a court.
    */
   fun forget(phase: Phase): Step {
     if (phase !is Phase.Paired || phase.pairing.starts.inFlightId != null) return SessionMachine.ignored(phase, "forget")
     val pairing = phase.pairing
+    if (pairing.isCourt) return Step(phase, listOf(line("intent-ignored", "intent" to "forget", "phase" to phase.name, "court" to true)))
     val idle = Phase.Idle(phase.ids, phase.networkValidated, phase.micSilenced, Unpaired(UnpairReason.FORGOTTEN, pairing.name))
     // The one definition, as every unpair line reads it; never true here, as Paired holds no broadcast.
     val wasLive = "wasLive" to (phase.firstLiveEpochMs != null)

@@ -58,12 +58,32 @@ class NotificationTextTest {
   /** R6 of the D3 findings design: the action is on the notification only while the pairing waits. */
   @Test
   fun `Forget shows only while paired and waiting`() {
-    assertEquals(true, NotificationText.forgetShown("paired"))
+    assertEquals(true, NotificationText.forgetShown("paired", court = false))
     val hidden = listOf("idle", "pairing", "arming", "armed", "connecting", "publishing", "degraded", "reconnecting", "ended")
-    for (kind in hidden + null) assertEquals(false, NotificationText.forgetShown(kind), "$kind")
+    for (kind in hidden + null) {
+      assertEquals(false, NotificationText.forgetShown(kind, court = false), "$kind")
+      assertEquals(false, NotificationText.forgetShown(kind, court = true), "$kind, a court")
+    }
     // Every kind the wire can carry is named above, so a new one is decided here, not by default.
     val kinds = Shared.read("wire/snapshot-vectors.json").getJSONObject("vocabulary").getJSONArray("state")
     assertEquals((hidden + "paired").sorted(), (0 until kinds.length()).map(kinds::getString).sorted())
+  }
+
+  /** O12 (owner, 2026-11-15): no one-tap Forget on a court's pairing; Exit, which asks first, is the only way off a court. */
+  @Test
+  fun `Forget is hidden on a court pairing, even while it waits`() {
+    assertEquals(false, NotificationText.forgetShown("paired", court = true))
+    assertEquals(true, NotificationText.forgetShown("paired", court = false))
+  }
+
+  /** The caller's reading: the snapshot wire's `pairing.court`, a court exactly when it is not null. */
+  @Test
+  fun `a court is read from the snapshot wire's pairing`() {
+    assertEquals(true, NotificationText.court(mapOf("pairing" to mapOf("court" to "Court 2"))))
+    assertEquals(false, NotificationText.court(mapOf("pairing" to mapOf("court" to null))))
+    assertEquals(false, NotificationText.court(mapOf("pairing" to mapOf("code" to "fx42hmnp7k2q"))), "a wire from before courts")
+    assertEquals(false, NotificationText.court(mapOf("pairing" to null)), "no pairing")
+    assertEquals(false, NotificationText.court(emptyMap()))
   }
 
   @Test
