@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { selectHeldCode, selectHeldSlot, selectHeldTokenTag } from '@/hooks/engineSelectors';
+import {
+  selectCourtMatchKey,
+  selectHeldCode,
+  selectHeldSlot,
+  selectHeldTokenTag,
+} from '@/hooks/engineSelectors';
 import { useEngineSelector } from '@/hooks/useCaptureEngine';
 import { usePorts } from '@/hooks/usePorts';
 import type { ScoringWord } from '@/services/scoringLinkPort';
@@ -57,6 +62,7 @@ export function useScoringLink(trouble: boolean) {
   const code = useEngineSelector(selectHeldCode);
   const slot = useEngineSelector(selectHeldSlot);
   const tokenTag = useEngineSelector(selectHeldTokenTag);
+  const matchKey = useEngineSelector(selectCourtMatchKey);
   const [view, setView] = useState<ScoringLinkView>(HIDDEN);
   const [secondsLeft, setSecondsLeft] = useState(SCORING_SHOW_SECONDS);
   const ask = useRef(0); // the request token: every hide and every new ask moves it
@@ -131,6 +137,13 @@ export function useScoringLink(trouble: boolean) {
     blockedUntil.current = 0;
     hide();
   }, [code, slot, tokenTag, hide]);
+  // Court stream (the scoring stale guard, Review Focus 3): on a court the link is the court's next called match's (O10),
+  // so when the match behind the court moves (a handover's sid, the label, the next match) the panel goes and an answer
+  // in flight is dropped by the token `hide` moves. A string, so a 1 Hz report that moves nothing never fires it, and
+  // always "" on a fixture's code. Not `blockedUntil`: the court's code is the same code, and so is its rate limit.
+  useEffect(() => {
+    hide();
+  }, [matchKey, hide]);
   // R8a: entering trouble takes the panel down (a change to true; on mount it hides what is not there).
   useEffect(() => {
     if (trouble) hide();

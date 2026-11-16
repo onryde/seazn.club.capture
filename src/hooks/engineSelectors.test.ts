@@ -20,6 +20,7 @@ import {
   selectBroadcastHeld,
   selectCodeEndedPending,
   selectCourt,
+  selectCourtMatchKey,
   selectDelivery,
   selectDestination,
   selectEndReason,
@@ -283,6 +284,32 @@ describe('the waiting fields the viewfinder shows (Task 28)', () => {
     expect([selectNextLabel(none), selectNextStartMs(none)]).toEqual([null, null]);
     const idle = snapshot({ kind: 'idle' });
     expect([selectNextLabel(idle), selectNextStartMs(idle)]).toEqual([null, null]);
+  });
+
+  // Court stream (spec 2026-11-14, the scoring stale guard): what names the match behind a court, as one string.
+  it('names the court’s match as sid|label|next on a court code, and is empty on a fixture’s code', () => {
+    const next = { label: 'C v D', scheduledStart: null };
+    const courtLive = snapshot(
+      LIVE,
+      {},
+      {
+        pairing: { ...FAKE_PAIRING, court: 'Court 2', next },
+        broadcast: BROADCAST,
+      },
+    );
+    expect(selectCourtMatchKey(courtLive)).toBe('fake-sid-1|Seazn XI v Fake CC (broadcast)|C v D');
+    // Waiting between matches: no sid, the pairing's label, no next. Stable: the same string every report.
+    const courtWaiting = withPairing({ court: 'Court 2', next: null });
+    expect(selectCourtMatchKey(courtWaiting)).toBe('|Seazn XI v Fake CC|');
+    expect(selectCourtMatchKey({ ...courtWaiting })).toBe('|Seazn XI v Fake CC|');
+    // A fixture's code never moves its key, whatever it holds.
+    const fixtureLive = snapshot(
+      LIVE,
+      {},
+      { pairing: { ...FAKE_PAIRING, next }, broadcast: BROADCAST },
+    );
+    expect(selectCourtMatchKey(fixtureLive)).toBe('');
+    expect(selectCourtMatchKey(snapshot({ kind: 'idle' }))).toBe('');
   });
 
   it('reads the scheduled start as epoch ms, a primitive, or null with none', () => {

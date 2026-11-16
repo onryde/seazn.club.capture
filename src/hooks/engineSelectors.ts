@@ -96,6 +96,15 @@ export const selectScheduledStartMs = (snapshot: EngineSnapshot) =>
 export const selectCourt = (snapshot: EngineSnapshot) => snapshot.pairing?.court ?? null;
 /** The court's next streamed match (§5.3, a beat's `next`), display only: its label, or null with none. */
 export const selectNextLabel = (snapshot: EngineSnapshot) => snapshot.pairing?.next?.label ?? null;
+/**
+ * What names the match behind a court (court stream spec 2026-11-14, the scoring stale guard), as one string: the held
+ * sid, the match label and the next streamed match. Empty on a fixture's code, so it never moves there. A scoring link
+ * asked for on a court is for this match (O10): when the string changes, the link in hand is the old match's.
+ */
+export const selectCourtMatchKey = (snapshot: EngineSnapshot): string =>
+  selectCourt(snapshot) === null
+    ? ''
+    : `${snapshot.broadcast?.sid ?? ''}|${selectLabel(snapshot) ?? ''}|${selectNextLabel(snapshot) ?? ''}`;
 /** When the court's next streamed match is scheduled to start, as epoch ms (a primitive); null with none. */
 export const selectNextStartMs = (snapshot: EngineSnapshot) =>
   snapshot.pairing?.next?.scheduledStart?.getTime() ?? null;
