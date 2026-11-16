@@ -24,6 +24,8 @@ const ICONS = {
   onSettings: vi.fn(),
   onScoringLink: vi.fn(),
   scoringOpen: false,
+  // A fixture code: no Exit's ⋯ (court stream §6.4, O5).
+  onMore: null,
 } as const;
 
 /** A hand-built projection, so the column's own gates are tested apart from the hooks'. */
@@ -47,6 +49,8 @@ const viewOf = (overrides: Partial<Viewfinder>): Viewfinder => ({
   startsAt: null,
   auto: false,
   destination: 'YouTube · Fake CC',
+  nextLabel: null,
+  nextAt: null,
   start: vi.fn(),
   stop: vi.fn(),
   ...overrides,
@@ -152,6 +156,7 @@ describe('StreamColumn’s icon row (spec §3)', () => {
       onSettings={onSettings}
       onScoringLink={vi.fn()}
       scoringOpen={false}
+      onMore={null}
       viewer={VIEWER}
     />
   );
