@@ -180,6 +180,12 @@ class PairRequest(
   /** The round line the scan's GET gave, and the match label it was read with; both or neither. Not a secret. */
   val stageLabel: String? = null,
   val stageMatch: String? = null,
+  /**
+   * The court's name from the code's GET at the scan, saved with the code (court stream spec 2026-11-14 §6.1); null on a
+   * fixture's code. It seeds the pairing's [WaitingFields.courtName], so a cold-start re-pair is a court pairing before
+   * any GET. Not a secret. Held to 1 to 80 characters by [problems]: a malformed court refuses the pair, never no court.
+   */
+  val court: String? = null,
 ) {
   val name: PairingName
     get() = PairingName(code, slot, TokenTag.of(token))
@@ -198,6 +204,7 @@ class PairRequest(
     for ((key, url) in listOf("heartbeatUrl" to heartbeatUrl, "startUrl" to startUrl)) {
       if (!Hosts.onSeazn(url, environment)) add("$key is not on ${environment.seaznHost}")
     }
+    if (court != null && court.characters !in 1..80) add("court is not 1 to 80 characters")
   }
 
   /** The token: masked in every line, as plan B's `tok` was. */

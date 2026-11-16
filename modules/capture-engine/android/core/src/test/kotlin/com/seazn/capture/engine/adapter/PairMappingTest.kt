@@ -3,8 +3,12 @@ package com.seazn.capture.engine.adapter
 import com.seazn.capture.engine.core.Claim
 import com.seazn.capture.engine.core.Configs
 import com.seazn.capture.engine.core.Environment
+import com.seazn.capture.engine.core.Input
+import com.seazn.capture.engine.core.MachineRig
+import com.seazn.capture.engine.core.Phase
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -89,6 +93,51 @@ class PairMappingTest {
     val bare = PairMapping.request(wire())
     assertNull(bare.stageLabel)
     assertNull(bare.stageMatch)
+  }
+
+  /**
+   * Court stream (spec 2026-11-14 §6.1, Global Constraints): the court rides the pair as given. Absent or null is no
+   * court; a name of 1 to 80 characters is the court; anything else refuses the pair by name, never no court, since a
+   * fixture-style Stop on a court phone would unlink the court (spec §3).
+   */
+  @Test
+  fun `the court rides the pair as given - absent or null is none, and a malformed one refuses the pair`() {
+    fun courted(court: Any?) = PairMapping.request(wire().also { it["court"] = court })
+    for (good in listOf("Court 2", "x", "x".repeat(80), "x".repeat(79) + "🏸")) {
+      val request = courted(good)
+      assertEquals(good, request.court, good)
+      assertEquals(emptyList<String>(), request.problems(), good)
+    }
+    assertNull(courted(null).court)
+    assertEquals(emptyList<String>(), courted(null).problems())
+    assertNull(PairMapping.request(wire()).court, "a pair with no court key")
+    val bad = listOf("" to "", "x".repeat(81) to "x".repeat(81), "x".repeat(80) + "🏸" to "x".repeat(80) + "🏸", 7.0 to "", true to "", mapOf("name" to "Court 2") to "")
+    for ((sent, kept) in bad) {
+      val request = courted(sent)
+      // Kept as text, a non-string as "", so the problem is named and the record says why.
+      assertEquals(kept, request.court, "$sent")
+      assertEquals(listOf("court is not 1 to 80 characters"), request.problems(), "$sent")
+    }
+    assertEquals(6, bad.size)
+  }
+
+  @Test
+  fun `a pair with a court seeds the first snapshot's court, before any GET, and a refused one pairs nothing`() {
+    val rig = MachineRig(request = PairMapping.request(wire().also { it["court"] = "Court 2" }))
+    rig.permissions = null
+    rig.send(Input.Pair(rig.request, Configs.PHONE, stopped = null))
+    assertIs<Phase.Pairing>(rig.phase)
+    assertEquals("Court 2", rig.snapshot.pairing?.waiting?.courtName, "Pairing: no GET or beat has answered yet")
+    // A fixture's code seeds none.
+    val fixture = MachineRig(request = PairMapping.request(wire()))
+    fixture.permissions = null
+    fixture.send(Input.Pair(fixture.request, Configs.PHONE, stopped = null))
+    assertNull(fixture.snapshot.pairing?.waiting?.courtName)
+    // A malformed court is refused with the pair: no pairing to be a fixture's.
+    val refused = MachineRig(request = PairMapping.request(wire().also { it["court"] = "" }))
+    refused.permissions = null
+    refused.send(Input.Pair(refused.request, Configs.PHONE, stopped = null))
+    assertNull(refused.snapshot.pairing)
   }
 
   @Test

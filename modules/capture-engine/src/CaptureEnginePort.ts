@@ -42,6 +42,11 @@ export type PairIntent = {
    */
   readonly stageLabel?: string;
   readonly stageMatch?: string;
+  /**
+   * The court's name the scan's GET gave (court stream spec 2026-11-14 §6.1), on a court code only. Native seeds its
+   * pairing with it, so a cold-start re-pair is a court pairing before any GET. Not a secret.
+   */
+  readonly court?: string;
   readonly language: string;
   readonly automatic: boolean;
   readonly claim: Claim;

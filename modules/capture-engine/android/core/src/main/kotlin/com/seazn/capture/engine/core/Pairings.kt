@@ -31,8 +31,15 @@ internal object Pairings {
         request = input.request,
         phone = input.phone,
         claim = input.request.claim,
-        // The zone the scan's GET gave: the engine holds it from here (D4: a beat carries none).
-        waiting = WaitingFields.UNKNOWN.copy(venueTimezone = input.request.venueTimezone, stageLabel = input.request.stageLabel, stageFor = input.request.stageMatch),
+        // The zone the scan's GET gave: the engine holds it from here (D4: a beat carries none). So is the court
+        // (court stream §6.1): a cold-start re-pair is a court pairing before any GET.
+        waiting =
+          WaitingFields.UNKNOWN.copy(
+            venueTimezone = input.request.venueTimezone,
+            stageLabel = input.request.stageLabel,
+            stageFor = input.request.stageMatch,
+            courtName = input.request.court,
+          ),
         automatic = input.request.automatic,
         language = input.request.language,
         heartbeat = HeartbeatState(nextId = ids.beat),

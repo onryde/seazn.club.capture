@@ -38,6 +38,8 @@ export function pairIntentFor(saved: SavedCode, facts: PairFacts): PairIntent | 
     ...(waiting.stage === null
       ? {}
       : { stageLabel: waiting.stage.label, stageMatch: waiting.label }),
+    // Court stream (spec §6.1): the saved court, so native's re-pair is a court pairing before any GET.
+    ...(waiting.court === null ? {} : { court: waiting.court }),
     ...facts,
   };
 }

@@ -37,7 +37,17 @@ type Input = {
 /** W28: the first row's answer carries a stage, the second's none (the common case). */
 const QF = { code: 'QF', role: { kind: 'quarter_final' }, label: 'Open · QF' };
 
-const waiting = (code: string, zone: string, beats: string, start: string, stage?: object) => ({
+/** Court stream (spec 2026-11-14 §6.1): a court code's answer carries its court, which rides the pair. */
+const COURT = { name: 'Court 2' };
+
+const waiting = (
+  code: string,
+  zone: string,
+  beats: string,
+  start: string,
+  stage?: object,
+  court?: object,
+) => ({
   state: 'waiting',
   code,
   label: 'Example Town v Sample CC',
@@ -48,6 +58,7 @@ const waiting = (code: string, zone: string, beats: string, start: string, stage
   heartbeatUrl: beats,
   startUrl: start,
   ...(stage === undefined ? {} : { stage }),
+  ...(court === undefined ? {} : { court }),
 });
 
 const INPUTS: Readonly<Record<string, Input>> = {
@@ -76,7 +87,26 @@ const INPUTS: Readonly<Record<string, Input>> = {
     facts: { language: 'nl', automatic: false, claim: 'resume' },
     fromStore: true,
   },
+  // Review Focus 2: process death on a court phone, then the cold-start re-pair before any GET. The court read at the
+  // scan is saved with the code and read back from the store, so native is a court pairing from the pair on.
+  "staging, a court code's cold-start re-pair": {
+    env: 'staging',
+    qr: { code: 'c2rt4hmnp7kq', slot: 0, tok: 'Ct0urtTok9f3c2a7e5b1d4' },
+    answer: waiting(
+      'c2rt4hmnp7kq',
+      'Europe/London',
+      'https://stg.seazn.club/api/v1/capture/codes/c2rt4hmnp7kq/beats',
+      'https://stg.seazn.club/api/v1/capture/codes/c2rt4hmnp7kq/start',
+      undefined,
+      COURT,
+    ),
+    facts: { language: 'es', automatic: true, claim: 'resume' },
+    fromStore: true,
+  },
 };
+
+/** The rows JS sends; the nativeOnly ones are pairs PairMapping must refuse, which JS never writes. */
+const sent = vectors.intents.filter((row) => !('nativeOnly' in row && row.nativeOnly === true));
 
 const ok = (body: unknown): FetchResponse => ({
   status: 200,
@@ -122,14 +152,16 @@ async function wireFor({
 
 describe('carry T25: a scanned code reaches native as the pair the core accepts', () => {
   // The file's count, so an emptied or truncated file cannot pass by sweeping nothing (PV12).
-  it('folds both of the 2 shared rows, one per environment', () => {
-    expect(vectors.intents.map((row) => row.name).sort()).toEqual(Object.keys(INPUTS).sort());
-    expect(new Set(vectors.intents.map((row) => row.wire.environment))).toEqual(
+  it("folds the 3 of the file's 5 rows JS sends, both environments and a court code", () => {
+    expect(vectors.intents).toHaveLength(5);
+    expect(sent.map((row) => row.name).sort()).toEqual(Object.keys(INPUTS).sort());
+    expect(new Set(sent.map((row) => row.wire.environment))).toEqual(
       new Set(['staging', 'production']),
     );
+    expect(sent.filter((row) => 'court' in row.wire)).toHaveLength(1);
   });
 
-  it.each(vectors.intents.map((row) => [row.name, row.wire] as const))(
+  it.each(sent.map((row) => [row.name, row.wire] as const))(
     '%s: the intent wire is the shared row, codeUrl exactly',
     async (name, wire) => {
       const input = INPUTS[name];
