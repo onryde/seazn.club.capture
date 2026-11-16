@@ -258,6 +258,34 @@ class PairingTest {
     assertEquals(listOf("pair", "unpair"), rig.records("intent-ignored").map { it.field("intent") })
   }
 
+  /**
+   * P3 review m4: unpair (Home's Forget, the court's Leave) gets the guard the notification's Forget has (Batch 4
+   * review M1). A start the server accepts after an unpair is a broadcast with no phone, so an unpair while the
+   * operator's own start is in flight is ignored and recorded, and the pairing stands: JS reads `held` once the start
+   * arms, or gives up and keeps the code.
+   */
+  @Test
+  fun `unpair while the operator's start is in flight is ignored and recorded - nothing released`() {
+    for (court in listOf(null, "Court 2")) {
+      val r = Configs.pairRequest()
+      val rig = MachineRig(request = PairRequest(r.code, r.slot, r.token, r.codeUrl, r.heartbeatUrl, r.startUrl, r.language, r.automatic, r.claim, r.environment, court = court)).paired()
+      rig.hear("waiting")
+      rig.ready()
+      rig.send(Input.Start)
+      val before = assertIs<Phase.Paired>(rig.phase)
+      assertTrue(before.pairing.starts.inFlightId != null, "$court: the start is in flight")
+      val commands = rig.send(Input.Unpair)
+      assertEquals(before, rig.phase, "$court")
+      val line = commands.filterIsInstance<Command.Record>().single().entry
+      assertEquals(listOf<Any?>("intent-ignored", "unpair", "paired"), listOf(line.kind, line.field("intent"), line.field("phase")), "$court")
+      assertTrue(commands.none { it == Command.Release }, "$court: $commands")
+      // Four questions (1, 3): the start's answer then lands, and an unpair after it is honoured.
+      rig.send(Input.StartAnswered(before.pairing.starts.inFlightId!!, StartAnswer.Refused(Refusal.NO_DESTINATION)))
+      rig.send(Input.Unpair)
+      assertIs<Phase.Idle>(rig.phase, "$court: unpair after the answer")
+    }
+  }
+
   @Test
   fun `unpair from Paired is Idle with no unpaired reason, and releases the service`() {
     val rig = MachineRig().paired()

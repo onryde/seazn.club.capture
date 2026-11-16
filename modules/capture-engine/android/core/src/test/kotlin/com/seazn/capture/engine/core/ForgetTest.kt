@@ -141,6 +141,26 @@ class ForgetTest {
     assertTrue(rig.sent<Command.WriteForgotten>().isEmpty())
   }
 
+  /**
+   * P2 review m1: the court is named first. A court tap made while the operator's start is in flight is the same court
+   * tap, so its line names the court too; nothing is released or written either way.
+   */
+  @Test
+  fun `a court Forget tap while the operator's start is in flight is recorded naming the court`() {
+    val r = Configs.pairRequest()
+    val rig = MachineRig(request = PairRequest(r.code, r.slot, r.token, r.codeUrl, r.heartbeatUrl, r.startUrl, r.language, r.automatic, r.claim, r.environment, court = "Court 2")).paired()
+    rig.hear("waiting")
+    rig.ready()
+    rig.send(Input.Start)
+    assertTrue(assertIs<Phase.Paired>(rig.phase).pairing.starts.inFlightId != null, "the start is in flight")
+    val before = rig.phase
+    val commands = rig.send(Input.Forget)
+    assertEquals(before, rig.phase)
+    val line = commands.filterIsInstance<Command.Record>().single().entry
+    assertEquals(listOf<Pair<String, Any?>>("intent" to "forget", "phase" to "paired", "court" to true), line.fields)
+    assertTrue(commands.none { it == Command.Release || it is Command.WriteForgotten }, "$commands")
+  }
+
   @Test
   fun `a pair after Forget pairs afresh, with no unpaired left`() {
     val rig = MachineRig().paired()

@@ -173,14 +173,15 @@ class StartTest {
   /**
    * Batch 4 review M1, the controller's ruling (2026-10-12): an answer that reaches Idle (the pairing left while its
    * start was in flight) is recorded late, never dropped in silence: a start the server accepted then is a broadcast
-   * with no phone, and the record is where that shows.
+   * with no phone, and the record is where that shows. The operator's unpair is ignored while the start is in flight
+   * (P3 review m4), so the pairing leaves here by the engine's own path: a beat's 401.
    */
-  @Test fun `a start answer that reaches Idle after an unpair is recorded late, and moves nothing`() {
+  @Test fun `a start answer that reaches Idle after the pairing left is recorded late, and moves nothing`() {
     for (late in lateAnswers + StartAnswer.CodeEnded) {
       val rig = ready()
       rig.send(Input.Start)
       val id = rig.sent<Command.PostStart>().single().requestId
-      rig.send(Input.Unpair)
+      rig.hear(null, status = 401)
       val before = assertIs<Phase.Idle>(rig.phase)
       val commands = rig.send(Input.StartAnswered(id, late))
       assertEquals(before, rig.phase, "$late")

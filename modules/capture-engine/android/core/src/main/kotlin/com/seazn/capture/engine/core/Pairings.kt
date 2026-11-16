@@ -62,10 +62,16 @@ internal object Pairings {
     return Heartbeats.tick(Step(paired, listOf(Command.Hold, line("paired"))), now)
   }
 
+  /**
+   * Home's Forget and the court's Leave (⋯). P3 review m4: the operator's own start in flight is guarded as Forget's
+   * is (Batch 4 review M1): a start the server accepts after an unpair is a broadcast with no phone, so the unpair is
+   * ignored and recorded, and JS reads `held` once the start arms, or gives up and keeps the code.
+   */
   fun unpair(phase: Phase): Step =
-    when (phase) {
-      is Phase.Paired -> Step(Phase.Idle(phase.ids, phase.networkValidated, phase.micSilenced), listOf(Command.Release, line("unpaired", "reason" to "operator")))
-      is Phase.Pairing -> Step(Phase.Idle(phase.ids, phase.networkValidated, phase.micSilenced), listOf(line("unpaired", "reason" to "operator")))
+    when {
+      phase is Phase.Paired && phase.pairing.starts.inFlightId != null -> SessionMachine.ignored(phase, "unpair")
+      phase is Phase.Paired -> Step(Phase.Idle(phase.ids, phase.networkValidated, phase.micSilenced), listOf(Command.Release, line("unpaired", "reason" to "operator")))
+      phase is Phase.Pairing -> Step(Phase.Idle(phase.ids, phase.networkValidated, phase.micSilenced), listOf(line("unpaired", "reason" to "operator")))
       else -> SessionMachine.ignored(phase, "unpair")
     }
 
@@ -77,17 +83,17 @@ internal object Pairings {
    *
    * Batch 4 review M1, the controller's ruling (2026-10-12): the operator's own start in flight is not waiting either.
    * The shade and the screen can be touched at once, and a start the server accepts after an unpair is a broadcast
-   * with no phone, so that tap is ignored too. Home's Forget (`unpair`) is unchanged: it cannot be reached while
-   * holding Go live.
+   * with no phone, so that tap is ignored too. `unpair` has the same guard (P3 review m4).
    *
    * O12 (owner, 2026-11-15): a court's notification carries no Forget, so a tap that lands on a court pairing anyway
    * (posted before the court was known, or late) is ignored and recorded, naming the court: Exit, which asks first, is
    * the only way off a court.
    */
   fun forget(phase: Phase): Step {
+    // The court is named first (P2 review m1): a court tap while a start is in flight is still a court tap.
+    if (phase is Phase.Paired && phase.pairing.isCourt) return Step(phase, listOf(line("intent-ignored", "intent" to "forget", "phase" to phase.name, "court" to true)))
     if (phase !is Phase.Paired || phase.pairing.starts.inFlightId != null) return SessionMachine.ignored(phase, "forget")
     val pairing = phase.pairing
-    if (pairing.isCourt) return Step(phase, listOf(line("intent-ignored", "intent" to "forget", "phase" to phase.name, "court" to true)))
     val idle = Phase.Idle(phase.ids, phase.networkValidated, phase.micSilenced, Unpaired(UnpairReason.FORGOTTEN, pairing.name))
     // The one definition, as every unpair line reads it; never true here, as Paired holds no broadcast.
     val wasLive = "wasLive" to (phase.firstLiveEpochMs != null)
