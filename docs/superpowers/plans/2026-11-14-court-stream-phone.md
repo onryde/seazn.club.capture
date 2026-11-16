@@ -44,8 +44,9 @@ writes to the assumed shapes below.
     The schema makes it optional; this server always sends it;
   - `no_match` is a new shared refusal word, used on court codes only. Scoring-link answers it with a 409 when
     no match is queued on the court. `POST start` answers it with a 409 when the court has no streamed match in
-    play. The phone keys on the `code` for any 4xx: on scoring-link it is checked before the 401/404 branch, and
-    on start `Refusal.of` reads it;
+    play. On scoring-link the phone keys on the `code` for any 4xx, checked before the 401/404 branch. On start, a
+    409 `no_match` (the contract's status) reaches `Refusal.of`; a 404, 422 or 429 stays a failed start whatever
+    its code (`START_FAILS`, D7, D18; P4 review m1, 2026-11-16);
   - QR v2 court codes carry `exp` = the end of the competition-local day. It is the existing optional `exp`, so
     `streamCode.ts` and `recognise.ts` need no change;
   - per-fixture codes never send `court` or `next`.
