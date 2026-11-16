@@ -1,5 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import en from '@/i18n/en.json';
 import { encodeSavedCode } from '@/domain/mode/savedCode';
 import type { SessionState } from '@/domain/session/SessionState';
 import { useCourtExit } from '@/hooks/useCourtExit';
@@ -166,7 +167,7 @@ describe('useCourtExit', () => {
     });
     afterEach(() => process.off('unhandledRejection', onRejection));
 
-    it('stays on Live Stream, keeps the code and says so in the record', async () => {
+    it('keeps the code, says so in the record and on Home, and goes Home', async () => {
       const store = refusingStore(seed(), (key) => key === STORE_KEYS.code('stream'));
       const { fakes, hook } = await mount('Court 2', 'paired', { modeStore: store, kvSeed: {} });
       act(() => hook.result.current.leave());
@@ -177,7 +178,10 @@ describe('useCourtExit', () => {
       expect(refused).toEqual([
         expect.objectContaining({ level: 'warn', fields: { action: 'court-leave' } }),
       ]);
-      expect(fakes.navigation.current()).toBe('stream');
+      // Never silent (S0 R19): Home gets the notice, and the code is still saved there to Forget again.
+      expect(fakes.ports.homeNews.peek()).toBe('store.saveFailed');
+      expect(en['store.saveFailed']).toBe("Couldn't save on this phone. Try again.");
+      expect(fakes.navigation.current()).toBe('home');
       expect(rejections).toEqual([]);
     });
   });

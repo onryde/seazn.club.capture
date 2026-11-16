@@ -278,7 +278,7 @@ describe('Exit on the court code’s waiting screen', () => {
     });
     afterEach(() => process.off('unhandledRejection', onRejection));
 
-    it('stays on Live Stream and says so in the record', async () => {
+    it('says so in the record and on Home, and goes Home with the code kept', async () => {
       const seed = {
         [STORE_KEYS.active]: 'stream',
         [STORE_KEYS.code('stream')]: encodeSavedCode(savedCourtCode()),
@@ -296,7 +296,12 @@ describe('Exit on the court code’s waiting screen', () => {
       expect(
         readRecord(view.record).filter((line) => line.event === 'store.write-refused'),
       ).toEqual([expect.objectContaining({ level: 'warn', fields: { action: 'court-leave' } })]);
-      expect(view.navigation.current()).toBe('stream');
+      // Never silent (S0 R19): Home is told, and its card still offers Forget for the code the phone kept.
+      expect(view.ports.homeNews.peek()).toBe('store.saveFailed');
+      expect(en['store.saveFailed']).toBe("Couldn't save on this phone. Try again.");
+      expect(view.navigation.current()).toBe('home');
+      const snapshot = modeStore.getSnapshot();
+      expect(snapshot.status === 'ready' && snapshot.saved.codes.stream !== undefined).toBe(true);
       expect(rejections).toEqual([]);
     });
   });

@@ -19,12 +19,13 @@ export type CourtExit = {
 /**
  * Exit on a court code's waiting screen (court stream spec 2026-11-14 §6.4, O5, O12): the only way off a court, and it
  * asks first. Leave follows Home's Forget: unpair, forget the saved code once the engine is Idle, then Home. A remote Go
- * live that wins the race stands (`held`), and the code is kept. A second Leave while one is under way is dropped by
+ * live that wins the race stands (`held`), and the code is kept. A refused forget is never silent (S0 R19): the engine
+ * is Idle by then, so it goes Home with "couldn't save" posted there. A second Leave while one is under way is dropped by
  * `useUnpair`. The question belongs to the waiting screen: once the engine arms it closes for good, and it is not
  * still open when the match ends and the court waits again.
  */
 export function useCourtExit(court: string | null, kind: Kind): CourtExit {
-  const { modeStore, navigation, logger } = usePorts();
+  const { modeStore, navigation, logger, homeNews } = usePorts();
   const unpair = useUnpair();
   const [asked, setAsked] = useState(false);
   const offered = court !== null && kind === 'paired';
@@ -41,9 +42,15 @@ export function useCourtExit(court: string | null, kind: Kind): CourtExit {
       if (outcome === 'held') return; // a remote Go live won the race: the broadcast stands
       void modeStore.forget(code).then(
         (forgot) => (forgot ? navigation.go('home') : undefined),
-        () => logger.warn('store.write-refused', { action: 'court-leave' }),
+        () => {
+          // The engine is Idle and the code is still saved: never silent (S0 R19). Home says so, and its card still
+          // offers Forget (RP4), so the retry is one tap.
+          logger.warn('store.write-refused', { action: 'court-leave' });
+          homeNews.post('store.saveFailed');
+          navigation.go('home');
+        },
       );
     });
-  }, [modeStore, navigation, logger, unpair]);
+  }, [modeStore, navigation, logger, homeNews, unpair]);
   return { offered, open: offered && asked, ask, stay, leave };
 }
