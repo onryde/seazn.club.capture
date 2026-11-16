@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { SessionState } from '@/domain/session/SessionState';
 import { savedStream } from '@/hooks/savedStream';
 import { usePorts } from '@/hooks/usePorts';
-import { codeStays, useUnpair } from '@/hooks/useUnpair';
+import { clearingUnderWay, codeStays, useUnpair } from '@/hooks/useUnpair';
 
 type Kind = SessionState['kind'];
 
@@ -11,6 +11,11 @@ export type CourtExit = {
   readonly offered: boolean;
   /** The Leave question is showing. Forced shut whenever Exit is not offered, so an arming engine closes it. */
   readonly open: boolean;
+  /**
+   * A Leave is under way: unpair sent, at most 5 s (`UNPAIR_GIVE_UP_MS`). The screen swallows Back for it, so leaving
+   * the screen cannot end the unpair as `left` and forget a code native still holds (whole-branch review I2).
+   */
+  readonly leaving: boolean;
   ask(): void;
   stay(): void;
   leave(): void;
@@ -29,6 +34,7 @@ export function useCourtExit(court: string | null, kind: Kind): CourtExit {
   const { engine, modeStore, navigation, logger, homeNews } = usePorts();
   const unpair = useUnpair();
   const [asked, setAsked] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const offered = court !== null && kind === 'paired';
   useEffect(() => {
     if (!offered) setAsked(false);
@@ -39,7 +45,11 @@ export function useCourtExit(court: string | null, kind: Kind): CourtExit {
     setAsked(false);
     const code = savedStream(modeStore); // the code on screen when Leave was pressed (C4b-I2)
     if (code === null) return;
+    // A clearing another caller has under way drops this one, and its callback never runs: nothing to swallow Back for.
+    if (clearingUnderWay(engine)) return;
+    setLeaving(true);
     unpair('forget', (outcome) => {
+      setLeaving(false);
       // A Go live won the race (the broadcast stands), or native never answered with the engine still paired, its
       // start perhaps in flight: the code and the screen stay, with Exit (P4 review I1).
       if (codeStays(outcome, engine)) return;
@@ -47,7 +57,7 @@ export function useCourtExit(court: string | null, kind: Kind): CourtExit {
         (forgot) => (forgot ? navigation.go('home') : undefined),
         () => {
           // The engine is Idle and the code is still saved: never silent (S0 R19). Home says so, and its card still
-          // offers Forget (RP4), so the retry is one tap.
+          // offers Forget (`holdsCourt`'s saved branch; the engine is Idle), so the retry is one tap.
           logger.warn('store.write-refused', { action: 'court-leave' });
           homeNews.post('store.saveFailed');
           navigation.go('home');
@@ -55,5 +65,5 @@ export function useCourtExit(court: string | null, kind: Kind): CourtExit {
       );
     });
   }, [engine, modeStore, navigation, logger, homeNews, unpair]);
-  return { offered, open: offered && asked, ask, stay, leave };
+  return { offered, open: offered && asked, leaving, ask, stay, leave };
 }

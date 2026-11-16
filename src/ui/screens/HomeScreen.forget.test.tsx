@@ -179,7 +179,27 @@ describe('Forget while the code is paired (I1)', () => {
       { event: 'intent.pair', fields: { action: 'pair', claim: 'new', slot: 1 } },
       { event: 'intent.unpair', fields: { action: 'forget' } },
     ]);
-    expect(app.nav.current()).toBe('home');
+    // The foreground reopened /stream under the unanswered unpair, so Home ended the clearing as `left` with the engine
+    // still paired: the code stays (whole-branch review I2), as a start native is still holding may yet arm with it.
+    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
+  });
+
+  // Whole-branch review I2: Home unmounts under an unanswered Forget (the gear, a foreground reopen). The clearing ends
+  // as `left` with the engine still paired, which native may be ignoring (its start in flight): the code stays, so a
+  // start then accepted arms with it, and Home does not pull the operator back from where they went.
+  it('keeps the code when Home is left while native has not answered the unpair', async () => {
+    const app = await pairedThenHome();
+    holdIntents(app.engine, ['unpair']);
+    forget();
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    await flush(UNPAIR_GIVE_UP_MS + 100);
+    expect(app.nav.current()).toBe('settings');
+    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
+    act(() => app.engine.hear({ word: 'go-live', cause: 'organiser' }));
+    await flush();
+    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
+    expect(app.nav.current()).toBe('stream');
   });
 
   // C4b-I2, the reviewer's probe P4: Forget X, then Y is scanned before the

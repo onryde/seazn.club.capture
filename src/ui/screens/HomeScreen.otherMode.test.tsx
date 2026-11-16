@@ -226,6 +226,21 @@ describe('Home: another mode while paired (A7)', () => {
     expect(saved(h)?.active).toBe('stream');
   });
 
+  // Whole-branch review I2: Home unmounts under the unanswered unpair, which ends it as `left` with the engine still
+  // paired: the stream code stays and nothing opens, as at the give-up.
+  it('keeps the stream code and opens nothing when Home unmounts under the unanswered unpair', async () => {
+    const h = await home({ paired: true });
+    await openScoring(h);
+    holdIntents(h.engine, ['unpair']);
+    act(() => actions(h).confirmUnpair());
+    h.hook.unmount();
+    await flush();
+    expect(h.engine.getSnapshot().state.kind).toBe('paired');
+    expect(saved(h)?.codes.stream).toBeDefined();
+    expect(saved(h)?.codes.scoring).toBeUndefined();
+    expect(saved(h)?.active).toBe('stream');
+  });
+
   it('opens the other mode at once with nothing paired', async () => {
     const h = await home({ paired: false });
     await openScoring(h);

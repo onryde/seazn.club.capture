@@ -45,7 +45,8 @@ export function StreamScreen({ viewerCheck = FEATURES.viewerCheck }: ScreenProps
   const scoring = useScoringLink(view.plate === 'trouble');
   const line = useColumnLine(view, leave.blocked);
   const exit = useCourtExit(view.court, view.kind);
-  useBackCloses(exit.open, exit.stay);
+  // Back while a Leave is under way is swallowed (I2): it would end the unpair as `left` and forget the code.
+  useBackCloses(exit.open || exit.leaving, exit.stay);
   const halves: HalvesProps = {
     view,
     line,
@@ -148,7 +149,7 @@ function useColumnLine(view: Viewfinder, blocked: boolean): ColumnLine {
     remaining: view.holdRemaining ?? '',
     window: view.holdWindow ?? '',
     destination: view.destination === null ? '' : cutDestination(view.destination),
-    // A court's Next line (§6.2, I4): the label cut at 24 so the time is never the part an ellipsis eats.
+    // A court's Next line (§6.2, I4): the label cut by its measured width so the time is never the part an ellipsis eats.
     label: view.nextLabel === null ? '' : cutNextLabel(view.nextLabel),
     time: view.nextAt ?? '',
   };

@@ -310,6 +310,45 @@ describe('Exit on the court code’s waiting screen', () => {
     expect(view.navigation.current()).toBe('stream');
   });
 
+  // Whole-branch review I2: Back during a Leave native has not answered is a leave of the screen, which would end the
+  // clearing as `left` and forget the code while native stays paired (its start perhaps in flight). Back is swallowed
+  // until the clearing ends, so the 5 s give-up keeps the code and the screen.
+  it('ignores Back while a Leave is under way, so a start accepted meanwhile still arms with its code', async () => {
+    const view = await waiting();
+    const native = holdIntents(view.engine, ['unpair']);
+    fireEvent.click(more() as HTMLElement);
+    fireEvent.click(leave());
+    await flush();
+    expect(native.held()).toEqual(['unpair']);
+    let handled = false;
+    act(() => {
+      handled = view.back.press();
+    });
+    expect(handled).toBe(true);
+    expect(view.navigation.current()).toBe('stream');
+    expect(view.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
+    await act(() => vi.advanceTimersByTimeAsync(UNPAIR_GIVE_UP_MS));
+    act(() => view.engine.hear({ word: 'go-live', cause: 'organiser' }));
+    await flush();
+    expect(view.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
+    expect(view.navigation.current()).toBe('stream');
+  });
+
+  it('lets Back leave again once the Leave has given up, keeping the code', async () => {
+    const view = await waiting();
+    holdIntents(view.engine, ['unpair']);
+    fireEvent.click(more() as HTMLElement);
+    fireEvent.click(leave());
+    await flush();
+    await act(() => vi.advanceTimersByTimeAsync(UNPAIR_GIVE_UP_MS));
+    act(() => {
+      view.back.press();
+    });
+    await flush();
+    expect(view.navigation.current()).toBe('home');
+    expect(view.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
+  });
+
   // Review Focus 4: a remote Go live arrives while the Leave sheet is open.
   it('closes the Leave sheet when the engine arms, and never unpairs', async () => {
     const view = await waiting();

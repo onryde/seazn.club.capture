@@ -21,11 +21,13 @@ type Done = (outcome: UnpairOutcome) => void;
  * Whether a Forget or a court Leave keeps the code it was asked to drop: a broadcast is held (`held`), or the 5 s
  * bound gave up with the engine still not Idle. Native ignores an unpair while the operator's start is in flight
  * (`Pairings.unpair`), so the give-up comes first and that start may yet arm: it arms with its code, and the operator
- * has one more tap to try again (P4 review I1). A caller that left first (`left`) still forgets, as it always did.
+ * has one more tap to try again (P4 review I1). A caller that unmounted first (`left`) keeps it on the same terms: its
+ * screen went with the unpair unanswered, and an engine still not Idle may be ignoring it (whole-branch review I2).
  */
 export const codeStays = (outcome: UnpairOutcome, engine: CaptureEnginePort): boolean =>
   outcome === 'held' ||
-  (outcome === 'gave-up' && selectEngineStatus(engine.getSnapshot()) !== 'idle');
+  ((outcome === 'gave-up' || outcome === 'left') &&
+    selectEngineStatus(engine.getSnapshot()) !== 'idle');
 
 /**
  * The clearing under way on each engine, whoever started it (final fix round

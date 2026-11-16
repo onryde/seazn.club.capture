@@ -4,6 +4,7 @@ import en from '@/i18n/en.json';
 import { encodeSavedCode } from '@/domain/mode/savedCode';
 import type { SessionState } from '@/domain/session/SessionState';
 import { useCourtExit } from '@/hooks/useCourtExit';
+import { UNPAIR_GIVE_UP_MS, useUnpair } from '@/hooks/useUnpair';
 import { STORE_KEYS } from '@/services/modeStore';
 import { createFakePorts, readRecord, type FakePorts } from '../../test/fakePorts';
 import { savedCourtCode, savedStreamCode } from '../../test/fixtures/savedStream';
@@ -120,6 +121,41 @@ describe('useCourtExit', () => {
     act(() => native.release());
     await flush();
     expect(unpairs(fakes)).toHaveLength(1);
+  });
+
+  // Whole-branch review I2: `leaving` is how the screen knows to swallow Back, and it must end with the clearing.
+  it('is leaving from the Leave until native answers or the 5 s give up, then not', async () => {
+    const { fakes, hook } = await mount('Court 2', 'paired');
+    expect(hook.result.current.leaving).toBe(false);
+    const native = holdIntents(fakes.engine, ['unpair']);
+    act(() => hook.result.current.leave());
+    await flush();
+    expect(hook.result.current.leaving).toBe(true);
+    await act(() => vi.advanceTimersByTimeAsync(UNPAIR_GIVE_UP_MS));
+    expect(hook.result.current.leaving).toBe(false);
+    // A second Leave is leaving again, and ends when native answers.
+    act(() => hook.result.current.leave());
+    await flush();
+    expect(hook.result.current.leaving).toBe(true);
+    act(() => native.release());
+    await flush();
+    expect(hook.result.current.leaving).toBe(false);
+  });
+
+  it('is never leaving for a Leave another caller’s clearing dropped, or with nothing saved', async () => {
+    const { fakes, hook } = await mount('Court 2', 'paired');
+    const native = holdIntents(fakes.engine, ['unpair']);
+    const other = renderHook(() => useUnpair(), { wrapper: wrapperFor(fakes) });
+    act(() => other.result.current('orphan'));
+    act(() => hook.result.current.leave());
+    await flush();
+    expect(hook.result.current.leaving).toBe(false);
+    act(() => native.release());
+    await flush();
+    const empty = await mount('Court 2', 'paired', { kvSeed: {} });
+    act(() => empty.hook.result.current.leave());
+    await flush();
+    expect(empty.hook.result.current.leaving).toBe(false);
   });
 
   // C4b-I2: the code on screen when Leave was pressed. A code scanned while the unpair is under way is a new scan, which

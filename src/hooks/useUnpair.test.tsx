@@ -309,7 +309,8 @@ describe('useUnpair', () => {
   });
 
   // P4 review I1: native ignores an unpair while the operator's start is in flight, so a give-up with the engine still
-  // paired may yet arm: Forget and a court Leave keep the code then. Every row is from the review, none from the code.
+  // paired may yet arm: Forget and a court Leave keep the code then. Whole-branch review I2: so does a caller that
+  // unmounted first (`left`), its screen left with the unpair unanswered. Every row is from the review, none from the code.
   describe('codeStays', () => {
     it.each([
       ['held', 'live', true],
@@ -317,7 +318,9 @@ describe('useUnpair', () => {
       ['gave-up', 'live', true],
       ['gave-up', 'stopped', true],
       ['gave-up', 'idle', false],
-      ['left', 'paired', false],
+      ['left', 'paired', true],
+      ['left', 'live', true],
+      ['left', 'idle', false],
       ['idle', 'idle', false],
     ] as const)('%s with the engine %s: %s', (outcome, status, stays) => {
       const fakes = createFakePorts();
