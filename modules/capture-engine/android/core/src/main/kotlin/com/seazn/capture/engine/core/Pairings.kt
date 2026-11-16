@@ -134,11 +134,16 @@ internal object Pairings {
 
 /** Arming: the code fetched for one broadcast's credentials (A5, _Who reads what_). */
 internal object Starts {
-  /** Arming for [sid]: the line the operator saw is cleared, and the code is fetched at once. */
+  /**
+   * Arming for [sid]: the line the operator saw is cleared, and the code is fetched at once. On a court pairing the round
+   * line goes too (court stream spec 2026-11-14 §6.5): each sid is another match, and the beat that named it can still
+   * carry the last match's label, so the held stage would be the old match's. The new sid's descriptor says its own.
+   */
   fun arm(phase: Phase, pairing: PairingState, sid: String, cause: Cause, now: Now): Step {
     val ids = phase.ids
+    val waiting = if (pairing.isCourt) pairing.waiting.copy(stageLabel = null, stageFor = null) else pairing.waiting
     // I1: whatever arms the broadcast retires the hold's POST start, so its answer, arriving after, is late.
-    val cleared = pairing.copy(refusal = null, startFailed = null, lastEnd = null, starts = pairing.starts.copy(inFlightId = null))
+    val cleared = pairing.copy(waiting = waiting, refusal = null, startFailed = null, lastEnd = null, starts = pairing.starts.copy(inFlightId = null))
     val (asks, id) = DescriptorAsks(nextId = ids.descriptor).asked(now.monoMs)
     val arming = Phase.Arming(cleared, sid, cause, ids, phase.networkValidated, phase.micSilenced, asks)
     return Step(arming, listOf(line("broadcast-start", "sid" to sid, "cause" to cause), fetchCode(pairing, id)))

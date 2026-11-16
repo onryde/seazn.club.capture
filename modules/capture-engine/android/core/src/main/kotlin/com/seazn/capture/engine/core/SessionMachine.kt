@@ -112,12 +112,17 @@ object SessionMachine {
    * (Arming, Armed, or Connecting before its first frame): the broadcast ends and the pairing stays Paired, so Go
    * live can be tried again, and A17's record goes out on a beat at once ([stoppedHere]). A 401 heard while it was
    * held ends the pairing with it, as before (the 401 deferral): its code is dead, so no beat could deliver.
+   *
+   * Court codes (court stream spec 2026-11-14 §6.3, O5): a court pairing's Stop ends this match only, live or not. It
+   * takes [stoppedHere], never [end]: the sid is refused, the pairing stays Paired for the court's next match, and the
+   * beat's `stopped: <sid>` latches the match on the server (§5.4). The 401 deferral still ends a court's pairing.
    */
   private fun stop(phase: Phase, now: Now): Step {
     val pairing = phase.pairing
     val sid = phase.heldSid
     if (pairing == null || sid == null) return ignored(phase, "stop")
-    if (wentLive(phase) || pairing.codeEndedPending) return end(phase, EndReason.OPERATOR_STOPPED, now)
+    if (pairing.codeEndedPending) return end(phase, EndReason.OPERATOR_STOPPED, now)
+    if (wentLive(phase) && !pairing.isCourt) return end(phase, EndReason.OPERATOR_STOPPED, now)
     return stoppedHere(phase, pairing, sid, LastEnd.STOPPED, now)
   }
 
