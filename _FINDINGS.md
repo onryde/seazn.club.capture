@@ -1202,12 +1202,16 @@ it by its sid), and no `pair` line. The web opens an A2 window at any `pair` lin
 line or the next `pair`, neither of which such a cold start writes, so a restored pair would file the new process's
 lines under the old code; that is why the pair is neither kept nor restored. The restored start opens no window, no
 line moves it, and a new `pair` replaces it, opening a fresh window as before. The store then holds the start alone,
-so every later start restores it closed again. A pairing that never started a broadcast restores nothing: its own
-lines died with the process. No new line kind: the Send upload contract and the web's allow-list are unchanged.
+so every later start restores it closed again, for at most 24 h after it was written: an older start is not restored
+(`RecordPins.KEEP_AFTER_DROP_MS`, the upload credential's life after its code goes, R4; fix round 2), since no Send
+could name it. A pairing that never started a broadcast restores nothing: its own lines died with the process. No new
+line kind: the Send upload contract and the web's allow-list are unchanged.
 
 **Parked:** Send still never reads the native 5 MB disk record (the owner decides whether it should), so after a reload
 a Send carries the pinned pair and start and the lines since the seed, and after a process death the restored start
-and the new process's lines, never the match's lines in between.
+and the new process's lines, never the match's lines in between. The new process's `previous-session-lost` line carries
+no sid (`PreviousExit.kt`), so the web files it under no code (parked by the controller; not a regression: before this
+fix it was never filed either).
 
 ---
 
