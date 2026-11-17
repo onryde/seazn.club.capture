@@ -436,7 +436,6 @@ class CaptureRunMachineTest {
       assertShownTaken(rig, order.name)
     }
 
-  /** Advances both clocks a tenth of a second at a time until [what] holds, for at most [ms]: the time it took. */
   /**
    * A test of the probe: whatever its assertions do, the probing ends with it. A failed one left the probe answering, so
    * the probing never ended and runTest's last drain spun on it until the JVM ran out of memory, which hung a mutation
@@ -455,6 +454,7 @@ class CaptureRunMachineTest {
       }
     }
 
+  /** Advances both clocks a tenth of a second at a time until [what] holds, for at most [ms]: the time it took. */
   private fun TestScope.until(rig: Rig, ms: Long, what: () -> Boolean): Long {
     var spent = 0L
     while (!what() && spent < ms) {
