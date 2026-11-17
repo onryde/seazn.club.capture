@@ -34,6 +34,10 @@ class BridgeCoreTest {
 
   private fun kinds(of: RecordingPlatform = platform) = lines(of).map { it.getString("kind") }
 
+  /** The tail's numbered lines (N38: beside its `pins`). */
+  @Suppress("UNCHECKED_CAST")
+  private fun tailLines(of: BridgeCore = core) = of.tail()["lines"] as List<Map<String, Any?>>
+
   private fun readyOn(of: BridgeCore) = (of.current()["ready"] as Map<*, *>).mapKeys { it.key as String }
 
   /**
@@ -348,7 +352,7 @@ class BridgeCoreTest {
     }
     assertEquals(1_200, readings, "the sweep's own count")
     assertEquals(1, lines().count { it.getString("kind") == "readiness" } - before, "on at the first reading, and never off")
-    assertTrue(core.tail().any { "probe.before" in it["line"] as String }, "the line before the flap is still in the tail: ${core.tail()}")
+    assertTrue(tailLines().any { "probe.before" in it["line"] as String }, "the line before the flap is still in the tail: ${core.tail()}")
     assertEquals(true, readyOn(core)["sound"])
   }
 
@@ -831,7 +835,8 @@ class BridgeCoreTest {
     core.send(mapOf("kind" to "stop"))
     scheduler.advanceBy(0)
     assertEquals("ended", state())
-    val failed = lines().single { it.getString("kind") == "store-failed" }
+    // N38: the end also deletes the record's pins, which the same store refuses on its own line, named by its key.
+    val failed = lines().single { it.getString("kind") == "store-failed" && it.getString("key") == PairingStore.STOPPED }
     assertEquals(listOf("write", "IOException"), listOf(failed.getString("op"), failed.getString("error")))
     assertTrue(platform.executed.any { it is Command.End }, "the End behind the refused write still ran")
     // Engine.execute would run the End past a throw anyway, as `command-failed`: the refusal is its own line instead.
@@ -1112,18 +1117,18 @@ class BridgeCoreTest {
     assertEquals((1L..n).toList(), platform.seqs, "numbered from 1, with no gap and no repeat")
     assertEquals(1, platform.lines.takeLast(30).toSet().size, "thirty equal lines")
     val expected = platform.seqs.zip(platform.lines).takeLast(20).map { (seq, line) -> mapOf("seq" to seq.toDouble(), "line" to line) }
-    assertEquals(expected, core.tail())
+    assertEquals(expected, tailLines())
   }
 
   @Test
   fun `C4c-I3 the tail before any line is empty, and its first line is seq 1`() {
     val fresh = RecordingPlatform()
     val idle = build(fresh, MemoryStore())
-    assertEquals(emptyList(), idle.tail())
+    assertEquals(mapOf("pins" to emptyList<String>(), "lines" to emptyList<Any?>()), idle.tail())
     idle.log("info", "probe.first", emptyMap())
     scheduler.advanceBy(0)
     assertEquals(listOf(1L), fresh.seqs)
-    assertEquals(listOf(mapOf("seq" to 1.0, "line" to fresh.lines.single())), idle.tail())
+    assertEquals(listOf(mapOf("seq" to 1.0, "line" to fresh.lines.single())), tailLines(idle))
   }
 
   /** Spec §4 (owner, 2026-10-06): "even though there is no sound … it is ok … should allow to go live". */

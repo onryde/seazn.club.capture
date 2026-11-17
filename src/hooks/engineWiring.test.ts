@@ -7,7 +7,12 @@ import { createLogger } from '@/services/logger';
 import { createRingRecord } from '@/services/sessionRecord';
 
 const NOW = 1_790_000_000_000;
-const quiet = { now: () => NOW, onRecordLine: () => undefined };
+/** Native's pinned lines (N38), made up (AGENTS §13): the tag and sid belong to nothing. */
+const PAIR_LINE =
+  '{"at":"2026-11-16T10:00:00.000Z","kind":"pair","claim":"new","slot":1,"tokenTag":"c980ff38","stopped":false}';
+const START_LINE =
+  '{"at":"2026-11-16T10:05:00.000Z","kind":"broadcast-start","sid":"5f2c8a1e-3b4d-4e6f-8a9b-0c1d2e3f4a5b","cause":"organiser"}';
+const quiet = { now: () => NOW, onRecordLine: () => undefined, onRecordPins: () => undefined };
 
 /** Every engine a test wired, to stop its timers and listeners. */
 const wiredHere: WiredEngine[] = [];
@@ -78,7 +83,27 @@ describe('CD24: which engine the composition root wires', () => {
       native: new FakeNativeModule({ tail: [{ seq: 1, line: '{"kind":"paired"}' }] }),
       now: () => NOW,
       onRecordLine: ring.appendLine,
+      onRecordPins: ring.adoptPins,
     });
+    expect(ring.lines()).toEqual(['{"kind":"paired"}']);
+  });
+
+  // N38 after a JS reload or a process death (device, 2026-11-16): native's pinned lines reach the same ring, which
+  // sends them first.
+  it("hands native's pinned lines to the ring, which sends them ahead of its lines", () => {
+    const ring = createRingRecord();
+    wire({
+      dev: false,
+      fakeFlag: undefined,
+      native: new FakeNativeModule({
+        pins: [PAIR_LINE, START_LINE],
+        tail: [{ seq: 41, line: '{"kind":"paired"}' }],
+      }),
+      now: () => NOW,
+      onRecordLine: ring.appendLine,
+      onRecordPins: ring.adoptPins,
+    });
+    expect(ring.linesToSend(1_000)).toEqual([PAIR_LINE, START_LINE, '{"kind":"paired"}']);
     expect(ring.lines()).toEqual(['{"kind":"paired"}']);
   });
 });
@@ -100,6 +125,7 @@ describe('M16: where a JS record line goes', () => {
       native,
       now: () => NOW,
       onRecordLine: ring.appendLine,
+      onRecordPins: ring.adoptPins,
     });
     const logger = createLogger({ record: routedRecordFor(ring, wired), now: () => NOW });
     return { shared, native, ring, logger };

@@ -306,6 +306,71 @@ describe('N38: Send record keeps the pairing’s pair and broadcast-start lines'
 });
 
 /**
+ * N38 after a JS reload or a process death (device, 2026-11-16: a court code paired for hours sent 34 lines, and the web
+ * kept none). A new ring is seeded from native's last 20 lines, which had let the pair and its start go; native now
+ * hands its pinned lines on beside them (`BridgeCore.tail`), and the ring adopts them ahead of every line it is given,
+ * by its own rule, so from there they are its pins like any other.
+ */
+describe('N38: a ring seeded after a reload adopts native’s pinned lines', () => {
+  function seeded(pins: readonly string[], lines: readonly string[]): RingRecord {
+    const ring = createRingRecord();
+    ring.adoptPins(pins);
+    for (const line of lines) ring.appendLine(line);
+    return ring;
+  }
+
+  it('sends the adopted pair and start first, then the tail and every line after it', () => {
+    const tail = beats(20, 'tail');
+    const ring = seeded([PAIR, START], tail);
+    expect(ring.linesToSend(1_000)).toEqual([PAIR, START, ...tail]);
+    // Share record and Diagnostics show the ring alone.
+    expect(ring.lines()).toEqual(tail);
+  });
+
+  it('adopting none is the ring as it was (an empty input)', () => {
+    const tail = beats(20);
+    expect(seeded([], tail).linesToSend(1_000)).toEqual(tail);
+    expect(seeded([], []).linesToSend(1_000)).toEqual([]);
+  });
+
+  it('keeps them first as the ring fills and lets its own lines go', () => {
+    const b = beats(3_000);
+    expect(seeded([PAIR, START], b).linesToSend(1_000)).toEqual([PAIR, START, ...b.slice(-998)]);
+  });
+
+  it('a window end in the tail keeps them until it has left the ring, then lets them go', () => {
+    const before = beats(5, 'before');
+    const after = beats(994, 'after');
+    const ring = seeded([PAIR, START], [...before, ENDED, ...after]);
+    expect(ring.linesToSend(1_000)).toEqual([PAIR, START, ...before.slice(2), ENDED, ...after]);
+    for (const line of beats(6, 'later')) ring.appendLine(line);
+    expect(ring.linesToSend(1_000)).toEqual(ring.lines());
+  });
+
+  it('a pair later in the tail replaces them (a second pairing)', () => {
+    const b = beats(3_000);
+    expect(seeded([PAIR, START], [PAIR_2, ...b]).linesToSend(1_000)).toEqual([
+      PAIR_2,
+      ...b.slice(-999),
+    ]);
+  });
+
+  it('a start later in the tail replaces the adopted start, under the adopted pair (a second call)', () => {
+    const b = beats(3_000);
+    expect(seeded([PAIR, START], [START_2, ...b]).linesToSend(1_000)).toEqual([
+      PAIR,
+      START_2,
+      ...b.slice(-998),
+    ]);
+  });
+
+  it('a start adopted with no pair is never pinned, as the ring’s own rule reads it', () => {
+    const b = beats(3_000);
+    expect(seeded([START], b).linesToSend(1_000)).toEqual(b.slice(-1_000));
+  });
+});
+
+/**
  * Acceptance 7 of Batch 18: the body Send record posts, through the flight and the real port, is the vendored
  * contract's line for line, and every line in it files under the pairing. A2 is walked here as the contract's
  * description words it; A1 (a uuid sid's session) is the server's to judge, so a line with a sid is not counted here.

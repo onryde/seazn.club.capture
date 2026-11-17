@@ -10,9 +10,15 @@ import { vectorWire } from './wire/vectorWire';
 
 const liveWire = vectorWire('live-telemetry');
 const pairedWire = vectorWire('paired-after-organiser-stop');
-const quiet = { onRecordLine: () => undefined };
+const quiet = { onRecordLine: () => undefined, onRecordPins: () => undefined };
 /** The line a malformed snapshot is recorded by (review C4c I-4): the allow-list's kind and key. */
 const MALFORMED = (count: number) => ['warn', 'engine.malformed-snapshot', { count }];
+
+/** Native's pinned lines (N38), as `Pairings.kt` writes them, made up (AGENTS §13): the tag and sid belong to nothing. */
+const PAIR_LINE =
+  '{"at":"2026-11-16T10:00:00.000Z","kind":"pair","claim":"new","slot":1,"tokenTag":"c980ff38","stopped":false}';
+const START_LINE =
+  '{"at":"2026-11-16T10:05:00.000Z","kind":"broadcast-start","sid":"5f2c8a1e-3b4d-4e6f-8a9b-0c1d2e3f4a5b","cause":"organiser"}';
 
 /** Record lines numbered from [first], as native's tail carries them (carry C4c-I3). */
 const numbered = (first: number, ...lines: string[]) =>
@@ -59,7 +65,10 @@ describe('the native engine (carry 1)', () => {
       tail: [{ seq: 1, line: '{"at":"…","kind":"paired"}' }],
     });
     const lines: string[] = [];
-    const engine = createNativeCaptureEngine(native, { onRecordLine: (line) => lines.push(line) });
+    const engine = createNativeCaptureEngine(native, {
+      onRecordLine: (line) => lines.push(line),
+      onRecordPins: () => undefined,
+    });
     expect(engine.getSnapshot().state.kind).toBe('publishing');
     expect(lines).toEqual(['{"at":"…","kind":"paired"}']);
   });
@@ -238,7 +247,10 @@ describe('the native engine (carry 1)', () => {
     const native = new FakeNativeModule({ tail: numbered(1, '{"kind":"a"}', '{"kind":"b"}') });
     native.duringTail = () => native.emit('onRecord', { seq: 2, line: '{"kind":"b"}' });
     const lines: string[] = [];
-    createNativeCaptureEngine(native, { onRecordLine: (line) => lines.push(line) });
+    createNativeCaptureEngine(native, {
+      onRecordLine: (line) => lines.push(line),
+      onRecordPins: () => undefined,
+    });
     expect(lines).toEqual(['{"kind":"a"}', '{"kind":"b"}']);
     await flush();
     expect(lines).toEqual(['{"kind":"a"}', '{"kind":"b"}']);
@@ -252,7 +264,10 @@ describe('the native engine (carry 1)', () => {
       native.emit('onRecord', { seq: 3, line: '{"kind":"c"}' });
     };
     const lines: string[] = [];
-    createNativeCaptureEngine(native, { onRecordLine: (line) => lines.push(line) });
+    createNativeCaptureEngine(native, {
+      onRecordLine: (line) => lines.push(line),
+      onRecordPins: () => undefined,
+    });
     await flush();
     native.emit('onRecord', { seq: 4, line: '{"kind":"b"}' });
     await flush();
@@ -269,7 +284,10 @@ describe('the native engine (carry 1)', () => {
       native.emit('onRecord', { seq: 4, line: '{"kind":"a"}' });
     };
     const lines: string[] = [];
-    createNativeCaptureEngine(native, { onRecordLine: (line) => lines.push(line) });
+    createNativeCaptureEngine(native, {
+      onRecordLine: (line) => lines.push(line),
+      onRecordPins: () => undefined,
+    });
     await flush();
     expect(lines).toEqual(['{"kind":"a"}', '{"kind":"b"}', '{"kind":"b"}', '{"kind":"a"}']);
   });
@@ -278,7 +296,10 @@ describe('the native engine (carry 1)', () => {
     const native = new FakeNativeModule({ tail: numbered(7, '{"kind":"a"}') });
     native.duringTail = () => native.emit('onRecord', { seq: 8, line: '{"kind":"a"}' });
     const lines: string[] = [];
-    createNativeCaptureEngine(native, { onRecordLine: (line) => lines.push(line) });
+    createNativeCaptureEngine(native, {
+      onRecordLine: (line) => lines.push(line),
+      onRecordPins: () => undefined,
+    });
     await flush();
     expect(lines).toEqual(['{"kind":"a"}', '{"kind":"a"}']);
   });
@@ -287,7 +308,10 @@ describe('the native engine (carry 1)', () => {
     const native = new FakeNativeModule({ tail: numbered(1, '{"kind":"a"}') });
     native.duringTail = () => native.emit('onRecord', { seq: 2, line: '{"kind":"c"}' });
     const lines: string[] = [];
-    createNativeCaptureEngine(native, { onRecordLine: (line) => lines.push(line) });
+    createNativeCaptureEngine(native, {
+      onRecordLine: (line) => lines.push(line),
+      onRecordPins: () => undefined,
+    });
     await flush();
     expect(lines).toEqual(['{"kind":"a"}', '{"kind":"c"}']);
   });
@@ -296,7 +320,10 @@ describe('the native engine (carry 1)', () => {
     const native = new FakeNativeModule();
     native.duringTail = () => native.emit('onRecord', { seq: 1, line: '{"kind":"first"}' });
     const lines: string[] = [];
-    createNativeCaptureEngine(native, { onRecordLine: (line) => lines.push(line) });
+    createNativeCaptureEngine(native, {
+      onRecordLine: (line) => lines.push(line),
+      onRecordPins: () => undefined,
+    });
     native.emit('onRecord', { seq: 2, line: '{"kind":"after"}' });
     await flush();
     expect(lines).toEqual(['{"kind":"first"}', '{"kind":"after"}']);
@@ -310,8 +337,72 @@ describe('the native engine (carry 1)', () => {
       native.deliver();
     };
     const lines: string[] = [];
-    createNativeCaptureEngine(native, { onRecordLine: (line) => lines.push(line) });
+    createNativeCaptureEngine(native, {
+      onRecordLine: (line) => lines.push(line),
+      onRecordPins: () => undefined,
+    });
     expect(lines).toEqual(['{"kind":"a"}', '{"kind":"b"}', '{"kind":"c"}']);
+  });
+
+  // N38 after a JS reload or a process death (device, 2026-11-16: a court code paired for hours sent 34 lines, and the
+  // web kept none): native hands on, beside its tail, the pairing's pinned lines the tail has let go of, and the seed
+  // hands them on before the tail's first line, so the ring adopts them ahead of every line it is given.
+  it('N38 hands native’s pinned lines on before the tail’s first line, and a line during the read after it', () => {
+    const native = new FakeNativeModule({
+      pins: [PAIR_LINE, START_LINE],
+      tail: numbered(41, '{"kind":"a"}'),
+    });
+    native.duringTail = () => {
+      native.emit('onRecord', { seq: 42, line: '{"kind":"b"}' });
+      native.deliver();
+    };
+    const heard: unknown[] = [];
+    createNativeCaptureEngine(native, {
+      onRecordLine: (line) => heard.push(line),
+      onRecordPins: (pins) => heard.push(pins),
+    });
+    expect(heard).toEqual([[PAIR_LINE, START_LINE], '{"kind":"a"}', '{"kind":"b"}']);
+  });
+
+  it('N38 with no pins it hands on none, once, before the tail (an empty input)', () => {
+    const native = new FakeNativeModule({ tail: numbered(1, '{"kind":"a"}') });
+    const heard: unknown[] = [];
+    createNativeCaptureEngine(native, {
+      onRecordLine: (line) => heard.push(line),
+      onRecordPins: (pins) => heard.push(pins),
+    });
+    expect(heard).toEqual([[], '{"kind":"a"}']);
+  });
+
+  // The tail is read at the boundary, as `current()` and `powerMode()` are (AGENTS §4): an answer that is not a tail,
+  // a build from before N38's included, seeds nothing and never throws.
+  it.each([
+    ['a list of lines (a build from before N38)', numbered(1, '{"kind":"a"}')],
+    ['nothing', null],
+    ['a word', 'tail'],
+    ['fields of the wrong kind', { pins: 'pair', lines: 7 }],
+  ])('N38 an answer that is not a tail, %s, seeds nothing and never throws', (_why, answer) => {
+    const native = new FakeNativeModule();
+    native.tail = () => answer;
+    const heard: unknown[] = [];
+    expect(() =>
+      createNativeCaptureEngine(native, {
+        onRecordLine: (line) => heard.push(line),
+        onRecordPins: (pins) => heard.push(pins),
+      }),
+    ).not.toThrow();
+    expect(heard).toEqual([[]]);
+  });
+
+  it('N38 a pin that is not text is dropped, and the rest kept in order', () => {
+    const native = new FakeNativeModule();
+    native.tail = () => ({ pins: [7, PAIR_LINE, null, START_LINE], lines: [] });
+    const heard: unknown[] = [];
+    createNativeCaptureEngine(native, {
+      onRecordLine: () => undefined,
+      onRecordPins: (pins) => heard.push(pins),
+    });
+    expect(heard).toEqual([[PAIR_LINE, START_LINE]]);
   });
 
   it('sends intents as void calls through the intent wire, numbered, and never waits on native', () => {
@@ -421,7 +512,10 @@ describe('the native engine (carry 1)', () => {
   it('echoes native record lines, and forwards JS entries as void calls', async () => {
     const native = new FakeNativeModule();
     const lines: string[] = [];
-    const engine = createNativeCaptureEngine(native, { onRecordLine: (line) => lines.push(line) });
+    const engine = createNativeCaptureEngine(native, {
+      onRecordLine: (line) => lines.push(line),
+      onRecordPins: () => undefined,
+    });
     native.emit('onRecord', { seq: 1, line: 'x' });
     await flush();
     engine.forward({ level: 'warn', event: 'intent.stop', fields: { count: 3 } });
@@ -444,8 +538,8 @@ describe('the native engine (carry 1)', () => {
     const native = new FakeNativeModule();
     const lines: string[] = [];
     const onRecordLine = (line: string) => lines.push(line);
-    createNativeCaptureEngine(native, { onRecordLine }).dispose();
-    createNativeCaptureEngine(native, { onRecordLine });
+    createNativeCaptureEngine(native, { onRecordLine, onRecordPins: () => undefined }).dispose();
+    createNativeCaptureEngine(native, { onRecordLine, onRecordPins: () => undefined });
     native.emit('onRecord', { seq: 1, line: 'x' });
     await flush();
     expect(lines).toEqual(['x']);

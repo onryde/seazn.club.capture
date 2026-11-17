@@ -13,9 +13,10 @@ data class RecordEntry(val kind: String, val fields: List<Pair<String, Any?>> = 
  * The record's last lines, oldest first, and the seq of the first of them (carry C4c-I3). The n-th line
  * the process wrote is seq n, so a reader holding the tail tells a later line from one of the tail's by
  * number: two lines can be equal, character for character, but never their seqs. One value, so a reader
- * on another thread never pairs one append's seq with another's lines.
+ * on another thread never pairs one append's seq with another's lines, nor one append's [pins] with
+ * another's: the pinned lines the tail has let go of, the pair first ([RecordPins.letGo], N38).
  */
-data class RecordTail(val firstSeq: Long, val lines: List<String>)
+data class RecordTail(val firstSeq: Long, val lines: List<String>, val pins: List<String> = emptyList())
 
 /**
  * The post-match session record (AGENTS §11): timestamped transitions, fallbacks, reconnects,
@@ -39,9 +40,18 @@ data class RecordTail(val firstSeq: Long, val lines: List<String>)
  * Threads: [protect] and [append] belong to the engine's scheduler thread, the one serial thread
  * plan C backs [Scheduler] with. [lastLines], [sinkFailures] and [reentrantDropped] may be read
  * from any thread, which is how Diagnostics reads them.
+ *
+ * N38: the record pins its pairing's `pair` and `broadcast-start` lines ([RecordPins]), starting from
+ * [restored] (what the last process kept), and hands [onKept] what an open window pins each time that
+ * changes, on the scheduler thread, after the sink: the bridge keeps it on disk. [onKept] must not throw.
  */
-class SessionRecord(private val sink: (String) -> Unit) {
-  private class Pending(val line: String, val echo: Boolean)
+class SessionRecord(
+  restored: RecordPins = RecordPins.NONE,
+  private val onKept: (List<String>) -> Unit = {},
+  private val sink: (String) -> Unit,
+) {
+  /** A line to hand over, with its kind and sid as written: all [RecordPins] reads of it. */
+  private class Pending(val line: String, val echo: Boolean, val kind: String, val sid: Any?)
 
   // What [protect] holds, and what the scrub reads. The scrub's three lists are [refresh]ed from the held ones plus the links (F15).
   private var heldSecrets: List<String> = emptyList()
@@ -61,7 +71,10 @@ class SessionRecord(private val sink: (String) -> Unit) {
   /** The line the sink is handling, or null outside the sink. */
   private var delivering: Pending? = null
 
-  @Volatile private var tail = RecordTail(1, emptyList())
+  /** Scheduler thread only; readers on other threads read [tail], which carries what they need of it. */
+  private var pins = restored
+
+  @Volatile private var tail = RecordTail(1, emptyList(), restored.letGo(1))
 
   /**
    * The seq of the newest line, 0 before the first (carry C4c-I3). Inside the sink it is the seq of the
@@ -140,11 +153,11 @@ class SessionRecord(private val sink: (String) -> Unit) {
     val current = delivering
     when {
       current == null -> {
-        queue.addLast(Pending(line(atEpochMs, entry), echo = false))
+        queue.addLast(pending(atEpochMs, entry, echo = false))
         flush()
       }
       current.echo -> reentrantDropped += 1
-      else -> queue.addLast(Pending(line(atEpochMs, entry), echo = true))
+      else -> queue.addLast(pending(atEpochMs, entry, echo = true))
     }
   }
 
@@ -159,30 +172,37 @@ class SessionRecord(private val sink: (String) -> Unit) {
       while (queue.isNotEmpty()) {
         val next = queue.removeFirst()
         delivering = next
-        deliver(next.line)
+        deliver(next)
       }
     } finally {
       delivering = null
     }
   }
 
-  private fun deliver(line: String) {
-    recent.addLast(line)
+  private fun deliver(next: Pending) {
+    recent.addLast(next.line)
     while (recent.size > LAST_LINES) recent.removeFirst()
     val seq = lastSeq + 1
-    tail = RecordTail(seq - recent.size + 1, recent.toList())
+    val first = seq - recent.size + 1
+    val before = pins.kept
+    pins = pins.after(next.kind, next.sid, seq, next.line).standing(first)
+    tail = RecordTail(first, recent.toList(), pins.letGo(first))
     lastSeq = seq
     try {
-      sink(line)
+      sink(next.line)
     } catch (_: Exception) {
       sinkFailures += 1
     }
+    if (pins.kept != before) onKept(pins.kept)
   }
 
-  private fun line(atEpochMs: Long, entry: RecordEntry): String {
-    val head = listOf("at" to IsoTime.utc(atEpochMs), "kind" to kindWord(entry.kind))
+  /** The line as written, and its kind and sid as it holds them: a field written twice holds its last, as JSON reads it. */
+  private fun pending(atEpochMs: Long, entry: RecordEntry, echo: Boolean): Pending {
+    val kind = kindWord(entry.kind)
+    val head = listOf("at" to IsoTime.utc(atEpochMs), "kind" to kind)
     val level = if (entry.level == "info") emptyList() else listOf("level" to levelWord(entry.level))
-    return Json.obj(head + level + entry.fields.map { (key, value) -> fieldKey(key) to scrub(key, value) })
+    val fields = entry.fields.map { (key, value) -> fieldKey(key) to scrub(key, value) }
+    return Pending(Json.obj(head + level + fields), echo, kind, fields.lastOrNull { it.first == "sid" }?.second)
   }
 
   /** One of [LEVELS], or masked: a caller's level is a value like any other, and only those four are vetted. */

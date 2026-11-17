@@ -66,6 +66,7 @@ export function createNativePorts(
     native,
     now: Date.now,
     onRecordLine: ring.appendLine,
+    onRecordPins: ring.adoptPins,
   });
   // M16: the rule is pure and tested in Task 26; its wiring in `routedRecordFor`.
   const record = routedRecordFor(ring, wired);

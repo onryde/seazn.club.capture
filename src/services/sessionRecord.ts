@@ -78,7 +78,14 @@ export function parseRecordLine(line: string): RecordedEntry {
 }
 
 /** The JS ring, which also takes native's lines as written (Task 26): one view of the record. */
-export type RingRecord = SessionRecord & { appendLine(line: string): void };
+export type RingRecord = SessionRecord & {
+  appendLine(line: string): void;
+  /**
+   * N38 after a JS reload or a process death: native's pinned lines (`BridgeCore.tail`), read by the ring's own rule as
+   * lines given before its first. The seed calls it once, before the ring is given any line.
+   */
+  adoptPins(pins: readonly string[]): void;
+};
 
 export function createRingRecord(capacity: number = RECORD_CAPACITY): RingRecord {
   let lines: readonly string[] = [];
@@ -96,6 +103,11 @@ export function createRingRecord(capacity: number = RECORD_CAPACITY): RingRecord
   return {
     append: (entry) => push(toRecordLine(entry)),
     appendLine: push,
+    adoptPins: (pinned) => {
+      pinned.forEach((line, index) => {
+        pins = pinsAfter(pins, line, first - pinned.length + index);
+      });
+    },
     lines: () => lines,
     linesToSend: (max) => pinnedAndNewest(lines, first, pins, max),
     subscribe: (onChange) => {

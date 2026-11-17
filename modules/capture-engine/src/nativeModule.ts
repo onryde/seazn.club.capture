@@ -9,6 +9,13 @@ export type Subscription = { remove(): void };
 export type RecordLine = { seq: number; line: string };
 
 /**
+ * What `tail()` answers (N38, after a JS reload or a process death): the record's last lines, oldest first, each with its
+ * seq, and beside them the pairing's pinned lines the tail has let go of, its `pair` line first, then its
+ * `broadcast-start` (`BridgeCore.tail`). One read of native's record, so the two always agree.
+ */
+export type RecordTail = { pins: readonly string[]; lines: readonly RecordLine[] };
+
+/**
  * The Expo module's surface, as the glue defines it (Task 33). Every call
  * returns void or a value read at once, except `takePhoto` and `scoringLink`, the two calls that answer: intents,
  * not RPC (AGENTS §2).
@@ -20,8 +27,11 @@ export type CaptureEngineNative = {
   log(level: string, kind: string, fields: Record<string, unknown>): void;
   /** The last snapshot body native wrote, or null before its first. */
   current(): unknown;
-  /** The record's last lines, oldest first, each with its seq. */
-  tail(): readonly RecordLine[];
+  /**
+   * The record's tail, a `RecordTail` as native writes it. Read at the boundary, as `current()` is: any other answer, a
+   * build from before N38's included, is an empty tail.
+   */
+  tail(): unknown;
   /**
    * Spec §8: one still to the gallery. One of the two calls that answer (the other is `scoringLink`; AGENTS §2,
    * recorded): native resolves `'saved'` or `'failed'` within its bound, and the port reads anything else as failed.
