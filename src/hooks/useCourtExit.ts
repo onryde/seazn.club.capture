@@ -12,7 +12,8 @@ export type CourtExit = {
   /** The Leave question is showing. Forced shut whenever Exit is not offered, so an arming engine closes it. */
   readonly open: boolean;
   /**
-   * A Leave is under way: unpair sent, at most 5 s (`UNPAIR_GIVE_UP_MS`). The screen swallows Back for it, so leaving
+   * A Leave is under way: unpair sent, at most 5 s (`UNPAIR_GIVE_UP_MS`), after up to 10 s waiting out a start in flight
+   * (`START_ANSWER_WAIT_MS`). The screen swallows Back for it, so leaving
    * the screen cannot end the unpair as `left` and forget a code native still holds (whole-branch review I2).
    */
   readonly leaving: boolean;
@@ -50,8 +51,8 @@ export function useCourtExit(court: string | null, kind: Kind): CourtExit {
     setLeaving(true);
     unpair('forget', (outcome) => {
       setLeaving(false);
-      // A Go live won the race (the broadcast stands), or native never answered with the engine still paired, its
-      // start perhaps in flight: the code and the screen stay, with Exit (P4 review I1).
+      // A Go live won the race (the broadcast stands), or native never answered with the engine still paired: the
+      // code and the screen stay, with Exit (P4 review I1). A start in flight is waited out first (useUnpair).
       if (codeStays(outcome, engine)) return;
       void modeStore.forget(code).then(
         (forgot) => (forgot ? navigation.go('home') : undefined),

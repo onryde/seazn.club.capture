@@ -241,6 +241,24 @@ describe('Home: another mode while paired (A7)', () => {
     expect(saved(h)?.active).toBe('stream');
   });
 
+  // Court stream Task 13 fix round 1: a Confirm during the operator's start waits for native's answer (useUnpair), so
+  // it is honoured once the start fails, not dropped at the 5 s give-up.
+  it('unpairs and opens the other mode once native fails a start that was in flight at Confirm', async () => {
+    const h = await home({ paired: true });
+    await openScoring(h);
+    h.engine.setStartAnswer('hold');
+    act(() => h.engine.send({ kind: 'start' }));
+    act(() => actions(h).confirmUnpair());
+    await flush(UNPAIR_GIVE_UP_MS + 1_000);
+    expect(kinds(h)).toEqual(['pair', 'start']);
+    expect(saved(h)?.active).toBe('stream');
+    act(() => h.engine.setStartAnswer('failed'));
+    await flush();
+    expect(kinds(h)).toEqual(['pair', 'start', 'unpair']);
+    expect(saved(h)?.codes.stream).toBeUndefined();
+    expect(saved(h)?.active).toBe('scoring');
+  });
+
   it('opens the other mode at once with nothing paired', async () => {
     const h = await home({ paired: false });
     await openScoring(h);

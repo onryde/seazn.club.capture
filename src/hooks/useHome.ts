@@ -344,9 +344,9 @@ function openScoring(
  * code once the engine is Idle, as the operator's Stop does (Process death and
  * reopen), then opens the other mode. A Go live that raced it holds the
  * broadcast: the code is kept and nothing opens. So does a give-up with the
- * engine not Idle (`codeStays`, ruling RP9): native ignores an unpair while
- * the operator's start is in flight, so Home stays and the operator can ask
- * again. A refused forget is never silent (R19): the line says so, and the
+ * engine not Idle (`codeStays`, ruling RP9): Home stays and the operator can
+ * ask again. A Confirm during the operator's start waits for native's answer
+ * (`useUnpair`, Task 13 fix round 1). A refused forget is never silent (R19): the line says so, and the
  * other mode does not open. The sheet closes as Cancel when the engine leaves
  * Paired under it; a panel that replaced it in the same moment (Task 29's
  * unpair) is left standing.
@@ -679,9 +679,9 @@ function useContinue(setStatusKey: SetStatusKey, saveFailed: SaveFailed): () => 
  * in JS): unpair first, and forget the code once the engine is Idle. If a
  * remote Go live raced the tap, the broadcast stands, the code is kept, and
  * the route rule shows /stream. A give-up (CD26) with the engine still not
- * Idle keeps the code too (`codeStays`, P4 review I1): native ignores an unpair
- * while the operator's start is in flight, which may yet arm, and the card
- * still offers Forget. A refused forget keeps the code, with the engine
+ * Idle keeps the code too (`codeStays`, P4 review I1): the engine may yet arm,
+ * and the card still offers Forget. A tap during the operator's start waits for
+ * native's answer (`useUnpair`, Task 13 fix round 1). A refused forget keeps the code, with the engine
  * already Idle.
  */
 function useForget(setStatusKey: SetStatusKey, saveFailed: SaveFailed): () => void {

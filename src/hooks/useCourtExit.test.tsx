@@ -184,6 +184,38 @@ describe('useCourtExit', () => {
   });
 
   // The amendment: a remote Go live that raced the tap stands, and so does its code.
+  // Court stream Task 13 fix round 1: a Leave during the operator's start waits for native's answer (useUnpair), so the
+  // Leave is honoured, not dropped at the 5 s give-up with the code kept.
+  it('leaves once native answers a start that was in flight: a failed start unpairs, forgets and goes Home', async () => {
+    const { fakes, hook } = await mount('Court 2', 'paired');
+    fakes.engine.setStartAnswer('hold');
+    act(() => fakes.engine.send({ kind: 'start' }));
+    act(() => hook.result.current.leave());
+    await act(() => vi.advanceTimersByTimeAsync(UNPAIR_GIVE_UP_MS + 1_000));
+    expect(unpairs(fakes)).toEqual([]);
+    expect(hook.result.current.leaving).toBe(true);
+    expect(fakes.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
+    act(() => fakes.engine.setStartAnswer('failed'));
+    await flush();
+    expect(unpairs(fakes)).toHaveLength(1);
+    expect(fakes.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
+    expect(fakes.navigation.current()).toBe('home');
+    expect(hook.result.current.leaving).toBe(false);
+  });
+
+  it('keeps the code and stays when the start it waited for goes live', async () => {
+    const { fakes, hook } = await mount('Court 2', 'paired');
+    fakes.engine.setStartAnswer('hold');
+    act(() => fakes.engine.send({ kind: 'start' }));
+    act(() => hook.result.current.leave());
+    act(() => fakes.engine.setStartAnswer('started'));
+    await flush();
+    expect(unpairs(fakes)).toEqual([]);
+    expect(fakes.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
+    expect(fakes.navigation.current()).toBe('stream');
+    expect(hook.result.current.leaving).toBe(false);
+  });
+
   it('keeps the code and stays when a Go live won the race', async () => {
     const { fakes, hook } = await mount('Court 2', 'paired');
     act(() => fakes.engine.hear({ word: 'go-live', cause: 'organiser' }));

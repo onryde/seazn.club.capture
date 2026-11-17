@@ -1,6 +1,12 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { codeStays, UNPAIR_GIVE_UP_MS, useUnpair, type UnpairOutcome } from '@/hooks/useUnpair';
+import {
+  codeStays,
+  START_ANSWER_WAIT_MS,
+  UNPAIR_GIVE_UP_MS,
+  useUnpair,
+  type UnpairOutcome,
+} from '@/hooks/useUnpair';
 import { createFakePorts, readRecord, type FakePorts } from '../../test/fakePorts';
 import { savedStreamCode } from '../../test/fixtures/savedStream';
 import { holdIntents } from '../../test/holdIntents';
@@ -328,6 +334,85 @@ describe('useUnpair', () => {
       if (status === 'live') fakes.engine.scene('live');
       if (status === 'stopped') fakes.engine.scene('stopped');
       expect(codeStays(outcome, fakes.engine)).toBe(stays);
+    });
+  });
+
+  // Court stream Task 13 fix round 1 (the controller's ruling): native ignores an unpair while the operator's start is
+  // in flight (`Pairings.unpair`), so a Forget, a court Leave or A7's Confirm sent then was dropped at the 5 s give-up.
+  // The clearing now waits for native's answer to the start, then acts on what it finds.
+  describe('while the operator’s start is in flight (court stream Task 13)', () => {
+    const starting = () => {
+      const view = renderUnpair({ paired: true });
+      view.engine.setStartAnswer('hold');
+      view.engine.send({ kind: 'start' });
+      expect(view.engine.getSnapshot().pairing?.starting).toBe(true);
+      const outcomes: UnpairOutcome[] = [];
+      act(() => view.unpair('forget', (outcome) => outcomes.push(outcome)));
+      return { view, outcomes };
+    };
+
+    it('sends no unpair while native has not answered, then unpairs once a failed start clears it', () => {
+      const { view, outcomes } = starting();
+      // Native answers a start within its 8 s HTTP bound: past the unpair's own 5 s, nothing given up yet.
+      act(() => vi.advanceTimersByTime(8_000));
+      expect(kinds(view)).toEqual(['pair', 'start']);
+      expect(outcomes).toEqual([]);
+      act(() => view.engine.setStartAnswer('failed'));
+      expect(kinds(view)).toEqual(['pair', 'start', 'unpair']);
+      expect(view.engine.getSnapshot().state.kind).toBe('idle');
+      expect(outcomes).toEqual(['idle']);
+      expect(events(view)).not.toContain('unpair.gave-up');
+    });
+
+    it('answers held when the start it waited for goes live, and sends nothing', () => {
+      const { view, outcomes } = starting();
+      act(() => view.engine.setStartAnswer('started'));
+      expect(outcomes).toEqual(['held']);
+      expect(kinds(view)).toEqual(['pair', 'start']);
+    });
+
+    it('gives the unpair its own 5 s once the start is answered', () => {
+      const { view, outcomes } = starting();
+      const native = holdIntents(view.engine, ['unpair']);
+      act(() => vi.advanceTimersByTime(START_ANSWER_WAIT_MS - 1));
+      act(() => view.engine.setStartAnswer('failed'));
+      expect(native.held()).toEqual(['unpair']);
+      act(() => vi.advanceTimersByTime(UNPAIR_GIVE_UP_MS - 1));
+      expect(outcomes).toEqual([]);
+      act(() => vi.advanceTimersByTime(1));
+      expect(outcomes).toEqual(['gave-up']);
+    });
+
+    it('gives up when native never answers the start, sending nothing, and frees the engine', () => {
+      const { view, outcomes } = starting();
+      act(() => vi.advanceTimersByTime(START_ANSWER_WAIT_MS - 1));
+      expect(outcomes).toEqual([]);
+      act(() => vi.advanceTimersByTime(1));
+      expect(outcomes).toEqual(['gave-up']);
+      expect(kinds(view)).toEqual(['pair', 'start']);
+      expect(readRecord(view.record).filter((entry) => entry.event === 'unpair.gave-up')).toEqual([
+        expect.objectContaining({ level: 'warn', fields: { action: 'forget' } }),
+      ]);
+      // Freed: once the start is answered, the next caller clears it.
+      act(() => view.engine.setStartAnswer('failed'));
+      act(() => view.unpair('orphan'));
+      expect(kinds(view)).toEqual(['pair', 'start', 'unpair']);
+    });
+
+    it('ends silently when its caller unmounts while it waits', () => {
+      const fakes = createFakePorts();
+      pair(fakes);
+      fakes.engine.setStartAnswer('hold');
+      fakes.engine.send({ kind: 'start' });
+      const { result, unmount } = unpairer(fakes);
+      const outcomes: UnpairOutcome[] = [];
+      act(() => result.current('forget', (outcome) => outcomes.push(outcome)));
+      unmount();
+      act(() => fakes.engine.setStartAnswer('failed'));
+      act(() => vi.advanceTimersByTime(START_ANSWER_WAIT_MS + UNPAIR_GIVE_UP_MS));
+      expect(outcomes).toEqual(['left']);
+      expect(kinds(fakes)).toEqual(['pair', 'start']);
+      expect(events(fakes)).not.toContain('unpair.gave-up');
     });
   });
 

@@ -1,12 +1,20 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { EngineStatus } from '@/domain/mode/reopen';
 import type { CaptureEnginePort } from '@/engine/CaptureEnginePort';
-import { selectEngineStatus } from '@/hooks/engineSelectors';
+import { selectEngineStatus, selectStarting } from '@/hooks/engineSelectors';
 import { usePorts } from '@/hooks/usePorts';
 import type { Logger } from '@/services/logger';
 
 /** CD26: an unpair native never answers is given up, so the engine is never locked for good. */
 export const UNPAIR_GIVE_UP_MS = 5_000;
+
+/**
+ * Court stream Task 13 fix round 1 (the controller's ruling): native ignores an unpair while the operator's start is in
+ * flight (`Pairings.unpair`), so a clearing waits for native's answer to it, then acts on what it finds. Native answers a
+ * start within its HTTP bound (8 s, `Http.TIMEOUT_MS`), as failed when the server does not; 10 s leaves it room, and a
+ * wait past it is given up as an unanswered unpair is. The unpair then has its own 5 s.
+ */
+export const START_ANSWER_WAIT_MS = 10_000;
 
 /** Why the engine is cleared: its code was forgotten, no saved code owns it, or another mode is opening (A7). */
 export type UnpairCause = 'forget' | 'orphan' | 'otherMode';
@@ -19,9 +27,9 @@ type Done = (outcome: UnpairOutcome) => void;
 
 /**
  * Whether a Forget or a court Leave keeps the code it was asked to drop: a broadcast is held (`held`), or the 5 s
- * bound gave up with the engine still not Idle. Native ignores an unpair while the operator's start is in flight
- * (`Pairings.unpair`), so the give-up comes first and that start may yet arm: it arms with its code, and the operator
- * has one more tap to try again (P4 review I1). A caller that unmounted first (`left`) keeps it on the same terms: its
+ * bound gave up with the engine still not Idle. The clearing waits out the operator's start in flight (Task 13 fix
+ * round 1), so a give-up now means native left the start or the unpair unanswered past its bound: the engine may yet
+ * arm with its code, and the operator has one more tap to try again (P4 review I1). A caller that unmounted first (`left`) keeps it on the same terms: its
  * screen went with the unpair unanswered, and an engine still not Idle may be ignoring it (whole-branch review I2).
  */
 export const codeStays = (outcome: UnpairOutcome, engine: CaptureEnginePort): boolean =>
@@ -80,8 +88,10 @@ function clearStep(status: EngineStatus): 'unpair' | 'reset' | UnpairOutcome {
 
 /**
  * Each intent reconciled against the next snapshot, so a status already acted
- * on is never acted on again. Returns how to end it early (unmount), or null
- * when it ended before returning: the fake answers synchronously.
+ * on is never acted on again. While the operator's start is in flight nothing is
+ * sent: the clearing waits for its answer (`START_ANSWER_WAIT_MS`), then unpairs a
+ * failed one or answers `held` for one that armed. Returns how to end it early
+ * (unmount), or null when it ended before returning: the fake answers synchronously.
  */
 function clear(
   { engine, logger }: { engine: CaptureEnginePort; logger: Logger },
@@ -90,7 +100,9 @@ function clear(
 ): (() => void) | null {
   let acted: EngineStatus | null = null;
   let ended = false;
+  let waiting = false;
   let unsubscribe: () => void = () => undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const end = (outcome: UnpairOutcome) => {
     if (ended) return;
     ended = true;
@@ -98,13 +110,26 @@ function clear(
     unsubscribe();
     onDone(outcome);
   };
-  // Created before the first step: `end` may run inside it (P9).
-  const timer = setTimeout(() => {
-    logger.warn('unpair.gave-up', { action: cause });
-    end('gave-up');
-  }, UNPAIR_GIVE_UP_MS);
+  const giveUpIn = (ms: number) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      logger.warn('unpair.gave-up', { action: cause });
+      end('gave-up');
+    }, ms);
+  };
+  // Armed before the first step: `end` may run inside it (P9).
+  giveUpIn(UNPAIR_GIVE_UP_MS);
   const step = () => {
-    const status = selectEngineStatus(engine.getSnapshot());
+    const snapshot = engine.getSnapshot();
+    const status = selectEngineStatus(snapshot);
+    // The start in flight: wait for its answer, on a bound of its own; the unpair, once sent, has its own 5 s.
+    if (selectStarting(snapshot)) {
+      if (!waiting) giveUpIn(START_ANSWER_WAIT_MS);
+      waiting = true;
+      return;
+    }
+    if (waiting) giveUpIn(UNPAIR_GIVE_UP_MS);
+    waiting = false;
     if (status === acted) return;
     acted = status;
     const next = clearStep(status);

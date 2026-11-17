@@ -138,6 +138,25 @@ describe('Forget while the code is paired (I1)', () => {
     expect(native.held()).toEqual(['unpair', 'unpair']);
   });
 
+  // Court stream Task 13 fix round 1: native ignores an unpair while the operator's start is in flight, so Forget
+  // waits for native's answer (useUnpair) and is honoured once the start fails, never dropped at the 5 s give-up.
+  it('forgets once native fails a start that was in flight at the tap, and never gives up while it waits', async () => {
+    const app = await pairedThenHome();
+    app.engine.setStartAnswer('hold');
+    act(() => app.engine.send({ kind: 'start' }));
+    forget();
+    await flush(UNPAIR_GIVE_UP_MS + 1_000);
+    expect(intentKinds(app)).not.toContain('unpair');
+    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
+    expect(readRecord(app.record).map((entry) => entry.event)).not.toContain('unpair.gave-up');
+    act(() => app.engine.setStartAnswer('failed'));
+    await flush();
+    expect(intentKinds(app)).toContain('unpair');
+    expect(app.engine.getSnapshot().state.kind).toBe('idle');
+    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
+    expect(screen.queryByRole('button', { name: 'Forget' })).toBeNull();
+  });
+
   it('keeps the code when a start is accepted after the give-up, and shows its broadcast', async () => {
     const app = await pairedThenHome();
     holdIntents(app.engine, ['unpair']);
