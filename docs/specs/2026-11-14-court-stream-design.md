@@ -129,8 +129,10 @@ still applies (A4); off, the waiting screen says "Automatic off" and the volunte
 it.
 
 ### 5.4 Ending a match's video
-- **Nothing follows:** stop 180 s after `finished_at` (`relay/config.ts:518`), as today **(my
-  call, owner did not rule)**. Decision record ruling 6's "~2 min" is superseded by this.
+- **Nothing follows:** stop **30 s** after `finished_at` on a court code
+  (`COURT_AUTO_STOP_AFTER_RESULT_SECONDS`, O15); a per-fixture code keeps 180 s
+  (`AUTO_STOP_AFTER_RESULT_SECONDS`, `relay/config.ts:518`). Decision record ruling 6's "~2 min"
+  is superseded by this. While the tail runs, the desk's Court card counts it down (O16).
 - **Next starts first (O6):** the beat answers `go-live` with the new sid; native's
   `Open(other sid)` already ends the held broadcast and arms the new one in one step
   (`Pairings.kt:278-283`). The web ends the old session with its normal end reason.
@@ -240,6 +242,14 @@ Resolved 2026-11-14: Q1 → O11. Remaining:
   ("each match own video") is taken as superseding that sentence; §8's other constraints (connect
   once, no per-match re-pointing, per-fixture streaming unchanged, money correct across handovers)
   stand. Resolved by O11.
-- **Q2.** The handshake tail when nothing follows: kept at 180 s (§5.4), not ruled.
+- **Q2.** The handshake tail when nothing follows: resolved by O15 (30 s on a court code).
 
 **O14 (owner, 2026-11-16: "yes add it", on the controller's recommendation):** the Stream switch also shows on the desk's waiting-to-be-called rows of a linked court, so the day's first match can be switched on before it is called. A switched-on match called to an unlinked court shows "Court not streaming".
+
+**O15 (owner, 2026-11-16: "yes 30s court tail"):** a court-bound match's video stops 30 s after its result; per-fixture codes keep 180 s. The match page's "stops about …" line reads the session's own delay.
+
+**O16 (owner, 2026-11-16: "have countdown in court match day, like streaming will be free in 30s"):** the desk's Court card of a linked court shows "Video ends in N s" while its last streamed match's video is live inside the tail, from the server's `tail_ends_at`; the line goes at 0, on handover, or when the video stops.
+
+**Controller's ruling (2026-11-16, applying O14's intent):** a linked court that is free lists its whole queue on the desk, each row with its Stream switch (the "Due here next" match once), so the day's matches can be switched on in the morning. An unlinked free court is unchanged (Match Day §7).
+
+**Staging infrastructure (device check, 2026-11-16):** the composed path needs Cloudflare Access bypasses for `/api/internal/relay/*` (the runner's calls back), `/overlay/*` and `/_next/static/*` (the compositor's overlay page). Production needs the same check before its first composed stream.
