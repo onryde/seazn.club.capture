@@ -1162,8 +1162,10 @@ phone logged `stopped-delivered 200`. One `broadcast-start`, no rejoin, one Clou
 
 ### N38 — Send record could keep none of a long session's lines
 
-**Status:** fixed — feat/s1-d3-fixes, Batch 18 (0d3fefd, e144a38); device-checked on R-N4F3, R-DJSE and R-1WRJ
-**Where:** capture app · `src/services/recordPins.ts` · `ring.linesToSend` · `recordUploadPort.ts`
+**Status:** fixed — feat/s1-d3-fixes, Batch 18 (0d3fefd, e144a38); device-checked on R-N4F3, R-DJSE and R-1WRJ. The
+reload and process-death gap below: fixed on feat/court-stream (court stream P1, 2026-11-16, 40ecdaa4); device check open
+**Where:** capture app · `src/services/recordPins.ts` · `ring.linesToSend` · `recordUploadPort.ts` · `RecordPins.kt` ·
+`BridgeCore.tail` · `RecordPinStore.kt` · `nativeCaptureEngine.ts` (`seedRecord`)
 
 R-MA1P (2026-10-12, 10 s after a session ended) arrived with 1000 lines received, 0 kept, 1000 dropped. The JS ring
 holds 1000 lines and drops the oldest; ten minutes of a live session fill it, and the `pair` line (which carries the
@@ -1179,10 +1181,24 @@ only and every send follows a close); the amendment is cited in code as "the con
 **Device proof:** R-N4F3 received 178, kept 76, dropped 102 (the lines before the #4 pair), invalid 0, pair line
 leading; R-DJSE received 328, kept 197, dropped 131, invalid 0, covering two sessions; R-1WRJ received 623, kept 621,
 dropped 2, invalid 0 (evidence: `$HOME/seazn-d3-evidence/2026-10-13/n37-cut-web-report.md`). The 1000-line overflow case
-is covered by unit and end-to-end tests but not yet seen on a device. Parked: the native 5 MB disk record is still never
-read by Send; the owner decides whether it should be. After a process death or a cold start the JS ring holds only
-native's in-memory tail (`BridgeCore.tail`, at most `SessionRecord.LAST_LINES`, 20 lines, and empty in a new process),
-so a Send within the upload credential's 24 h can carry none of the match and still shows "Sent · ref" (kept 0).
+is covered by unit and end-to-end tests but not yet seen on a device.
+
+**Reload and process death (court stream device check, 2026-11-16; the controller's ruling):** a court code paired for
+hours sent 34 lines and the web kept none ("sessions: none named"). After a JS reload or a process death the ring is
+seeded from native's tail alone (`BridgeCore.tail`, at most `SessionRecord.LAST_LINES`, 20 lines, and empty in a new
+process), and the pins lived only in the old ring. Now native pins the same two lines by the same rule (`RecordPins.kt`,
+`recordPins.ts`'s rule for rule), and its tail carries those it has let go of beside its lines (`{pins, lines}`). An open
+window's pins are kept in the private store (`record-pins`, `RecordPinStore.kt`): written when they change, deleted when
+the window closes, so a new process carries them before any line of its own. The seed hands them to the ring before the
+tail's first line (`RingRecord.adoptPins`), which reads them by its own rule and sends them first. In one process they
+stand, as the ring's do, until the closing line has left native's tail; a closed window is never restored. The Send
+upload contract is unchanged; no line carries anything it did not carry before.
+
+**Parked:** Send still never reads the native 5 MB disk record (the owner decides whether it should), so after a reload
+or a process death a Send carries the pinned pair and start and the lines since the seed, never the match's lines in
+between. After a process death with the window open and no re-pair, the restored window stays open until the next
+`pair` or closing line, so the new process's lines with no sid are filed under it (under that code's tag only: a Send
+with another code's credential keeps none of them).
 
 ---
 
