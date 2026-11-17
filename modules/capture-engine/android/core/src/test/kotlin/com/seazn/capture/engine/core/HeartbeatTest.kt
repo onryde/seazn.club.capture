@@ -208,8 +208,25 @@ class HeartbeatTest {
   }
 
   // Court stream Task 13 (NE2211, staging): a beat that failed at the server's 60 s cadence left the phone deaf to a Go
-  // live for a whole minute. After a failure the next beat goes BeatCadence.RETRY_MS (5 s) later, or at the cadence
-  // when that is sooner; a 429's Retry-After still decides.
+  // live for a whole minute. After a passing failure (no answer, a beat given up, a 408 or a 5xx) the next beat goes
+  // 5 s later, then 10 s and 20 s for the second and third in a row, then at the cadence; never later than the cadence.
+  // Any other 4xx, and a 429 with no Retry-After, keep the cadence; a 429's Retry-After decides. A 2xx resets it.
+  // (The controller's ruling, fix round 1.)
+
+  /** Each beat due in [untilMs], answered [answer] 100 ms after it goes, at [intervalMs]: the times they went. */
+  private fun sends(intervalMs: Long, untilMs: Long, answer: (Int) -> HeartbeatResponse): List<Long> {
+    var state = HeartbeatState()
+    val sent = mutableListOf<Long>()
+    for (t in 0L..untilMs step 100) {
+      val (next, id) = Heartbeat.due(state, t, t, intervalMs)
+      state = next
+      if (id != null) {
+        sent += t
+        state = Heartbeat.answered(state, id, answer(id), nowMs = t + 100)
+      }
+    }
+    return sent
+  }
 
   @Test
   fun `P1 after a failed answer at the 60 s cadence the next beat goes 5 s after the failure, not 60 s`() {
@@ -249,26 +266,48 @@ class HeartbeatTest {
   }
 
   @Test
-  fun `P1 beats that keep failing retry every 5 s from each failure, never faster, at any cadence`() {
-    fun sends(intervalMs: Long): List<Long> {
-      var state = HeartbeatState()
-      val sent = mutableListOf<Long>()
-      for (t in 0L..30_000L step 100) {
-        val (next, id) = Heartbeat.due(state, t, t, intervalMs)
-        state = next
-        if (id != null) {
-          sent += t
-          // Each answer is a failure that lands 100 ms after its beat.
-          state = Heartbeat.answered(state, id, HeartbeatResponse.Failed("no network"), nowMs = t + 100)
-        }
-      }
-      return sent
+  fun `P1 beats that keep failing back off 5 s, 10 s, 20 s from each failure, then keep the cadence`() {
+    val failing = { _: Int -> HeartbeatResponse.Failed("no network") }
+    // At 60 s, each failure 100 ms after its beat: +5 s, +10 s, +20 s from the failure, then the cadence from the send.
+    assertEquals(listOf(0L, 5_100L, 15_200L, 35_300L, 95_300L), sends(60_000, 100_000, failing))
+    // At the held 10 s: 5 s, then the cadence is sooner than 10 s and 20 s, so it decides.
+    assertEquals(listOf(0L, 5_100L, 15_100L, 25_100L, 35_100L, 45_100L), sends(BeatCadence.HELD_MAX_MS, 50_000, failing))
+    // At the 5 s floor the cadence is always the sooner: a failure never puts a beat later than its cadence.
+    assertEquals(listOf(0L, 5_000L, 10_000L, 15_000L, 20_000L, 25_000L, 30_000L), sends(BeatCadence.MIN_POLL_S * 1_000L, 30_000, failing))
+  }
+
+  @Test
+  fun `P1 a 2xx resets the backoff - the next failure retries 5 s after it again`() {
+    // 503, 503, 200, then 503 again: +5 s, +10 s, the cadence after the 2xx, then +5 s again.
+    val answers = mapOf(1 to 503, 2 to 503, 3 to 200, 4 to 503)
+    val times = sends(60_000, 140_000) { id -> HeartbeatResponse.Answered(answers[id] ?: 503) }
+    assertEquals(listOf(0L, 5_100L, 15_200L, 75_200L, 80_300L, 90_400L), times.take(6))
+  }
+
+  @Test
+  fun `P1 a 408 is a passing failure too, retried 5 s after it`() {
+    assertEquals(listOf(0L, 5_100L), sends(60_000, 5_100) { HeartbeatResponse.Answered(408) })
+  }
+
+  @Test
+  fun `P1 any other 4xx keeps the cadence - the server answered, and a retry would get the same`() {
+    for (status in listOf(400, 403, 404, 410, 422)) {
+      assertEquals(listOf(0L, 60_000L), sends(60_000, 60_000) { HeartbeatResponse.Answered(status) }, "$status")
     }
-    for (intervalMs in listOf(60_000L, BeatCadence.HELD_MAX_MS)) {
-      assertEquals(listOf(0L, 5_100L, 10_200L, 15_300L, 20_400L, 25_500L), sends(intervalMs), "$intervalMs")
-    }
-    // At the 5 s floor the cadence is the sooner: a failure never puts a beat later than its cadence.
-    assertEquals(listOf(0L, 5_000L, 10_000L, 15_000L, 20_000L, 25_000L, 30_000L), sends(BeatCadence.MIN_POLL_S * 1_000L))
+  }
+
+  @Test
+  fun `P1 a 429 with no Retry-After keeps the cadence, and one with it goes when it ends`() {
+    assertEquals(listOf(0L, 60_000L), sends(60_000, 60_000) { HeartbeatResponse.Answered(429) })
+    assertEquals(listOf(0L, 30_100L), sends(60_000, 60_000) { HeartbeatResponse.Answered(429, retryAfterS = 30) })
+    // Never sooner than the server asked, even past the cadence.
+    assertEquals(listOf(0L, 120_100L), sends(60_000, 120_100) { HeartbeatResponse.Answered(429, retryAfterS = 120) })
+  }
+
+  @Test
+  fun `P1 the backoff counts every failure in a row - a 404 then a 503 retries 10 s after the 503`() {
+    val answers = mapOf(1 to 404, 2 to 503)
+    assertEquals(listOf(0L, 60_000L, 70_100L), sends(60_000, 70_100) { id -> HeartbeatResponse.Answered(answers[id] ?: 503) })
   }
 
   @Test

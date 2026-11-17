@@ -94,10 +94,10 @@ class HoldExpiryTest {
   fun `N37 every beat carries the stopped sid until one is answered 2xx, which delivers it once - and the line stays`() {
     val rig = expired()
     rig.advance(30_000)
-    // Counted by hand: the expiry's beat at 8 s, each failed at once, so each next one goes 5 s after it (court stream
-    // P1: a failed beat is retried at BeatCadence.RETRY_MS, sooner than the paired cadence of 10 s): 13, 18, 23, 28, 33
-    // and 38 s.
-    assertEquals(List(7) { "sess_42" }, carriedStopped(rig).drop(1))
+    // Counted by hand: the expiry's beat at 8 s, each failed at once (no network, a passing failure), so the next goes
+    // 5 s after it (13 s), then 10 s (23 s); the third's 20 s is later than the paired 10 s cadence, which decides: 33 s
+    // (court stream Task 13, fix round 1's backoff). The next, 43 s, is past the window.
+    assertEquals(List(4) { "sess_42" }, carriedStopped(rig).drop(1))
     assertTrue(rig.sent<Command.DeleteStopped>().isEmpty(), "a failed beat delivers nothing")
     // The network is back: the server ends sess_42 on the stopped beat and answers over (T23).
     rig.beats = null
