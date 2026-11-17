@@ -373,8 +373,10 @@ class SessionMachineServerTest {
     rig.advance(600_000) { states += rig.state }
     assertTrue(states.all { it is SnapshotState.Publishing }, "the stream never noticed")
     assertTrue(rig.sent<Command.Rebuild>().isEmpty() && rig.sent<Command.End>().isEmpty())
-    // Live at 1 s, to 601 s: beats at 10 s, 20 s, … 600 s. The claim at the pair was answered (the go-live).
-    assertEquals(60, rig.snapshot.heartbeat.failures)
+    // Live at 1 s, to 601 s: the first beat at 10 s, then each failed at once and retried 5 s after it (court stream P1:
+    // BeatCadence.RETRY_MS, sooner than the held 10 s): 10 s, 15 s, … 600 s, 119 beats. The claim at the pair was
+    // answered (the go-live).
+    assertEquals(119, rig.snapshot.heartbeat.failures)
   }
 
   @Test
@@ -385,6 +387,52 @@ class SessionMachineServerTest {
     assertEquals(3, rig.sent<Command.PostHeartbeat>().size)
     assertEquals(1, rig.snapshot.heartbeat.failures)
     assertEquals(listOf<Any?>(HeartbeatResult.OK, HeartbeatResult.FAILED), rig.records("heartbeat").map { it.field("result") })
+  }
+
+  /** The mono time of each beat sent while [ms] passes, from now on. */
+  private fun MachineRig.beatTimes(ms: Long): List<Long> {
+    val times = mutableListOf<Long>()
+    var seen = sent<Command.PostHeartbeat>().size
+    advance(ms) {
+      val count = sent<Command.PostHeartbeat>().size
+      repeat(count - seen) { times += mono }
+      seen = count
+    }
+    return times
+  }
+
+  // Court stream Task 13 (NE2211, staging): paired at the server's 60 s, a beat that failed left the phone deaf to a Go
+  // live for a whole minute. The next beat now goes 5 s after the failure (BeatCadence.RETRY_MS).
+
+  @Test
+  fun `P1 paired at the server's 60 s, a failed beat is retried 5 s later, and a heard one puts it back on 60 s`() {
+    val rig = MachineRig().paired()
+    // The claim at 0, heard: the server asks for 60 s. Beat 2 goes at 60 s and is answered 503.
+    rig.hear("waiting", pollSeconds = 60)
+    rig.hear("waiting", status = 503, pollSeconds = 60)
+    assertEquals(60_000L, rig.mono)
+    rig.beats = { HeartbeatResponse.Answered(200, BeatReply("waiting", null, null, null, Configs.waiting(60))) }
+    assertEquals(listOf(65_000L, 125_000L), rig.beatTimes(70_000))
+  }
+
+  @Test
+  fun `P1 paired at the server's 60 s, a beat never answered is given up at 10 s and retried 5 s after`() {
+    val rig = MachineRig().paired()
+    rig.hear("waiting", pollSeconds = 60)
+    // Beat 2 goes at 60 s and is never answered: given up at 70 s, retried at 75 s, not at 120 s.
+    assertEquals(listOf(60_000L, 75_000L), rig.beatTimes(76_000))
+    assertEquals(1, rig.snapshot.heartbeat.failures)
+  }
+
+  @Test
+  fun `P1 paired at the server's 60 s, a 429's Retry-After decides when the next beat goes`() {
+    val rig = MachineRig().paired()
+    rig.hear("waiting", pollSeconds = 60)
+    rig.advance(60_000)
+    val id = assertNotNull(rig.phase.beating?.heartbeat?.inFlightId, "beat 2 in flight at 60 s")
+    rig.send(Input.HeartbeatAnswered(id, HeartbeatResponse.Answered(429, retryAfterS = 30)))
+    // Not the 5 s retry (65 s), not the cadence (120 s): the 30 s the server asked for.
+    assertEquals(listOf(90_000L), rig.beatTimes(40_000))
   }
 
   @Test

@@ -207,6 +207,91 @@ class HeartbeatTest {
     assertEquals(2, Heartbeat.due(state, 31_000, 31_000, intervalMs = 10_000).second)
   }
 
+  // Court stream Task 13 (NE2211, staging): a beat that failed at the server's 60 s cadence left the phone deaf to a Go
+  // live for a whole minute. After a failure the next beat goes BeatCadence.RETRY_MS (5 s) later, or at the cadence
+  // when that is sooner; a 429's Retry-After still decides.
+
+  @Test
+  fun `P1 after a failed answer at the 60 s cadence the next beat goes 5 s after the failure, not 60 s`() {
+    var state = Heartbeat.due(HeartbeatState(), 0, 0, intervalMs = 60_000).first
+    state = Heartbeat.answered(state, 1, HeartbeatResponse.Failed("no network"), nowMs = 200)
+    assertNull(Heartbeat.due(state, 5_199, 5_199, intervalMs = 60_000).second)
+    assertEquals(2, Heartbeat.due(state, 5_200, 5_200, intervalMs = 60_000).second)
+  }
+
+  @Test
+  fun `P1 a 5xx answer is a failed beat too, retried 5 s after it`() {
+    var state = Heartbeat.due(HeartbeatState(), 0, 0, intervalMs = 60_000).first
+    state = Heartbeat.answered(state, 1, HeartbeatResponse.Answered(503), nowMs = 300)
+    assertNull(Heartbeat.due(state, 5_299, 5_299, intervalMs = 60_000).second)
+    assertEquals(2, Heartbeat.due(state, 5_300, 5_300, intervalMs = 60_000).second)
+  }
+
+  @Test
+  fun `P1 a beat given up at the 60 s cadence is retried 5 s after it was given up`() {
+    val (sent, _) = Heartbeat.due(HeartbeatState(), 0, 0, intervalMs = 60_000)
+    val (givenUp, none) = Heartbeat.due(sent, 10_000, 10_000, intervalMs = 60_000)
+    assertNull(none, "given up at 10 s, and the retry waits 5 s from there")
+    assertEquals(1, givenUp.failures)
+    assertNull(Heartbeat.due(givenUp, 14_999, 14_999, intervalMs = 60_000).second)
+    assertEquals(2, Heartbeat.due(givenUp, 15_000, 15_000, intervalMs = 60_000).second)
+  }
+
+  @Test
+  fun `P1 a heard beat after the retry puts the next back on the 60 s cadence`() {
+    var state = Heartbeat.due(HeartbeatState(), 0, 0, intervalMs = 60_000).first
+    state = Heartbeat.answered(state, 1, HeartbeatResponse.Failed("no network"), nowMs = 0)
+    val (retry, id) = Heartbeat.due(state, 5_000, 5_000, intervalMs = 60_000)
+    assertEquals(2, id)
+    state = Heartbeat.answered(retry, 2, HeartbeatResponse.Answered(200), nowMs = 5_100)
+    assertNull(Heartbeat.due(state, 64_999, 64_999, intervalMs = 60_000).second)
+    assertEquals(3, Heartbeat.due(state, 65_000, 65_000, intervalMs = 60_000).second)
+  }
+
+  @Test
+  fun `P1 beats that keep failing retry every 5 s from each failure, never faster, at any cadence`() {
+    fun sends(intervalMs: Long): List<Long> {
+      var state = HeartbeatState()
+      val sent = mutableListOf<Long>()
+      for (t in 0L..30_000L step 100) {
+        val (next, id) = Heartbeat.due(state, t, t, intervalMs)
+        state = next
+        if (id != null) {
+          sent += t
+          // Each answer is a failure that lands 100 ms after its beat.
+          state = Heartbeat.answered(state, id, HeartbeatResponse.Failed("no network"), nowMs = t + 100)
+        }
+      }
+      return sent
+    }
+    for (intervalMs in listOf(60_000L, BeatCadence.HELD_MAX_MS)) {
+      assertEquals(listOf(0L, 5_100L, 10_200L, 15_300L, 20_400L, 25_500L), sends(intervalMs), "$intervalMs")
+    }
+    // At the 5 s floor the cadence is the sooner: a failure never puts a beat later than its cadence.
+    assertEquals(listOf(0L, 5_000L, 10_000L, 15_000L, 20_000L, 25_000L, 30_000L), sends(BeatCadence.MIN_POLL_S * 1_000L))
+  }
+
+  @Test
+  fun `P1 a 429's Retry-After still wins over the 5 s retry, and the beat goes when it ends`() {
+    var state = Heartbeat.due(HeartbeatState(), 0, 0, intervalMs = 60_000).first
+    state = Heartbeat.answered(state, 1, HeartbeatResponse.Answered(429, retryAfterS = 30), nowMs = 1_000)
+    assertNull(Heartbeat.due(state, 30_999, 30_999, intervalMs = 60_000).second)
+    assertEquals(2, Heartbeat.due(state, 31_000, 31_000, intervalMs = 60_000).second)
+  }
+
+  @Test
+  fun `P1 the retry is the failed beat's alone - a beat sent at once after it keeps the cadence`() {
+    // Heartbeats.atOnce (A17's stopped sid) clears the last send: that beat goes now, and once it is heard the next
+    // is a whole interval after it, whatever failed before.
+    var state = Heartbeat.due(HeartbeatState(), 0, 0, intervalMs = 60_000).first
+    state = Heartbeat.answered(state, 1, HeartbeatResponse.Failed("no network"), nowMs = 100)
+    val (atOnce, id) = Heartbeat.due(state.copy(lastSentAtMonoMs = null), 1_000, 1_000, intervalMs = 60_000)
+    assertEquals(2, id)
+    state = Heartbeat.answered(atOnce, 2, HeartbeatResponse.Answered(200), nowMs = 1_100)
+    assertNull(Heartbeat.due(state, 60_999, 60_999, intervalMs = 60_000).second)
+    assertEquals(3, Heartbeat.due(state, 61_000, 61_000, intervalMs = 60_000).second)
+  }
+
   @Test
   fun `an answer delivered twice is used once`() {
     val (sent, id) = Heartbeat.due(HeartbeatState(), 0, 0, intervalMs = BeatCadence.HELD_MAX_MS)
