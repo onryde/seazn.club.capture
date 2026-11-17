@@ -116,6 +116,26 @@ data class PhoneFacts(val phoneId: String, val appVersion: String, val model: St
 data class NextMatch(val label: String, val scheduledStartEpochS: Long?)
 
 /**
+ * Why the server's automatic start of a court's match was refused: a waiting answer's `autoRefusal` (capture-beat.v1 and
+ * capture-descriptor.v1, E2, 2026-11-17), the word the Match Day court card shows. Shown, never acted on, and apart from
+ * [Refusal], which is the phone's own `POST start`'s and which the phone's next start clears. The wire is the server's
+ * word, carried to JS as written.
+ */
+enum class AutoRefusal(override val wire: String) : Wire {
+  NO_DESTINATION("no_destination"),
+  NO_CREDIT("no_credit"),
+  NOT_ENTITLED("not_entitled"),
+  DESTINATION_IN_USE("destination_in_use"),
+  UNAVAILABLE("unavailable"),
+  COMPETITION_FROZEN("competition_frozen");
+
+  companion object {
+    /** The answer's `autoRefusal`; anything but one of the contract's words, absent and null included, is no refusal. */
+    fun of(value: Any?): AutoRefusal? = entries.firstOrNull { it.wire == value }
+  }
+}
+
+/**
  * The fields the server sends on every 2xx answer, beat or code (amendment, _Contract shapes_).
  * [pollSeconds] is the server's, unclamped: [BeatCadence] clamps it where it is used.
  */
@@ -138,12 +158,16 @@ data class WaitingFields(
   val courtName: String? = null,
   /** The beat's `next` (court stream §5.3): the court's next streamed match. Display only; null when none or malformed. */
   val next: NextMatch? = null,
+  /** The answer's `autoRefusal` (E2): why the server's automatic start of the court's match was refused. Display only; null when none or unknown. */
+  val autoRefusal: AutoRefusal? = null,
 ) {
   /**
    * These fields over the ones [held], as a descriptor lands: the venue's zone is the engine's to keep. A beat's answer
    * carries none (D4, read as ""), so an empty zone keeps the one held; any other replaces it. A court the answer
    * names replaces the held one, and silence keeps it, so a court pairing never becomes a fixture's by an answer that
-   * omits the court (court stream spec 2026-11-14 §3). A descriptor never carries `next`, so the held one stands.
+   * omits the court (court stream spec 2026-11-14 §3). A descriptor never carries `next`, so the held one stands. Its
+   * [autoRefusal] is the newest word, so it replaces the held one and silence clears it: the server omits it once a start
+   * succeeds or is in flight, and on the session shape at Arming.
    */
   fun over(held: WaitingFields): WaitingFields =
     copy(venueTimezone = venueTimezone.ifEmpty { held.venueTimezone }, courtName = courtName ?: held.courtName, next = held.next)
@@ -154,7 +178,8 @@ data class WaitingFields(
    * stable code may now point at the next match, and the old round line would be a wrong fact on the tripod.
    * The beat carries no `court` either, so the held court stays, even when an off-contract beat names one (P1 review
    * M1: the schema bars it on every answer branch); its `next` is the court's next streamed match now, so it replaces
-   * the held one, and a beat with none clears it (court stream §5.3).
+   * the held one, and a beat with none clears it (court stream §5.3). Its [autoRefusal] replaces the held one too, and
+   * a beat with none clears it, as [over] has it (E2).
    */
   fun overBeat(held: WaitingFields): WaitingFields {
     val merged = over(held)

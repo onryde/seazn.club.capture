@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { AutoRefusal } from '@/domain/session/Pairing';
 import type { EngineSnapshot } from './CaptureEnginePort';
 import { WIRE_VOCABULARY, createWireCache, toEngineSnapshot } from './snapshotWire';
 import vectors from './wire/snapshot-vectors.json';
@@ -24,6 +25,7 @@ const PAIRING = {
   stageLabel: null,
   court: null,
   next: null,
+  autoRefusal: null,
   starting: false,
 };
 // W28: the pairing of the case that carries a round line, by hand from its override { stageLabel: 'Open · QF' }.
@@ -35,6 +37,11 @@ const PAIRING_COURT = {
   next: { label: 'Northside v Riverside', scheduledStart: new Date('2026-11-01T13:00:00Z') },
 };
 const PAIRING_COURT_NO_NEXT = { ...PAIRING, court: 'Court 2' };
+// E2 (2026-11-17): by hand from the case's override { court: 'Court 2', autoRefusal: 'destination_in_use' }.
+const PAIRING_COURT_REFUSED = {
+  ...PAIRING_COURT_NO_NEXT,
+  autoRefusal: 'destination_in_use' as AutoRefusal,
+};
 const BROADCAST = {
   sid: 'sess_42',
   cause: 'organiser',
@@ -301,12 +308,23 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
     reportedAtMs: 1_790_000_010_000,
     survivesBackground: true,
   },
+  // E2 (2026-11-17): the server refused the court's automatic start; the phone says why while it stands.
+  'paired-court-auto-refused': {
+    ...REST,
+    state: { kind: 'paired' },
+    pairing: PAIRING_COURT_REFUSED,
+    broadcast: null,
+    ready: READY,
+    camera: 'own',
+    reportedAtMs: 1_790_000_011_000,
+    survivesBackground: true,
+  },
 };
 
 describe('carries 2-6: the snapshot wire, as native writes it (Task 12)', () => {
   // The file's count, so an emptied or truncated file cannot pass by sweeping nothing (PV12).
-  it('has an expectation for each of the 21 cases, and a case for every expectation', () => {
-    expect(vectors.cases).toHaveLength(21);
+  it('has an expectation for each of the 22 cases, and a case for every expectation', () => {
+    expect(vectors.cases).toHaveLength(22);
     expect(vectors.cases.map((c) => c.name).sort()).toEqual(Object.keys(EXPECTED).sort());
   });
 
@@ -320,9 +338,9 @@ describe('carries 2-6: the snapshot wire, as native writes it (Task 12)', () => 
     expect(telemetry).toEqual(wire.telemetry);
   });
 
-  it('carry 6 knows each of the 17 vocabularies native writes, every word and no other', () => {
+  it('carry 6 knows each of the 18 vocabularies native writes, every word and no other', () => {
     const keys = Object.keys(vectors.vocabulary).sort();
-    expect(keys).toHaveLength(17);
+    expect(keys).toHaveLength(18);
     expect(Object.keys(WIRE_VOCABULARY).sort()).toEqual(keys);
     for (const [key, words] of Object.entries(vectors.vocabulary)) {
       const known = WIRE_VOCABULARY[key as keyof typeof WIRE_VOCABULARY];
@@ -428,6 +446,42 @@ describe('carries 2-6: the snapshot wire, as native writes it (Task 12)', () => 
     expect(toEngineSnapshot(off)?.pairing?.starting).toBe(false);
     const { starting: _gone, ...without } = wire.pairing as Record<string, unknown>;
     expect(toEngineSnapshot({ ...wire, pairing: without })).toBeNull();
+  });
+
+  // E2 (2026-11-17): the court's refused automatic start is display only, as next is: anything but one of the six words
+  // native writes reads as none and the snapshot stands. The phone's own start refusals are not its words.
+  it.each([
+    ['an unknown word', 'nope'],
+    ['a refusal of the phone’s own start', 'start-failed'],
+    ['the start’s no_match', 'no_match'],
+    ['an empty word', ''],
+    ['a number', 5],
+    ['an object', { word: 'no_credit' }],
+    ['no autoRefusal key', undefined],
+  ])('reads an autoRefusal that is %s as none, and keeps the snapshot', (_why, autoRefusal) => {
+    const wire = vectorWire('paired-court-auto-refused');
+    const pairing: Record<string, unknown> = { ...wire.pairing, autoRefusal };
+    if (autoRefusal === undefined) delete pairing.autoRefusal;
+    expect(toEngineSnapshot({ ...wire, pairing })?.pairing).toEqual(PAIRING_COURT_NO_NEXT);
+  });
+
+  it('reads each of the six autoRefusal words as sent, and a null as none', () => {
+    const wire = vectorWire('paired-court-auto-refused');
+    // capture-beat.v1's enum, by hand.
+    const words = [
+      'no_destination',
+      'no_credit',
+      'not_entitled',
+      'destination_in_use',
+      'unavailable',
+      'competition_frozen',
+    ];
+    for (const autoRefusal of words) {
+      const read = toEngineSnapshot({ ...wire, pairing: { ...wire.pairing, autoRefusal } });
+      expect(read?.pairing?.autoRefusal).toBe(autoRefusal);
+    }
+    const none = toEngineSnapshot({ ...wire, pairing: { ...wire.pairing, autoRefusal: null } });
+    expect(none?.pairing?.autoRefusal).toBeNull();
   });
 
   // Court stream (spec §5.3): next is display only, so a bad one reads as none and the snapshot stands.

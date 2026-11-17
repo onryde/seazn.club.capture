@@ -1,5 +1,6 @@
 package com.seazn.capture.engine.adapter
 
+import com.seazn.capture.engine.core.AutoRefusal
 import com.seazn.capture.engine.core.BeatReply
 import com.seazn.capture.engine.core.BroadcastDescriptor
 import com.seazn.capture.engine.core.CodeAnswer
@@ -155,7 +156,8 @@ object Bodies {
    * [waiting], naming the first field refused (final review I-2b). Each field is judged in [WAITING_KEYS]' order, then
    * `court`, which only a court code's descriptor sends and so is no waiting key a beat owes. A malformed `court` is
    * refused, never read as no court (court stream spec 2026-11-14 §3: a fixture-style Stop would unlink the court).
-   * `next` is display only, so it is read last and never refuses the answer.
+   * `next` is display only, so it is read last and never refuses the answer, and so is `autoRefusal` (E2): an unknown
+   * word, a null or a non-string is no refusal (the contract: "The phone reads an unknown word as no refusal").
    */
   private fun read(fields: Map<String, Any?>, env: Environment): WaitingRead {
     fun unreadable(field: String) = WaitingRead(null, field)
@@ -170,7 +172,8 @@ object Bodies {
     optionals.firstOrNull { it.second is Field.Bad }?.let { return unreadable(it.first) }
     val stage = stageLabel(fields["stage"])
     val waiting = WaitingFields(label, zone.orNull() ?: "", start.orNull(), auto, destination.orNull(), poll, stage, stage?.let { label })
-    return WaitingRead(waiting.copy(courtName = court.orNull(), next = nextMatch(fields["next"])), null)
+    val shown = waiting.copy(courtName = court.orNull(), next = nextMatch(fields["next"]), autoRefusal = AutoRefusal.of(fields["autoRefusal"]))
+    return WaitingRead(shown, null)
   }
 
   /**

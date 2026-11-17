@@ -201,3 +201,21 @@ describe('the court at the scan (court stream spec 2026-11-14 §6.1)', () => {
     expect(parseWaitingFields(waitingToWire(none), HOST)?.court).toBeNull();
   });
 });
+
+// E2 (2026-11-17): a court's refused automatic start rides the waiting answer, the descriptor's too. It is native's to
+// show, from each answer as it comes: the scan neither refuses the answer for it nor saves it, so a re-pair after a
+// process death never shows a refusal the server has since cleared.
+describe('a refused automatic start at the scan', () => {
+  it.each([
+    ['a known word', 'destination_in_use'],
+    ['an unknown word', 'nope'],
+    ['a null', null],
+    ['a number', 5],
+  ])('reads the answer with %s and saves none of it', (_why, autoRefusal) => {
+    const read = parseWaitingFields(fields({ court: { name: 'Court 2' }, autoRefusal }), HOST);
+    if (read === null) throw new Error('the answer must parse');
+    expect(read.court).toBe('Court 2');
+    expect(read).toEqual(parseWaitingFields(fields({ court: { name: 'Court 2' } }), HOST));
+    expect(Object.keys(waitingToWire(read))).not.toContain('autoRefusal');
+  });
+});

@@ -18,6 +18,7 @@ const namedBy = (intent: PairIntent): PairingInfo => ({
   stageLabel: null,
   court: null,
   next: null,
+  autoRefusal: null,
   starting: false,
 });
 

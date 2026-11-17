@@ -241,6 +241,7 @@ export const FAKE_PAIRING: PairingInfo = {
   stageLabel: null,
   court: null,
   next: null,
+  autoRefusal: null,
   starting: false,
 };
 
@@ -610,6 +611,8 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
       // before (P2 review m3): `waiting` is kept for a court's pair only.
       court: intent.court ?? null,
       next: intent.court === undefined ? null : (waiting.next ?? null),
+      // E2: a court's refused automatic start, as a beat would bring it; a fixture's pair holds none.
+      autoRefusal: intent.court === undefined ? null : (waiting.autoRefusal ?? null),
       automatic: intent.automatic,
     };
     sceneUndo = {};
@@ -626,9 +629,14 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
 
   /** The hold's `POST start` is in flight: native's `pairing.starting` (court stream Task 13, P2). */
   const startInFlight = (): boolean => snapshot.pairing?.starting === true;
-  /** Whatever arms a broadcast retires the hold's start in flight (native's `Starts.arm`, I1): its answer is late. */
+  /**
+   * Whatever arms a broadcast retires the hold's start in flight (native's `Starts.arm`, I1): its answer is late. It
+   * drops a court's refused automatic start too: the session shape at Arming carries none (E2, `WaitingFields.over`).
+   */
   const retired = (): Partial<EngineSnapshot> =>
-    snapshot.pairing === null ? {} : { pairing: { ...snapshot.pairing, starting: false } };
+    snapshot.pairing === null
+      ? {}
+      : { pairing: { ...snapshot.pairing, starting: false, autoRefusal: null } };
 
   const connect = (broadcast: BroadcastInfo): void => {
     show(
