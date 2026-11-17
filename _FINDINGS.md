@@ -1528,6 +1528,80 @@ Go live"; the wait still covers a tap that lands just before, a court Leave and 
 (AGENTS §6's two tiers); the Starting… plate and the Connecting tally still say it. An urgent line for it would be the
 owner's call.
 
+### N45 — Another app that took our camera on air made the phone reconnect, not put the slate up
+
+**Status:** found in the court stream's device check (NE2211, dev build, SRT, staging, 2026-11-17); fixed on
+`fix/camera-taken-on-air` (core and glue, Kotlin tests through the real machine); the device re-check is open
+**Where:** native glue · `CaptureRun` (`lostByDevice`, `busyByDevice`) · `CameraAvailability.taken` · `VendorLines` ·
+`EngineHost` · `StreamerAdapter` (`busyOpens`, `slate`) · relates to N21, F-P5-10, F-S4-1, the S1 design's decision 7
+
+**Evidence** (the session record, secrets stripped):
+
+- 15:19:34.0Z `adb shell am start -a android.media.action.STILL_IMAGE_CAMERA`, while live: the system camera app opened
+  the back camera, ours.
+- 15:19:35.525 StreamPack's `CameraUtils`: "Camera 0 has been disconnected"; 35.533
+  `camera-lost {from: device, attempt: 5}`; 35.868 `readiness {camera: false}`. No `camera-taken` line followed, and
+  no slate.
+- 39.775 `video-stalled {cause: no-video, msSinceAdvance: 3061}`, then `connecting {srt, attempt: 6}`. Its start met
+  "Camera 0 is in error 2" (40.127) and `CameraController` "Error to add target stream", and carried on: connected
+  at 41.123 with no picture.
+- 46.128 `video-stalled {no-first-frame}`, attempt 7 (error 2 again at 46.221); 51.676, attempt 8.
+- 15:19:50 the app was brought to the front, and the camera app let the camera go; 53.406
+  `resumed {cause: video-stalled, outageMs: 13631}`.
+
+The server composited its own "Camera reconnecting" slate, so viewers were covered. The phone never said
+`stream.status.cameraTaken` ("Camera taken by another app — slate on air"), and it reconnected the uplink three
+times in 13 s, which no reconnect could cure.
+
+**Cause.** The slate path exists and was never told. `Input.CameraContended` makes the camera `taken`: the slate on
+air with silent audio (decision 7), the stall watchdog held, the snapshot degraded `camera-taken`, and
+`CameraReleased` reopens the camera (F-P5-10). That input came only from Camera2's availability callback, which was
+built for another app opening _another_ camera (P5's WhatsApp call, F-P5-9), and which skips every event for our own
+camera's id, since our own opens make it unavailable. An app that opens _our_ camera evicts us, and Camera2 says so
+only as our device's disconnect, which only StreamPack's log carries. F-S4-1 heard that log as a loss and, with an
+attempt held, only marked it ("the attempt's own paths decide"). So the machine kept the camera `own`, the watchdog
+read the missing video as a stall and rebuilt the transport, and each rebuild's start opened the camera into the
+other app's hold, which StreamPack logged as error 2 (`ERROR_MAX_CAMERAS_IN_USE`) and swallowed.
+
+**The fix:**
+
+1. With an attempt held, a loss of our camera is another app's take. The capture tells `CameraContended` once
+   (`CameraAvailability.taken`, the busy open's rule), so the machine's own path runs: the slate up, the watchdog
+   held, `camera-taken` in the record and the snapshot, and the strip's `stream.status.cameraTaken` (JS unchanged).
+   The endpoint stays open on the same attempt. The holder's release, the availability callback's "available" for
+   our id, now in the contended set, reopens the camera under the slate: `camera-released`, `camera-reopened` with
+   `ok: true`, then `camera-resumed` at its first frame. With nothing on air a loss is still built afresh (F-S4-1).
+2. StreamPack's busy errors (1 and 2) are a word of their own (`VendorLines` to `busyOpens`), read only with an
+   attempt held: a take, `camera-lost {from: busy}` then `camera-taken`. It covers the order in which our own
+   eviction's "available" reaches the watch after the take: the release is told while the other app still holds the
+   camera, the reopen's open fails busy and StreamPack swallows it, and the slate goes back up, where the watchdog
+   would otherwise reconnect 3 s later and churn again. With nothing on air the open's own paths read it, as before
+   (I4, I-2).
+3. The slate's end gives the mic back. `slate(false)` returned before unmuting when the source was already a camera,
+   which on air it always is (the reopen swaps the camera in before the machine takes the slate down). StreamPack keeps
+   the mute on the audio input's processor (`AudioFrameProcessor.isMuted`, javap), so after any reopen on air the
+   broadcast stayed silent, and so did the next one on the same streamer, until a rebuild. Found by reading the path;
+   never seen on a device.
+
+**Keyframes and frames while the camera is gone** (the brief's question 4): nothing new. The slate keeps both tracks
+flowing. StreamPack 3.2.1's `BitmapSource.startStream` draws the bitmap with `scheduleWithFixedDelay`, every
+1/`VideoSourceConfig.fps` (javap), so the encoder gets the slate at the encode's 30 fps and its own 2 s GOP
+(`gopDurationInS = 2f`) makes the keyframes; `MuteEffect` writes zeroed buffers, so silent audio frames flow too. The
+SRT or RTMPS session never sees a gap. The JVM tests prove the machine asks for the slate and never reconnects; that
+Cloudflare packages the slate is a device claim.
+
+**Rejected:** reading Camera2's availability events for our own id as another app's. Our own opens, rebuilds and
+reopens make it unavailable too, and StreamPack opens lazily, so the self window cannot tell them apart. And:
+honouring a release only after the holder's own "unavailable" has been seen since the take. If that event lands
+before the take is processed, the release never counts and the slate stays up until Stop; the busy word corrects
+itself instead.
+
+**Open, for the device:** which order the NE2211 delivers the disconnect and the availability events in (the tests
+cover both); the slate on the programme, and the mic audible after the reopen. A disconnect that is no other app's (a
+camera service restart, a device policy) now reads "Camera taken by another app — slate on air" until the cameras
+come back, which reopens it, and a camera disabled by policy keeps the slate up until Stop; on air no reconnect
+brings such a camera back either.
+
 ---
 
 ## P5 device spike (Android)
