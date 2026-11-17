@@ -1472,10 +1472,11 @@ record contract, `said`, `foreign` and `queued` together. Until then the counts 
 
 ### N44 — After a lost beat the phone was deaf to a Go live for a minute, and a held Go live looked like nothing happened
 
-**Status:** fixed on `feat/court-stream` (court stream Task 13: P1, P2 and review fix round 1); the device re-check on the
-NE2211 against staging is open
+**Status:** fixed on `feat/court-stream` (court stream Task 13: P1, P2 and review fix rounds 1 and 2); the device re-check
+on the NE2211 against staging is open
 **Where:** native core · `Heartbeat.kt`, `BeatCadence.kt` (`retryMs`) · `Projection.kt`, `SnapshotWire.kt`
-(`pairing.starting`) · capture app · `src/hooks/useUnpair.ts` (`START_ANSWER_WAIT_MS`) · `StreamColumn.tsx`
+(`pairing.starting`) · capture app · `src/hooks/useUnpair.ts` (`START_ANSWER_WAIT_MS`) · `StreamColumn.tsx` ·
+`ContinueCard.tsx`, `CodePanel.tsx` (Home while starting)
 
 Two things seen in Task 13's device check of the court stream, both native-owned.
 
@@ -1489,6 +1490,10 @@ The rule now (the controller's ruling, fix round 1):
   floor, `BeatCadence.MIN_POLL_S`). A 2xx resets the count.
 - Any other 4xx (400, 404, 422, …) keeps the cadence: the server answered, and a retry would get the same answer.
 - A 429 with no Retry-After keeps the cadence; with one, the beat goes when it ends, even past the cadence.
+- Every failure in a row takes a step, a 4xx included, though a 4xx brings no beat forward itself; only a 2xx resets the
+  count. Kept so on review (fix round 2, the controller's ruling): the steps stay bounded at the cadence whatever the mix,
+  one counter is simpler than one per class of failure, and a test pins it (a 404 then a 503: the retry comes 10 s after
+  the 503, `HeartbeatTest`).
 
 Rejected: retrying at the cadence (the old behaviour): it is the deaf minute. Rejected: a flat 5 s retry (P1 as first
 built): when the server is in trouble every phone at the venue would beat every 5 s, twelve times the 60 s load at the
@@ -1508,10 +1513,16 @@ the start-failed line, and Go live comes back.
 
 Native ignores an unpair while a start is in flight (`Pairings.unpair`), so a Forget, a court Leave or A7's Confirm sent
 then was dropped at the 5 s give-up, with the code kept. `useUnpair` now waits for native's answer to the start, bounded
-at 10 s (`START_ANSWER_WAIT_MS`, the 8 s with room), then unpairs after a failed start or answers `held` for one that
-armed; the unpair then has its own 5 s. Chosen over hiding Leave and Forget while starting (the other way the ruling
-allowed): one place covers all three callers and the reopen gate's own clearing, no control appears or disappears under
-the operator's finger, and the tap is honoured rather than dropped.
+at 17 s (`START_ANSWER_WAIT_MS`), then unpairs after a failed start or answers `held` for one that armed; the unpair then
+has its own 5 s. The bound was 10 s (the 8 s HTTP bound with room); fix round 2 (the controller's ruling) raised it to
+outlast the bridge's backstop (`BridgeCore.ANSWER_BACKSTOP_MS`, 16 s), the latest native answers a start, so a slow
+answer is never given up as no answer. An unpair sent just before the start showed reaches native while it is in flight
+and is ignored, so the wait asks again once the start is answered (fix round 2). Chosen over hiding Leave and Forget while
+starting (the other way the fix round 1 ruling allowed): one place covers all three callers and the reopen gate's own
+clearing, no control appears or disappears under the operator's finger, and the tap is honoured rather than dropped. Fix
+round 2 (the controller's ruling) adds, on Home only: while the start is in flight, Forget on the Live Stream card and
+A7's Unpair & open are disabled, not hidden, and the card and the sheet say "Opening the link." in place of "Waiting for
+Go live"; the wait still covers a tap that lands just before, a court Leave and the reopen gate.
 
 **Open:** "Opening the link." is a routine line, so on an uncharged or warm phone an advisory caption wins the strip
 (AGENTS §6's two tiers); the Starting… plate and the Connecting tally still say it. An urgent line for it would be the

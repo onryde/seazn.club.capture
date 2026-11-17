@@ -219,15 +219,20 @@ against staging matter more here than on a fixture's code:
   it. Any other 4xx and a 429 with no Retry-After keep the cadence; a Retry-After decides when it
   is given. A Go live given on the desk while a beat was lost now reaches the phone within seconds,
   and a server in trouble is not met with a beat every 5 s from every court (the controller's
-  ruling, review fix round 1).
+  ruling, review fix round 1). Every failure in a row takes a step, a 4xx included, and only a 2xx
+  resets the count: bounded, one counter, and pinned by a test (the controller's ruling, fix
+  round 2).
 - **The hold says it took.** Native's snapshot carries `pairing.starting` while the hold's
   `POST start` waits for its answer (up to native's 8 s HTTP bound), in Paired only. Go live shows
   a disabled "Starting…" and the line "Opening the link." until native answers; a failure brings Go
   live back with the start-failed line. The court card on Match Day has no Go live, so nothing
   changes there.
 - **Exit waits for the answer.** Native ignores an unpair while a start is in flight, so Leave
-  (and Home's Forget, and A7's Confirm) waits for the answer, at most 10 s, then unpairs after a
-  failed start or keeps the court when it armed, rather than giving up at 5 s with the code kept.
+  (and Home's Forget, and A7's Confirm) waits for the answer, at most 17 s (past the bridge's 16 s
+  backstop, the latest native answers), then unpairs after a failed start or keeps the court when
+  it armed, rather than giving up at 5 s with the code kept. An unpair native ignored is sent again
+  after the answer. On Home, Forget and A7's Unpair & open are disabled while the start is in
+  flight, and say "Opening the link." (fix round 2).
 
 ## 7. Testing (the four questions)
 
