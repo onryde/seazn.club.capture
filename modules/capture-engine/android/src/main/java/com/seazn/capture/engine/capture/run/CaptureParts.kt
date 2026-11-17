@@ -70,6 +70,14 @@ interface CaptureParts {
   fun cameraLosses(): Flow<String>
 
   /**
+   * N45: the id of each camera whose open StreamPack logs failed busy (Camera2's ERROR_CAMERA_IN_USE or
+   * ERROR_MAX_CAMERAS_IN_USE: another app holds it), from its own log lines (`VendorLines`). A start's or a reopen's
+   * open of it can fail so with nothing thrown (3.2.1 logs "Error to add target stream" and carries on), so this is
+   * the only word of it then.
+   */
+  fun busyOpens(): Flow<String>
+
+  /**
    * F-S4-1: the id of our camera when [failure], a start's, is the camera's own (`CameraFailures`), not the
    * transport's. Asked after [busyCamera]: another app's take is that one. Null for any other failure.
    */

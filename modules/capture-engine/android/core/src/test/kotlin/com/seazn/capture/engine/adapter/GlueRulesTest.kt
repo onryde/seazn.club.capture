@@ -220,27 +220,31 @@ class GlueRulesTest {
     val calls = Regex("""\bStreamerAdapter\(""").findAll(build).toList()
     assertEquals(1, calls.size, "one capture built")
     val args = arguments(build, calls.single().range.last)
-    assertTrue(args.trimEnd().endsWith("pose::side, cameraLosses)"), "the side supplier is the pose watch's: $args")
+    assertTrue(args.trimEnd().endsWith("pose::side, cameraLosses, busyOpens)"), "the side supplier is the pose watch's: $args")
     for (side in listOf("Side.LEFT", "Side.RIGHT")) assertFalse(side in glue("EngineHost.kt"), "EngineHost names $side")
   }
 
   /**
    * Device session 4, F-S4-1: StreamPack's camera-loss lines reach the capture's watch, through the one flow the
    * build makes: StreamPack's logger is the build's `VendorLines`, which tells the flow each loss, and the capture
-   * is given that flow and hands it to the run; a start's failure is read by the core's `CameraFailures`. The run's
-   * side is CaptureRunTest's; this is the wiring no JVM test reaches.
+   * is given that flow and hands it to the run; a start's failure is read by the core's `CameraFailures`. N45: its busy
+   * errors reach the run the same way, through a flow of their own. The run's side is CaptureRunTest's; this is the
+   * wiring no JVM test reaches.
    */
   @Test
   fun `F-S4-1 StreamPack's camera-loss lines reach the capture's watch, and a start's failure is the core's reading`() {
     val build = hostBuild()
     assertTrue(Regex("""val cameraLosses = MutableSharedFlow<String>\(""").containsMatchIn(build), "the build makes the flow")
-    assertTrue("val vendor = VendorLines({ id -> cameraLosses.tryEmit(id) })" in build, "each loss is told to it")
+    assertTrue(Regex("""val busyOpens = MutableSharedFlow<String>\(""").containsMatchIn(build), "N45: and the busy opens' flow")
+    assertTrue("val vendor = VendorLines({ id -> cameraLosses.tryEmit(id) }, { id -> busyOpens.tryEmit(id) })" in build, "each loss, and each busy open, is told to its own")
     assertTrue("Logger.logger = VendorLogger(vendor)" in build, "StreamPack's logger is that VendorLines")
     val capture = Regex("""\bStreamerAdapter\(""").findAll(build).single()
-    assertTrue(arguments(build, capture.range.last).trimEnd().endsWith(", cameraLosses)"), "the capture is given it")
+    assertTrue(arguments(build, capture.range.last).trimEnd().endsWith(", cameraLosses, busyOpens)"), "the capture is given both")
     val adapter = glue("StreamerAdapter.kt")
     assertTrue("private val losses: Flow<String>," in adapter, "the adapter takes it")
     assertTrue("override fun cameraLosses(): Flow<String> = losses" in adapter, "and hands it to the run")
+    assertTrue("private val busies: Flow<String>," in adapter, "N45: the adapter takes the busy opens")
+    assertTrue("override fun busyOpens(): Flow<String> = busies" in adapter, "and hands them to the run")
     assertTrue("override fun cameraFailed(failure: Throwable): String? = cameraId?.takeIf { CameraFailures.camera(failure) }" in adapter, "the core's reading")
   }
 
@@ -818,6 +822,22 @@ class GlueRulesTest {
     val view = glue("CapturePreviewView.kt")
     val failed = Regex("""override fun onPreviewFailed\(t: Throwable\) \{\s+failed\("open", t\)\s+guarded\("open"\) \{ EngineHost\.capture\(context\)\.previewFailed\(t\) \}""")
     assertEquals(1, failed.findAll(view).count(), "the preview's open failure is recorded and reaches the capture, guarded")
+  }
+
+  /**
+   * N45: the slate goes on air with silent audio and comes down with the mic back (decision 7). On air the reopen
+   * swaps our camera back in before the machine takes the slate down (CaptureRun: `ReopenCamera`, then
+   * `Slate(false)` once the reopen is answered), so the slate's end finds a camera source already: the audio is set
+   * before the source check, or it stayed silent for the rest of the broadcast.
+   */
+  @Test
+  fun `N45 the slate's end gives the mic back even when the reopen already swapped the camera in`() {
+    val slate = body(glue("StreamerAdapter.kt"), "override suspend fun slate(on: Boolean)")
+    val muted = slate.indexOf("held.audioInput.isMuted = on")
+    val check = slate.indexOf("if (on == onSlate) return")
+    assertEquals(1, Regex("""held\.audioInput\.isMuted = on""").findAll(slate).count(), "set once: $slate")
+    assertTrue(muted in 0 until check, "the audio follows the slate before the source check: $slate")
+    assertEquals(1, Regex("""\bisMuted\b""").findAll(glue("StreamerAdapter.kt")).count(), "only the slate sets it")
   }
 
   /**

@@ -107,7 +107,8 @@ class CaptureRun(
    * ours, and the take told over, once StreamPack reports its source open. The watch starts after
    * [CameraAvailability.opening]: the sources' flows keep their state, so an open that came first is seen.
    * Every build follows a release, or none, so no watch is running here; [closed] ends this one. F-S4-1: the
-   * same watch hears StreamPack's word that the camera was lost, and hands it to the queue ([lostByDevice]).
+   * same watch hears StreamPack's word that the camera was lost, and hands it to the queue ([lostByDevice]); N45:
+   * and its word that an open of it failed busy ([busyByDevice]).
    */
   private fun watchOpens(camera: String) {
     cameras.opening(camera)
@@ -120,6 +121,7 @@ class CaptureRun(
             serial.submit(::openSeen)
           }
         }
+        launch { parts.busyOpens().collect { id -> serial.submit { busyByDevice(id) } } }
         parts.cameraLosses().collect { id -> serial.submit { lostByDevice(id) } }
       }
   }
@@ -127,14 +129,33 @@ class CaptureRun(
   /**
    * Device session 4, F-S4-1: StreamPack lost our camera (Camera2 disconnected it, or put it in a device error). It
    * reads not ready ([CameraAvailability.lost]), so the Armed gate holds the go-live, and, with nothing on air, it is
-   * built afresh. With an attempt held the loss is marked only: the attempt's own paths decide (StreamPack opens
-   * the camera again at a start, and a start the camera fails builds it afresh), so the capture never cuts a
-   * broadcast on its own guess. Another camera's loss, or one after the release, is nothing.
+   * built afresh. Another camera's loss, or one after the release, is nothing.
+   *
+   * N45 (device check 2026-11-17): with an attempt held it is another app's take. An app that opens OUR camera evicts
+   * us, and Camera2 says so only as this disconnect, so the availability watch never told it; the machine kept the
+   * camera ours and its stall watchdog reconnected the uplink every few seconds, which no reconnect could cure. Told
+   * as a take, the machine puts the slate up in the camera's place and holds the watchdog (F-P5-10, decision 7), and
+   * the holder's release reopens it. Never a rebuild: the capture never cuts a broadcast on its own guess. A camera
+   * service that restarts reads the same, and its cameras' return is the release.
    */
   private suspend fun lostByDevice(camera: String) {
     if (!cameras.lost(camera)) return
     calls.line(RecordEntry("camera-lost", listOf("from" to "device", "attempt" to attempt)))
-    if (attempt == null) rebuildLost()
+    if (attempt == null) return rebuildLost()
+    cameras.taken(camera)?.let(calls.report)
+  }
+
+  /**
+   * N45: StreamPack's open of our camera failed busy while an attempt is held: a start's or a reopen's, which 3.2.1
+   * logs and carries on from ("Error to add target stream"), so nothing else says so. Another app holds it: a take,
+   * as [lostByDevice]'s. The device check's reconnects each met it (15:19:40 and 15:19:46Z), and a reopen told by our
+   * own eviction's "available" can meet it too. With nothing on air it is the open's own failure, which the build,
+   * the preview and the start read where it fails (I4, I-2), so nothing is done here.
+   */
+  private fun busyByDevice(camera: String) {
+    if (attempt == null || !cameras.lost(camera)) return
+    calls.line(RecordEntry("camera-lost", listOf("from" to "busy", "attempt" to attempt)))
+    cameras.taken(camera)?.let(calls.report)
   }
 
   /**

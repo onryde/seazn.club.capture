@@ -177,6 +177,20 @@ class FakeParts : CaptureParts {
 
   override fun cameraLosses(): Flow<String> = losses
 
+  /** N45: StreamPack's word that an open of a camera failed busy, as the test says it came. Unwatched, it is nothing. */
+  private val busies = MutableSharedFlow<String>(extraBufferCapacity = 8)
+
+  /** How many watch the busy opens now. */
+  val watchingBusy: Int
+    get() = busies.subscriptionCount.value
+
+  /** N45: StreamPack logs camera [id] in a busy error (1 or 2): an open of it failed on another app's hold. */
+  fun busyOpen(id: String) {
+    check(busies.tryEmit(id)) { "a busy open with no room" }
+  }
+
+  override fun busyOpens(): Flow<String> = busies
+
   /** F-S4-1: the held camera when the failure is the camera's, by the core's own reading of it, as the adapter reads it. */
   override fun cameraFailed(failure: Throwable): String? = camera?.takeIf { CameraFailures.camera(failure) }
 

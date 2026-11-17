@@ -4,8 +4,10 @@ import com.seazn.capture.engine.StreamPack
 import com.seazn.capture.engine.adapter.AttemptSignals
 import com.seazn.capture.engine.adapter.CameraAvailability
 import com.seazn.capture.engine.adapter.EncoderKeys
+import com.seazn.capture.engine.core.CameraState
 import com.seazn.capture.engine.core.Command
 import com.seazn.capture.engine.core.Configs
+import com.seazn.capture.engine.core.DegradeReason
 import com.seazn.capture.engine.core.Engine
 import com.seazn.capture.engine.core.FakeClock
 import com.seazn.capture.engine.core.FakeScheduler
@@ -18,7 +20,10 @@ import com.seazn.capture.engine.core.RtmpsTarget
 import com.seazn.capture.engine.core.Phase
 import com.seazn.capture.engine.core.SessionMachine
 import com.seazn.capture.engine.core.SessionRecord
+import com.seazn.capture.engine.core.session
 import com.seazn.capture.engine.core.Side
+import com.seazn.capture.engine.core.Snapshot
+import com.seazn.capture.engine.core.SnapshotState
 import com.seazn.capture.engine.core.SrtTarget
 import com.seazn.capture.engine.thrownAt
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -31,6 +36,8 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -40,7 +47,7 @@ import kotlin.test.assertTrue
  */
 @OptIn(ExperimentalCoroutinesApi::class) // advanceUntilIdle and runCurrent
 class CaptureRunMachineTest {
-  private class Rig(scope: TestScope, cameras: CameraAvailability = CameraAvailability()) {
+  private class Rig(scope: TestScope, val cameras: CameraAvailability = CameraAvailability()) {
     val clock = FakeClock()
     val scheduler = FakeScheduler(clock)
     val lines = mutableListOf<String>()
@@ -48,9 +55,10 @@ class CaptureRunMachineTest {
     val parts = FakeParts()
     val told = Told()
     val signals = AttemptSignals()
+    var snapshot: Snapshot? = null
     lateinit var run: CaptureRun
     val engine =
-      Engine(clock, scheduler, commands = { executed += it; run.execute(it) }, snapshots = {}, record = SessionRecord { lines += it })
+      Engine(clock, scheduler, commands = { executed += it; run.execute(it) }, snapshots = { snapshot = it }, record = SessionRecord { lines += it })
 
     init {
       // BridgeCore's cameraBusy: the camera is taken (its `holds` check is BridgeCoreTest's).
@@ -265,4 +273,126 @@ class CaptureRunMachineTest {
       advanceUntilIdle()
       assertEquals(listOf(1), rig.connects.map { it.attemptId }, "the camera ours again: Armed connects")
     }
+
+  // --- N45 (device check 2026-11-17): our camera taken by another app on air keeps the uplink and says so ---
+
+  /** Both clocks forward together, the capture's first, in steps of a tenth of a second. */
+  private fun TestScope.both(rig: Rig, ms: Long) {
+    var done = 0L
+    while (done < ms) {
+      advanceTimeBy(STEP_MS)
+      runCurrent()
+      rig.scheduler.advanceBy(STEP_MS)
+      runCurrent()
+      done += STEP_MS
+    }
+  }
+
+  /** Paired, armed and on air on attempt 1, its frames advancing: live. */
+  private fun TestScope.live(rig: Rig) {
+    Configs.pairInputs().forEach(rig.engine::send)
+    rig.scheduler.advanceBy(0)
+    advanceUntilIdle()
+    assertEquals(1, (rig.engine.phase as? Phase.OnAir)?.attemptId, "on air: ${rig.engine.phase}")
+    rig.engine.send(Input.Frames(1, 15, 23))
+    both(rig, 500)
+    rig.engine.send(Input.Frames(1, 30, 46))
+    both(rig, 500)
+    assertNotNull(rig.engine.phase.session?.liveSinceEpochMs, "live: ${rig.engine.phase}")
+  }
+
+  private fun Rig.kindCount(kind: String): Int = lines.count { """"kind":"$kind"""" in it }
+
+  /** The uplink held throughout: attempt 1 the only one ever asked for, on air, and no stall judged. */
+  private fun assertHeld(rig: Rig, label: String) {
+    val record = rig.lines.joinToString("\n")
+    assertEquals(listOf(1), rig.connects.map { it.attemptId }, "$label: one attempt")
+    assertFalse(rig.executed.any { it is Command.Rebuild || it is Command.StartNewSession || it is Command.Disconnect }, "$label: ${rig.executed}")
+    assertEquals(0 to 1, rig.kindCount("video-stalled") to rig.kindCount("connecting"), "$label: $record")
+    assertEquals(1, (rig.engine.phase as? Phase.OnAir)?.attemptId, "$label: ${rig.engine.phase}")
+    assertEquals(1, rig.parts.publishing, "$label: the endpoint stays open")
+  }
+
+  /** The machine's camera, and the snapshot JS reads: the slate's state, degraded camera-taken, never connecting. */
+  private fun assertShownTaken(rig: Rig, label: String) {
+    assertEquals(CameraState.TAKEN, rig.engine.phase.session?.camera, label)
+    val shown = assertNotNull(rig.snapshot, label)
+    assertEquals(CameraState.TAKEN, shown.camera, label)
+    assertEquals(listOf(DegradeReason.CAMERA_TAKEN), assertIs<SnapshotState.Degraded>(shown.state, label).reasons, label)
+  }
+
+  /**
+   * N45, the device check's sequence (NE2211, SRT, 15:19:34Z): the system camera app opened our camera on air. Camera2
+   * evicts us and says so only as our device's disconnect, which StreamPack logs ("Camera 0 has been disconnected").
+   * It reads as another app's take: the slate goes up in the camera's place (decision 7), the stall watchdog holds,
+   * and the snapshot says camera-taken. Nothing reconnects: the device check churned three reconnects in 13 s
+   * (video-stalled no-video, then no-first-frame twice). The holder's release reopens our camera under the slate; the
+   * slate comes down, and the camera's first frame is the resume, on attempt 1 still.
+   */
+  @Test
+  fun `N45 our camera taken on air keeps the uplink - the slate goes up, nothing reconnects, and its release brings it back`() =
+    runTest {
+      val rig = Rig(this)
+      live(rig)
+      rig.parts.lose("0") // StreamPack: "Camera 0 has been disconnected"
+      both(rig, 10_000) // past the stall watchdog's 3 s and the first-frame grace, twice over
+      assertEquals(1, rig.kindCount("camera-taken"), rig.lines.joinToString("\n"))
+      assertEquals(listOf("slate true"), rig.parts.log.filter { it.startsWith("slate") }, "the slate on air")
+      assertHeld(rig, "taken")
+      assertShownTaken(rig, "taken")
+
+      val released = assertNotNull(rig.cameras.available("0", 20_000), "CameraWatch: the holder let go")
+      rig.engine.send(released)
+      both(rig, 500)
+      assertEquals(1, rig.executed.count { it == Command.ReopenCamera }, "${rig.executed}")
+      assertEquals(listOf("reopen", "slate false"), rig.parts.log.filter { it == "reopen" || it.startsWith("slate f") }, "the camera swapped back in")
+      rig.engine.send(Input.Frames(1, 40, 60))
+      both(rig, 500)
+      rig.engine.send(Input.Frames(1, 55, 83))
+      both(rig, 500)
+      assertEquals(listOf(1, 1, 1), listOf("camera-released", "camera-reopened", "camera-resumed").map { rig.kindCount(it) }, rig.lines.joinToString("\n"))
+      assertTrue(rig.lines.single { """"kind":"camera-reopened"""" in it }.contains(""""ok":true"""), "reopened")
+      assertEquals(CameraState.OWN, rig.engine.phase.session?.camera)
+      assertIs<SnapshotState.Publishing>(rig.snapshot?.state, "${rig.snapshot}")
+      assertHeld(rig, "resumed")
+    }
+
+  /**
+   * N45, the order the device can also deliver: our eviction's own "available" reaches CameraWatch after the take, so
+   * the release is told while the other app still holds the camera. The reopen's open fails busy, which StreamPack
+   * logs and carries on ("Camera 0 is in error 2"), so the reopen answers true over a camera with no picture. That
+   * word is a take again: the slate goes back up and nothing reconnects; the real release brings the camera back.
+   */
+  @Test
+  fun `N45 a reopen that lands on a camera still held is taken again - the slate goes back up and nothing reconnects`() =
+    runTest {
+      val rig = Rig(this)
+      live(rig)
+      rig.parts.lose("0")
+      both(rig, 500)
+      rig.engine.send(assertNotNull(rig.cameras.available("0", 1_000), "the eviction's own: told as a release"))
+      both(rig, 500)
+      assertEquals(listOf("slate true", "reopen", "slate false"), rig.parts.log.filter { it == "reopen" || it.startsWith("slate") })
+      rig.parts.busyOpen("0") // StreamPack: the reopen's open failed busy, and it carried on
+      both(rig, 10_000)
+      assertEquals(2, rig.kindCount("camera-taken"), rig.lines.joinToString("\n"))
+      assertEquals(listOf("slate true", "reopen", "slate false", "slate true"), rig.parts.log.filter { it == "reopen" || it.startsWith("slate") })
+      assertHeld(rig, "taken again")
+      assertShownTaken(rig, "taken again")
+
+      rig.engine.send(assertNotNull(rig.cameras.available("0", 20_000), "the real release"))
+      both(rig, 500)
+      rig.engine.send(Input.Frames(1, 40, 60))
+      both(rig, 500)
+      rig.engine.send(Input.Frames(1, 55, 83))
+      both(rig, 500)
+      assertEquals(2, rig.executed.count { it == Command.ReopenCamera }, "${rig.executed}")
+      assertEquals(1, rig.kindCount("camera-resumed"), rig.lines.joinToString("\n"))
+      assertEquals(CameraState.OWN, rig.engine.phase.session?.camera)
+      assertHeld(rig, "resumed")
+    }
+
+  private companion object {
+    const val STEP_MS = 100L
+  }
 }

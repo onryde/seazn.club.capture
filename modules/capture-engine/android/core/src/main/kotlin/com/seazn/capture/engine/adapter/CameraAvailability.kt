@@ -90,6 +90,16 @@ class CameraAvailability(private val selfWindowMs: Long = 1_500) {
   }
 
   /**
+   * N45 (device check 2026-11-17): another app took [id], ours, while a broadcast holds it. An app that opens OUR
+   * camera evicts us, and Camera2 says so only as our device's disconnect, while its availability events for our id
+   * read as ours ([unavailable]); and StreamPack keeps a busy open of it to itself where it swallows the open's
+   * failure. So the capture, which knows a broadcast is held, tells it here: not ready, contended, told once, and the
+   * holder's release ([available]) is told, so the engine reopens it. Null when [id] is not ours, or already told.
+   */
+  @Synchronized
+  fun taken(id: String): Input? = openFailed(id, busy = true)
+
+  /**
    * I-2: the camera reads ready while the source is a [camera] and no open of it has failed since it was
    * asked. Not "an open seen": with the phone locked nothing opens it before the start, and a go-live there
    * starts it from the service (CD37).

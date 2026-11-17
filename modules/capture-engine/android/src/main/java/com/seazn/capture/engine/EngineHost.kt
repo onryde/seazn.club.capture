@@ -69,9 +69,11 @@ object EngineHost {
   private fun parts(context: Context): Parts = parts ?: build(context.applicationContext).also { parts = it }
 
   private fun build(app: Context): Parts {
-    // F-S4-1: StreamPack's own lines are its only word that a camera was lost; the capture hears them here.
+    // F-S4-1: StreamPack's own lines are its only word that a camera was lost; the capture hears them here. N45: and
+    // that an open of it failed busy, which StreamPack can swallow (a start's, a reopen's).
     val cameraLosses = MutableSharedFlow<String>(extraBufferCapacity = LOSSES_HELD)
-    val vendor = VendorLines({ id -> cameraLosses.tryEmit(id) }) { level, fields -> parts?.core?.log(level, "vendor-log", fields) }
+    val busyOpens = MutableSharedFlow<String>(extraBufferCapacity = LOSSES_HELD)
+    val vendor = VendorLines({ id -> cameraLosses.tryEmit(id) }, { id -> busyOpens.tryEmit(id) }) { level, fields -> parts?.core?.log(level, "vendor-log", fields) }
     Logger.logger = VendorLogger(vendor)
     KomuxerLogger.logger = KomuxerVendorLogger(vendor) // C6 m-4: RTMPS's own
     TlsGuard.record = ::line
@@ -87,7 +89,7 @@ object EngineHost {
     val cameras = CameraAvailability()
     val pose = PoseWatch(app, { core.readiness(pose = it) }, ::line)
     // C6 carry: the build encodes the side held (CD42), the pose watch's, never a constant.
-    val capture = StreamerAdapter(app, FrameTally(), AttemptSignals(), cameras, coreCalls { core }, pose::side, cameraLosses)
+    val capture = StreamerAdapter(app, FrameTally(), AttemptSignals(), cameras, coreCalls { core }, pose::side, cameraLosses, busyOpens)
     val device = DeviceSampler(app, report, toCore)
     val keeper = keeper(app) { core }
     // Task 34: a debug build's seam may hold another HTTP path; a release build's never does.

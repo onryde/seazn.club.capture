@@ -496,11 +496,13 @@ class CaptureRunTest {
 
   /**
    * F-S4-1: StreamPack's word that our camera was lost, with nothing on air, reads not ready and builds it afresh;
-   * another camera's loss is nothing; with an attempt held the loss is marked, and the attempt's own paths decide
-   * (a start the camera fails builds it afresh), so a broadcast is never cut by the capture's guess.
+   * another camera's loss is nothing. N45 (device check 2026-11-17): with an attempt held the loss is another app's
+   * take (an app that opens our camera evicts us, and Camera2 says so only as a disconnect), told once so the engine
+   * puts the slate up and waits for the release; never a rebuild, so a broadcast is never cut by the capture's guess.
+   * An open of ours seen after it tells it over.
    */
   @Test
-  fun `F-S4-1 a camera lost with nothing on air is built afresh, and with an attempt held it is only marked`() =
+  fun `F-S4-1 a camera lost with nothing on air is built afresh, and N45 with an attempt held it is a take, never a rebuild`() =
     runTest {
       val s = opened()
       s.parts.opened("0")
@@ -533,9 +535,59 @@ class CaptureRunTest {
       assertEquals(emptyList(), s.parts.log, "never a rebuild under an attempt held")
       assertEquals(1, s.parts.publishing, "still on air")
       assertEquals(RecordEntry("camera-lost", listOf("from" to "device", "attempt" to 1)), s.told.lines.last { it.kind == "camera-lost" })
-      s.parts.opened("0") // StreamPack's start opened it again
+      assertEquals(listOf(Input.Connected(1), Input.CameraContended), s.told.reports, "N45: on air, a loss is a take")
+      assertTrue(s.cameras.contended("0"), "its release is waited for")
+      s.parts.lose("0") // StreamPack's own second word of it
+      advanceUntilIdle()
+      assertEquals(listOf(Input.Connected(1), Input.CameraContended), s.told.reports, "told once")
+      assertEquals(emptyList(), s.parts.log, "still no rebuild")
+      s.parts.opened("0") // StreamPack opened it again after all
       advanceUntilIdle()
       assertTrue(s.cameras.ready(camera = true), "an open seen clears the loss")
+      assertEquals(Input.CameraReleased, s.told.reports.last(), "and tells the take over")
+    }
+
+  /**
+   * N45 (device check 2026-11-17, 15:19:40-46Z): a start's or a reopen's open of our camera that another app holds
+   * fails busy ("Camera 0 is in error 2"), and StreamPack 3.2.1 logs it and carries on, so the start connected with no
+   * picture and the stall watchdog reconnected, again and again. With an attempt held that word is a take, told
+   * once, never a rebuild. With nothing on air it is the open's own failure, read where the open fails (I4, I-2):
+   * nothing here. Another camera's is nothing.
+   */
+  @Test
+  fun `N45 a busy open of our camera on air is a take, told once - with nothing on air it is the open's own`() =
+    runTest {
+      val s = opened()
+      s.parts.opened("0")
+      advanceUntilIdle()
+      assertEquals(1, s.parts.watchingBusy, "the opening watches its busy opens")
+      s.parts.busyOpen("0")
+      advanceUntilIdle()
+      assertEquals(emptyList(), s.told.reports + s.told.lines.map { it.kind } + s.parts.log, "nothing on air: the open's own")
+      assertTrue(s.cameras.ready(camera = true), "and nothing marked here")
+
+      does(s, connect(1))
+      s.parts.log.clear()
+      s.parts.busyOpen("1")
+      advanceUntilIdle()
+      assertEquals(listOf<Input>(Input.Connected(1)), s.told.reports, "another camera's is nothing")
+      s.parts.busyOpen("0")
+      advanceUntilIdle()
+      assertEquals(listOf(Input.Connected(1), Input.CameraContended), s.told.reports, "on air: a take")
+      assertEquals(listOf(RecordEntry("camera-lost", listOf("from" to "busy", "attempt" to 1))), s.told.lines.filter { it.kind == "camera-lost" })
+      val written = mutableListOf<String>()
+      SessionRecord { written += it }.append(0L, s.told.lines.single { it.kind == "camera-lost" })
+      assertTrue(""""from":"busy"""" in written.single(), "the record keeps the word: ${written.single()}")
+      assertFalse(s.cameras.ready(camera = true), "taken: not ready")
+      assertTrue(s.cameras.contended("0"), "its release is waited for")
+      s.parts.busyOpen("0")
+      advanceUntilIdle()
+      assertEquals(listOf(Input.Connected(1), Input.CameraContended), s.told.reports, "told once")
+      assertEquals(emptyList(), s.parts.log, "never a rebuild")
+      assertEquals(1, s.parts.publishing, "still on air")
+      s.run.close()
+      advanceUntilIdle()
+      assertEquals(0, s.parts.watchingBusy, "the release ends the watch")
     }
 
   /**

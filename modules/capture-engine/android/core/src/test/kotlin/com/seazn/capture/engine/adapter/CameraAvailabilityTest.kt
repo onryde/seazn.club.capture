@@ -221,6 +221,35 @@ class CameraAvailabilityTest {
     assertFalse(fresh.lost("0"), "nothing held: no loss of ours")
   }
 
+  /**
+   * N45 (device check 2026-11-17): another app that opens OUR camera evicts us, and Camera2 says so only as our
+   * device's disconnect; its availability events for our id are ours by id ([CameraAvailability.unavailable] skips
+   * them). With a broadcast held the capture reads that loss as a take: contended, told once, not ready, and the
+   * holder's release (the camera available again) is told, so the engine reopens it under the slate. Another
+   * camera's loss, or one with nothing of ours open, is nothing.
+   */
+  @Test
+  fun `N45 our camera taken on air is contention, told once, and its release is told`() {
+    val fresh = CameraAvailability()
+    fresh.opening("0")
+    assertEquals(null, fresh.sessionStarted())
+    assertEquals(null, fresh.opened("0"))
+    assertEquals(null, fresh.taken("1"), "not our camera")
+    assertFalse(fresh.contended("1"))
+    assertTrue(fresh.ready(camera = true))
+    assertEquals(Input.CameraContended, fresh.taken("0"), "ours, taken")
+    assertTrue(fresh.contended("0"))
+    assertFalse(fresh.ready(camera = true), "taken: not ready")
+    assertEquals(null, fresh.taken("0"), "told once")
+    assertEquals(null, fresh.unavailable("0", 2_000), "the holder's own events of our camera are no news")
+    assertEquals(Input.CameraReleased, fresh.available("0", 3_000), "the holder let go: the engine reopens")
+    fresh.opening("0") // the reopen
+    assertTrue(fresh.ready(camera = true))
+    assertEquals(null, fresh.opened("0"), "its open tells nothing more")
+    fresh.held(null) // released
+    assertEquals(null, fresh.taken("0"), "nothing of ours held: nothing taken")
+  }
+
   @Test
   fun `I-2 an open failed on a busy camera is contention, once, and its release is told`() {
     val fresh = CameraAvailability()

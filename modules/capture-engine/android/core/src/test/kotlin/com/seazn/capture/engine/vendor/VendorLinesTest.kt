@@ -49,36 +49,41 @@ class VendorLinesTest {
   /**
    * F-S4-1: StreamPack 3.2.1 has no public word that the camera device was lost; its `CameraUtils.openCamera`
    * logs it, and only it: `onDisconnected` warns "Camera $id has been disconnected", `onError` errs
-   * "Camera $id is in error $error" (the sources). A busy error (1, 2: another app's take) is the open's own
-   * failure, read where the open fails; any other is a loss. Every line still reaches the record.
+   * "Camera $id is in error $error" (the sources). A busy error (1, 2: another app's take) is no loss: N45, it is
+   * told apart, as a busy open, since StreamPack can swallow the open it failed (the capture reads it on air only).
+   * Any other is a loss. Every line still reaches the record.
    */
   @Test
-  fun `F-S4-1 StreamPack's camera loss lines name the camera lost, and nothing else does`() {
+  fun `F-S4-1 StreamPack's camera loss lines name the camera lost, N45 its busy errors the camera busy, and nothing else does`() {
     val lost = mutableListOf<String>()
+    val busy = mutableListOf<String>()
     val written = mutableListOf<String>()
-    val vendor = VendorLines(lost::add) { _, fields -> written += fields["message"].toString() }
+    val vendor = VendorLines(lost::add, busy::add) { _, fields -> written += fields["message"].toString() }
     val rows =
       listOf(
-        Triple("w", "Camera 0 has been disconnected", "0"),
-        Triple("e", "Camera 1 is in error 4", "1"),
-        Triple("e", "Camera 0 is in error 5", "0"),
-        Triple("e", "Camera 2 is in error 3", "2"),
-        Triple("e", "Camera 0 is in error 1", null), // ERROR_CAMERA_IN_USE: the open's busy failure
-        Triple("e", "Camera 0 is in error 2", null), // ERROR_MAX_CAMERAS_IN_USE
+        Triple("w", "Camera 0 has been disconnected", "lost 0"),
+        Triple("e", "Camera 1 is in error 4", "lost 1"),
+        Triple("e", "Camera 0 is in error 5", "lost 0"),
+        Triple("e", "Camera 2 is in error 3", "lost 2"),
+        Triple("e", "Camera 0 is in error 1", "busy 0"), // ERROR_CAMERA_IN_USE: another app's hold
+        Triple("e", "Camera 3 is in error 2", "busy 3"), // ERROR_MAX_CAMERAS_IN_USE
         Triple("w", "Camera is not streaming", null),
         Triple("e", "Camera capture session closed for camera 0 and outputs []", null),
       )
     var checked = 0
     for ((level, message, expected) in rows) {
       lost.clear()
+      busy.clear()
       if (level == "w") vendor.w("CameraUtils", message, null) else vendor.e("CameraUtils", message, null)
-      assertEquals(listOfNotNull(expected), lost, message)
+      assertEquals(listOfNotNull(expected), lost.map { "lost $it" } + busy.map { "busy $it" }, message)
       checked += 1
     }
     lost.clear()
+    busy.clear()
     vendor.w("CameraSource", "Camera 0 has been disconnected", null)
-    assertEquals(emptyList<String>(), lost, "another tag's line is no loss")
-    assertEquals(rows.size + 1, written.size, "every line reaches the record")
+    vendor.e("CameraController", "Camera 0 is in error 2", null)
+    assertEquals(emptyList<String>(), lost + busy, "another tag's line is neither")
+    assertEquals(rows.size + 2, written.size, "every line reaches the record")
     assertEquals(rows.size, checked, "the sweep's own count")
   }
 

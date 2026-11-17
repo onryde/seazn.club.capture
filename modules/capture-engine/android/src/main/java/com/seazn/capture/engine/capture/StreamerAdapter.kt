@@ -87,6 +87,8 @@ class StreamerAdapter(
   side: () -> Side,
   /** F-S4-1: StreamPack's word that a camera was lost, from its own log lines (EngineHost's `VendorLines`). */
   private val losses: Flow<String>,
+  /** N45: StreamPack's word that an open of a camera failed busy, from the same lines. */
+  private val busies: Flow<String>,
 ) : Capture {
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, t -> calls.failure(t) })
   private val shown = PeakMeter()
@@ -349,6 +351,9 @@ class StreamerAdapter(
 
     override suspend fun slate(on: Boolean) {
       val held = current.value ?: return
+      // N45: before the source check. On air the reopen has swapped our camera back in by the time the slate comes
+      // down, so the check returns there; set after it, the mic stayed silent for the rest of the broadcast.
+      held.audioInput.isMuted = on
       val onSlate = held.videoInput.sourceFlow.value !is ICameraSource
       if (on == onSlate) return
       if (on) {
@@ -359,7 +364,6 @@ class StreamerAdapter(
           held.setVideoSource(CameraSourceFactory(it))
         }
       }
-      held.audioInput.isMuted = on
     }
 
     override fun micSessionKnown(): Boolean = streamerSession() != null
@@ -371,6 +375,8 @@ class StreamerAdapter(
     override fun cameraFailed(failure: Throwable): String? = cameraId?.takeIf { CameraFailures.camera(failure) }
 
     override fun cameraLosses(): Flow<String> = losses
+
+    override fun busyOpens(): Flow<String> = busies
 
     /**
      * Review C7 I-2: each camera source's id when StreamPack 3.2.1 reports it open, previewing or streaming
