@@ -940,6 +940,35 @@ describe('court codes', () => {
     expect(snapshot().pairing).toMatchObject({ court: null, next: { label: 'Another v Match' } });
   });
 
+  // E2 (2026-11-17): a court's refused automatic start, as a beat brings it; native resets it with each pair.
+  it('lets a test set the court’s refused automatic start, and a fixture pair holds none', () => {
+    pair(COURT);
+    // An empty input: nothing is known before the first answer.
+    expect(snapshot().pairing?.autoRefusal).toBeNull();
+    engine.setPairing({ autoRefusal: 'no_destination' });
+    expect(snapshot().pairing).toMatchObject({ court: 'Court 2', autoRefusal: 'no_destination' });
+    expect(snapshot().refusal).toBeNull();
+    engine.send({ kind: 'unpair' });
+    pair(KIT_CODE_B);
+    expect(snapshot().pairing?.autoRefusal).toBeNull();
+    // A court's pair keeps what setPairing set for it, as it keeps next.
+    engine.send({ kind: 'unpair' });
+    pair(COURT);
+    expect(snapshot().pairing?.autoRefusal).toBe('no_destination');
+  });
+
+  // The session shape at Arming carries none, and the live beats omit it: after the match the court's line is calm.
+  it('drops the refused automatic start when a broadcast arms, and it stays gone after the Stop', () => {
+    pair(COURT);
+    engine.setPairing({ autoRefusal: 'unavailable' });
+    engine.send({ kind: 'start' });
+    expect(snapshot().pairing?.autoRefusal).toBeNull();
+    wait(1_000);
+    engine.send({ kind: 'stop' });
+    expect(state()).toEqual({ kind: 'paired' });
+    expect(snapshot().pairing?.autoRefusal).toBeNull();
+  });
+
   // O12 (owner, 2026-11-15): no one-tap Forget on a court's notification; a late tap is ignored, as native's.
   it('ignores the notification’s Forget on a court pairing, and keeps it paired', () => {
     pair(COURT);

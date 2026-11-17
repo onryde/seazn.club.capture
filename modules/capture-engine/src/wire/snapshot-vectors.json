@@ -1,5 +1,5 @@
 {
-  "about": "Native Snapshot → wire (SnapshotWireTest.kt) and wire → EngineSnapshot (snapshotWire.test.ts). A case's telemetry, pairing and broadcast are { ...base, ...case.wire.<field> } when an object. Every case is a snapshot native can send. telemetryKeys are the keys of telemetry, srt and heartbeat, which JS hands through unchanged. pairing.court is a court code's court name (court stream spec 2026-11-14 §6.1), null on a fixture's code; pairing.next is the beat's next streamed match {label, scheduledStart: epoch seconds or null}, or null. pairing.starting is true while the operator's Go live (POST start) waits for its answer in Paired, else false (court stream Task 13, P2). Change only with both.",
+  "about": "Native Snapshot → wire (SnapshotWireTest.kt) and wire → EngineSnapshot (snapshotWire.test.ts). A case's telemetry, pairing and broadcast are { ...base, ...case.wire.<field> } when an object. Every case is a snapshot native can send. telemetryKeys are the keys of telemetry, srt and heartbeat, which JS hands through unchanged. pairing.court is a court code's court name (court stream spec 2026-11-14 §6.1), null on a fixture's code; pairing.next is the beat's next streamed match {label, scheduledStart: epoch seconds or null}, or null. pairing.starting is true while the operator's Go live (POST start) waits for its answer in Paired, else false (court stream Task 13, P2). pairing.autoRefusal is the last waiting answer's word for a court's refused automatic start (capture-beat.v1 and capture-descriptor.v1 autoRefusal, E2 2026-11-17), as the server wrote it, or null. Change only with both.",
   "vocabulary": {
     "state": [
       "idle",
@@ -51,7 +51,15 @@
     "connectFailure": ["unresolved", "refused", "timeout", "other", "unheld", "camera"],
     "camera": ["own", "taken", "reopening", "resuming", "switching"],
     "thermal": ["none", "light", "moderate", "severe", "critical", "emergency", "shutdown"],
-    "scoreUpdates": ["realtime", "polled"]
+    "scoreUpdates": ["realtime", "polled"],
+    "autoRefusal": [
+      "no_destination",
+      "no_credit",
+      "not_entitled",
+      "destination_in_use",
+      "unavailable",
+      "competition_frozen"
+    ]
   },
   "telemetryKeys": {
     "telemetry": [
@@ -130,6 +138,7 @@
     "stageLabel": null,
     "court": null,
     "next": null,
+    "autoRefusal": null,
     "starting": false
   },
   "broadcastBase": {
@@ -575,6 +584,23 @@
         "codeEndedPending": false,
         "camera": "own",
         "reportedAtMs": 1790000010000,
+        "survivesBackground": true,
+        "telemetry": {}
+      }
+    },
+    {
+      "name": "paired-court-auto-refused",
+      "wire": {
+        "state": { "kind": "paired" },
+        "pairing": { "court": "Court 2", "autoRefusal": "destination_in_use" },
+        "broadcast": null,
+        "ready": { "camera": true, "sound": true, "network": true, "held": true },
+        "refusal": null,
+        "lastEnd": null,
+        "unpaired": null,
+        "codeEndedPending": false,
+        "camera": "own",
+        "reportedAtMs": 1790000011000,
         "survivesBackground": true,
         "telemetry": {}
       }

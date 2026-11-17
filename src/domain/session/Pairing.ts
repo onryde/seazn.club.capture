@@ -29,6 +29,19 @@ export function firstNotReady(ready: Readiness): NotReady | null {
 /** A court's next streamed match, from the beat's `next` (court stream spec 2026-11-14 §5.3). Display only. */
 export type NextMatch = { readonly label: string; readonly scheduledStart: Date | null };
 
+/**
+ * Why the server's automatic start of a court's match was refused: the waiting answer's `autoRefusal` (capture-beat.v1,
+ * E2, 2026-11-17), the word the Match Day court card shows. Display only, and apart from `Refusal`, which is the phone's
+ * own start's.
+ */
+export type AutoRefusal =
+  | 'no_destination'
+  | 'no_credit'
+  | 'not_entitled'
+  | 'destination_in_use'
+  | 'unavailable'
+  | 'competition_frozen';
+
 /** What the snapshot names the pairing by, and its waiting fields (amendment, The engine port). */
 export type PairingInfo = {
   readonly code: string;
@@ -50,6 +63,11 @@ export type PairingInfo = {
   readonly court: string | null;
   /** The court's next streamed match, from the last beat (§5.3); null when none. Display only. */
   readonly next: NextMatch | null;
+  /**
+   * Why the server refused the court's automatic start, from the last waiting answer (E2); null when none stands, or
+   * when native read a word it does not know. Display only: the court's paired line says it.
+   */
+  readonly autoRefusal: AutoRefusal | null;
   /**
    * The operator's Go live is waiting for the server's answer (`POST start` in flight), in Paired only (court stream
    * Task 13, P2). Native's fact (AGENTS §2): Go live shows "Starting…" and cannot be held until it clears.

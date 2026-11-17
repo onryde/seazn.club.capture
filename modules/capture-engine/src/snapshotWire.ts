@@ -1,4 +1,5 @@
 import type {
+  AutoRefusal,
   BroadcastInfo,
   Cause,
   LastEnd,
@@ -69,6 +70,14 @@ export const WIRE_VOCABULARY = {
   camera: new Set(['own', 'taken', 'reopening', 'resuming', 'switching']),
   thermal: new Set(['none', 'light', 'moderate', 'severe', 'critical', 'emergency', 'shutdown']),
   scoreUpdates: new Set(['realtime', 'polled']),
+  autoRefusal: new Set([
+    'no_destination',
+    'no_credit',
+    'not_entitled',
+    'destination_in_use',
+    'unavailable',
+    'competition_frozen',
+  ]),
 } as const;
 
 type Vocabulary = keyof typeof WIRE_VOCABULARY;
@@ -285,6 +294,14 @@ function toNext(value: unknown): NextMatch | null {
   return Number.isNaN(at.getTime()) ? null : { label: value.label, scheduledStart: at };
 }
 
+/**
+ * A court's refused automatic start (E2, 2026-11-17), display only as `next` is: one of the six words native writes, or
+ * none. Anything else is none and never makes the pairing malformed.
+ */
+function toAutoRefusal(value: unknown): AutoRefusal | null {
+  return word<AutoRefusal>('autoRefusal', value) ?? null;
+}
+
 /** Epoch seconds across the bridge (amendment, The engine port), a Date here. */
 function toPairing(value: Wire): PairingInfo | undefined {
   const { code, slot, tokenTag, automatic, label, venueTimezone, scheduledStart, autoAllowed } =
@@ -313,6 +330,7 @@ function toPairing(value: Wire): PairingInfo | undefined {
     stageLabel,
     court,
     next: toNext(value.next),
+    autoRefusal: toAutoRefusal(value.autoRefusal),
     starting: value.starting,
   };
 }

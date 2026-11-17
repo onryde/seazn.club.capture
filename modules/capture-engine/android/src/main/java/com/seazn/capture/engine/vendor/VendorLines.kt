@@ -11,12 +11,14 @@ package com.seazn.capture.engine.vendor
  * Device session 4, F-S4-1: StreamPack 3.2.1 has no public word that the camera device was lost; its
  * `CameraUtils.openCamera` logs it, and only it (the sources): `onDisconnected` warns "Camera $id has been
  * disconnected", `onError` errs "Camera $id is in error $error". Each is told to [cameraLost] with the camera's
- * id, after its line. A busy error, another app's take, is the open's own failure, read where the open fails.
+ * id, after its line. A busy error, another app's take, is no loss: N45, it is told to [busyOpen], because StreamPack
+ * can swallow the open it failed (a start's or a reopen's: "Error to add target stream", and it carries on).
  *
  * Imports nothing, so core's tests run it into a real record.
  */
 class VendorLines(
   private val cameraLost: (id: String) -> Unit = {},
+  private val busyOpen: (id: String) -> Unit = {},
   private val line: (level: String, fields: Map<String, Any?>) -> Unit,
 ) {
   fun e(tag: String, message: String, tr: Throwable?) = forward("error", tag, message, tr)
@@ -25,13 +27,14 @@ class VendorLines(
 
   private fun forward(level: String, tag: String, message: String, tr: Throwable?) {
     line(level, mapOf("tag" to tag, "message" to message, "error" to tr?.javaClass?.name))
-    if (tag == CAMERA_UTILS) lostCamera(message)?.let(cameraLost)
+    if (tag == CAMERA_UTILS) camera(message)
   }
 
-  private fun lostCamera(message: String): String? {
-    DISCONNECTED.matchEntire(message)?.let { return it.groupValues[1] }
-    val error = IN_ERROR.matchEntire(message) ?: return null
-    return error.groupValues[1].takeIf { error.groupValues[2].toIntOrNull() !in BUSY_ERRORS }
+  private fun camera(message: String) {
+    DISCONNECTED.matchEntire(message)?.let { return cameraLost(it.groupValues[1]) }
+    val error = IN_ERROR.matchEntire(message) ?: return
+    val id = error.groupValues[1]
+    if (error.groupValues[2].toIntOrNull() in BUSY_ERRORS) busyOpen(id) else cameraLost(id)
   }
 
   private companion object {

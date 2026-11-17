@@ -158,6 +158,90 @@ class BodiesTest {
     assertEquals(NextMatch("A v B", null), answeredBeat(200, body).reply?.waiting?.next)
   }
 
+  /** A waiting beat with [autoRefusal] spliced in as raw JSON, as the server would send it (E2, 2026-11-17). */
+  private fun withAutoRefusal(autoRefusal: String): HeartbeatResponse.Answered =
+    answeredBeat(200, beat("waiting").dropLast(1) + ""","autoRefusal":$autoRefusal}""")
+
+  @Test
+  fun `a court's autoRefusal is read - each of the six words the contract names`() {
+    // From capture-beat.v1's enum, written out by hand: never AutoRefusal.entries, which is what is judged.
+    val words =
+      mapOf(
+        "no_destination" to AutoRefusal.NO_DESTINATION,
+        "no_credit" to AutoRefusal.NO_CREDIT,
+        "not_entitled" to AutoRefusal.NOT_ENTITLED,
+        "destination_in_use" to AutoRefusal.DESTINATION_IN_USE,
+        "unavailable" to AutoRefusal.UNAVAILABLE,
+        "competition_frozen" to AutoRefusal.COMPETITION_FROZEN,
+      )
+    for ((word, expected) in words) assertEquals(expected, withAutoRefusal("\"$word\"").reply?.waiting?.autoRefusal, word)
+    assertEquals(6, words.size)
+    // Absent: no refusal, as on every fixture code and once a start succeeds or is in flight.
+    assertNull(answeredBeat(200, beat("waiting")).reply?.waiting?.autoRefusal)
+    // The waiting fields' one reader serves the descriptor too.
+    val fields = JSONObject(base).put("autoRefusal", "no_credit").plain()
+    assertEquals(AutoRefusal.NO_CREDIT, Bodies.waiting(fields, Environment.STAGING)?.autoRefusal)
+  }
+
+  /** Every `autoRefusal` enum in [node], however deep: the beat's sits under `$defs.answer`, the descriptor's at its root. */
+  private fun autoRefusalEnums(node: Any?): List<List<String>> =
+    when (node) {
+      is JSONObject ->
+        node.keys().asSequence().toList().flatMap { key ->
+          val child = node.get(key)
+          val words = (child as? JSONObject)?.optJSONArray("enum")?.takeIf { key == "autoRefusal" }
+          val here = if (words == null) emptyList() else listOf(List(words.length()) { words.getString(it) })
+          here + autoRefusalEnums(child)
+        }
+      is org.json.JSONArray -> List(node.length()) { node.get(it) }.flatMap { autoRefusalEnums(it) }
+      else -> emptyList()
+    }
+
+  @Test
+  fun `the six autoRefusal words are the vendored beat's and descriptor's enum, no more and no fewer`() {
+    // Fix round 1, M3: a re-vendor that adds a seventh word fails here, not silently as no refusal on the strip.
+    for (file in listOf("capture-beat.v1.json", "capture-descriptor.v1.json")) {
+      val enums = autoRefusalEnums(JSONObject(Vendored.text(file)))
+      assertEquals(1, enums.size, file)
+      assertEquals(6, enums.single().size, file)
+      assertEquals(enums.single().sorted(), AutoRefusal.entries.map { it.wire }.sorted(), file)
+      for (word in enums.single()) assertEquals(word, AutoRefusal.of(word)?.wire, "$file: $word")
+    }
+  }
+
+  @Test
+  fun `an autoRefusal is display only - an unknown word, a null or a non-string is no refusal, and the beat stays readable`() {
+    // The contract: "The phone reads an unknown word as no refusal." The phone's own Refusal words are not its words.
+    val bad = listOf("\"nope\"", "null", "5", "true", "{}", "[]", "\"\"", "\"NO_CREDIT\"", "\"no-credit\"", "\"start-failed\"", "\"unknown\"", "\"no_match\"")
+    for (word in bad) {
+      val reply = withAutoRefusal(word).reply
+      assertNull(reply?.waiting?.autoRefusal, word)
+      assertEquals("L", reply?.waiting?.label, word)
+      assertNull(reply?.waitingUnreadable, word)
+    }
+    assertEquals(12, bad.size)
+  }
+
+  @Test
+  fun `the web's autoRefusal fixtures - each word read, an unknown or null word is no refusal and the answer stands`() {
+    fun beatFixture(name: String) =
+      assertIs<HeartbeatResponse.Answered>(Bodies.beat(200, Vendored.text("fixtures/capture-beat.v1/$name.json"), null, Environment.STAGING)).reply?.waiting
+    fun codeFixture(name: String) =
+      assertIs<CodeAnswer.Waiting>(Bodies.code(200, Vendored.text("fixtures/capture-descriptor.v1/$name.json"), null, Environment.STAGING)).waiting
+    assertEquals(AutoRefusal.DESTINATION_IN_USE, beatFixture("answer-valid-waiting-autoRefusal")?.autoRefusal)
+    assertEquals(AutoRefusal.COMPETITION_FROZEN, codeFixture("valid-waiting-autoRefusal").autoRefusal)
+    for (name in listOf("answer-invalid-waiting-autoRefusal-unknown", "answer-invalid-null-waiting-autoRefusal")) {
+      val read = beatFixture(name)
+      assertNull(read?.autoRefusal, name)
+      assertEquals("Match 3", read?.label, name)
+    }
+    for (name in listOf("invalid-waiting-autoRefusal-unknown", "invalid-null-waiting-autoRefusal")) {
+      val read = codeFixture(name)
+      assertNull(read.autoRefusal, name)
+      assertEquals("Northside Hawks v Riverside Rovers", read.label, name)
+    }
+  }
+
   @Test
   fun `the waiting fields' lower edges are read - a scheduled start of 1 and a poll of 5`() {
     val fields = JSONObject(base).put("scheduledStart", 1).put("pollSeconds", 5).plain()

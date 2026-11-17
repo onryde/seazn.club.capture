@@ -220,27 +220,31 @@ class GlueRulesTest {
     val calls = Regex("""\bStreamerAdapter\(""").findAll(build).toList()
     assertEquals(1, calls.size, "one capture built")
     val args = arguments(build, calls.single().range.last)
-    assertTrue(args.trimEnd().endsWith("pose::side, cameraLosses)"), "the side supplier is the pose watch's: $args")
+    assertTrue(args.trimEnd().endsWith("pose::side, cameraLosses, busyOpens)"), "the side supplier is the pose watch's: $args")
     for (side in listOf("Side.LEFT", "Side.RIGHT")) assertFalse(side in glue("EngineHost.kt"), "EngineHost names $side")
   }
 
   /**
    * Device session 4, F-S4-1: StreamPack's camera-loss lines reach the capture's watch, through the one flow the
    * build makes: StreamPack's logger is the build's `VendorLines`, which tells the flow each loss, and the capture
-   * is given that flow and hands it to the run; a start's failure is read by the core's `CameraFailures`. The run's
-   * side is CaptureRunTest's; this is the wiring no JVM test reaches.
+   * is given that flow and hands it to the run; a start's failure is read by the core's `CameraFailures`. N45: its busy
+   * errors reach the run the same way, through a flow of their own. The run's side is CaptureRunTest's; this is the
+   * wiring no JVM test reaches.
    */
   @Test
   fun `F-S4-1 StreamPack's camera-loss lines reach the capture's watch, and a start's failure is the core's reading`() {
     val build = hostBuild()
     assertTrue(Regex("""val cameraLosses = MutableSharedFlow<String>\(""").containsMatchIn(build), "the build makes the flow")
-    assertTrue("val vendor = VendorLines({ id -> cameraLosses.tryEmit(id) })" in build, "each loss is told to it")
+    assertTrue(Regex("""val busyOpens = MutableSharedFlow<String>\(""").containsMatchIn(build), "N45: and the busy opens' flow")
+    assertTrue("val vendor = VendorLines({ id -> cameraLosses.tryEmit(id) }, { id -> busyOpens.tryEmit(id) })" in build, "each loss, and each busy open, is told to its own")
     assertTrue("Logger.logger = VendorLogger(vendor)" in build, "StreamPack's logger is that VendorLines")
     val capture = Regex("""\bStreamerAdapter\(""").findAll(build).single()
-    assertTrue(arguments(build, capture.range.last).trimEnd().endsWith(", cameraLosses)"), "the capture is given it")
+    assertTrue(arguments(build, capture.range.last).trimEnd().endsWith(", cameraLosses, busyOpens)"), "the capture is given both")
     val adapter = glue("StreamerAdapter.kt")
     assertTrue("private val losses: Flow<String>," in adapter, "the adapter takes it")
     assertTrue("override fun cameraLosses(): Flow<String> = losses" in adapter, "and hands it to the run")
+    assertTrue("private val busies: Flow<String>," in adapter, "N45: the adapter takes the busy opens")
+    assertTrue("override fun busyOpens(): Flow<String> = busies" in adapter, "and hands them to the run")
     assertTrue("override fun cameraFailed(failure: Throwable): String? = cameraId?.takeIf { CameraFailures.camera(failure) }" in adapter, "the core's reading")
   }
 
@@ -290,7 +294,7 @@ class GlueRulesTest {
     val started = build.indexOf("startWatchers(app, cameras,")
     assertTrue(started > build.indexOf("core.start()") && started < build.indexOf("return Parts("), "the watchers start after core.start() and before the build returns")
     val watchers = glue("EngineHost.kt").substringAfter("private fun startWatchers(")
-    assertTrue("CameraWatch(app, cameras, report, toCore).start()" in watchers, "CameraWatch is fed the same instance and started")
+    assertTrue("CameraWatch(app, cameras, report, toCore, capture::cameraMayBeFree).start()" in watchers, "CameraWatch is fed the same instance and started")
   }
 
   /**
@@ -818,6 +822,57 @@ class GlueRulesTest {
     val view = glue("CapturePreviewView.kt")
     val failed = Regex("""override fun onPreviewFailed\(t: Throwable\) \{\s+failed\("open", t\)\s+guarded\("open"\) \{ EngineHost\.capture\(context\)\.previewFailed\(t\) \}""")
     assertEquals(1, failed.findAll(view).count(), "the preview's open failure is recorded and reaches the capture, guarded")
+  }
+
+  /**
+   * N45: the slate goes on air with silent audio and comes down with the mic back (decision 7). On air the reopen
+   * swaps our camera back in before the machine takes the slate down (CaptureRun: `ReopenCamera`, then
+   * `Slate(false)` once the reopen is answered), so the slate's end finds a camera source already: nothing returns
+   * between the source check and the mic, or it stayed silent for the rest of the broadcast. Review M2: the mic comes
+   * back after the swap to our camera, never over the slate; it goes silent before the slate goes up.
+   */
+  @Test
+  fun `N45 the slate's end gives the mic back after our camera is the source, even when the reopen already swapped it in`() {
+    val slate = body(glue("StreamerAdapter.kt"), "override suspend fun slate(on: Boolean)")
+    val mute = slate.indexOf("if (on) held.audioInput.isMuted = true")
+    val check = slate.indexOf("val onSlate = held.videoInput.sourceFlow.value !is ICameraSource")
+    val swap = slate.indexOf("held.setVideoSource(CameraSourceFactory(it))")
+    val unmute = slate.indexOf("if (!on) held.audioInput.isMuted = false")
+    assertTrue(mute in 0 until check, "silent before the slate goes up: $slate")
+    assertTrue(check in 0 until swap && swap < unmute, "the mic back after the swap to our camera: $slate")
+    assertFalse(Regex("""\breturn\b""").containsMatchIn(code(slate.substring(check, unmute))), "nothing returns before the mic: $slate")
+    assertEquals(2, Regex("""\bisMuted\b""").findAll(glue("StreamerAdapter.kt")).count(), "only the slate sets it")
+  }
+
+  /**
+   * N45 I1 (fix round 1): a take is probed while the slate is up, with Camera2's own open of our camera, never beside
+   * a camera source of StreamPack's; the probe answers once the device is closed, closes every device it gets, and is
+   * bounded. CameraWatch tells the probe at once on a camera's available and on Camera2's change of access
+   * priorities, each guarded, so a throw is recorded, never fatal on the main looper.
+   */
+  @Test
+  fun `N45 I1 the take's probe opens our camera with Camera2 beside no source of ours, bounded, and CameraWatch nudges it`() {
+    val adapter = glue("StreamerAdapter.kt")
+    assertTrue("private val probe = CameraProbe(context.cameraManager, context.mainExecutor)" in adapter, "one probe")
+    val parts = body(adapter, "override suspend fun probeCamera(): Probe?")
+    val guard = parts.indexOf("if (held.videoInput.sourceFlow.value is ICameraSource) return null")
+    assertTrue(guard in 0 until parts.indexOf("return probe.open(id)"), "never beside StreamPack's camera source: $parts")
+    assertTrue("fun cameraMayBeFree() = run.mayBeFree()" in adapter, "the watch's word reaches the run")
+
+    val probe = glue("CameraProbe.kt")
+    val answer = probe.indexOf("withTimeoutOrNull(Probe.BOUND_MS) { closed.await() }?.let { return it }")
+    val settle = probe.indexOf("withTimeoutOrNull(Probe.SETTLE_MS) { closed.await() }")
+    val timeout = probe.indexOf("return Probe.Refused(\"timeout\")")
+    assertTrue(answer in 0 until settle && settle < timeout, "bounded, and a timed-out open's close awaited, bounded, before the queue moves on (R1-M2)")
+    for (callback in listOf("onOpened(device: CameraDevice)", "onDisconnected(device: CameraDevice)", "onError(device: CameraDevice, error: Int)")) {
+      assertTrue("device.close()" in body(probe, "override fun $callback"), "$callback closes the device")
+    }
+    assertTrue("override fun onClosed(device: CameraDevice) {" in probe && "closed.complete(" in body(probe, "override fun onClosed(device: CameraDevice)"), "answered once closed")
+    assertTrue(Regex("""catch \(e: CameraAccessException\) \{\s+return Probe\.refusedOnAccess\(e\.reason\)""").containsMatchIn(probe), "a refused open is an answer")
+
+    val watch = glue("CameraWatch.kt")
+    assertTrue(Regex("""override fun onCameraAvailable\(cameraId: String\) \{\s+guarded \{ rule\.available\(cameraId, SystemClock\.elapsedRealtime\(\)\) \}\s+guarded \{ nudged\(\) \}""").containsMatchIn(watch), "an available nudges, guarded")
+    assertTrue("override fun onCameraAccessPrioritiesChanged() = guarded { nudged() }" in watch, "Camera2's priorities nudge, guarded")
   }
 
   /**

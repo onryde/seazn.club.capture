@@ -14,11 +14,18 @@ import com.seazn.capture.engine.core.SessionMachine
 import com.seazn.capture.engine.core.Side
 import java.io.IOException
 import java.util.concurrent.TimeoutException
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
@@ -37,6 +44,8 @@ class CaptureRun(
   private val calls: CoreCalls,
   private val side: () -> Side,
   private val scope: CoroutineScope,
+  /** N45 I1: the monotonic clock in ms, which spaces the probe's record lines; the test's virtual clock in core's tests. */
+  private val monoMs: () -> Long = { System.nanoTime() / 1_000_000 },
 ) {
   private val serial = CaptureSerial(scope, calls.failure)
 
@@ -73,14 +82,68 @@ class CaptureRun(
   private var lossRebuilds = 0
   private var lossGaveUp = false
 
+  /** N45 I1: the take's probe ([probeWhileSlated]), from the slate's rise to its fall. */
+  private var probing: Job? = null
+
+  /** N45 I1: a word that the camera may be free now ([mayBeFree]): the next probe goes at once. */
+  private val nudges = Channel<Unit>(Channel.CONFLATED)
+
+  /** Re-review 2 (R2-M1 ruling): the app's return to the foreground ([foreground]): the next probe goes at once, backed off too. */
+  private val returns = Channel<Unit>(Channel.CONFLATED)
+
+  /** Re-review 2 (R2-M2 ruling): Stops and unpairs asked ([abandonProbe]); a probe queued before the last of them is never made. */
+  private val abandons = AtomicInteger()
+
+  /** Re-review 2 (R2-M2 ruling): the probe the queue is making now, which [abandonProbe] cancels. */
+  @Volatile private var probeInFlight: Job? = null
+
+  /** N45 I1: refused probes since the last that opened, and when the last line of them was written. */
+  private var probeFails = 0
+  private var probeLineAt: Long? = null
+
+  /**
+   * N45 I1, review M1: when a probe last told a take over, and how many takes came back within [RETAKE_MS] of one. The
+   * count is written on the queue and read by the probing ([awaitTurn]).
+   */
+  private var probeReleasedAt: Long? = null
+  @Volatile private var quickRetakes = 0
+
   fun open(asked: PairRequest) = serial.submit { opened(asked) }
 
-  fun close() = serial.submit { closed() }
+  /** Re-review 2 (R2-M2 ruling): the unpair never waits behind a probe ([abandonProbe]). */
+  fun close() {
+    serial.submit { closed() }
+    abandonProbe()
+  }
 
-  fun execute(command: Command) = serial.submit { run(command) }
+  /**
+   * Re-review 2 (R2-M2 ruling): nor does Stop, or an end. Anything else waits for a probe's answer, a reconnect's Connect
+   * included, so a probe never runs beside a reopen or a build of ours. Queued before the probe is abandoned, so a probe
+   * queued after it waits behind it, and one queued before it is never made or ends ([probeUnlessAbandoned]).
+   */
+  fun execute(command: Command) {
+    serial.submit { run(command) }
+    if (command == Command.StopBroadcast || command is Command.End) abandonProbe()
+  }
 
-  /** Re-review 4 cap: the app came back to the foreground, which re-arms the camera's loss rebuilds ([rearm]). */
-  fun foreground() = serial.submit { rearm() }
+  /**
+   * Re-review 4 cap: the app came back to the foreground, which re-arms the camera's loss rebuilds ([rearm]). N45 I1:
+   * and the camera may be free: the operator's return is the likeliest moment its holder let it go. Re-review 2 (R2-M1
+   * ruling): the operator is there, so a take's next probe goes at once even when backed off ([awaitTurn]): one per
+   * return, never a loop.
+   */
+  fun foreground() {
+    serial.submit { rearm() }
+    returns.trySend(Unit)
+  }
+
+  /**
+   * N45 I1: a word that our camera may be free now (Camera2's available for a camera, its access priorities' change):
+   * while a take holds the slate up, the next probe goes at once. Any thread; nothing otherwise.
+   */
+  fun mayBeFree() {
+    nudges.trySend(Unit)
+  }
 
   /** N2: never two streamers. One already held serves the new pairing, which its failures now name. */
   private suspend fun opened(asked: PairRequest) {
@@ -107,7 +170,8 @@ class CaptureRun(
    * ours, and the take told over, once StreamPack reports its source open. The watch starts after
    * [CameraAvailability.opening]: the sources' flows keep their state, so an open that came first is seen.
    * Every build follows a release, or none, so no watch is running here; [closed] ends this one. F-S4-1: the
-   * same watch hears StreamPack's word that the camera was lost, and hands it to the queue ([lostByDevice]).
+   * same watch hears StreamPack's word that the camera was lost, and hands it to the queue ([lostByDevice]); N45:
+   * and its word that an open of it failed busy ([busyByDevice]).
    */
   private fun watchOpens(camera: String) {
     cameras.opening(camera)
@@ -120,6 +184,20 @@ class CaptureRun(
             serial.submit(::openSeen)
           }
         }
+        // N45 I2: the busy word is marked as it is heard, before its take is queued: StreamPack's report of the same
+        // failed open, if it makes one, comes on the opens' flow, and is no open once marked. Review R1-I2: on air only.
+        // Re-review R2-M3, javap (3.2.1): the preview and the stream alike report the source open once
+        // `CameraController.addTarget` returns, and it swallows a failure of its session, not of the device's own open,
+        // so which busy failures report an open is device-only. On air such a report told the take over and the machine
+        // reopened into the hold (review probe A). Off air nothing reconnects, and a false open costs at most a start
+        // that meets busy, which is probed (R2-I1); marked off air, the preview's own restart could never tell an
+        // error-2 take over once the holder let go, and Go live stayed off (re-review probe G).
+        launch {
+          parts.busyOpens().collect { id ->
+            if (attempt != null) cameras.busyOpen(id)
+            serial.submit { busyByDevice(id) }
+          }
+        }
         parts.cameraLosses().collect { id -> serial.submit { lostByDevice(id) } }
       }
   }
@@ -127,14 +205,172 @@ class CaptureRun(
   /**
    * Device session 4, F-S4-1: StreamPack lost our camera (Camera2 disconnected it, or put it in a device error). It
    * reads not ready ([CameraAvailability.lost]), so the Armed gate holds the go-live, and, with nothing on air, it is
-   * built afresh. With an attempt held the loss is marked only: the attempt's own paths decide (StreamPack opens
-   * the camera again at a start, and a start the camera fails builds it afresh), so the capture never cuts a
-   * broadcast on its own guess. Another camera's loss, or one after the release, is nothing.
+   * built afresh. Another camera's loss, or one after the release, is nothing.
+   *
+   * N45 (device check 2026-11-17): with an attempt held it is another app's take. An app that opens OUR camera evicts
+   * us, and Camera2 says so only as this disconnect, so the availability watch never told it; the machine kept the
+   * camera ours and its stall watchdog reconnected the uplink every few seconds, which no reconnect could cure. Told
+   * as a take, the machine puts the slate up in the camera's place and holds the watchdog (F-P5-10, decision 7), and
+   * the holder's release reopens it. Never a rebuild: the capture never cuts a broadcast on its own guess. A camera
+   * service that restarts reads the same, and its cameras' return is the release.
    */
   private suspend fun lostByDevice(camera: String) {
     if (!cameras.lost(camera)) return
     calls.line(RecordEntry("camera-lost", listOf("from" to "device", "attempt" to attempt)))
-    if (attempt == null) rebuildLost()
+    if (attempt == null) return rebuildLost()
+    tellTaken(camera)
+  }
+
+  /**
+   * N45: StreamPack's open of our camera failed busy while an attempt is held: a start's or a reopen's, which 3.2.1
+   * logs and carries on from ("Error to add target stream"), so nothing else says so. Another app holds it: a take,
+   * as [lostByDevice]'s. The device check's reconnects each met it (15:19:40 and 15:19:46Z), and a reopen told by our
+   * own eviction's "available" can meet it too. With nothing on air it is the open's own failure, which the build,
+   * the preview and the start read where it fails (I4, I-2), so nothing is done here.
+   */
+  private fun busyByDevice(camera: String) {
+    if (attempt == null || !cameras.lost(camera)) return
+    calls.line(RecordEntry("camera-lost", listOf("from" to "busy", "attempt" to attempt)))
+    tellTaken(camera)
+  }
+
+  /**
+   * N45: the take told once. Review M1: one that comes back within [RETAKE_MS] of a probe telling the last one over is
+   * a camera that fails as it opens, not a holder; after [QUICK_RETAKES] such, the probe waits [PROBE_SLOW_MS].
+   */
+  private fun tellTaken(camera: String) {
+    val told = cameras.taken(camera) ?: return
+    val released = probeReleasedAt
+    quickRetakes = if (released != null && monoMs() - released < RETAKE_MS) quickRetakes + 1 else 0
+    probeReleasedAt = null
+    calls.report(told)
+  }
+
+  /**
+   * N45 I1 (review, probe B): a take's only release was an available for the camera the other app held, which may never
+   * come: a holder on an id hidden from our watch (the device check's error 2), or ours made available once, by our
+   * own eviction. So while the slate is up the capture asks Camera2 itself whether our camera opens
+   * ([CaptureParts.probeCamera]): every [PROBE_EVERY_MS], and at once on a word that it may be free ([mayBeFree],
+   * [foreground]). A probe that opens it tells the take over and the machine reopens it; a refused one keeps the slate.
+   * Never the transport: nothing here rebuilds, reconnects or stops. It ends itself once no take is told or there is
+   * nothing to probe (StreamPack holds a camera source again, or nothing is held), so a release needs no cancel; Stop
+   * and unpair end it at once ([probeUnlessAbandoned]).
+   */
+  private fun probeWhileSlated() {
+    probeFails = 0
+    probeLineAt = null
+    heard() // review R1-I1: a word from before this slate is no news of its take; re-review 2: nor is a return
+    probing =
+      scope.launch {
+        do {
+          delay(PROBE_GAP_MS)
+          awaitTurn()
+          heard() // re-review 2: the probe answers every word heard before it, a return and Camera2's alike
+          val asked = abandons.get()
+          val going = CompletableDeferred<Boolean>()
+          serial.submit {
+            var more = false
+            try {
+              more = probeUnlessAbandoned(asked)
+            } finally {
+              going.complete(more)
+            }
+          }
+        } while (going.await())
+      }
+  }
+
+  /**
+   * The next probe's turn: [PROBE_EVERY_MS] after the last, or at once on a word that the camera may be free. Review
+   * R1-I1: backed off, it is [PROBE_SLOW_MS], a floor no word of Camera2's shortens: Camera2 announces our camera
+   * available at every close of it, each loss's and each probe's, and those words brought a camera that fails at every
+   * open back about once a second. Re-review 2 (R2-M1 ruling): the app's return goes through the floor, since the
+   * operator is there; the floor holds again after its probe.
+   */
+  private suspend fun awaitTurn() {
+    val slow = backedOff()
+    withTimeoutOrNull((if (slow) PROBE_SLOW_MS else PROBE_EVERY_MS) - PROBE_GAP_MS) {
+      select<Unit> {
+        returns.onReceive {}
+        if (!slow) nudges.onReceive {}
+      }
+    }
+  }
+
+  /** The words heard so far, taken: the next probe answers them. */
+  private fun heard() {
+    nudges.tryReceive()
+    returns.tryReceive()
+  }
+
+  private fun backedOff(): Boolean = quickRetakes >= QUICK_RETAKES
+
+  /**
+   * Re-review 2 (R2-M2 ruling): one probe ([probeTake]) on the queue, which Stop and unpair abandon ([abandonProbe]): one
+   * asked since this probe was queued means it is never made, and one asked while it waits for Camera2's answer ends the
+   * wait, so neither waits behind it (up to [Probe.BOUND_MS] and then [Probe.SETTLE_MS]). Camera2 cannot cancel an open
+   * it was asked for: `CameraProbe`'s callbacks close it as it lands. False when abandoned, which ends the probing.
+   */
+  private suspend fun probeUnlessAbandoned(asked: Int): Boolean =
+    coroutineScope {
+      val probe = async(start = CoroutineStart.LAZY) { probeTake() }
+      probeInFlight = probe
+      try {
+        if (abandons.get() != asked) probe.cancel()
+        probe.await()
+      } catch (e: CancellationException) {
+        false // abandoned; the queue's own end still ends it, since a cancelled scope throws as it closes
+      }
+    }
+
+  /** Re-review 2 (R2-M2 ruling): any thread. Set before the probe in flight is read, so a probe starting now sees one or the other. */
+  private fun abandonProbe() {
+    abandons.incrementAndGet()
+    probeInFlight?.cancel()
+  }
+
+  /** The slate's: each slate starts its probing afresh, never on the last one's count and 30 s (see [slate]). */
+  private fun stopProbing() {
+    probing?.cancel()
+    probing = null
+  }
+
+  /** N45 I1: one probe, on the queue, so never beside a reopen or a build of ours. False ends the probing. */
+  private suspend fun probeTake(): Boolean {
+    if (!cameras.oursTaken()) return false
+    val found =
+      try {
+        parts.probeCamera() ?: return false
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        Probe.Refused(e.javaClass.simpleName) // a probe's throw is a refusal, never the session's failure
+      }
+    return when (found) {
+      is Probe.Refused -> refused(found.error)
+      is Probe.Opened -> opened(found.cameraId)
+    }
+  }
+
+  /** N45 I1: a refused probe keeps the slate. One line at the first, then one each [PROBE_LINE_MS], with the count. */
+  private fun refused(error: String): Boolean {
+    probeFails += 1
+    val now = monoMs()
+    if (probeLineAt?.let { now - it < PROBE_LINE_MS } != true) {
+      probeLineAt = now
+      calls.line(RecordEntry("camera-probe", listOf("ok" to false, "error" to error, "failures" to probeFails)))
+    }
+    return true
+  }
+
+  /** N45 I1: the probe opened our camera: the take is told over, and the machine reopens it under the slate. */
+  private fun opened(camera: String): Boolean {
+    calls.line(RecordEntry("camera-probe", listOf("ok" to true, "failures" to probeFails)))
+    cameras.probed(camera)?.let { released ->
+      probeReleasedAt = monoMs()
+      calls.report(released)
+    }
+    return false
   }
 
   /**
@@ -249,7 +485,7 @@ class CaptureRun(
       is Command.SetMaxBw -> parts.maxBw(command.attemptId, command.bytesPerSecond)
       Command.SwitchCamera -> parts.switchCamera()
       Command.ReopenCamera -> reopen()
-      is Command.Slate -> parts.slate(command.on)
+      is Command.Slate -> slate(command.on)
       Command.StopBroadcast, is Command.End -> stopBroadcast()
       else -> Unit // HTTP, the store, permissions, the service and record lines are BridgeCore's or the keeper's
     }
@@ -286,6 +522,17 @@ class CaptureRun(
       else -> rebuild("reopen")
     }
     if (parts.held) calls.report(Input.CameraReopened(true))
+  }
+
+  /**
+   * N45 I1: the slate, and the probe of the take it stands for while it is up. Each slate ends the last one's
+   * probing, which may still wait for its next step (a take told over by an available or an open seen), so the
+   * next take's first refusal is written with its own count.
+   */
+  private suspend fun slate(on: Boolean) {
+    parts.slate(on)
+    stopProbing()
+    if (on) probeWhileSlated()
   }
 
   private fun nothingHeld(connect: Command.Connect) {
@@ -382,7 +629,7 @@ class CaptureRun(
    * so a late drop of it is no second report (R3).
    */
   private fun busyAtStart(id: Int, camera: String, failure: Exception) {
-    cameras.waiting(camera)
+    cameras.busyAtStart(camera)
     request?.let(calls.cameraBusy)
     if (signals.connectFailed(id, failure) != null) calls.report(Input.ConnectFailed(id, ConnectFailure.UNHELD, "camera busy"))
   }
@@ -449,6 +696,7 @@ class CaptureRun(
   /** The broadcast ends; the pairing, the camera and the viewfinder stay (amendment, _States_). */
   private suspend fun stopBroadcast() {
     attempt?.let { stopHeld(it) }
+    cameras.offAir()
     parts.afterBroadcast()
   }
 
@@ -466,6 +714,22 @@ class CaptureRun(
      * rebuild and two lines every RETRY_MS while Paired, draining battery and record space.
      */
     const val MAX_LOSS_REBUILDS = 5
+
+    /** N45 I1 (controller's ruling, fix round 1): a take is probed every 5 s while the slate is up. */
+    const val PROBE_EVERY_MS = 5_000L
+
+    /** N45 I1: the least time between two probes, a word's included, so a burst of words is one probe a second. */
+    const val PROBE_GAP_MS = 1_000L
+
+    /** N45 I1: a refused probe's line, at the first and then at most one in this long (the ruling: first + every 30 s). */
+    const val PROBE_LINE_MS = 30_000L
+
+    /** Review M1: a take told this soon after a probe told the last one over is a retake: the camera failed as it opened. */
+    const val RETAKE_MS = 10_000L
+
+    /** Review M1: after this many retakes in a row, the probe waits [PROBE_SLOW_MS]; a word that the camera may be free still probes at once. */
+    const val QUICK_RETAKES = 3
+    const val PROBE_SLOW_MS = 30_000L
 
     /** The cause chain read for a start's failure, as `SrtOptions` and the adapter read it. */
     private const val MAX_CAUSES = 8

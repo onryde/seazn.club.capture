@@ -134,6 +134,7 @@ const OVER_NARROW: Readonly<Record<string, readonly string[]>> = {
     'stream.status.cameraReopening',
     'stream.status.cameraTaken',
     'stream.status.courtNextAt',
+    'stream.status.courtRefusedDestination',
     'stream.status.engineSilent',
     'stream.status.goingLiveOrganiser',
     'stream.status.holdingNotDelivered',
@@ -153,7 +154,10 @@ const OVER_NARROW: Readonly<Record<string, readonly string[]>> = {
     'stream.advisory.notCharging',
     'stream.leaveOnAir',
     'stream.status.cameraTaken',
+    'stream.status.courtDestinationBusy',
+    'stream.status.courtFrozen',
     'stream.status.courtNextAt',
+    'stream.status.courtRefusedDestination',
     'stream.status.engineSilent',
     'stream.status.fellBack',
     'stream.status.holdingNotDelivered',
@@ -187,8 +191,8 @@ describe('the strip’s one message line, measured in every language (owner, 202
     expect(AT_804).toBe(462);
   });
 
-  it('measures 48 status strings and 5 captions in each of the four languages, and every glyph is in the font', () => {
-    // Anti-vacuity: the table is the whole copy, not a sample. 47 `stream.status.*` keys and Back's refusal; the
+  it('measures 52 status strings and 5 captions in each of the four languages, and every glyph is in the font', () => {
+    // Anti-vacuity: the table is the whole copy, not a sample. 51 `stream.status.*` keys and Back's refusal; the
     // captions are keep the app open, not charging, and heat's three (the spec's, which names What viewers see, and
     // "Phone hot · still live" and "Phone hot" with the view hidden: the owner's ruling, 2026-10-09).
     for (const [lang] of LANGUAGES) {
@@ -196,15 +200,15 @@ describe('the strip’s one message line, measured in every language (owner, 202
       expect(
         rows.filter((row) => row.kind === 'status'),
         lang,
-      ).toHaveLength(48);
+      ).toHaveLength(52);
       expect(
         rows.filter((row) => row.kind === 'caption'),
         lang,
       ).toHaveLength(5);
     }
-    expect(REALISTIC).toHaveLength(4 * 53);
+    expect(REALISTIC).toHaveLength(4 * 57);
     // The destination variants add two rows to the waiting line in each language.
-    expect(ROWS).toHaveLength(4 * 53 + 4 * 2);
+    expect(ROWS).toHaveLength(4 * 57 + 4 * 2);
     // A code point the font lacks is measured as its .notdef: the width would be wrong. None is missing.
     const missing = new Set<string>();
     for (const row of ROWS) {
@@ -254,10 +258,11 @@ describe('the strip’s one message line, measured in every language (owner, 202
     for (const row of over) byLanguage[row.lang]?.push(row.key);
     for (const keys of Object.values(byLanguage)) keys.sort();
     expect(byLanguage).toEqual(OVER_NARROW);
-    // 63 strings: 10 en, 18 es, 18 fr, 17 nl (court stream added the Next line with its time, one per language, and the
-    // start's no_match refusal, cut in es, fr and nl).
-    expect(over).toHaveLength(63);
-    expect(Object.values(OVER_NARROW).map((keys) => keys.length)).toEqual([10, 18, 18, 17]);
+    // 67 strings: 10 en, 18 es, 19 fr, 20 nl (court stream added the Next line with its time, one per language, and the
+    // start's no_match refusal, cut in es, fr and nl; E2 the court's refused automatic start, three lines cut in nl and
+    // the destination one in fr).
+    expect(over).toHaveLength(67);
+    expect(Object.values(OVER_NARROW).map((keys) => keys.length)).toEqual([10, 18, 19, 20]);
   });
 
   it('has strings on BOTH sides of 298 dp, so the line above can neither be everything nor nothing (anti-vacuity)', () => {
@@ -276,6 +281,26 @@ describe('the strip’s one message line, measured in every language (owner, 202
     // N35: both are inside the owner's phone's 386 too.
     expect(widest('caption').width).toBeLessThan(PHONE);
     expect(widest('status').width).toBeLessThan(PHONE);
+  });
+
+  // E2 (2026-11-17): the four lines that say why the server refused a court's automatic start are each ONE line at the
+  // owner's phone's 386 dp in all four languages, named here so the sweep above can never miss them. The widest, as
+  // measured, is the French destination one at 325.6.
+  it('fits the court’s refused automatic start lines on ONE line at 386 dp in all four languages', () => {
+    const keys = [
+      'stream.status.courtRefusedDestination',
+      'stream.status.courtDestinationBusy',
+      'stream.status.courtFrozen',
+      'stream.status.courtStartRetrying',
+    ];
+    const rows = REALISTIC.filter((row) => keys.includes(row.key));
+    expect(rows).toHaveLength(16);
+    for (const row of rows) expect(row.width, name(row)).toBeLessThanOrEqual(PHONE);
+    const widest = rows.reduce((a, b) => (b.width > a.width ? b : a));
+    expect([name(widest), Math.round(widest.width * 10) / 10]).toEqual([
+      'fr stream.status.courtRefusedDestination',
+      325.6,
+    ]);
   });
 
   // Court stream (capture-start.v1's 409 no_match): the start's refusal refusal is ONE line at the owner's phone's 386 dp in all four languages, named

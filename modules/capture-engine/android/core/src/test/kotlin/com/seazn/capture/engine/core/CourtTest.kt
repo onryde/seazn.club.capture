@@ -228,6 +228,59 @@ class CourtTest {
     assertNull(rig.snapshot.refusal, "the retry cleared it")
   }
 
+  private val MachineRig.autoRefusal: AutoRefusal?
+    get() = snapshot.pairing?.waiting?.autoRefusal
+
+  /**
+   * E2 (2026-11-17): the server's refused automatic start of the court's match rides each waiting beat while it stands.
+   * It is shown, never acted on, and it is not the phone's own start refusal: that one is [Snapshot.refusal], which the
+   * phone's next start clears; this one only the server's answers move.
+   */
+  @Test
+  fun `a court's refused automatic start is the last waiting answer's, apart from the phone's own refusal`() {
+    val rig = MachineRig(request = court())
+    rig.codes = { if (rig.phase is Phase.Arming) CodeAnswer.Open("sess_42", "warming", Configs.descriptor(), Configs.waiting().copy(courtName = "Court 2")) else null }
+    rig.paired()
+    assertNull(rig.autoRefusal, "nothing is known before the first answer")
+    rig.heard(Configs.waiting().copy(venueTimezone = "", autoRefusal = AutoRefusal.NO_DESTINATION))
+    assertEquals(AutoRefusal.NO_DESTINATION, rig.autoRefusal)
+    assertNull(rig.snapshot.refusal, "the phone's own start was never refused")
+    assertIs<Phase.Paired>(rig.phase, "shown, never acted on")
+    // Four questions (3): a beat that fails says nothing new, so the refusal held stands.
+    repeat(240) { if (rig.phase.beating?.heartbeat?.inFlightId == null) rig.advance(500) }
+    rig.send(Input.HeartbeatAnswered(rig.phase.beating!!.heartbeat.inFlightId!!, HeartbeatResponse.Answered(503)))
+    assertEquals(AutoRefusal.NO_DESTINATION, rig.autoRefusal)
+    // The server retries every 60 s: the next answer may name another word, and one with none clears it.
+    rig.heard(Configs.waiting().copy(venueTimezone = "", autoRefusal = AutoRefusal.UNAVAILABLE))
+    assertEquals(AutoRefusal.UNAVAILABLE, rig.autoRefusal)
+    rig.heard(Configs.waiting().copy(venueTimezone = ""))
+    assertNull(rig.autoRefusal)
+    // A start in flight: the server omits it on the go-live beat, and the session shape at Arming carries none.
+    rig.heard(Configs.waiting().copy(venueTimezone = "", autoRefusal = AutoRefusal.NO_CREDIT))
+    assertEquals(AutoRefusal.NO_CREDIT, rig.autoRefusal)
+    rig.heard(Configs.waiting().copy(venueTimezone = ""), "go-live", "sess_42")
+    assertIs<Phase.Armed>(rig.phase)
+    assertNull(rig.autoRefusal)
+  }
+
+  /**
+   * Fix round 1, M2: the operator's own Go live sends no go-live beat, so nothing clears the word before Arming; the
+   * session shape at Arming is the answer that lands it, and it carries none.
+   */
+  @Test
+  fun `the operator's own start drops a held refusal when the session shape lands at Arming`() {
+    val rig = MachineRig(request = court())
+    rig.codes = { if (rig.phase is Phase.Arming) CodeAnswer.Open("sess_42", "warming", Configs.descriptor(), Configs.waiting().copy(courtName = "Court 2")) else null }
+    rig.paired()
+    rig.heard(Configs.waiting().copy(venueTimezone = "", autoRefusal = AutoRefusal.DESTINATION_IN_USE))
+    assertEquals(AutoRefusal.DESTINATION_IN_USE, rig.autoRefusal)
+    rig.ready()
+    rig.starts = { StartAnswer.Started("sess_42") }
+    rig.send(Input.Start)
+    assertTrue(rig.phase is Phase.Armed || rig.phase is Phase.Connecting, "the session shape landed: ${rig.phase.name}")
+    assertNull(rig.autoRefusal)
+  }
+
   /** A descriptor GET at Arming that answers 409 no_match is no evidence: never the code's end. */
   @Test
   fun `a descriptor 409 no_match at Arming never ends the code`() {

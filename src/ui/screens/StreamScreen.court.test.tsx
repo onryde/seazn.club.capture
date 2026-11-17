@@ -177,6 +177,50 @@ describe('the court code’s waiting screen', () => {
   });
 });
 
+// E2 (2026-11-17): the server refused the court's automatic start, and the waiting line says why instead of the Next
+// line or "No streamed match yet". Copy is read from the dictionaries.
+describe('a court whose automatic start the server refused', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('says why on the message line, each word in turn, and the Next line again once it clears', async () => {
+    const view = await waiting();
+    for (const [autoRefusal, key] of [
+      ['no_destination', 'stream.status.courtRefusedDestination'],
+      ['destination_in_use', 'stream.status.courtDestinationBusy'],
+      ['competition_frozen', 'stream.status.courtFrozen'],
+      ['unavailable', 'stream.status.courtStartRetrying'],
+      ['no_credit', 'stream.status.refusedCredit'],
+      ['not_entitled', 'stream.status.refusedEntitlement'],
+    ] as const) {
+      act(() => view.engine.setPairing({ autoRefusal }));
+      expect(message(), autoRefusal).toBe(en[key]);
+    }
+    act(() => view.engine.setPairing({ autoRefusal: null }));
+    expect(message()).toBe(NEXT_AT);
+  });
+
+  // An urgent refusal keeps the line over a caption; the retrying line is routine, so a caption beats it.
+  it('keeps the line over Not charging for a refusal, and gives it to the caption while the server retries', async () => {
+    const view = await waiting(false);
+    act(() => view.engine.setPairing({ autoRefusal: 'destination_in_use' }));
+    expect(message()).toBe(en['stream.status.courtDestinationBusy']);
+    act(() => view.engine.setPairing({ autoRefusal: 'unavailable' }));
+    expect(message()).toBe(en['stream.advisory.notCharging']);
+  });
+
+  it('reads in French', async () => {
+    const view = await renderViewfinder(
+      { deviceLanguages: ['fr'] },
+      { saved: savedCourtCode(), quiet: true },
+    );
+    act(() => view.engine.scene('court-waiting'));
+    act(() => view.engine.setPairing({ autoRefusal: 'no_destination' }));
+    expect(message()).toBe(fr['stream.status.courtRefusedDestination']);
+    expect(message()).toBe(`Destination à régler${NBSP}: voyez avec l'organisateur`);
+  });
+});
+
 describe('a court phone on air', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());

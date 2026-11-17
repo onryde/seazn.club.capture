@@ -23,6 +23,7 @@ import com.seazn.capture.engine.capture.run.Built
 import com.seazn.capture.engine.capture.run.CaptureParts
 import com.seazn.capture.engine.capture.run.CaptureRun
 import com.seazn.capture.engine.capture.run.CoreCalls
+import com.seazn.capture.engine.capture.run.Probe
 import com.seazn.capture.engine.core.Command
 import com.seazn.capture.engine.core.Encode
 import com.seazn.capture.engine.core.PairRequest
@@ -87,6 +88,8 @@ class StreamerAdapter(
   side: () -> Side,
   /** F-S4-1: StreamPack's word that a camera was lost, from its own log lines (EngineHost's `VendorLines`). */
   private val losses: Flow<String>,
+  /** N45: StreamPack's word that an open of a camera failed busy, from the same lines. */
+  private val busies: Flow<String>,
 ) : Capture {
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, t -> calls.failure(t) })
   private val shown = PeakMeter()
@@ -113,6 +116,9 @@ class StreamerAdapter(
   private val gallery = GalleryPhoto(context.contentResolver, { current.value }, side)
   private val photo = PhotoRun({ name -> gallery.shoot(name) }, { current.value?.let(::cameraOurs) ?: false }, System::currentTimeMillis, calls.line)
 
+  /** N45 I1: Camera2's own answer to whether our camera opens, while the slate is up. */
+  private val probe = CameraProbe(context.cameraManager, context.mainExecutor)
+
   // Last: the run's consumer starts here, and only ever calls the parts for a call made after construction.
   private val run = CaptureRun(Parts(), signals, cameras, calls, side, scope)
 
@@ -123,6 +129,9 @@ class StreamerAdapter(
   override fun execute(command: Command) = run.execute(command)
 
   override fun foreground() = run.foreground()
+
+  /** N45 I1: CameraWatch's word that our camera may be free now (an available, Camera2's priorities): a probe at once. */
+  fun cameraMayBeFree() = run.mayBeFree()
 
   override fun takePhoto(done: (String) -> Unit) {
     photoScope.launch { done(photo.take().wire) }
@@ -349,17 +358,23 @@ class StreamerAdapter(
 
     override suspend fun slate(on: Boolean) {
       val held = current.value ?: return
+      // Decision 7: the slate goes on air with silent audio, muted before it goes up.
+      if (on) held.audioInput.isMuted = true
       val onSlate = held.videoInput.sourceFlow.value !is ICameraSource
-      if (on == onSlate) return
-      if (on) {
-        held.setVideoSource(SlateSource.factory(context))
-      } else {
-        cameraId?.let {
-          cameras.opening(it) // I-2: a new camera source, opened afresh
-          held.setVideoSource(CameraSourceFactory(it))
+      if (on != onSlate) {
+        if (on) {
+          held.setVideoSource(SlateSource.factory(context))
+        } else {
+          cameraId?.let {
+            cameras.opening(it) // I-2: a new camera source, opened afresh
+            held.setVideoSource(CameraSourceFactory(it))
+          }
         }
       }
-      held.audioInput.isMuted = on
+      // N45: the mic back once our camera is the source again (review M2: not over the slate), past the source
+      // check: on air the reopen has swapped the camera in by the time the slate comes down, and a return at the
+      // check left the mic silent for the rest of the broadcast.
+      if (!on) held.audioInput.isMuted = false
     }
 
     override fun micSessionKnown(): Boolean = streamerSession() != null
@@ -371,6 +386,19 @@ class StreamerAdapter(
     override fun cameraFailed(failure: Throwable): String? = cameraId?.takeIf { CameraFailures.camera(failure) }
 
     override fun cameraLosses(): Flow<String> = losses
+
+    override fun busyOpens(): Flow<String> = busies
+
+    /**
+     * N45 I1: Camera2's answer ([CameraProbe]) for the camera the slate stands in for. Never beside a camera source of
+     * StreamPack's (after a reopen's swap, before the slate is down): a second open of ours would evict our own.
+     */
+    override suspend fun probeCamera(): Probe? {
+      val held = current.value ?: return null
+      if (held.videoInput.sourceFlow.value is ICameraSource) return null
+      val id = cameraId ?: return null
+      return probe.open(id)
+    }
 
     /**
      * Review C7 I-2: each camera source's id when StreamPack 3.2.1 reports it open, previewing or streaming

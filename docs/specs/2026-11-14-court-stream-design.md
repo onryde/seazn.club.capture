@@ -154,9 +154,11 @@ it.
 ### 5.5 Desk status
 Each linked court row shows its phone: *Waiting*, *Live*, *Offline* (no beat for ~3 beats), from
 the beats it already receives **(my call)**. A linked court nobody has scanned shows *No phone yet*. Refusals of
-an automatic go-live (`no_credit`, `not_entitled`, `no_destination`) show on that court row; the
-beat carries no refusal field, so the phone does not show them (as for per-fixture auto start
-today; revised at planning).
+an automatic go-live (`no_credit`, `not_entitled`, `no_destination`) show on that court row. A
+court phone shows them too: the waiting answer, beat and descriptor, carries the word as
+`autoRefusal` (one of six, web #1247), and the waiting line says it (§6.2; revised 2026-11-17,
+E2). A per-fixture code's phone still does not (as for per-fixture auto start today; revised at
+planning).
 
 ### 5.6 Scoring link (O7, O10)
 `POST {codeUrl}/scoring-link` (`contracts/capture-scoring-link.v1.json`) on a court code answers
@@ -179,6 +181,14 @@ Live Stream's paired·waiting viewfinder, on a court code:
 - match line: "Next: A v B · 14:00", or "No streamed match yet" when `next` is absent. The label is
   cut by how wide it draws, never by a count of characters, so the time always shows (revised
   2026-11-16, RP8);
+- while the server's automatic start of the court's match stands refused, the match line says why
+  instead (the waiting answer's `autoRefusal`, web #1247, owner "Ok" 2026-11-17): after the last
+  end, a missing destination and Automatic off, which say their own lines over every word, since
+  the web retries a court only while the phone is automatic (fix round 1, I1, the controller's
+  ruling, 2026-11-17). "Destination not ready — ask the organiser", "Destination busy
+  with another match", "Streaming paused for this competition" (shortened from the proposal's
+  57 characters to the status line's 48), "Can't start yet — retrying" (routine: the server
+  retries every 60 s), and the existing no-credit and not-included lines. An unknown word is none;
 - *Tap to score* on the existing *Remote scoring* button (O8); the panel shows for 10 s as today.
 The camera half stays as today while waiting. While live on a court code, the strip's
 routine line shows "Next: C v D · 14:30" from the beat's `next`. Copy in en/es/fr/nl.

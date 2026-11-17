@@ -146,4 +146,31 @@ class PairingValuesTest {
     assertEquals("Europe/Madrid", descriptor.over(held).venueTimezone)
     assertEquals("Europe/London", descriptor.copy(venueTimezone = "").over(held).venueTimezone)
   }
+
+  // E2 (2026-11-17): a court's refused automatic start. The server sends it on every waiting answer while it stands, and
+  // omits it once a start succeeds or is in flight, so the newest answer is the fact: it replaces, and none clears it.
+  private val refused = held.copy(autoRefusal = AutoRefusal.NO_DESTINATION)
+
+  @Test
+  fun `a beat's autoRefusal replaces the held one, and a beat with none clears it`() {
+    assertEquals(AutoRefusal.NO_CREDIT, beat(null).copy(autoRefusal = AutoRefusal.NO_CREDIT).overBeat(refused).autoRefusal)
+    assertNull(beat(null).overBeat(refused).autoRefusal, "the refusal no longer stands")
+    // Four questions (1): the same word twice stands, and a third beat without it clears it.
+    val word = beat(null).copy(autoRefusal = AutoRefusal.UNAVAILABLE)
+    val twice = word.overBeat(word.overBeat(held))
+    assertEquals(AutoRefusal.UNAVAILABLE, twice.autoRefusal)
+    assertNull(beat(null).overBeat(twice).autoRefusal)
+    // It moves nothing else: the court and the next are as a beat leaves them.
+    assertEquals("Court 2", twice.courtName)
+    assertNull(twice.next)
+  }
+
+  @Test
+  fun `a descriptor's autoRefusal replaces the held one, and its silence clears it - a session shape never carries one`() {
+    val descriptor = Configs.waiting().copy(venueTimezone = "Europe/Madrid")
+    assertEquals(AutoRefusal.COMPETITION_FROZEN, descriptor.copy(autoRefusal = AutoRefusal.COMPETITION_FROZEN).over(refused).autoRefusal)
+    // Four questions (3): the descriptor at Arming is a session shape, with a start in flight: no refusal stands.
+    assertNull(descriptor.over(refused).autoRefusal)
+    assertEquals("Court 2", descriptor.over(refused).courtName)
+  }
 }

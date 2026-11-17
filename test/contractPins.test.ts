@@ -12,12 +12,14 @@ import { listFiles, OURS } from '../scripts/vendor-contracts.mjs';
  * test holds the folder to that record, file for file.
  *
  * The other side of the pin is the web's own: its capture-contract.test.ts pins the ten schemas. Those ten values
- * and the commit are copied below BY HAND from apps/web/src/server/api-v1/__tests__/capture-contract.test.ts:51-64,
+ * and the commit are copied below BY HAND from apps/web/src/server/api-v1/__tests__/capture-contract.test.ts:51-67,
  * so a re-vendor cannot quietly move both sides at once. WEB_COMMIT is the commit actually vendored (plan D1, D-10).
  *
- * The commit is c0577abb7, web main's merge of PR #1235 (court stream, spec 2026-11-14): the descriptor's optional
- * `court {name}`, the beat answer's optional `next {label, scheduledStart}`, the scoring link's `ok.label`, the
- * `no_match` refusal on scoring-link and start, and a court code's QR `exp`; ten fixtures with them. Before it,
+ * The commit is a74084cdec, web main's merge of PR #1247 (a court's refused automatic start on the phone, E2,
+ * 2026-11-17): the waiting answer's optional `autoRefusal` word on the beat and the descriptor, omitted and never
+ * null; six fixtures with it. Before it, c0577abb7, web main's merge of PR #1235 (court stream, spec 2026-11-14): the
+ * descriptor's optional `court {name}`, the beat answer's optional `next {label, scheduledStart}`, the scoring link's
+ * `ok.label`, the `no_match` refusal on scoring-link and start, and a court code's QR `exp`; ten fixtures with them. Before it,
  * a976b266c, web main with PR #1217 merged (a called match is the court's `now`; the candidate's `first_in_queue`).
  * Before it, 1f27d2f77, the tip of PR #1217's branch. Before it, 1e8dc1deb, web main's merge of PR #1212, which added the candidate's `called` to
  * capture-matchday-call.v1. Before it, web PR #1207 (merged as 3ec69fc71) added the day
@@ -29,11 +31,11 @@ import { listFiles, OURS } from '../scripts/vendor-contracts.mjs';
  *
  * relay-job.v1 sits beside them and is not the phone's: the script takes only the capture contracts.
  */
-const WEB_COMMIT = 'c0577abb78a8a52b92ff3ff45b657fb5078e61b8';
+const WEB_COMMIT = 'a74084cdec9a2679ac7601503cf1db2f8e160177';
 const WEB_PINS: Readonly<Record<string, string>> = {
   'capture-qr.v2.json': '0943072e30489dad04822cf266cc62d4e004e3a2ef46fe20e712a274ae272fbe',
-  'capture-descriptor.v1.json': 'e740351bbfa1ff836de0e7e53dc8174efb3735bb800af9eaced945598a83ce5d',
-  'capture-beat.v1.json': 'be09fa93924109529930d9ea551f16d0dfe79a3359ae8e791d6c19d0992db2bf',
+  'capture-descriptor.v1.json': '909ba262565857566bf49da0c3d547d876e4f5f8bbbc37fe9e921e448032108d',
+  'capture-beat.v1.json': '017ae3e398a07b4c24900ec06d5908acc72c16f0b8f239a9611159a7ac2447d0',
   'capture-start.v1.json': '7fdccba89789c416b007440b32ba5bab5111d53598423eafd89672b156553a2c',
   'capture-scoring-link.v1.json':
     '4ba43348d7b12fa776b2ff24f4dfd254342d38ddc62207f30156677291fbecae',
@@ -61,9 +63,9 @@ const vendored = JSON.parse(readFileSync(new URL('VENDORED.json', root), 'utf8')
 const onDisk = listFiles(fileURLToPath(root)).filter((path) => !OURS.includes(path));
 
 describe('the vendored contracts, pinned (plan D spec §3.1, R7)', () => {
-  it('pins 288 files: the ten schemas and 278 fixtures (moves only with a re-vendor)', () => {
+  it('pins 294 files: the ten schemas and 284 fixtures (moves only with a re-vendor)', () => {
     const pinned = Object.keys(vendored.files);
-    expect(pinned).toHaveLength(288);
+    expect(pinned).toHaveLength(294);
     expect(pinned.filter((path) => !path.includes('/'))).toHaveLength(10);
   });
 

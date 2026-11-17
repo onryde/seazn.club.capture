@@ -200,6 +200,12 @@ class SnapshotWireTest {
         val snapshot = bare(SnapshotState.Paired, 1_790_000_009_000).copy(pairing = PairingView(name, true, waiting), ready = allReady, camera = CameraState.OWN)
         SnapshotWire.of(snapshot, PlatformFacts(survivesBackground = true), clean)
       },
+      // E2 (2026-11-17): a court whose automatic start the server refused, said on the court's paired line while it stands.
+      "paired-court-auto-refused" to {
+        val waiting = waiting().copy(courtName = "Court 2", autoRefusal = AutoRefusal.DESTINATION_IN_USE)
+        val snapshot = bare(SnapshotState.Paired, 1_790_000_011_000).copy(pairing = PairingView(name, true, waiting), ready = allReady, camera = CameraState.OWN)
+        SnapshotWire.of(snapshot, PlatformFacts(survivesBackground = true), clean)
+      },
       // Court stream Task 13 (P2): the operator's Go live in flight, waiting for POST start's answer.
       "paired-starting" to {
         val snapshot =
@@ -269,7 +275,7 @@ class SnapshotWireTest {
   @Test
   fun `carries 3, 5, 6 each native snapshot becomes the shared wire`() {
     val cases = cases()
-    assertEquals(21, cases.size, "the vector file's twenty-one cases")
+    assertEquals(22, cases.size, "the vector file's twenty-two cases")
     assertEquals(cases.map { it.first }.toSet(), builders.keys, "one builder per case")
     for ((name, expected) in cases) assertJsonEquals(expected, JSONObject(WireJson.encode(builders.getValue(name)())), name)
   }
@@ -337,6 +343,8 @@ class SnapshotWireTest {
     assertEquals(vocabulary("thermal"), SnapshotWire.THERMAL)
     // I2: the web descriptor schema's closed set (09e87aabd).
     assertEquals(vocabulary("scoreUpdates"), ScoreUpdates.entries.map { it.wire })
+    // E2 (2026-11-17): capture-beat.v1's six autoRefusal words, which cross as the server wrote them.
+    assertEquals(vocabulary("autoRefusal"), AutoRefusal.entries.map { it.wire })
   }
 
   private fun telemetry(device: DeviceSample?): Map<*, *> =
@@ -473,10 +481,13 @@ class SnapshotWireTest {
     Sources(
       live.copy(
         // A court pairing with a next, so a change to the court or to either half of next can show.
-        // And a start in flight, so a change to starting can show.
+        // And a start in flight, so a change to starting can show; and a refused automatic start (E2), for its word.
         pairing =
           live.pairing!!.copy(
-            waiting = live.pairing!!.waiting.copy(courtName = "Court 1", next = NextMatch("Example Town v Sample CC", 1_793_534_400)),
+            waiting =
+              live.pairing!!
+                .waiting
+                .copy(courtName = "Court 1", next = NextMatch("Example Town v Sample CC", 1_793_534_400), autoRefusal = AutoRefusal.NO_CREDIT),
             starting = true,
           ),
         refusal = Refusal.NO_CREDIT,
@@ -563,6 +574,7 @@ class SnapshotWireTest {
       "pairing.waiting.courtName" to { s -> s.waiting { copy(courtName = "Court 2") } },
       "pairing.waiting.next.label" to { s -> s.waiting { copy(next = next!!.copy(label = "A v B")) } },
       "pairing.waiting.next.scheduledStartEpochS" to { s -> s.waiting { copy(next = next!!.copy(scheduledStartEpochS = null)) } },
+      "pairing.waiting.autoRefusal" to { s -> s.waiting { copy(autoRefusal = AutoRefusal.UNAVAILABLE) } },
       "broadcast.sid" to { s -> s.broadcast { copy(sid = "sess_43") } },
       "broadcast.cause" to { s -> s.broadcast { copy(cause = Cause.OPERATOR) } },
       "broadcast.playbackUrl" to { s -> s.broadcast { copy(playbackUrl = "$playbackUrl?x") } },

@@ -1,4 +1,4 @@
-import type { Cause, LastEnd, NotReady, Refusal } from '@/domain/session/Pairing';
+import type { AutoRefusal, Cause, LastEnd, NotReady, Refusal } from '@/domain/session/Pairing';
 import type {
   DegradeReason,
   EndReason,
@@ -49,6 +49,20 @@ const REFUSED: Readonly<Record<Refusal, StatusKey>> = {
   no_match: 'stream.status.refusedNoMatch',
   unknown: 'stream.status.refusedUnknown',
   'start-failed': 'stream.status.startFailed',
+};
+
+/**
+ * E2 (2026-11-17): why the server refused a court's automatic start, on the court's paired line. A word whose meaning
+ * holds for the phone's own start says that start's line; the rest are the court's own (no_destination's "pick" would
+ * be wrong for an organiser who picked one).
+ */
+const AUTO_REFUSED: Readonly<Record<AutoRefusal, StatusKey>> = {
+  no_destination: 'stream.status.courtRefusedDestination',
+  no_credit: 'stream.status.refusedCredit',
+  not_entitled: 'stream.status.refusedEntitlement',
+  destination_in_use: 'stream.status.courtDestinationBusy',
+  unavailable: 'stream.status.courtStartRetrying',
+  competition_frozen: 'stream.status.courtFrozen',
 };
 
 /** Amendment §2, After a broadcast ends without the operator: back in Paired, saying how. */
@@ -181,7 +195,10 @@ const CALM_ENDS: ReadonlySet<LastEnd> = new Set<LastEnd>([
  * line does not move when the server answers Started; native clears the refusal and the last end when it posts. A refusal outranks a last end: a refused restart is the newer
  * fact (native clears both at the next start). Readiness is never named here:
  * the chips and the blocker at Go live say it. On a court code (§6.2) a calm end gives way to the Next line, and
- * the line after the destination says what the court waits for: automatic off, the next match, or nothing.
+ * the line after the destination says what the court waits for: automatic off, why the server refused its automatic
+ * start while that stands (E2, 2026-11-17), the next match, or nothing. The refusal comes after the destination and
+ * automatic off (fix round 1, I1, the controller's ruling): the web retries a court only while the phone is automatic,
+ * so a word there would promise what cannot happen and hide the cue to start by hand.
  */
 function pairedKey(snapshot: EngineSnapshot): StatusKey {
   if (selectStarting(snapshot)) return GOING_LIVE.operator;
@@ -192,6 +209,8 @@ function pairedKey(snapshot: EngineSnapshot): StatusKey {
   if (selectDestination(snapshot) === null) return 'stream.status.waitingDestination';
   if (!court) return 'stream.status.waitingGoLive';
   if (snapshot.pairing?.automatic === false) return 'stream.status.courtAutomaticOff';
+  const autoRefusal = snapshot.pairing?.autoRefusal ?? null;
+  if (autoRefusal !== null) return AUTO_REFUSED[autoRefusal];
   return nextKey(snapshot) ?? 'stream.status.courtNone';
 }
 
@@ -252,6 +271,12 @@ export const LINE_TIER: Readonly<Record<LineKey, LineTier>> = {
   'stream.status.courtNext': 'routine',
   'stream.status.courtNone': 'routine',
   'stream.status.courtAutomaticOff': 'routine',
+  // E2 (2026-11-17): the server's automatic start failed for a passing reason, and it retries every 60 s by itself.
+  'stream.status.courtStartRetrying': 'routine',
+  // E2: the server refused the court's automatic start, and nothing goes live until the organiser acts.
+  'stream.status.courtRefusedDestination': 'urgent',
+  'stream.status.courtDestinationBusy': 'urgent',
+  'stream.status.courtFrozen': 'urgent',
   'stream.status.waitingDestination': 'urgent',
   'stream.status.refusedDestination': 'urgent',
   'stream.status.refusedCredit': 'urgent',
