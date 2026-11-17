@@ -263,6 +263,24 @@ class CourtTest {
     assertNull(rig.autoRefusal)
   }
 
+  /**
+   * Fix round 1, M2: the operator's own Go live sends no go-live beat, so nothing clears the word before Arming; the
+   * session shape at Arming is the answer that lands it, and it carries none.
+   */
+  @Test
+  fun `the operator's own start drops a held refusal when the session shape lands at Arming`() {
+    val rig = MachineRig(request = court())
+    rig.codes = { if (rig.phase is Phase.Arming) CodeAnswer.Open("sess_42", "warming", Configs.descriptor(), Configs.waiting().copy(courtName = "Court 2")) else null }
+    rig.paired()
+    rig.heard(Configs.waiting().copy(venueTimezone = "", autoRefusal = AutoRefusal.DESTINATION_IN_USE))
+    assertEquals(AutoRefusal.DESTINATION_IN_USE, rig.autoRefusal)
+    rig.ready()
+    rig.starts = { StartAnswer.Started("sess_42") }
+    rig.send(Input.Start)
+    assertTrue(rig.phase is Phase.Armed || rig.phase is Phase.Connecting, "the session shape landed: ${rig.phase.name}")
+    assertNull(rig.autoRefusal)
+  }
+
   /** A descriptor GET at Arming that answers 409 no_match is no evidence: never the code's end. */
   @Test
   fun `a descriptor 409 no_match at Arming never ends the code`() {

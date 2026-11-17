@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { AutoRefusal } from '@/domain/session/Pairing';
 import type { EngineSnapshot } from './CaptureEnginePort';
@@ -464,6 +465,37 @@ describe('carries 2-6: the snapshot wire, as native writes it (Task 12)', () => 
     if (autoRefusal === undefined) delete pairing.autoRefusal;
     expect(toEngineSnapshot({ ...wire, pairing })?.pairing).toEqual(PAIRING_COURT_NO_NEXT);
   });
+
+  // Fix round 1, M3: a re-vendor that adds a seventh word fails here, not silently as "no refusal" on the strip.
+  it.each(['capture-beat.v1.json', 'capture-descriptor.v1.json'])(
+    'knows every autoRefusal word of the vendored %s, and no other',
+    (file) => {
+      const schema: unknown = JSON.parse(
+        readFileSync(new URL(`../../../contracts/${file}`, import.meta.url), 'utf8'),
+      );
+      const enums: unknown[] = [];
+      const walk = (node: unknown): void => {
+        if (Array.isArray(node)) return node.forEach(walk);
+        if (typeof node !== 'object' || node === null) return;
+        for (const [key, child] of Object.entries(node)) {
+          if (
+            key === 'autoRefusal' &&
+            typeof child === 'object' &&
+            child !== null &&
+            'enum' in child
+          )
+            enums.push(child.enum);
+          walk(child);
+        }
+      };
+      walk(schema);
+      expect(enums).toHaveLength(1);
+      const words = [...(enums[0] as string[])].sort();
+      expect(words).toHaveLength(6);
+      expect([...vectors.vocabulary.autoRefusal].sort()).toEqual(words);
+      expect([...WIRE_VOCABULARY.autoRefusal].sort()).toEqual(words);
+    },
+  );
 
   it('reads each of the six autoRefusal words as sent, and a null as none', () => {
     const wire = vectorWire('paired-court-auto-refused');

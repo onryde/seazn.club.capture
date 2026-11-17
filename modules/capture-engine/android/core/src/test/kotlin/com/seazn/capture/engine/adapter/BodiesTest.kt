@@ -183,6 +183,32 @@ class BodiesTest {
     assertEquals(AutoRefusal.NO_CREDIT, Bodies.waiting(fields, Environment.STAGING)?.autoRefusal)
   }
 
+  /** Every `autoRefusal` enum in [node], however deep: the beat's sits under `$defs.answer`, the descriptor's at its root. */
+  private fun autoRefusalEnums(node: Any?): List<List<String>> =
+    when (node) {
+      is JSONObject ->
+        node.keys().asSequence().toList().flatMap { key ->
+          val child = node.get(key)
+          val words = (child as? JSONObject)?.optJSONArray("enum")?.takeIf { key == "autoRefusal" }
+          val here = if (words == null) emptyList() else listOf(List(words.length()) { words.getString(it) })
+          here + autoRefusalEnums(child)
+        }
+      is org.json.JSONArray -> List(node.length()) { node.get(it) }.flatMap { autoRefusalEnums(it) }
+      else -> emptyList()
+    }
+
+  @Test
+  fun `the six autoRefusal words are the vendored beat's and descriptor's enum, no more and no fewer`() {
+    // Fix round 1, M3: a re-vendor that adds a seventh word fails here, not silently as no refusal on the strip.
+    for (file in listOf("capture-beat.v1.json", "capture-descriptor.v1.json")) {
+      val enums = autoRefusalEnums(JSONObject(Vendored.text(file)))
+      assertEquals(1, enums.size, file)
+      assertEquals(6, enums.single().size, file)
+      assertEquals(enums.single().sorted(), AutoRefusal.entries.map { it.wire }.sorted(), file)
+      for (word in enums.single()) assertEquals(word, AutoRefusal.of(word)?.wire, "$file: $word")
+    }
+  }
+
   @Test
   fun `an autoRefusal is display only - an unknown word, a null or a non-string is no refusal, and the beat stays readable`() {
     // The contract: "The phone reads an unknown word as no refusal." The phone's own Refusal words are not its words.
