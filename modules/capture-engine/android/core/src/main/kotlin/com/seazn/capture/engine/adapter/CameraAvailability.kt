@@ -65,10 +65,11 @@ class CameraAvailability(private val selfWindowMs: Long = 1_500) {
   /**
    * I-2: StreamPack reports [id]'s source open (previewing or streaming): ours, so no longer contended, and
    * a take told that this clears is told over. The open of a source we have moved off is nothing. N45 I2: nor is
-   * one whose open StreamPack logged busy since it was asked ([busyOpen]): 3.2.1 reports such a source streaming
-   * all the same (javap: `CameraController.addTarget` swallows the failure, then `CameraSource.startStream` emits
-   * streaming), and read after the busy word's take it told the take over, so the machine reopened a camera another
-   * app held and reconnected twice in 10 s (review, probe A).
+   * one whose open StreamPack logged busy since it was asked ([busyOpen]): 3.2.1 can report such a source open all
+   * the same (javap, re-review R2-M3: `CameraSource.startPreview` and `startStream` both report it once
+   * `CameraController.addTarget` returns, and `addTarget` swallows a failure of its session, not of the device's own
+   * open; which busy failures come at which stage is device-only), and read after the busy word's take it told the take
+   * over, so the machine reopened a camera another app held and reconnected twice in 10 s (review, probe A).
    */
   @Synchronized
   fun opened(id: String): Input? {
@@ -130,9 +131,11 @@ class CameraAvailability(private val selfWindowMs: Long = 1_500) {
   }
 
   /**
-   * Review R1-I2: the broadcast ended. The busy mark is for StreamPack's "streaming" report, which only a broadcast
-   * makes, so it ends here: a take whose camera source stayed in asks no new open at the stop, and the preview's open
-   * after it (a failed one throws to its listener, C7 I-2, and reports nothing) is a real open again.
+   * Review R1-I2: the broadcast ended, and the busy mark with it (the capture marks only while a broadcast is held). A
+   * take whose camera source stayed in asks no new open at the stop, so without this the preview's open after it stayed
+   * no open, and Go live with it. Re-review R2-M3: not because the preview reports no failed open; javap has the preview
+   * and the stream report alike (see [opened]). Off air a false open costs at most a start that meets busy, which is
+   * probed ([busyAtStart]), where a mark that outlived the broadcast left the camera taken with nothing to clear it.
    */
   @Synchronized
   fun offAir() {
@@ -214,6 +217,18 @@ class CameraAvailability(private val selfWindowMs: Long = 1_500) {
     inSession = true
     contended += id
     told = true
+  }
+
+  /**
+   * Re-review R2-I1: the held streamer's start found [id], ours, busy (C7). Waited for as an open is ([waiting]: the
+   * holder's available is its release), but the streamer still holds our camera's source, so [id] stays ours: the
+   * take is probed while the slate stands for it ([oursTaken], [probed]), since a holder on a hidden id (error 2)
+   * sends no available for ours. A build's busy failure holds nothing, and stays [waiting]'s.
+   */
+  @Synchronized
+  fun busyAtStart(id: String) {
+    waiting(id)
+    ours = id
   }
 
   /**

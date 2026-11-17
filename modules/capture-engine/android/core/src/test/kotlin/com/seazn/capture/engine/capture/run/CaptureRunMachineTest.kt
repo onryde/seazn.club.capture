@@ -334,8 +334,7 @@ class CaptureRunMachineTest {
    */
   @Test
   fun `N45 our camera taken on air keeps the uplink - the slate goes up, nothing reconnects, and its release brings it back`() =
-    runTest {
-      val rig = Rig(this)
+    probeTest { rig ->
       live(rig)
       rig.parts.probeAnswer = HELD // N45 I1: while the other app keeps it, each probe of it is refused
       rig.parts.lose("0") // StreamPack: "Camera 0 has been disconnected"
@@ -372,8 +371,7 @@ class CaptureRunMachineTest {
    */
   @Test
   fun `N45 I1 our eviction's own available after the take is no release - the slate stays and nothing reconnects`() =
-    runTest {
-      val rig = Rig(this)
+    probeTest { rig ->
       live(rig)
       rig.parts.probeAnswer = HELD
       rig.parts.lose("0")
@@ -401,8 +399,9 @@ class CaptureRunMachineTest {
     }
 
   /**
-   * N45 I2 (review, probe A): StreamPack 3.2.1 reports a reopen whose open failed busy as streaming (javap:
-   * `CameraController.addTarget` swallows the failure, then `CameraSource.startStream` reports streaming). Read after
+   * N45 I2 (review, probe A): StreamPack 3.2.1 can report a reopen whose open failed busy as streaming (javap:
+   * `CameraSource.startStream` reports it once `CameraController.addTarget` returns, and `addTarget` swallows a failure
+   * of its session, not of the device's own open; which stage a busy failure comes at is device-only). Read after
    * the busy word's take, that report told the take over before the fix: the machine reopened a camera another app
    * held, found no picture, and reconnected twice in 10 s. Only a new open asked ends a busy word's hold now. Here the
    * release is another camera's (F-P5-9), so the reopen's busy word is its first take of ours.
@@ -438,6 +437,24 @@ class CaptureRunMachineTest {
     }
 
   /** Advances both clocks a tenth of a second at a time until [what] holds, for at most [ms]: the time it took. */
+  /**
+   * A test of the probe: whatever its assertions do, the probing ends with it. A failed one left the probe answering, so
+   * the probing never ended and runTest's last drain spun on it until the JVM ran out of memory, which hung a mutation
+   * run's later builds behind it (re-review 2's mutation pass).
+   */
+  private fun probeTest(body: suspend TestScope.(Rig) -> Unit) =
+    runTest {
+      val rig = Rig(this)
+      try {
+        body(rig)
+      } finally {
+        rig.parts.probeAnswer = null
+        rig.parts.probeFailure = null
+        rig.parts.losesOnReopen = false
+        rig.parts.probes.clear()
+      }
+    }
+
   private fun TestScope.until(rig: Rig, ms: Long, what: () -> Boolean): Long {
     var spent = 0L
     while (!what() && spent < ms) {
@@ -457,8 +474,7 @@ class CaptureRunMachineTest {
    */
   @Test
   fun `N45 I1 a take no release reaches ends by the probe within 5 s of its holder letting go, and nothing reconnects`() =
-    runTest {
-      val rig = Rig(this)
+    probeTest { rig ->
       live(rig)
       rig.parts.probeAnswer = HELD
       rig.parts.lose("0")
@@ -494,14 +510,13 @@ class CaptureRunMachineTest {
    * foreground, the moment the operator most often lets the camera go.
    */
   @Test
-  fun `N45 I1 Camera2's word that the camera may be free probes at once`() = runTest { nudged(this, "camera watch") { it.run.mayBeFree() } }
+  fun `N45 I1 Camera2's word that the camera may be free probes at once`() = probeTest { rig -> nudged(rig, "camera watch") { it.run.mayBeFree() } }
 
   @Test
-  fun `N45 I1 the app's return to the foreground probes at once`() = runTest { nudged(this, "foreground") { it.run.foreground() } }
+  fun `N45 I1 the app's return to the foreground probes at once`() = probeTest { rig -> nudged(rig, "foreground") { it.run.foreground() } }
 
-  private fun nudged(scope: TestScope, label: String, nudge: (Rig) -> Unit) =
-    with(scope) {
-      val rig = Rig(this)
+  private fun TestScope.nudged(rig: Rig, label: String, nudge: (Rig) -> Unit) =
+    run {
       live(rig)
       rig.parts.probeAnswer = Probe.Refused("in-use")
       rig.parts.lose("0")
@@ -522,8 +537,7 @@ class CaptureRunMachineTest {
    */
   @Test
   fun `N45 I1 a camera lost at every reopen is probed every 30 s after three quick retakes, and nothing reconnects`() =
-    runTest {
-      val rig = Rig(this)
+    probeTest { rig ->
       live(rig)
       rig.parts.probeAnswer = Probe.Opened("0")
       rig.parts.losesOnReopen = true
@@ -634,7 +648,7 @@ class CaptureRunMachineTest {
 
   /**
    * N45 R1-I1: the words are conflated, and a word from before a take is no news of it: a new slate's probing drains
-   * it, so its first probe comes at 5 s, not at the 1 s floor.
+   * it, so its first probe comes at 5 s, not at the 1 s floor. Re-review 2: the app's return from before it too.
    */
   @Test
   fun `N45 R1-I1 a word that the camera may be free from before the take is no news of it`() =
@@ -644,6 +658,7 @@ class CaptureRunMachineTest {
       rig.parts.probeAnswer = HELD
       try {
         repeat(3) { rig.run.mayBeFree() } // before any take: nothing probes, the words wait in the channel
+        rig.run.foreground()
         both(rig, 2_000)
         assertEquals(0, rig.parts.probeCount)
         rig.parts.lose("0")
@@ -651,6 +666,117 @@ class CaptureRunMachineTest {
         assertEquals(0, rig.parts.probeCount, "no probe before 5 s: the old words were drained")
         both(rig, 1_500)
         assertEquals(1, rig.parts.probeCount, "the first, at 5 s")
+      } finally {
+        rig.parts.probeAnswer = null
+      }
+      both(rig, 31_000)
+    }
+
+  /**
+   * N45 R2-I1 (re-review 2, probe F): another app holds our camera at Go live (a remote start while the camera app is
+   * open, which N28 lets go ahead), on an id hidden from our watch (error 2), so no available for ours ever comes. The
+   * take found at the start is our camera's, probed like any other: the retry goes on air on the slate, and once the
+   * holder lets go the probe opens the camera and the machine reopens it under the slate within 5 s; the slate comes
+   * down, and attempt 2 stays on air.
+   */
+  @Test
+  fun `N45 R2-I1 a take found at the start is probed - the holder lets go and the slate comes down within 5 s`() =
+    runTest {
+      val rig = Rig(this)
+      val busy = RuntimeException("Camera already in use")
+      rig.parts.failing[1] = busy
+      rig.parts.busyFailures[busy] = "0"
+      rig.parts.probeAnswer = HELD
+      try {
+        Configs.pairInputs().forEach(rig.engine::send)
+        rig.scheduler.advanceBy(0)
+        both(rig, 1_000)
+        rig.scheduler.advanceBy(SessionMachine.RETRY_MS + Engine.TICK_MS)
+        both(rig, 1_000)
+        assertEquals(2, (rig.engine.phase as? Phase.OnAir)?.attemptId, "the retry on air, on the slate: ${rig.engine.phase}")
+        assertEquals(CameraState.TAKEN, rig.engine.phase.session?.camera)
+        both(rig, 8_000)
+        assertTrue(rig.parts.probeCount >= 1, "the take found at the start is probed: ${rig.parts.probeCount}")
+        val probed = rig.parts.probeCount
+        until(rig, 6_000) { rig.parts.probeCount > probed }
+        rig.parts.probeAnswer = Probe.Opened("0") // let go just after a refusal: the worst case
+        val took = until(rig, 6_000) { Command.ReopenCamera in rig.executed }
+        assertTrue(took <= 5_000, "within 5 s: $took ms")
+        both(rig, 500)
+        rig.engine.send(Input.Frames(2, 40, 60))
+        both(rig, 500)
+        rig.engine.send(Input.Frames(2, 55, 83))
+        both(rig, 500)
+        assertEquals(CameraState.OWN, rig.engine.phase.session?.camera, rig.lines.joinToString("\n"))
+        assertEquals(listOf("slate true", "slate false"), rig.parts.log.filter { it.startsWith("slate") })
+        assertEquals(listOf(1, 2), rig.connects.map { it.attemptId }, "nothing reconnected for the take")
+        assertEquals(2, rig.parts.publishing, "attempt 2 stays on air")
+      } finally {
+        rig.parts.probeAnswer = null
+      }
+      both(rig, 31_000)
+    }
+
+  /**
+   * N45 R2-M1 ruling (re-review 2, probe I): backed off, the app's return to the foreground still probes at once. The
+   * operator is there, so one probe goes through the 30 s floor: one per return, never a loop, so with the camera still
+   * failing the next probe waits the floor out again. Mended, the return brings it back at once, not 29 s later.
+   */
+  @Test
+  fun `N45 R2-M1 backed off, each return to the foreground probes once, at once, through the 30 s floor`() =
+    runTest {
+      val rig = Rig(this)
+      live(rig)
+      val reopens = { rig.executed.count { it == Command.ReopenCamera } }
+      rig.parts.probeAnswer = Probe.Opened("0")
+      rig.parts.losesOnReopen = true
+      try {
+        rig.parts.lose("0")
+        until(rig, 20_000) { reopens() == 3 } // at 5, 10 and 15 s
+        both(rig, 2_000) // the third retake told: backed off, the next probe due 30 s on
+        assertEquals(3, reopens())
+        rig.run.foreground()
+        until(rig, 1_100) { reopens() == 4 }
+        both(rig, 25_000)
+        assertEquals(4, reopens(), "one probe per return: the floor holds after it")
+
+        rig.parts.losesOnReopen = false // the camera mended, and the operator comes back
+        rig.run.foreground()
+        until(rig, 1_100) { reopens() == 5 }
+        both(rig, 200)
+        rig.engine.send(Input.Frames(1, 40, 60))
+        both(rig, 500)
+        rig.engine.send(Input.Frames(1, 55, 83))
+        both(rig, 500)
+        assertEquals(CameraState.OWN, rig.engine.phase.session?.camera, "resumed")
+        assertHeld(rig, "the returns")
+      } finally {
+        rig.parts.probeAnswer = null
+        rig.parts.losesOnReopen = false
+      }
+      both(rig, 31_000)
+    }
+
+  /**
+   * N45 R2-M1: the app's return and Camera2's word that the camera may be free come together (the holder closes its
+   * camera as it leaves the screen). One probe answers both: the next comes 5 s after it, not at the 1 s floor.
+   */
+  @Test
+  fun `N45 R2-M1 a return and Camera2's word heard together are one probe`() =
+    runTest {
+      val rig = Rig(this)
+      live(rig)
+      rig.parts.probeAnswer = HELD
+      try {
+        rig.parts.lose("0")
+        both(rig, 6_500) // refused at 5 s; the next is due at 10 s
+        assertEquals(1, rig.parts.probeCount)
+        rig.run.mayBeFree()
+        rig.run.foreground()
+        both(rig, 300)
+        assertEquals(2, rig.parts.probeCount, "at once")
+        both(rig, 3_000)
+        assertEquals(2, rig.parts.probeCount, "one probe answered both words")
       } finally {
         rig.parts.probeAnswer = null
       }

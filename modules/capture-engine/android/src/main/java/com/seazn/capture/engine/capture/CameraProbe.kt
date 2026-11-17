@@ -17,7 +17,8 @@ import kotlinx.coroutines.withTimeoutOrNull
  * Camera2's busy codes and keeps its camera. Bounded by [Probe.BOUND_MS]. Review R1-M2: Camera2 cannot cancel an open
  * it was asked for, so a probe that times out waits, bounded by [Probe.SETTLE_MS], for that open's close before the
  * capture's queue moves on, where a reopen would make a second open of our camera beside it. An open later still is
- * closed as it comes.
+ * closed as it comes. Re-review 2 (R2-M2 ruling): Stop and unpair cancel the wait (`CaptureRun.abandonProbe`), and
+ * the callbacks below still close what the open asked brings.
  */
 @SuppressLint("MissingPermission") // CD37: on air only, long after CAMERA was granted
 internal class CameraProbe(private val manager: CameraManager, private val executor: Executor) {

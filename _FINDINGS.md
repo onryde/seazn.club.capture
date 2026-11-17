@@ -1598,21 +1598,31 @@ other app's hold, which StreamPack logged as error 2 (`ERROR_MAX_CAMERAS_IN_USE`
    call's open also cost us our device), the probe frees ours and the call's release, the last, tells the take over.
    Re-review R1-M2: Camera2 cannot cancel an open asked, so a probe that times out waits up to 1 s more for that
    open's close before the capture's queue moves on, where a reopen would open our camera a second time beside it.
+   Re-review 2, R2-I1: a take found at the start (C7: a Go live into another app's hold, such as a remote start while
+   the camera app is open, which N28 lets go ahead) is our camera's too, and is probed. It read as ours in name only,
+   so with the holder on a hidden id the slate stayed up until Stop. R2-M2 (the controller's ruling): Stop and unpair
+   never wait behind a probe. They abandon it, so the endpoint closes and the camera is released at once, and the
+   probe's own callbacks close what the open asked brings. Anything else waits for its answer, a reconnect's Connect
+   included: that is a known cost of up to 3 s when Camera2 answers no open within 2 s, past `START_BOUND_MS`'s
+   one-second margin, so the machine's connect timeout speaks first and C6's late-open path closes the attempt.
 5. Our own camera's available is no release of the capture's own take of it: our eviction says it too, before or after
    the take, while the other app still holds the camera. Its probe decides. Off air (a new open of ours asked) it is
    the release again, as I3 has it.
-6. **A busy word makes our open reports no open (review I2).** StreamPack 3.2.1 reports a source streaming after its
-   open failed busy (javap: `CameraController.addTarget` swallows the failure, then `CameraSource.startStream` emits
-   streaming; the record agrees, error 2 at 41.078, `readiness {camera: true}` at 41.118). Read after the busy word's
-   take, that report told the take over, and the machine reopened a held camera and reconnected twice in 10 s (the
-   review's probe A, now a machine test that failed before the fix). The word is marked as it is heard, before its
-   take is queued, and only a new open asked clears it: the preview's busy failure tells a take from outside the
-   queue (C7 I-2), and a report read before a queued mark told that take over. Re-review R1-I2: the mark is set only
-   while a broadcast is held, and ends with it. StreamPack streams only on air; off air the preview opens the camera,
-   and a failed preview open throws to its listener and reports nothing (C7 I-2, javap), so an open report off air is
-   a real open. Marked off air, it blocked the preview's own reopen (`PreviewView` restarts the preview each time its
-   window shows, with no open of ours asked) from telling an error-2 take over once the holder let go, and Go live
-   stayed disabled until a camera switch or an unpair (the re-review's probe G, now a test).
+6. **A busy word makes our open reports no open (review I2).** StreamPack 3.2.1 can report a source open after its
+   open failed busy. Javap: `CameraSource.startPreview` and `startStream` both report it once
+   `CameraController.addTarget` returns, and `addTarget` opens the device outside its catch, which covers only the
+   session's start. So a failure of the session is swallowed and reported as an open, for the preview and the stream
+   alike, and a failure of the device's own open throws for both; which stage a busy failure comes at is device-only.
+   Read after the busy word's take, such a report told the take over, and the machine reopened a held camera and
+   reconnected twice in 10 s (the review's probe A, now a machine test that failed before the fix). The word is marked
+   as it is heard, before its take is queued, and only a new open asked clears it: the preview's busy failure tells a
+   take from outside the queue (C7 I-2), and a report read before a queued mark told that take over. Re-review R1-I2:
+   the mark is set only while a broadcast is held, and ends with it. Marked off air, it blocked the preview's own
+   reopen (`PreviewView` restarts the preview each time its window shows, with no open of ours asked) from telling an
+   error-2 take over once the holder let go, and Go live stayed disabled until a camera switch or an unpair (the
+   re-review's probe G, now a test). Re-review 2, R2-M3: round 2 justified the scope by a failed preview open that
+   throws and reports nothing, which javap contradicts. The reason is that off air nothing reconnects: a false open
+   costs at most a start that meets busy, which is probed (item 4).
 7. **Review M1.** A camera lost at every open (a device error, no other app's) was reopened at every release with no
    cap. A take that comes back within 10 s of a probe telling the last one over is a retake; after three in a row
    the probe waits 30 s, not 5. Re-review R1-I1: that wait is a floor no word shortens. Camera2 announces our camera
@@ -1620,7 +1630,10 @@ other app's hold, which StreamPack logged as error 2 (`ERROR_MAX_CAMERAS_IN_USE`
    be free, so with words honoured a camera that fails at every open came back about once a second (about 17,000
    record lines an hour, the slate flipping each time). A new slate's probing also drains any word from before it.
    With words at every reopen and every second besides, the machine test reads reopens at 1.1, 2 and 3 s, then 33,
-   63 and 93 s: 6 in 120 s, against a bound of 7, and one `camera-probe` line for each.
+   63 and 93 s: 6 in 120 s, against a bound of 7, and one `camera-probe` line for each. Re-review 2, R2-M1 (the
+   controller's ruling): the app's return to the foreground goes through the floor, since the operator is there. One
+   probe per return, at once, never a loop: with the camera still failing, the next waits the floor out again. One
+   probe answers every word heard before it, so a return and Camera2's available that come together are one probe.
 
 **Keyframes and frames while the camera is gone** (the brief's question 4): nothing new. The slate keeps both tracks
 flowing. StreamPack 3.2.1's `BitmapSource.startStream` draws the bitmap with `scheduleWithFixedDelay`, every
@@ -1649,7 +1662,9 @@ tests cover both); the slate on the programme; the mic audible after the reopen;
 `onCameraAccessPrioritiesChanged` fires on the NE2211. A disconnect that is no other app's (a camera service restart,
 a device policy) now reads "Camera taken by another app — slate on air" until a probe opens the camera (the copy is
 the owner's call, review M1); a camera disabled by policy keeps the slate up and is probed every 5 s, with a line
-each 30 s, until Stop.
+each 30 s, until Stop. Re-review 2: which stage the NE2211's busy failures come at, so whether they report an open
+(R2-M3); a Go live with the camera app open, then closed, ending the slate within 5 s (R2-I1); and an abandoned
+probe's open landing beside Stop's swap back to our camera (R2-M2), which Camera2 settles by its own eviction rules.
 
 ---
 

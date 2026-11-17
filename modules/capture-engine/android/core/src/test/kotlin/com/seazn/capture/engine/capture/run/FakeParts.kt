@@ -65,9 +65,11 @@ class FakeParts : CaptureParts {
   var later: CoroutineScope? = null
 
   /**
-   * N45 I2: reopens that land on a camera another app still holds, in turn, as StreamPack 3.2.1 makes them (javap:
-   * `CameraController.addTarget` logs the busy error and swallows it, then `CameraSource.startStream` reports the
-   * source streaming). The busy word, then the open report, in the order each one names.
+   * N45 I2: reopens that land on a camera another app still holds, in turn, as the device check's record read them: the
+   * busy word, and a report of the source open all the same (javap, StreamPack 3.2.1: `CameraSource.startPreview` and
+   * `startStream` both report the source open once `CameraController.addTarget` returns, and `addTarget` swallows a
+   * failure of its session, not of the device's own open; which stage a busy failure comes at is device-only). The busy
+   * word, then the open report, in the order each one names.
    */
   val busyReopens = ArrayDeque<StaleOpen>()
   private var closing = CompletableDeferred<Unit>()
@@ -181,6 +183,9 @@ class FakeParts : CaptureParts {
   var probeCount = 0
     private set
 
+  /** N45 R2-M2: a probe whose open Camera2 has not answered yet: it waits here until the test answers it. */
+  var probeGate: CompletableDeferred<Probe>? = null
+
   /** Whether the slate is the source, as the adapter reads `sourceFlow`: a probe is made only then. */
   private var onSlate = false
 
@@ -188,6 +193,7 @@ class FakeParts : CaptureParts {
     if (!onSlate) return null // the adapter's: never beside a camera source of StreamPack's
     probeCount += 1
     probeFailure?.let { throw it }
+    probeGate?.let { return it.await() }
     return probes.removeFirstOrNull() ?: probeAnswer
   }
 

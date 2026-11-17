@@ -105,6 +105,23 @@ class CameraAvailabilityTest {
     assertEquals(Input.CameraContended, cameras.unavailable("0", 3_200), "taken again before our reopen: not our own camera")
   }
 
+  /**
+   * N45 R2-I1 (re-review 2): a take found at the held streamer's start is a take of OUR camera, which the streamer still
+   * holds: probed (a holder on a hidden id sends no available), and told over by the probe; its holder's available is
+   * still the release an open's wait hears (I4).
+   */
+  @Test
+  fun `R2-I1 a take found at the start stays ours - probed, told over by the probe, and its release still heard`() {
+    val probed = CameraAvailability().apply { opening("0"); sessionStarted() }
+    probed.busyAtStart("0")
+    assertTrue(probed.oursTaken(), "a take of ours: the probe's")
+    assertEquals(Input.CameraReleased, probed.probed("0"))
+    assertFalse(probed.oursTaken(), "told over")
+    val released = CameraAvailability().apply { opening("0"); sessionStarted() }
+    released.busyAtStart("0")
+    assertEquals(Input.CameraReleased, released.available("0", 3_000), "the holder's release, as I4 hears it")
+  }
+
   @Test
   fun `I3 a camera released while ours was closed is told at the next open, so the pairing's camera never stays taken`() {
     cameras.unavailable("1", 5_000)

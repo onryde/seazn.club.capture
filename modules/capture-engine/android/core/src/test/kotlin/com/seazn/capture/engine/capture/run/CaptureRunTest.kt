@@ -402,27 +402,32 @@ class CaptureRunTest {
   fun `N45 I1 a probe's throw is a refusal, never a failure, its line is the allow-list's, and a slate with no take probes nothing`() =
     runTest {
       val s = opened()
-      s.parts.probeAnswer = Probe.Opened("0")
-      does(s, connect(1), Command.Slate(true))
-      assertEquals(0, s.parts.probeCount, "no take told: nothing probed")
-      s.parts.probeFailure = IllegalStateException("made-up")
-      s.parts.lose("0")
-      runCurrent()
-      s.run.execute(Command.Slate(true)) // the machine's answer to the take; never drained: a held take probes on
-      advanceTimeBy(5_500)
-      runCurrent()
-      assertEquals(1, s.parts.probeCount)
-      assertEquals(emptyList(), s.told.failures, "never the session's failure")
-      val line = s.told.lines.single { it.kind == "camera-probe" }
-      assertEquals(listOf<Pair<String, Any?>>("ok" to false, "error" to "IllegalStateException", "failures" to 1), line.fields)
-      val list = Shared.read("scrub/allow-list.json")
-      val plain = list.getJSONArray("plain").let { a -> (0 until a.length()).map { a.getString(it) }.toSet() }
-      assertTrue(line.kind in list.getJSONObject("kinds").keySet(), "the kind is listed")
-      assertEquals(emptyList(), line.fields.map { it.first }.filterNot { it in plain || it in list.getJSONObject("scalars").keySet() }, "each key plain or a scalar")
-      does(s, Command.Slate(false))
-      advanceTimeBy(20_000)
-      runCurrent()
-      assertEquals(1, s.parts.probeCount, "the slate down: no probe")
+      try {
+        s.parts.probeAnswer = Probe.Opened("0")
+        does(s, connect(1), Command.Slate(true))
+        assertEquals(0, s.parts.probeCount, "no take told: nothing probed")
+        s.parts.probeFailure = IllegalStateException("made-up")
+        s.parts.lose("0")
+        runCurrent()
+        s.run.execute(Command.Slate(true)) // the machine's answer to the take; never drained: a held take probes on
+        advanceTimeBy(5_500)
+        runCurrent()
+        assertEquals(1, s.parts.probeCount)
+        assertEquals(emptyList(), s.told.failures, "never the session's failure")
+        val line = s.told.lines.single { it.kind == "camera-probe" }
+        assertEquals(listOf<Pair<String, Any?>>("ok" to false, "error" to "IllegalStateException", "failures" to 1), line.fields)
+        val list = Shared.read("scrub/allow-list.json")
+        val plain = list.getJSONArray("plain").let { a -> (0 until a.length()).map { a.getString(it) }.toSet() }
+        assertTrue(line.kind in list.getJSONObject("kinds").keySet(), "the kind is listed")
+        assertEquals(emptyList(), line.fields.map { it.first }.filterNot { it in plain || it in list.getJSONObject("scalars").keySet() }, "each key plain or a scalar")
+        does(s, Command.Slate(false))
+        advanceTimeBy(20_000)
+        runCurrent()
+        assertEquals(1, s.parts.probeCount, "the slate down: no probe")
+      } finally {
+        s.parts.probeAnswer = null // the probing ends whatever the assertions do, so runTest's drain does
+        s.parts.probeFailure = null
+      }
     }
 
   /**
@@ -623,6 +628,95 @@ class CaptureRunTest {
   private fun probeCounts(s: Scene): List<Any?> =
     s.told.lines.filter { it.kind == "camera-probe" }.map { line -> line.fields.single { it.first == "failures" }.second }
 
+  /** On air, our camera taken and the slate up: the take's first probe, at 5 s, waits on [gate] for Camera2's answer. */
+  private fun TestScope.probeInFlight(gate: CompletableDeferred<Probe>): Scene =
+    opened().also { s ->
+      s.parts.probeGate = gate
+      does(s, connect(1))
+      s.parts.lose("0")
+      runCurrent()
+      s.run.execute(Command.Slate(true))
+      advanceTimeBy(5_500)
+      runCurrent()
+      assertEquals(1, s.parts.probeCount, "a probe in flight")
+    }
+
+  /**
+   * N45 R2-M2 ruling (re-review 2): Stop and unpair never wait behind a probe. A probe holds the capture's queue until
+   * Camera2 answers its open, up to 3 s (`BOUND_MS`, then `SETTLE_MS`), and the endpoint's close and the camera's
+   * release waited behind it. They abandon it: each is done within its own step, and the probe's answer, when it
+   * comes, tells nothing.
+   */
+  @Test
+  fun `N45 R2-M2 Stop, End and unpair abandon a probe in flight - each is done within its own step`() =
+    runTest {
+      val ends =
+        listOf<Pair<String, (Scene) -> Unit>>(
+          "stop" to { it.run.execute(Command.StopBroadcast) },
+          "end" to { it.run.execute(Command.End(EndReason.OPERATOR_STOPPED)) },
+          "unpair" to { it.run.close() },
+        )
+      for ((label, end) in ends) {
+        val gate = CompletableDeferred<Probe>()
+        val s = probeInFlight(gate)
+        end(s)
+        advanceTimeBy(FakeParts.STEP_MS + 1)
+        runCurrent()
+        assertEquals(listOf(1), s.parts.closed, "$label: the endpoint closed within its step: ${s.parts.log}")
+        gate.complete(Probe.Opened("0")) // Camera2 answers the open abandoned
+        advanceUntilIdle()
+        assertFalse(Input.CameraReleased in s.told.reports, "$label: an abandoned probe tells nothing: ${s.told.reports}")
+        assertEquals(1, s.parts.probeCount, "$label: and the probing ends with it")
+      }
+    }
+
+  /**
+   * N45 R2-M2: anything else waits for the probe's answer, which is heard: the probe never runs beside a reopen or a
+   * build of ours, a reconnect's Connect may wait (the ruling), and a bitrate step (ABR's, every few seconds on a poor
+   * uplink) never costs a take its probe.
+   */
+  @Test
+  fun `N45 R2-M2 any other command waits for the probe's answer, which is heard`() =
+    runTest {
+      val gate = CompletableDeferred<Probe>()
+      val s = probeInFlight(gate)
+      s.run.execute(Command.SetBitrate(1, 2_000_000))
+      advanceTimeBy(2_000)
+      runCurrent()
+      assertFalse("bitrate 2000000" in s.parts.log, "behind the probe: ${s.parts.log}")
+      gate.complete(Probe.Opened("0"))
+      runCurrent()
+      assertTrue("bitrate 2000000" in s.parts.log, "after its answer: ${s.parts.log}")
+      assertEquals(Input.CameraReleased, s.told.reports.last(), "the answer heard: ${s.told.reports}")
+    }
+
+  /**
+   * N45 R2-M2: a probe queued behind a busy queue (a reconnect's start) when Stop is asked is never made, so Stop
+   * waits for the start alone, never for a probe asked after the broadcast was told to end.
+   */
+  @Test
+  fun `N45 R2-M2 a probe queued before Stop is never made`() =
+    runTest {
+      val s = opened()
+      s.parts.probeGate = CompletableDeferred() // a probe made would never answer
+      does(s, connect(1))
+      s.parts.lose("0")
+      runCurrent()
+      s.run.execute(Command.Slate(true))
+      runCurrent()
+      s.parts.gates[2] = CompletableDeferred()
+      s.run.execute(Command.Rebuild(1, connect(2))) // the reconnect's start holds the queue
+      advanceTimeBy(5_500) // the probe's turn: queued behind the start
+      runCurrent()
+      assertEquals(0, s.parts.probeCount, "queued, not made")
+      s.run.execute(Command.StopBroadcast)
+      s.parts.gates.getValue(2).complete(true)
+      advanceTimeBy(FakeParts.STEP_MS * 2 + 1)
+      runCurrent()
+      assertEquals(0, s.parts.probeCount, "never made: ${s.parts.log}")
+      assertEquals(listOf("stop 2", "stop done", "after"), s.parts.log.takeLast(3), "Stop waited for the start alone: ${s.parts.log}")
+    }
+
   /**
    * N45 I2, on air: the busy word is marked as it is heard, not when the queue gets to it. StreamPack sends the word and
    * its "streaming" report of the same failed open together, from inside the open. The preview's busy failure tells
@@ -643,10 +737,10 @@ class CaptureRunTest {
     }
 
   /**
-   * N45 R1-I2 (re-review, probe G): the busy mark is for StreamPack's "streaming" report of a failed open, and it streams
-   * only on air. Off air the preview opens the camera, and a failed preview open throws to its listener (C7 I-2,
-   * javap) and reports nothing, so an open report is a real open. A holder on another id (error 2) never makes ours
-   * available; the preview's own next start (the window shown again, with no open of ours asked) opens it once the
+   * N45 R1-I2 (re-review, probe G): the busy mark is set only on air. Off air the preview opens the camera, and a mark
+   * would make its opens no open until one of ours is asked (re-review 2, R2-M3: not because a failed preview open
+   * reports nothing; javap has the preview and the stream report alike). A holder on another id (error 2) never makes
+   * ours available; the preview's own next start (the window shown again, with no open of ours asked) opens it once the
    * holder lets go, and that open tells the take over: the camera reads ready, and Go live may go.
    */
   @Test
