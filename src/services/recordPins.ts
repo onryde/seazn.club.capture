@@ -23,8 +23,9 @@ export const START_KIND = 'broadcast-start';
 export type PinnedLine = { readonly place: number; readonly line: string };
 
 /**
- * A start is pinned only while its pair's window is open, so it is always the later of the two. `endedAt` is the place
- * of the line that ended the window (the first of `RECORD_WINDOW_ENDS` after the pair), or null while it is open.
+ * A start is pinned only while its pair's window is open, so it is always the later of the two, or alone, closed, as
+ * native restores it after a process death (`pinsAdopted`). `endedAt` is the place of the line that ended the window
+ * (the first of `RECORD_WINDOW_ENDS` after the pair), or null while it is open or there is none.
  */
 export type RecordPins = {
   readonly pair: PinnedLine | null;
@@ -44,8 +45,28 @@ export function pinsAfter(pins: RecordPins, line: string, place: number): Record
   if (pins.pair === null || pins.endedAt !== null) return pins;
   // Read as a set of anything: a kind that is not text ends nothing.
   if ((RECORD_WINDOW_ENDS as ReadonlySet<unknown>).has(kind)) return { ...pins, endedAt: place };
-  const names = kind === START_KIND && typeof sid === 'string' && RECORD_SID.test(sid);
-  return names ? { ...pins, start: { place, line } } : pins;
+  return namesSession(kind, sid) ? { ...pins, start: { place, line } } : pins;
+}
+
+/**
+ * Native's pinned lines (`BridgeCore.tail`, N38) as the pins of a ring seeded before its first line, each at its place
+ * just before `first`. A pair and its start are an open window, read by `pinsAfter`. A start alone is what native
+ * restores after a process death, CLOSED (fix round 1 of P1, the controller's ruling): pinned with no pair, so it names
+ * its session (A1) and opens no window, no line of the ring moves it, and a newer `pair` replaces it.
+ */
+export function pinsAdopted(pinned: readonly string[], first: number): RecordPins {
+  return pinned.reduce<RecordPins>((pins, line, index) => {
+    const place = first - pinned.length + index;
+    const { kind, sid } = fieldsOf(line);
+    return pins.pair === null && namesSession(kind, sid)
+      ? { pair: null, start: { place, line }, endedAt: null }
+      : pinsAfter(pins, line, place);
+  }, NO_PINS);
+}
+
+/** A `broadcast-start` whose sid the contract's A1 can judge: the one line a start pin may hold. */
+function namesSession(kind: unknown, sid: unknown): boolean {
+  return kind === START_KIND && typeof sid === 'string' && RECORD_SID.test(sid);
 }
 
 function fieldsOf(line: string): { readonly kind?: unknown; readonly sid?: unknown } {

@@ -143,33 +143,90 @@ class RecordPinsTest {
     assertEquals(mapOf("unpaired" to 0, "ended" to 0, "pair-refused" to 0, "reset" to 0, "engine-error" to 2), after)
   }
 
+  /**
+   * Fix round 1 of P1 (the controller's ruling): a process death restores the start alone, closed, so the pair is never
+   * kept. A pair alone keeps nothing, and a re-pair keeps nothing new until its own start.
+   */
   @Test
-  fun `what an open window pins is kept on each change, and nothing once it ends`() {
-    val pair = pair()
+  fun `what an open window pins is kept on each change - its start alone, and nothing once it ends`() {
+    pair()
     beats(3)
     val start = start()
     beats(25)
     write("ended", "reason" to "operator-stopped", "wasLive" to true)
     beats(25)
-    val second = pair(slot = 1)
-    assertEquals(listOf(listOf(pair), listOf(pair, start), emptyList(), listOf(second)), kept)
+    pair(slot = 1)
+    beats(3)
+    val second = start(SID_2)
+    assertEquals(listOf(listOf(start), emptyList(), listOf(second)), kept)
   }
 
-  /** After a process death: the kept lines are restored, seq 0, before every line of the new process. */
+  /**
+   * Fix round 1 of P1 (the controller's ruling): after a process death the kept start comes back CLOSED. It is carried
+   * before any line, seq 0, so the upload still names the old session (A1 judges it by its sid alone), but no pair comes
+   * back: the web opens an A2 window at any `pair` line in the body, and no line of the new process ends it.
+   */
   @Test
-  fun `a record restored with an open window carries its pins before any line, and keeps nothing until they change`() {
+  fun `a restored start is carried before any line, closed - no pair, and no later line moves it or is kept`() {
+    pair()
+    val start = start()
+    val reborn = recordOver(RecordPins.NONE.restoring("broadcast-start", SID, start))
+    kept.clear()
+    assertEquals(RecordTail(1, emptyList(), listOf(start)), reborn.numberedTail())
+    beats(25, into = reborn)
+    start(SID_2, into = reborn)
+    write("unpaired", "reason" to "operator", into = reborn)
+    write("ended", "reason" to "operator-stopped", "wasLive" to true, into = reborn)
+    beats(SessionRecord.LAST_LINES, into = reborn)
+    assertEquals(listOf(start), pins(reborn), "no window is open: a start or an end of the new process moves nothing")
+    assertEquals(emptyList(), kept, "restored, not changed: nothing to write")
+  }
+
+  /** The new process re-pairs: its pair opens a fresh window, as today, and replaces the restored start. */
+  @Test
+  fun `a re-pair after a restore replaces the restored start, and keeps the new window's own`() {
+    val start = start()
+    val reborn = recordOver(RecordPins.NONE.restoring("broadcast-start", SID, start))
+    kept.clear()
+    val again = pair(slot = 1, into = reborn)
+    beats(25, into = reborn)
+    assertEquals(listOf(again), pins(reborn), "the restored start is gone")
+    val second = start(SID_2, into = reborn)
+    beats(25, into = reborn)
+    assertEquals(listOf(again, second), pins(reborn))
+    assertEquals(listOf(emptyList(), listOf(second)), kept, "the re-pair deletes the restored start; its own start is kept")
+  }
+
+  /** What the last process kept, read again line by line: the latest start A1 can judge, and nothing else. */
+  @Test
+  fun `a restore takes the latest judgeable start of the kept lines, and nothing from any other line`() {
     val pair = pair()
     val start = start()
-    val restored = RecordPins.NONE.after("pair", null, 0, pair).after("broadcast-start", SID, 0, start)
-    kept.clear()
-    val reborn = recordOver(restored)
-    assertEquals(RecordTail(1, emptyList(), listOf(pair, start)), reborn.numberedTail())
-    beats(25, into = reborn)
-    assertEquals(listOf(pair, start), pins(reborn))
-    assertEquals(emptyList(), kept, "restored, not changed: nothing to write")
-    val again = pair(slot = 1, into = reborn)
-    assertEquals(emptyList(), pins(reborn), "the re-pair is in the tail")
-    assertEquals(listOf(listOf(again)), kept)
+    val second = start(SID_2)
+    val unjudged = start("sess_42")
+    val pairKept = Triple("pair", null, pair)
+    fun startKept(sid: String, line: String) = Triple("broadcast-start", sid, line)
+    fun restore(vararg kept: Triple<String, String?, String>) =
+      kept.fold(RecordPins.NONE) { pins, (kind, sid, line) -> pins.restoring(kind, sid, line) }
+    assertEquals(RecordPins(null, PinnedLine(0, start), null), restore(pairKept, startKept(SID, start)))
+    assertEquals(
+      RecordPins(null, PinnedLine(0, second), null),
+      restore(startKept(SID, start), startKept(SID_2, second), startKept("sess_42", unjudged)),
+    )
+    assertEquals(RecordPins.NONE, restore(pairKept), "a pair alone restores nothing")
+    assertEquals(RecordPins.NONE, restore(), "an empty input")
+  }
+
+  /** The sink's own rule: a throw from [SessionRecord]'s keeper is counted, never thrown, and the record goes on. */
+  @Test
+  fun `a keeper that throws is counted as the sink's failures are, and the line is still written`() {
+    val throwing = SessionRecord(RecordPins.NONE, { throw IllegalStateException("refused") }) { lines += it }
+    pair(into = throwing)
+    start(into = throwing)
+    beats(2, into = throwing)
+    assertEquals(1, throwing.sinkFailures, "one change to keep: the start")
+    assertEquals(4, lines.size)
+    assertEquals(lines, throwing.lastLines())
   }
 
   private companion object {

@@ -343,8 +343,10 @@ describe('N38: a ring seeded after a reload adopts native’s pinned lines', () 
     const after = beats(994, 'after');
     const ring = seeded([PAIR, START], [...before, ENDED, ...after]);
     expect(ring.linesToSend(1_000)).toEqual([PAIR, START, ...before.slice(2), ENDED, ...after]);
-    for (const line of beats(6, 'later')) ring.appendLine(line);
-    expect(ring.linesToSend(1_000)).toEqual(ring.lines());
+    const later = beats(6, 'later');
+    for (const line of later) ring.appendLine(line);
+    // ENDED has left the ring: the pins are let go, and the newest 1,000 go alone.
+    expect(ring.linesToSend(1_000)).toEqual([...after, ...later]);
   });
 
   it('a pair later in the tail replaces them (a second pairing)', () => {
@@ -364,9 +366,39 @@ describe('N38: a ring seeded after a reload adopts native’s pinned lines', () 
     ]);
   });
 
-  it('a start adopted with no pair is never pinned, as the ring’s own rule reads it', () => {
+  // Fix round 1 of P1 (the controller's ruling): native restores a start alone after a process death, CLOSED. It is
+  // sent first, so the old session is named (A1 judges it by its sid), but no window is open under it.
+  it('a start adopted alone is the closed restore: sent first, and no later start or end moves it', () => {
     const b = beats(3_000);
-    expect(seeded([START], b).linesToSend(1_000)).toEqual(b.slice(-1_000));
+    expect(seeded([START], b).linesToSend(1_000)).toEqual([START, ...b.slice(-999)]);
+    const moved = seeded([START], [START_2, ENDED, ...b]);
+    expect(moved.linesToSend(1_000)).toEqual([START, ...b.slice(-999)]);
+  });
+
+  it('a pair after a closed restore replaces it, as a re-pair in the new process does', () => {
+    const b = beats(3_000);
+    expect(seeded([START], [PAIR_2, START_2, ...b]).linesToSend(1_000)).toEqual([
+      PAIR_2,
+      START_2,
+      ...b.slice(-998),
+    ]);
+  });
+
+  // The seed adopts once, before the ring's first line: a second call, or one after a line, is ignored.
+  it('adopts once, before any line: a second seed or one after a line is ignored (a second call)', () => {
+    const b = beats(1_000);
+    const afterLine = createRingRecord();
+    afterLine.appendLine(b[0] ?? '');
+    afterLine.adoptPins([PAIR, START]);
+    expect(afterLine.linesToSend(1_000)).toEqual([b[0]]);
+    const afterPair = seeded([PAIR], []);
+    afterPair.adoptPins([START_2]);
+    for (const line of b) afterPair.appendLine(line);
+    expect(afterPair.linesToSend(1_000)).toEqual([PAIR, ...b.slice(-999)]);
+    const afterStart = seeded([START], []);
+    afterStart.adoptPins([PAIR_2]);
+    for (const line of b) afterStart.appendLine(line);
+    expect(afterStart.linesToSend(1_000)).toEqual([START, ...b.slice(-999)]);
   });
 });
 
@@ -473,6 +505,33 @@ describe('N38: the body posted is the contract’s, and files under its pairing'
     // final-beat and reset come after the window's end: the web files neither, pins or no pins.
     expect(unfiled(body)).toBe(2);
     expect(unfiled(body.slice(2))).toBeGreaterThan(800);
+  });
+
+  // I1 of P1's review: a process death that is not followed by a re-pair. The restored start names the old session, and
+  // the new process's lines with no sid are in no window: none is filed under the dead code.
+  it('after a process death, the restored start leads and no line of the new process files under it', async () => {
+    const lines = match(1_500);
+    const ring = createRingRecord();
+    ring.adoptPins([START]);
+    for (const line of lines) ring.appendLine(line);
+    const body = await posted(ring);
+    expect(body).toEqual([START, ...lines.slice(-999)]);
+    expect(body.filter((line) => !admitsLine(JSON.parse(line)))).toEqual([]);
+    const sidless = body.filter((line) => !('sid' in JSON.parse(line))).length;
+    expect(sidless).toBeGreaterThan(800);
+    expect(unfiled(body)).toBe(sidless);
+    // Anti-vacuity: the pair an open restore carried would have filed every one of them under the dead code.
+    expect(unfiled([PAIR, ...body])).toBe(0);
+  });
+
+  it('after a process death and a re-pair, the new pair leads and files every line', async () => {
+    const lines = match(1_500);
+    const ring = createRingRecord();
+    ring.adoptPins([START]);
+    for (const line of [PAIR_2, ...lines]) ring.appendLine(line);
+    const body = await posted(ring);
+    expect(body).toEqual([PAIR_2, ...lines.slice(-999)]);
+    expect(unfiled(body)).toBe(0);
   });
 
   it('once 1,000 lines follow the end, the body is the newest 1,000 alone', async () => {

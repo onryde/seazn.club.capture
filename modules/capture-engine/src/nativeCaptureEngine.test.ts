@@ -405,6 +405,30 @@ describe('the native engine (carry 1)', () => {
     expect(heard).toEqual([[PAIR_LINE, START_LINE]]);
   });
 
+  // Fix round 1 of P1 (review minor e): the tail's lines are read at the boundary too, never cast.
+  it('N38 a tail line that is not a numbered text line is dropped, and the rest seeded in order', () => {
+    const native = new FakeNativeModule();
+    native.tail = () => ({
+      pins: [],
+      lines: [
+        7,
+        { seq: 1, line: '{"kind":"a"}' },
+        { seq: '2', line: '{"kind":"x"}' },
+        { seq: 3, line: 4 },
+        null,
+        { seq: 4, line: '{"kind":"d"}' },
+      ],
+    });
+    const heard: unknown[] = [];
+    expect(() =>
+      createNativeCaptureEngine(native, {
+        onRecordLine: (line) => heard.push(line),
+        onRecordPins: (pins) => heard.push(pins),
+      }),
+    ).not.toThrow();
+    expect(heard).toEqual([[], '{"kind":"a"}', '{"kind":"d"}']);
+  });
+
   it('sends intents as void calls through the intent wire, numbered, and never waits on native', () => {
     const native = new FakeNativeModule();
     const engine = createNativeCaptureEngine(native, quiet);

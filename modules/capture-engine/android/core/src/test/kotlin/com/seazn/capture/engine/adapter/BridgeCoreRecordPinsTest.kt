@@ -13,7 +13,8 @@ import org.json.JSONObject
  * N38 after a JS reload or a process death (device, 2026-11-16: a court code paired for hours sent 34 lines, and the web
  * kept none, "sessions: none named"). JS's ring is seeded from [BridgeCore.tail], which held the last 20 lines alone, so
  * the pairing's `pair` line and its `broadcast-start` were gone. The tail now carries them as `pins`, and an open window's
- * pins are kept in the private store, so a new core over the same store (a process death) carries them too.
+ * start is kept in the private store, so a new core over the same store (a process death) carries it too, CLOSED (fix
+ * round 1 of P1, the controller's ruling): no pair comes back, so no line of the new process files under the dead code.
  */
 class BridgeCoreRecordPinsTest {
   private val clock = FakeClock()
@@ -40,10 +41,18 @@ class BridgeCoreRecordPinsTest {
     scheduler.advanceBy(0)
   }
 
-  private fun paired(wire: Map<String, Any?> = PairWire.valid()) {
-    core.send(wire)
+  private fun paired(wire: Map<String, Any?> = PairWire.valid(), of: BridgeCore = core) {
+    of.send(wire)
     scheduler.advanceBy(0)
-    assertEquals("paired", (core.current()["state"] as Map<*, *>)["kind"])
+    assertEquals("paired", (of.current()["state"] as Map<*, *>)["kind"])
+  }
+
+  private fun kinds(of: BridgeCore) = tailLines(of).map { JSONObject((it as Map<*, *>)["line"] as String).getString("kind") }
+
+  /** A process death: the shared state goes with the process, the store stays. */
+  private fun reborn(on: RecordingPlatform = RecordingPlatform()): BridgeCore {
+    BridgeCore.resetShared()
+    return build(on)
   }
 
   /** The operator's Go live, live 1.5 s on: the start's answer names [PairWire.SID], and the arming writes `broadcast-start`. */
@@ -70,14 +79,68 @@ class BridgeCoreRecordPinsTest {
   }
 
   @Test
-  fun `a process death - a new core over the same store carries the pins before any line of its own`() {
+  fun `a process death - a new core carries the broadcast-start before any line of its own, closed, with no pair`() {
     armed()
     probes(25)
-    val pins = listOf(line("pair"), line("broadcast-start"))
-    BridgeCore.resetShared()
-    val reborn = build()
-    assertEquals(mapOf("pins" to pins, "lines" to emptyList<Any?>()), reborn.tail())
-    assertEquals(pins, store.read(RecordPinStore.KEY)?.lines(), "the store holds the lines as written, one a line")
+    val start = line("broadcast-start")
+    assertEquals(start, store.read(RecordPinStore.KEY), "the store holds the start alone, as written: never the pair")
+    assertEquals(mapOf("pins" to listOf(start), "lines" to emptyList<Any?>()), reborn().tail())
+  }
+
+  /**
+   * I1 of P1's review: a cold start that does not re-pair (an expired code, Forget, a tap to pair never made) must not
+   * leave a window open under the dead code. No pair line is carried, so no line of the new process files under it on
+   * the web (A2), and the store is left holding the start alone, so the next start restores it closed again.
+   */
+  @Test
+  fun `restored with no re-pair - later lines open no window, and a second death restores the start closed again`() {
+    armed()
+    val start = line("broadcast-start")
+    val cold = reborn()
+    cold.start()
+    cold.report(Input.Network(true))
+    probes(25, of = cold)
+    assertEquals(listOf(start), pins(cold))
+    assertFalse("pair" in kinds(cold), "no pair line in the new process's tail")
+    assertEquals(start, store.read(RecordPinStore.KEY), "the store implies no open window: no pair line")
+    assertEquals(mapOf("pins" to listOf(start), "lines" to emptyList<Any?>()), reborn().tail())
+  }
+
+  /** The new process re-pairs: its pair opens a fresh window, as today, and the restored start goes. */
+  @Test
+  fun `restored then re-paired - the new pair replaces the restored start, in the tail and on disk`() {
+    armed()
+    val platform = RecordingPlatform()
+    val cold = reborn(platform)
+    cold.start()
+    cold.report(Input.Network(true))
+    paired(PairWire.valid() + ("slot" to 2.0), of = cold)
+    val again = line("pair", of = platform)
+    probes(25, of = cold)
+    assertEquals(listOf(again), pins(cold))
+    assertFalse(store.files.containsKey(RecordPinStore.KEY), "a pair alone keeps nothing: the restored start is deleted")
+    assertEquals(emptyList<Any?>(), pins(reborn()))
+  }
+
+  /**
+   * R6's Forget whose marker was written before its `unpaired` line (Pairings.kt), then a process death: the core starts
+   * Idle naming the Forget, and the pins the last process kept come back closed, here an open window as the build before
+   * this fix kept it, its pair first. No window is restored from that pair.
+   */
+  @Test
+  fun `the Forget marker path - idle, forgotten, and the kept pins come back closed, with no pair`() {
+    armed()
+    val pair = line("pair")
+    val start = line("broadcast-start")
+    store.files[PairingStore.FORGOTTEN] =
+      JSONObject(mapOf("code" to PairWire.CODE, "slot" to 1, "tokenTag" to JSONObject(pair).getString("tokenTag"))).toString()
+    store.files[RecordPinStore.KEY] = "$pair\n$start"
+    val cold = reborn()
+    assertEquals("forgotten", (cold.current()["unpaired"] as Map<*, *>?)?.get("reason"))
+    cold.start()
+    probes(25, of = cold)
+    assertEquals(listOf(start), pins(cold))
+    assertFalse("pair" in kinds(cold))
   }
 
   @Test
@@ -122,38 +185,46 @@ class BridgeCoreRecordPinsTest {
     assertEquals(2, JSONObject(second).getInt("slot"))
     probes(25)
     assertEquals(listOf(second), pins())
-    BridgeCore.resetShared()
-    assertEquals(listOf(second), pins(build()))
+    assertFalse(store.files.containsKey(RecordPinStore.KEY), "the first's start is deleted; the second has none yet")
+    assertEquals(emptyList<Any?>(), pins(reborn()))
   }
 
   /** AGENTS §13, class 3: a refused write is a record line, never silent, and the pairing goes on, and so does its end. */
   @Test
   fun `a refused write or delete of the pins is recorded, naming the key, and the pairing goes on`() {
     store.refuseWrites = true
-    core.start()
-    core.report(Input.Network(true))
-    paired()
-    core.send(mapOf("kind" to "unpair"))
+    armed()
+    core.send(mapOf("kind" to "stop"))
     scheduler.advanceBy(0)
-    assertEquals("idle", (core.current()["state"] as Map<*, *>)["kind"])
+    assertEquals("ended", (core.current()["state"] as Map<*, *>)["kind"])
     val failed = lines("store-failed").filter { it.getString("key") == RecordPinStore.KEY }
     assertEquals(listOf("write" to "IOException", "delete" to "IOException"), failed.map { it.getString("op") to it.getString("error") })
   }
 
+  /** Each text the store may hold, read as a new core is built: the pins it carries, and the keys of its problem lines. */
   @Test
-  fun `stored pins no rule can read are no pins, recorded once the engine exists (an empty input)`() {
+  fun `stored pins are read by the closed rule, and pins no rule can read are no pins, recorded (an empty input)`() {
     val pair = """{"at":"2026-11-16T10:00:00.000Z","kind":"pair","claim":"new","slot":1,"tokenTag":"c980ff38","stopped":false}"""
+    val start = """{"at":"2026-11-16T10:00:01.000Z","kind":"broadcast-start","sid":"${PairWire.SID}","cause":"operator"}"""
     val unreadable = listOf("not json", "42", "null", """["pair"]""", """{"kind":7}""", """{"at":"2026-11-16T10:00:00.000Z"}""", "$pair\nnot json")
+    val expected =
+      unreadable.associateWith { emptyList<Any?>() to listOf(RecordPinStore.KEY) } +
+        mapOf(
+          "" to (emptyList<Any?>() to emptyList()),
+          "$pair\n" to (emptyList<Any?>() to emptyList()),
+          "$start\n\n" to (listOf(start) to emptyList()),
+          // An open window as the build before this fix kept it: the start comes back, closed, and the pair does not.
+          "$pair\n$start" to (listOf(start) to emptyList()),
+        )
     val read =
-      unreadable.associateWith { text ->
+      expected.keys.associateWith { text ->
         store.files[RecordPinStore.KEY] = text
-        BridgeCore.resetShared()
-        val reborn = RecordingPlatform()
-        val core = build(reborn)
+        val heard = RecordingPlatform()
+        val cold = reborn(heard)
         scheduler.advanceBy(0)
-        pins(core) to lines("store-unreadable", reborn).map { it.getString("key") }
+        pins(cold) to lines("store-unreadable", heard).map { it.getString("key") }
       }
-    assertEquals(unreadable.associateWith { emptyList<Any?>() to listOf(RecordPinStore.KEY) }, read)
+    assertEquals(expected, read)
   }
 
   @Test

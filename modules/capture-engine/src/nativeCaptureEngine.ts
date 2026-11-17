@@ -166,16 +166,21 @@ function seedRecord(
 }
 
 /**
- * Native's tail read at the boundary (N38): its pins that are text, and its lines as native numbered them. Any other
- * answer, a build from before N38's (a list of lines) included, is an empty tail, so a stale build seeds nothing and
- * never throws.
+ * Native's tail read at the boundary (N38): its pins that are text, and its lines that are a number `seq` and a text
+ * `line`, as native numbered them. Any other answer or item, a build from before N38's (a list of lines) included, is
+ * dropped, so a stale build seeds nothing and never throws.
  */
 function tailOf(body: unknown): RecordTail {
   const { pins, lines } = Object(body) as { readonly pins?: unknown; readonly lines?: unknown };
   return {
     pins: Array.isArray(pins) ? pins.filter((pin): pin is string => typeof pin === 'string') : [],
-    lines: Array.isArray(lines) ? (lines as RecordLine[]) : [],
+    lines: Array.isArray(lines) ? lines.filter(isRecordLine) : [],
   };
+}
+
+function isRecordLine(item: unknown): item is RecordLine {
+  const { seq, line } = Object(item) as { readonly seq?: unknown; readonly line?: unknown };
+  return typeof seq === 'number' && typeof line === 'string';
 }
 
 /**

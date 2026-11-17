@@ -50,8 +50,8 @@ class BridgeCore(
   private val markerLines = mutableListOf<RecordEntry>()
 
   /**
-   * Carry C4c-I3: inside the sink, the record's newest seq is the line's own. N38: the record starts from the pins the
-   * last process kept, and keeps its own on each change.
+   * Carry C4c-I3: inside the sink, the record's newest seq is the line's own. N38: the record starts from the start the
+   * last process kept, restored closed (fix round 1 of P1), and keeps its own on each change.
    */
   private val record: SessionRecord =
     SessionRecord(RecordPinStore.read(store) { markerLines += it }, ::keepPins) { line -> platform.recordLine(line, record.lastSeq) }
@@ -314,8 +314,9 @@ class BridgeCore(
    * The record's last lines, oldest first, each with its seq (carry C4c-I3), as the bridge carries them:
    * `{seq, line}`, the seq a Double like every number JS reads. The platform hands each new line on with
    * the same seq, so JS drops an arriving line the tail already holds by number, never by its text.
-   * Beside them, `pins` (N38): the pairing's pinned lines the tail has let go of, the pair first, which JS's
-   * seed pins in its ring ahead of the lines. One read of the record, so the two always agree.
+   * Beside them, `pins` (N38): the pairing's pinned lines the tail has let go of, the pair first, or after a
+   * process death the restored start alone, closed (no pair), which JS's seed pins in its ring ahead of the
+   * lines. One read of the record, so the two always agree.
    */
   fun tail(): Map<String, Any?> {
     val held = record.numberedTail()
@@ -481,7 +482,7 @@ class BridgeCore(
     }
   }
 
-  /** N38: what an open window pins, on disk, or deleted once it ends. A refused write is a `store-failed` line. */
+  /** N38: what the record keeps (an open window's start), on disk, or deleted once none. A refused write is a `store-failed` line. */
   private fun keepPins(lines: List<String>) = stored(if (lines.isEmpty()) "delete" else "write", RecordPinStore.KEY) { RecordPinStore.save(store, lines) }
 
   /** CD11: a permanent failure is sticky, never retried; anything else is plan B's `command-failed`. */

@@ -42,8 +42,9 @@ data class RecordTail(val firstSeq: Long, val lines: List<String>, val pins: Lis
  * from any thread, which is how Diagnostics reads them.
  *
  * N38: the record pins its pairing's `pair` and `broadcast-start` lines ([RecordPins]), starting from
- * [restored] (what the last process kept), and hands [onKept] what an open window pins each time that
- * changes, on the scheduler thread, after the sink: the bridge keeps it on disk. [onKept] must not throw.
+ * [restored] (what the last process kept, closed), and hands [onKept] what it keeps ([RecordPins.kept])
+ * each time that changes, on the scheduler thread, after the sink: the bridge keeps it on disk. An
+ * exception from [onKept] is counted in [sinkFailures], as the sink's is, and never thrown.
  */
 class SessionRecord(
   restored: RecordPins = RecordPins.NONE,
@@ -86,7 +87,7 @@ class SessionRecord(
   var lastSeq: Long = 0
     private set
 
-  /** How many lines the sink refused. Surfaced in Diagnostics by plan C; never thrown. */
+  /** How many lines the sink refused, and how many kept pins [onKept] refused. Surfaced in Diagnostics by plan C; never thrown. */
   @Volatile
   var sinkFailures: Int = 0
     private set
@@ -193,7 +194,12 @@ class SessionRecord(
     } catch (_: Exception) {
       sinkFailures += 1
     }
-    if (pins.kept != before) onKept(pins.kept)
+    if (pins.kept == before) return
+    try {
+      onKept(pins.kept)
+    } catch (_: Exception) {
+      sinkFailures += 1
+    }
   }
 
   /** The line as written, and its kind and sid as it holds them: a field written twice holds its last, as JSON reads it. */
