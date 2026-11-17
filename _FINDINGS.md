@@ -1203,8 +1203,10 @@ line or the next `pair`, neither of which such a cold start writes, so a restore
 lines under the old code; that is why the pair is neither kept nor restored. The restored start opens no window, no
 line moves it, and a new `pair` replaces it, opening a fresh window as before. The store then holds the start alone,
 so every later start restores it closed again, for at most 24 h after it was written: an older start is not restored
-(`RecordPins.KEEP_AFTER_DROP_MS`, the upload credential's life after its code goes, R4; fix round 2), since no Send
-could name it. A pairing that never started a broadcast restores nothing: its own lines died with the process. No new
+(`RecordPins.RESTORE_WITHIN_MS`; fix rounds 2 and 3). That is a hygiene bound counted from the line's write, so a stale
+start does not lead every Send until a re-pair; it is R4's length but not its upload credential's life, which runs from
+the code's drop (a saved code keeps a live credential for days). A start dated ahead of the clock is restored (the
+controller's ruling: no clamp; it only names a dead session). A pairing that never started a broadcast restores nothing: its own lines died with the process. No new
 line kind: the Send upload contract and the web's allow-list are unchanged.
 
 **Parked:** Send still never reads the native 5 MB disk record (the owner decides whether it should), so after a reload

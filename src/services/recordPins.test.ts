@@ -382,6 +382,12 @@ describe('N38: a ring seeded after a reload adopts native’s pinned lines', () 
     expect(seeded([startWith('sess_42')], b).linesToSend(1_000)).toEqual(b.slice(-1_000));
   });
 
+  // Fix round 3 of P1: a lone line with a sid A1 can judge is adopted only if it is a start.
+  it('a lone line with a judgeable sid that is not a start is not adopted (an empty input)', () => {
+    const b = beats(3_000);
+    expect(seeded([lineOf('live', { sid: SID })], b).linesToSend(1_000)).toEqual(b.slice(-1_000));
+  });
+
   it('a pair after a closed restore replaces it, as a re-pair in the new process does', () => {
     const b = beats(3_000);
     expect(seeded([START], [PAIR_2, START_2, ...b]).linesToSend(1_000)).toEqual([

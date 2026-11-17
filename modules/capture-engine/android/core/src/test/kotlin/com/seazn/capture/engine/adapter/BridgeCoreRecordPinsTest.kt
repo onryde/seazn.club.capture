@@ -108,7 +108,7 @@ class BridgeCoreRecordPinsTest {
 
   /**
    * Fix round 2 of P1: a cold start a day after the start was written restores it, and one a millisecond past 24 h does
-   * not (R4: the upload credential outlives its code by 24 h, so no Send could name it), and keeps it no longer.
+   * not (`RecordPins.RESTORE_WITHIN_MS`, a hygiene bound counted from the line's write), and keeps it no longer.
    */
   @Test
   fun `a process death restores the start for 24 h after it was written, and not a millisecond longer`() {

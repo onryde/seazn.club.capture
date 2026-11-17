@@ -23,7 +23,7 @@ data class PinnedLine(val seq: Long, val line: String)
  * ([restoring]), with no pair: A1 judges it by its sid alone, and with no pair no window is open, so no later line moves
  * it until a new `pair` replaces it, as a pair always does. A pairing that never started a broadcast restores nothing:
  * its own lines died with the process, so its pair would name none of the body's. No new line kind: the web's allow-list
- * is unchanged. A start written more than [KEEP_AFTER_DROP_MS] before the new process reads it is not restored (fix
+ * is unchanged. A start written more than [RESTORE_WITHIN_MS] before the new process reads it is not restored (fix
  * round 2 of P1).
  */
 data class RecordPins(val pair: PinnedLine?, val start: PinnedLine?, val endedAt: Long?) {
@@ -39,7 +39,7 @@ data class RecordPins(val pair: PinnedLine?, val start: PinnedLine?, val endedAt
 
   /**
    * The pins once a new process has read back [line], one of the last process's [kept] lines, of [kind], with [sid] and
-   * written [at], at [nowEpochMs]: a start A1 can judge, written at most [KEEP_AFTER_DROP_MS] ago, as seq 0 and closed
+   * written [at], at [nowEpochMs]: a start A1 can judge, written at most [RESTORE_WITHIN_MS] ago, as seq 0 and closed
    * (no pair), or these pins for any other line. Folded from [NONE] in order.
    */
   fun restoring(kind: String, sid: Any?, at: Any?, line: String, nowEpochMs: Long): RecordPins =
@@ -68,21 +68,26 @@ data class RecordPins(val pair: PinnedLine?, val start: PinnedLine?, val endedAt
     /** A `broadcast-start` whose sid the contract's A1 can judge ([SID]): the one line a start pin may hold. */
     private fun names(kind: String, sid: Any?): Boolean = kind == START && sid is String && SID.matches(sid)
 
-    /** The contract's `sid` uuid pattern, as `RECORD_SID` and `Bodies`' own: ASCII classes spelled out, matched whole. */
     /**
-     * How long after it was written a kept start is restored (fix round 2 of P1): the upload credential's life after its
-     * code goes, 24 h (R4; JS's `KEEP_AFTER_DROP_MS`, `uploadCredential.ts`). A Send names the start only under that
-     * credential, so an older one would ride every Send and name nothing; without a bound it stood until a re-pair.
+     * How long after its own `at` a kept start is restored (fix rounds 2 and 3 of P1): a hygiene bound, so a stale start
+     * does not lead every Send until a re-pair, as it did with none. It is counted from the line's write. It is the same
+     * length as R4's upload credential keep (JS's `KEEP_AFTER_DROP_MS`) but not that credential's life, which runs from
+     * the code's drop: a saved code keeps a live credential for days. A start dated ahead of the clock is restored (the
+     * controller's ruling: no clamp, since it only names a dead session, and it ages out once the clock passes it).
      */
-    const val KEEP_AFTER_DROP_MS = 24 * 60 * 60 * 1000L
+    const val RESTORE_WITHIN_MS = 24 * 60 * 60 * 1000L
 
     /** The record's own `at` ([IsoTime.utc]): fixed-width UTC, so its text order is its time order. */
     private val AT = Regex("""\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z""")
 
-    /** [at] is the record's own and no more than [KEEP_AFTER_DROP_MS] before [nowEpochMs]; an `at` it never writes is no age. */
+    /**
+     * [at] is the record's own and no more than [RESTORE_WITHIN_MS] before [nowEpochMs], or after it; an `at` the record
+     * never writes is no age.
+     */
     private fun fresh(at: Any?, nowEpochMs: Long): Boolean =
-      at is String && AT.matches(at) && at >= IsoTime.utc(nowEpochMs - KEEP_AFTER_DROP_MS)
+      at is String && AT.matches(at) && at >= IsoTime.utc(nowEpochMs - RESTORE_WITHIN_MS)
 
+    /** The contract's `sid` uuid pattern, as `RECORD_SID` and `Bodies`' own: ASCII classes spelled out, matched whole. */
     val SID =
       Regex(
         "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}" +

@@ -218,8 +218,9 @@ class RecordPinsTest {
   }
 
   /**
-   * Fix round 2 of P1: the restored start is bounded. A Send names it only under its code's upload credential, which
-   * outlives the code by 24 h (R4, JS's `KEEP_AFTER_DROP_MS`), so a start written longer ago than that is not restored.
+   * Fix rounds 2 and 3 of P1: the restored start is bounded, a hygiene bound counted from the line's write, so a stale
+   * start does not lead every Send until a re-pair. A start dated ahead of the clock is restored (the controller's
+   * ruling: no clamp; it only names a dead session, and it ages out once the clock passes it).
    */
   @Test
   fun `a kept start is restored up to 24 h after it was written, and not a millisecond later`() {
@@ -227,10 +228,15 @@ class RecordPinsTest {
     val start = start()
     val at = IsoTime.utc(AT)
     fun restoredAt(now: Long, written: Any? = at) = RecordPins.NONE.restoring("broadcast-start", SID, written, start, now)
-    assertEquals(86_400_000L, RecordPins.KEEP_AFTER_DROP_MS, "R4's 24 h")
+    assertEquals(86_400_000L, RecordPins.RESTORE_WITHIN_MS, "24 h")
     assertEquals(RecordPins(null, PinnedLine(0, start), null), restoredAt(AT + 86_400_000), "exactly 24 h old")
     assertEquals(RecordPins.NONE, restoredAt(AT + 86_400_001), "older than 24 h")
     assertEquals(RecordPins(null, PinnedLine(0, start), null), restoredAt(AT), "written this instant")
+    assertEquals(
+      RecordPins(null, PinnedLine(0, start), null),
+      restoredAt(AT, written = IsoTime.utc(AT + 3_600_000)),
+      "an at 1 h ahead of the clock",
+    )
     assertEquals(RecordPins.NONE, restoredAt(AT, written = null), "no at: its age is unknown")
     assertEquals(RecordPins.NONE, restoredAt(AT, written = "yesterday"), "an at the record never writes")
     assertEquals(RecordPins.NONE, restoredAt(AT, written = AT), "an at that is not text")
