@@ -3,6 +3,7 @@ package com.seazn.capture.engine.core
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** R6, R7 of the D3 findings design: the notification's Forget, native's own input, acts only while paired and waiting. */
@@ -113,6 +114,51 @@ class ForgetTest {
     val printed = Command.WriteForgotten(name).toString()
     assertTrue(name.code !in printed && name.tokenTag !in printed, printed)
     assertTrue("slot=${name.slot}" in printed, printed)
+  }
+
+  /**
+   * O12 (owner, 2026-11-15): a court's notification carries no Forget, so a tap that lands anyway (posted before the
+   * court was known, or late) is ignored and recorded, and the court stays paired: Exit, which asks first, is the only
+   * way off a court.
+   */
+  @Test
+  fun `a late Forget tap on a court pairing is ignored and recorded - the pairing stays Paired`() {
+    val r = Configs.pairRequest()
+    val rig = MachineRig(request = PairRequest(r.code, r.slot, r.token, r.codeUrl, r.heartbeatUrl, r.startUrl, r.language, r.automatic, r.claim, r.environment, court = "Court 2")).paired()
+    val before = rig.phase
+    val commands = rig.send(Input.Forget)
+    assertEquals(before, rig.phase)
+    assertIs<Phase.Paired>(rig.phase)
+    val line = commands.filterIsInstance<Command.Record>().single().entry
+    assertEquals("intent-ignored", line.kind)
+    assertEquals(listOf<Pair<String, Any?>>("intent" to "forget", "phase" to "paired", "court" to true), line.fields)
+    assertTrue(commands.none { it == Command.Release || it is Command.WriteForgotten }, "$commands")
+    assertNull(rig.snapshot.unpaired)
+    // Four questions (1): a second tap is the same.
+    rig.send(Input.Forget)
+    assertIs<Phase.Paired>(rig.phase)
+    assertEquals(2, rig.records("intent-ignored").size)
+    assertTrue(rig.sent<Command.WriteForgotten>().isEmpty())
+  }
+
+  /**
+   * P2 review m1: the court is named first. A court tap made while the operator's start is in flight is the same court
+   * tap, so its line names the court too; nothing is released or written either way.
+   */
+  @Test
+  fun `a court Forget tap while the operator's start is in flight is recorded naming the court`() {
+    val r = Configs.pairRequest()
+    val rig = MachineRig(request = PairRequest(r.code, r.slot, r.token, r.codeUrl, r.heartbeatUrl, r.startUrl, r.language, r.automatic, r.claim, r.environment, court = "Court 2")).paired()
+    rig.hear("waiting")
+    rig.ready()
+    rig.send(Input.Start)
+    assertTrue(assertIs<Phase.Paired>(rig.phase).pairing.starts.inFlightId != null, "the start is in flight")
+    val before = rig.phase
+    val commands = rig.send(Input.Forget)
+    assertEquals(before, rig.phase)
+    val line = commands.filterIsInstance<Command.Record>().single().entry
+    assertEquals(listOf<Pair<String, Any?>>("intent" to "forget", "phase" to "paired", "court" to true), line.fields)
+    assertTrue(commands.none { it == Command.Release || it is Command.WriteForgotten }, "$commands")
   }
 
   @Test

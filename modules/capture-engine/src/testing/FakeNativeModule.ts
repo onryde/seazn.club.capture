@@ -1,10 +1,10 @@
-import type { CaptureEngineNative, RecordLine, Subscription } from '../nativeModule';
+import type { CaptureEngineNative, RecordLine, RecordTail, Subscription } from '../nativeModule';
 
 type Events = { onSnapshot: unknown; onRecord: RecordLine; onAck: { seq: number } };
 type Listener = (body: never) => void;
 
 /**
- * A hand-written `CaptureEngineNative`: settable `current` and `tail`, recorded calls, and `emit`.
+ * A hand-written `CaptureEngineNative`: settable `current`, `tail` (its lines) and `pins` (N38), recorded calls, and `emit`.
  * Events arrive as Expo's do (review C4c I-3): queued, and delivered in order on a later macrotask,
  * to the listeners there then. Tests only: nothing in production imports it.
  */
@@ -16,7 +16,13 @@ export class FakeNativeModule implements CaptureEngineNative {
   /** Runs inside `tail()`, before it returns: D3's race, made deterministic. */
   duringTail: (() => void) | null = null;
 
-  constructor(private readonly state: { current?: unknown; tail?: readonly RecordLine[] } = {}) {}
+  constructor(
+    private readonly state: {
+      current?: unknown;
+      tail?: readonly RecordLine[];
+      pins?: readonly string[];
+    } = {},
+  ) {}
 
   send(intent: Record<string, unknown>): void {
     this.sent.push(intent);
@@ -27,9 +33,11 @@ export class FakeNativeModule implements CaptureEngineNative {
   current(): unknown {
     return this.state.current ?? null;
   }
-  tail(): readonly RecordLine[] {
+  /** A `RecordTail`, as native answers; `unknown` as the module's, so a test can answer as a stale build would. */
+  tail(): unknown {
     this.duringTail?.();
-    return this.state.tail ?? [];
+    const tail: RecordTail = { pins: this.state.pins ?? [], lines: this.state.tail ?? [] };
+    return tail;
   }
   /** What `takePhoto` answers, and how often it was asked. Tests set the first and read the second. */
   photoAnswer: unknown = 'saved';

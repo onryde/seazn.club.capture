@@ -181,6 +181,31 @@ class SnapshotWireTest {
         val snapshot = bare(SnapshotState.Paired, 1_790_000_007_000).copy(pairing = PairingView(name, true, waiting), ready = allReady, camera = CameraState.OWN)
         SnapshotWire.of(snapshot, PlatformFacts(survivesBackground = true), clean)
       },
+      // Court stream (spec 2026-11-14 §6.1, §5.3): a court pairing's court, and the beat's next with a start, then none.
+      "paired-court-with-next" to {
+        val waiting = waiting().copy(courtName = "Court 2", next = NextMatch("Northside v Riverside", 1_793_538_000))
+        val snapshot = bare(SnapshotState.Paired, 1_790_000_008_000).copy(pairing = PairingView(name, true, waiting), ready = allReady, camera = CameraState.OWN)
+        SnapshotWire.of(snapshot, PlatformFacts(survivesBackground = true), clean)
+      },
+      // Court stream (capture-start.v1): the start's no_match, said on the court's paired line until the next start.
+      "paired-refused-no-match" to {
+        val waiting = waiting().copy(courtName = "Court 2")
+        val snapshot =
+          bare(SnapshotState.Paired, 1_790_000_009_500)
+            .copy(pairing = PairingView(name, true, waiting), ready = allReady, refusal = Refusal.NO_MATCH, camera = CameraState.OWN)
+        SnapshotWire.of(snapshot, PlatformFacts(survivesBackground = true), clean)
+      },
+      "paired-court-no-next" to {
+        val waiting = waiting().copy(courtName = "Court 2")
+        val snapshot = bare(SnapshotState.Paired, 1_790_000_009_000).copy(pairing = PairingView(name, true, waiting), ready = allReady, camera = CameraState.OWN)
+        SnapshotWire.of(snapshot, PlatformFacts(survivesBackground = true), clean)
+      },
+      // Court stream Task 13 (P2): the operator's Go live in flight, waiting for POST start's answer.
+      "paired-starting" to {
+        val snapshot =
+          bare(SnapshotState.Paired, 1_790_000_010_000).copy(pairing = PairingView(name, true, waiting(), starting = true), ready = allReady, camera = CameraState.OWN)
+        SnapshotWire.of(snapshot, PlatformFacts(survivesBackground = true), clean)
+      },
     )
 
   /** `{ ...base, ...overrides }` when the case's value is an object; `null` stays `null`. */
@@ -244,7 +269,7 @@ class SnapshotWireTest {
   @Test
   fun `carries 3, 5, 6 each native snapshot becomes the shared wire`() {
     val cases = cases()
-    assertEquals(17, cases.size, "the vector file's seventeen cases")
+    assertEquals(21, cases.size, "the vector file's twenty-one cases")
     assertEquals(cases.map { it.first }.toSet(), builders.keys, "one builder per case")
     for ((name, expected) in cases) assertJsonEquals(expected, JSONObject(WireJson.encode(builders.getValue(name)())), name)
   }
@@ -447,6 +472,13 @@ class SnapshotWireTest {
   private val full =
     Sources(
       live.copy(
+        // A court pairing with a next, so a change to the court or to either half of next can show.
+        // And a start in flight, so a change to starting can show.
+        pairing =
+          live.pairing!!.copy(
+            waiting = live.pairing!!.waiting.copy(courtName = "Court 1", next = NextMatch("Example Town v Sample CC", 1_793_534_400)),
+            starting = true,
+          ),
         refusal = Refusal.NO_CREDIT,
         lastEnd = LastEnd.NO_SIGNAL,
         unpaired = Unpaired(UnpairReason.TAKEN, name),
@@ -520,6 +552,7 @@ class SnapshotWireTest {
       "pairing.name.slot" to { s -> s.pairingName { copy(slot = 2) } },
       "pairing.name.tokenTag" to { s -> s.pairingName { copy(tokenTag = "95e90931") } },
       "pairing.automatic" to { s -> s.pairing { copy(automatic = false) } },
+      "pairing.starting" to { s -> s.pairing { copy(starting = false) } },
       "pairing.waiting.label" to { s -> s.waiting { copy(label = "Sample CC v Example Town") } },
       "pairing.waiting.venueTimezone" to { s -> s.waiting { copy(venueTimezone = "Europe/Amsterdam") } },
       "pairing.waiting.scheduledStartEpochS" to { s -> s.waiting { copy(scheduledStartEpochS = 1_790_003_660) } },
@@ -527,6 +560,9 @@ class SnapshotWireTest {
       "pairing.waiting.destinationName" to { s -> s.waiting { copy(destinationName = null) } },
       "pairing.waiting.pollSeconds" to { s -> s.waiting { copy(pollSeconds = 60) } },
       "pairing.waiting.stageLabel" to { s -> s.waiting { copy(stageLabel = "Open · SF") } },
+      "pairing.waiting.courtName" to { s -> s.waiting { copy(courtName = "Court 2") } },
+      "pairing.waiting.next.label" to { s -> s.waiting { copy(next = next!!.copy(label = "A v B")) } },
+      "pairing.waiting.next.scheduledStartEpochS" to { s -> s.waiting { copy(next = next!!.copy(scheduledStartEpochS = null)) } },
       "broadcast.sid" to { s -> s.broadcast { copy(sid = "sess_43") } },
       "broadcast.cause" to { s -> s.broadcast { copy(cause = Cause.OPERATOR) } },
       "broadcast.playbackUrl" to { s -> s.broadcast { copy(playbackUrl = "$playbackUrl?x") } },

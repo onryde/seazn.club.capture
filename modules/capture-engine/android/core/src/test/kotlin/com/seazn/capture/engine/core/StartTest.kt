@@ -71,6 +71,83 @@ class StartTest {
     assertEquals(1, rig.sent<Command.PostStart>().size)
   }
 
+  // Court stream Task 13 (NE2211, staging): after the 3 s hold the screen still read Go live until POST start answered,
+  // up to 8 s, so the operator could not tell it took. The snapshot's pairing now says starting while it is in flight.
+
+  private fun starting(rig: MachineRig): Boolean? = rig.snapshot.pairing?.starting
+
+  @Test fun `P2 the snapshot says starting from the hold until its answer, and Started clears it into Arming`() {
+    val rig = ready()
+    rig.codes = null
+    assertEquals(false, starting(rig), "paired and waiting: no start asked")
+    rig.send(Input.Start)
+    assertEquals(SnapshotState.Paired, rig.state, "still Paired: the server has not answered")
+    assertEquals(true, starting(rig))
+    rig.advance(5_000)
+    assertEquals(true, starting(rig), "it says so for as long as the answer takes")
+    rig.send(Input.StartAnswered(rig.sent<Command.PostStart>().single().requestId, StartAnswer.Started("sess_42")))
+    assertIs<SnapshotState.Arming>(rig.state)
+    assertEquals(false, starting(rig))
+  }
+
+  @Test fun `P2 a failed start clears starting with its try-again line, and the next hold says starting again`() {
+    val rig = ready()
+    rig.send(Input.Start)
+    assertEquals(true, starting(rig))
+    rig.send(Input.StartAnswered(rig.sent<Command.PostStart>().single().requestId, StartAnswer.Failed("503")))
+    assertEquals(false, starting(rig))
+    assertEquals(Refusal.START_FAILED, rig.snapshot.refusal)
+    // The operator's next hold: one more post, and starting again, its refusal cleared.
+    rig.send(Input.Start)
+    assertEquals(2, rig.sent<Command.PostStart>().size)
+    assertEquals(true, starting(rig))
+    assertNull(rig.snapshot.refusal)
+  }
+
+  @Test fun `P2 a refusal clears starting too, staying Paired`() {
+    val answers = listOf(StartAnswer.Refused(Refusal.NO_CREDIT), StartAnswer.Refused(Refusal.NO_MATCH))
+    for (answer in answers) {
+      val rig = ready()
+      rig.send(Input.Start)
+      rig.send(Input.StartAnswered(rig.sent<Command.PostStart>().single().requestId, answer))
+      assertEquals(SnapshotState.Paired, rig.state, "$answer")
+      assertEquals(false, starting(rig), "$answer")
+    }
+  }
+
+  @Test fun `P2 a second hold while one is in flight changes nothing, and a late answer for another start keeps starting`() {
+    val rig = ready()
+    rig.send(Input.Start)
+    rig.send(Input.Start)
+    assertEquals(1, rig.sent<Command.PostStart>().size)
+    assertEquals(true, starting(rig))
+    // An answer to no start in flight (an id never asked) is late: the hold's start is still waiting.
+    rig.send(Input.StartAnswered(rig.sent<Command.PostStart>().single().requestId + 7, StartAnswer.Failed("503")))
+    assertEquals(true, starting(rig))
+  }
+
+  @Test fun `P2 the organiser's Go live on a beat while the hold's start is in flight arms it, and starting goes`() {
+    val rig = ready()
+    rig.codes = null
+    rig.send(Input.Start)
+    assertEquals(true, starting(rig))
+    rig.hear("go-live", sid = "sess_42", startedBy = "organiser")
+    assertIs<SnapshotState.Arming>(rig.state)
+    assertEquals(false, starting(rig), "arming retires the hold's start (I1): its answer is late")
+  }
+
+  @Test fun `P2 an end while the hold's start is in flight never says starting - Ended keeps the pairing, not the hold`() {
+    val rig = ready()
+    rig.send(Input.Start)
+    assertEquals(true, starting(rig))
+    // A refused pair from Paired ends fatal-error and keeps the pairing for the snapshot (Phase.ended), its start still
+    // unanswered: only Paired posts one, so only Paired may say so.
+    rig.send(Input.Pair(Configs.pairRequest(slot = 2, token = ""), Configs.PHONE, null))
+    assertIs<Phase.Ended>(rig.phase)
+    assertNotNull(rig.snapshot.pairing)
+    assertEquals(false, starting(rig))
+  }
+
   @Test fun `409 replaced unpairs as a beat's replaced`() {
     val rig = ready()
     rig.starts = { StartAnswer.Replaced }
@@ -173,14 +250,15 @@ class StartTest {
   /**
    * Batch 4 review M1, the controller's ruling (2026-10-12): an answer that reaches Idle (the pairing left while its
    * start was in flight) is recorded late, never dropped in silence: a start the server accepted then is a broadcast
-   * with no phone, and the record is where that shows.
+   * with no phone, and the record is where that shows. The operator's unpair is ignored while the start is in flight
+   * (P3 review m4), so the pairing leaves here by the engine's own path: a beat's 401.
    */
-  @Test fun `a start answer that reaches Idle after an unpair is recorded late, and moves nothing`() {
+  @Test fun `a start answer that reaches Idle after the pairing left is recorded late, and moves nothing`() {
     for (late in lateAnswers + StartAnswer.CodeEnded) {
       val rig = ready()
       rig.send(Input.Start)
       val id = rig.sent<Command.PostStart>().single().requestId
-      rig.send(Input.Unpair)
+      rig.hear(null, status = 401)
       val before = assertIs<Phase.Idle>(rig.phase)
       val commands = rig.send(Input.StartAnswered(id, late))
       assertEquals(before, rig.phase, "$late")

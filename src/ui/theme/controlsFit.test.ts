@@ -56,7 +56,8 @@ const controlWidth = (text: string) => geist500.width(text, typeScale.control.fo
 /**
  * Every row of the controls half whose width is the content's, in the state it is widest in. Each is `[name, the sum
  * from the declared makeup, the same worked by hand]`: the hand-worked number is what a dropped term fails by.
- *  - icons before air: Settings, Home, Take photo, Remote scoring: four 48 dp buttons, three gaps.
+ *  - icons before air: Settings, Home, Take photo, Remote scoring: four 48 dp buttons, three gaps. On a court code that
+ *    waits it adds More (Exit's ⋯), last: five buttons, four gaps (272), which the plate row's 278 still holds.
  *  - icons on air, as shipped: Settings, Take photo, Remote scoring: three 48 dp buttons, two gaps. What viewers see
  *    is hidden (the owner's ruling, 2026-10-09), and no cell flexes: the buttons pack from the start, as before air
  *    (StreamScreen.viewerHidden.test.tsx pins it on the rendered tree).
@@ -72,6 +73,12 @@ const ROWS = [
     'icons before air',
     4 * layout.iconButton + 3 * GAP, // 4 × 48 + 3 × 8
     216,
+  ],
+  [
+    // Court stream (spec 2026-11-14 §6.4): a court code waiting adds More, last (Exit's ⋯), to the four.
+    'icons before air on a court code, with More: five buttons',
+    5 * layout.iconButton + 4 * GAP, // 5 × 48 + 4 × 8
+    272,
   ],
   [
     'icons on air as shipped, What viewers see hidden: three buttons',
@@ -103,8 +110,8 @@ describe('the controls half is as wide as its widest row (owner, 2026-10-08)', (
     expect(width).toBe(worked);
   });
 
-  it('is the widest of the five rows plus the half’s padding either side: 278 + 2 × 16 = 310', () => {
-    expect(ROWS).toHaveLength(5);
+  it('is the widest of the six rows plus the half’s padding either side: 278 + 2 × 16 = 310', () => {
+    expect(ROWS).toHaveLength(6);
     expect(NEEDED).toBe(278);
     expect(layout.controlsHalf).toBe(NEEDED + 2 * layout.controlsPad);
     expect(layout.controlsHalf).toBe(310);
@@ -138,7 +145,12 @@ describe('the derivation takes every row into account (the width is a max, not a
   const SMALL = { peekCell: 0, autoChip: 0, clockCell: 0 };
   const TURNS = [
     // [which row governs, the cells, the result: that row + 2 × 16]
-    ['icons before air (four buttons)', { ...layout, ...SMALL }, 4 * 48 + 3 * 8 + 32],
+    // The four-button row can never govern: a court code's five buttons, in the same cells, are wider (court stream §6.4).
+    [
+      'icons before air on a court code (five buttons)',
+      { ...layout, ...SMALL },
+      5 * 48 + 4 * 8 + 32,
+    ],
     [
       'icons on air (three buttons and a 300 dp peek)',
       { ...layout, ...SMALL, peekCell: 300 },
@@ -352,7 +364,12 @@ describe('every line of text in the controls half fits the 278 dp it is given', 
     const lines = Math.floor((layout.holdHeight - 2 * 2) / typeScale.action.lineHeight);
     expect(lines).toBe(2);
     for (const [lang, dictionary] of LANGUAGES) {
-      for (const key of ['stream.action.goLive', 'stream.action.stop'] as const) {
+      // Starting… is the same control while the hold's start is in flight (court stream Task 13, P2).
+      for (const key of [
+        'stream.action.goLive',
+        'stream.action.starting',
+        'stream.action.stop',
+      ] as const) {
         const text = (dictionary as Dictionary)[key] ?? '';
         for (const piece of wordsOf(text)) {
           expect({ lang, key, piece, fits: actionWidth(piece) <= inside }).toEqual({
@@ -398,7 +415,7 @@ describe('every line of text in the controls half fits the 278 dp it is given', 
     }
   });
 
-  it('counted every row: 8 hold labels, 6 lines × 4 languages and 4 start lines = 36 (anti-vacuity)', () => {
-    expect(rows).toBe(8 + 24 + 4);
+  it('counted every row: 12 hold labels, 6 lines × 4 languages and 4 start lines = 40 (anti-vacuity)', () => {
+    expect(rows).toBe(12 + 24 + 4);
   });
 });

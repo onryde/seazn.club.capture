@@ -2,6 +2,7 @@ package com.seazn.capture.engine.core
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class PairingValuesTest {
@@ -62,6 +63,7 @@ class PairingValuesTest {
     assertEquals(Refusal.NO_DESTINATION, Refusal.of("no_destination"))
     assertEquals(Refusal.NO_CREDIT, Refusal.of("no_credit"))
     assertEquals(Refusal.NOT_ENTITLED, Refusal.of("not_entitled"))
+    assertEquals(Refusal.NO_MATCH, Refusal.of("no_match"))
     assertEquals(Refusal.UNKNOWN, Refusal.of("org_suspended"))
     assertEquals(Refusal.UNKNOWN, Refusal.of("start-failed"))
     assertEquals(Refusal.UNKNOWN, Refusal.of(null))
@@ -95,5 +97,53 @@ class PairingValuesTest {
     assertEquals(Cause.ORGANISER, Cause.startedBy("organiser"))
     assertEquals(Cause.ORGANISER, Cause.startedBy("rejoin"))
     assertEquals(Cause.ORGANISER, Cause.startedBy(null))
+  }
+
+  // Court stream (spec 2026-11-14 §6.1, §5.3): the merge rules. A beat carries no court, and a descriptor no next.
+  private val held = Configs.waiting().copy(courtName = "Court 2", next = NextMatch("A v B", 1_793_534_400))
+
+  /** A beat's answer as Bodies reads it: no zone (D4), no court, and [next] as the beat said. */
+  private fun beat(next: NextMatch?) = Configs.waiting().copy(venueTimezone = "", next = next)
+
+  @Test
+  fun `a beat keeps the held court, and its next replaces the held one - none clears it`() {
+    val bare = beat(next = null)
+    assertEquals("Court 2", bare.overBeat(held).courtName, "a beat carries no court")
+    // A beat with no next clears it: the court has no next streamed match now.
+    assertNull(bare.overBeat(held).next)
+    val next = NextMatch("C v D", null)
+    assertEquals(next, beat(next).overBeat(held).next)
+    // Four questions (1): the same next twice leaves it unchanged, and a third beat without one clears it.
+    val twice = beat(next).overBeat(beat(next).overBeat(held))
+    assertEquals(next, twice.next)
+    assertEquals("Court 2", twice.courtName)
+    assertNull(bare.overBeat(twice).next)
+    assertEquals("Court 2", bare.overBeat(twice).courtName)
+    // A fixture's code: no court held, none after.
+    assertNull(beat(next).overBeat(Configs.waiting()).courtName)
+  }
+
+  /**
+   * P1 review M1: the schema bars `court` on every beat answer, so a beat that carries one anyway (an off-contract
+   * server) never renames the court, nor makes a fixture's pairing a court's: a beat keeps the court (spec §5.3).
+   */
+  @Test
+  fun `a beat that carries a court anyway keeps the held one`() {
+    assertEquals("Court 2", beat(null).copy(courtName = "Court 9").overBeat(held).courtName)
+    assertNull(beat(null).copy(courtName = "Court 9").overBeat(Configs.waiting()).courtName, "a fixture's pairing stays one")
+  }
+
+  @Test
+  fun `a descriptor's court replaces the held one, its silence keeps it, and it keeps the held next`() {
+    val descriptor = Configs.waiting().copy(venueTimezone = "Europe/Madrid")
+    assertEquals("Court 3", descriptor.copy(courtName = "Court 3").over(held).courtName)
+    // Never a fixture's code by silence: a court pairing stays one (spec §3).
+    assertEquals("Court 2", descriptor.over(held).courtName)
+    // A descriptor never carries next (capture-descriptor.v1): the beat's stands. Four questions (3): at a reconnect too.
+    assertEquals(NextMatch("A v B", 1_793_534_400), descriptor.over(held).next)
+    assertEquals(NextMatch("A v B", 1_793_534_400), descriptor.copy(next = NextMatch("X v Y", null)).over(held).next)
+    // The zone rule is as before: the descriptor's zone replaces the held one, and an empty one keeps it.
+    assertEquals("Europe/Madrid", descriptor.over(held).venueTimezone)
+    assertEquals("Europe/London", descriptor.copy(venueTimezone = "").over(held).venueTimezone)
   }
 }

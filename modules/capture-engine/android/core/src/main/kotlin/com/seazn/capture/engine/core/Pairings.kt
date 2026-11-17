@@ -31,8 +31,15 @@ internal object Pairings {
         request = input.request,
         phone = input.phone,
         claim = input.request.claim,
-        // The zone the scan's GET gave: the engine holds it from here (D4: a beat carries none).
-        waiting = WaitingFields.UNKNOWN.copy(venueTimezone = input.request.venueTimezone, stageLabel = input.request.stageLabel, stageFor = input.request.stageMatch),
+        // The zone the scan's GET gave: the engine holds it from here (D4: a beat carries none). So is the court
+        // (court stream §6.1): a cold-start re-pair is a court pairing before any GET.
+        waiting =
+          WaitingFields.UNKNOWN.copy(
+            venueTimezone = input.request.venueTimezone,
+            stageLabel = input.request.stageLabel,
+            stageFor = input.request.stageMatch,
+            courtName = input.request.court,
+          ),
         automatic = input.request.automatic,
         language = input.request.language,
         heartbeat = HeartbeatState(nextId = ids.beat),
@@ -55,10 +62,16 @@ internal object Pairings {
     return Heartbeats.tick(Step(paired, listOf(Command.Hold, line("paired"))), now)
   }
 
+  /**
+   * Home's Forget and the court's Leave (⋯). P3 review m4: the operator's own start in flight is guarded as Forget's
+   * is (Batch 4 review M1): a start the server accepts after an unpair is a broadcast with no phone, so the unpair is
+   * ignored and recorded, and JS reads `held` once the start arms, or gives up and keeps the code.
+   */
   fun unpair(phase: Phase): Step =
-    when (phase) {
-      is Phase.Paired -> Step(Phase.Idle(phase.ids, phase.networkValidated, phase.micSilenced), listOf(Command.Release, line("unpaired", "reason" to "operator")))
-      is Phase.Pairing -> Step(Phase.Idle(phase.ids, phase.networkValidated, phase.micSilenced), listOf(line("unpaired", "reason" to "operator")))
+    when {
+      phase is Phase.Paired && phase.pairing.starts.inFlightId != null -> SessionMachine.ignored(phase, "unpair")
+      phase is Phase.Paired -> Step(Phase.Idle(phase.ids, phase.networkValidated, phase.micSilenced), listOf(Command.Release, line("unpaired", "reason" to "operator")))
+      phase is Phase.Pairing -> Step(Phase.Idle(phase.ids, phase.networkValidated, phase.micSilenced), listOf(line("unpaired", "reason" to "operator")))
       else -> SessionMachine.ignored(phase, "unpair")
     }
 
@@ -70,10 +83,15 @@ internal object Pairings {
    *
    * Batch 4 review M1, the controller's ruling (2026-10-12): the operator's own start in flight is not waiting either.
    * The shade and the screen can be touched at once, and a start the server accepts after an unpair is a broadcast
-   * with no phone, so that tap is ignored too. Home's Forget (`unpair`) is unchanged: it cannot be reached while
-   * holding Go live.
+   * with no phone, so that tap is ignored too. `unpair` has the same guard (P3 review m4).
+   *
+   * O12 (owner, 2026-11-15): a court's notification carries no Forget, so a tap that lands on a court pairing anyway
+   * (posted before the court was known, or late) is ignored and recorded, naming the court: Exit, which asks first, is
+   * the only way off a court.
    */
   fun forget(phase: Phase): Step {
+    // The court is named first (P2 review m1): a court tap while a start is in flight is still a court tap.
+    if (phase is Phase.Paired && phase.pairing.isCourt) return Step(phase, listOf(line("intent-ignored", "intent" to "forget", "phase" to phase.name, "court" to true)))
     if (phase !is Phase.Paired || phase.pairing.starts.inFlightId != null) return SessionMachine.ignored(phase, "forget")
     val pairing = phase.pairing
     val idle = Phase.Idle(phase.ids, phase.networkValidated, phase.micSilenced, Unpaired(UnpairReason.FORGOTTEN, pairing.name))
@@ -127,11 +145,16 @@ internal object Pairings {
 
 /** Arming: the code fetched for one broadcast's credentials (A5, _Who reads what_). */
 internal object Starts {
-  /** Arming for [sid]: the line the operator saw is cleared, and the code is fetched at once. */
+  /**
+   * Arming for [sid]: the line the operator saw is cleared, and the code is fetched at once. On a court pairing the round
+   * line goes too (court stream spec 2026-11-14 §6.5): each sid is another match, and the beat that named it can still
+   * carry the last match's label, so the held stage would be the old match's. The new sid's descriptor says its own.
+   */
   fun arm(phase: Phase, pairing: PairingState, sid: String, cause: Cause, now: Now): Step {
     val ids = phase.ids
+    val waiting = if (pairing.isCourt) pairing.waiting.copy(stageLabel = null, stageFor = null) else pairing.waiting
     // I1: whatever arms the broadcast retires the hold's POST start, so its answer, arriving after, is late.
-    val cleared = pairing.copy(refusal = null, startFailed = null, lastEnd = null, starts = pairing.starts.copy(inFlightId = null))
+    val cleared = pairing.copy(waiting = waiting, refusal = null, startFailed = null, lastEnd = null, starts = pairing.starts.copy(inFlightId = null))
     val (asks, id) = DescriptorAsks(nextId = ids.descriptor).asked(now.monoMs)
     val arming = Phase.Arming(cleared, sid, cause, ids, phase.networkValidated, phase.micSilenced, asks)
     return Step(arming, listOf(line("broadcast-start", "sid" to sid, "cause" to cause), fetchCode(pairing, id)))

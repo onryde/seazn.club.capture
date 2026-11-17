@@ -143,8 +143,12 @@ fun Snapshot.shown(): Snapshot =
 
 private val NO_BEAT = HeartbeatStatus(lastSentAtEpochMs = null, lastResult = null, consecutiveFailures = 0, failures = 0)
 
-/** The pairing as the snapshot carries it: its name (code, slot and token tag), never the token. */
-data class PairingView(val name: PairingName, val automatic: Boolean, val waiting: WaitingFields)
+/**
+ * The pairing as the snapshot carries it: its name (code, slot and token tag), never the token. [starting]: the
+ * operator's hold has posted start and its answer has not come (court stream Task 13, P2), so Go live says so and
+ * cannot be held again. Only Paired posts one, and whatever arms a broadcast retires it ([Starts.arm]).
+ */
+data class PairingView(val name: PairingName, val automatic: Boolean, val waiting: WaitingFields, val starting: Boolean = false)
 
 /** The broadcast's non-secret fields: no ingest URL, stream id, key or passphrase. */
 data class BroadcastView(

@@ -1,4 +1,4 @@
-import { act, fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { decodeSavedCode } from '@/domain/mode/savedCode';
 import { UNPAIR_GIVE_UP_MS } from '@/hooks/useUnpair';
@@ -121,20 +121,81 @@ describe('Forget while the code is paired (I1)', () => {
     expect(intentKinds(app)).not.toContain('stop');
   });
 
-  // CD26: native never answers. The operator asked, so the code goes; the
-  // engine still paired is then an orphan, unpaired at the next settle.
-  it('forgets the code when native never answers within 5 s, and records the give-up', async () => {
+  // CD26: native never answers, and the give-up is recorded. P4 review I1 (court stream): native ignores an unpair
+  // while the operator's start is in flight (Pairings.kt), so an engine still paired at the give-up keeps its code: a
+  // start then accepted arms with it, and the card still offers Forget, one tap to try again.
+  it('keeps the code and the card when native never answers within 5 s, and records the give-up', async () => {
     const app = await pairedThenHome();
     const native = holdIntents(app.engine, ['unpair']);
     forget();
-    await flush(UNPAIR_GIVE_UP_MS - 100);
-    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
-    await flush(200);
-    expect(savedKeys(app)).toEqual([]);
+    await flush(UNPAIR_GIVE_UP_MS + 100);
     expect(readRecord(app.record).map((entry) => entry.event)).toContain('unpair.gave-up');
-    await backgroundAndBack(app);
-    expect(native.held()).toEqual(['unpair', 'unpair']);
+    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
     expect(app.nav.current()).toBe('home');
+    expect(screen.getByRole('button', { name: 'Forget' })).toBeTruthy();
+    forget();
+    await flush();
+    expect(native.held()).toEqual(['unpair', 'unpair']);
+  });
+
+  // Court stream Task 13 fix round 2 m4: native ignores an unpair while the operator's start is in flight, so Home's
+  // Forget is off until native answers it, and the card says what is happening, in the stream screen's own words.
+  it('turns Forget off while a start is in flight, says the link is opening, and offers it again once the start fails', async () => {
+    const app = await pairedThenHome();
+    const card = () => within(screen.getByTestId('continue-card'));
+    const forgetButton = () => card().getByRole('button', { name: 'Forget' });
+    expect(card().getByText('Waiting for Go live')).toBeTruthy();
+    app.engine.setStartAnswer('hold');
+    act(() => app.engine.send({ kind: 'start' }));
+    expect(forgetButton().getAttribute('aria-disabled')).toBe('true');
+    expect(card().getByText('Opening the link.')).toBeTruthy();
+    expect(card().queryByText('Waiting for Go live')).toBeNull();
+    forget();
+    await flush(UNPAIR_GIVE_UP_MS + 1_000);
+    expect(intentKinds(app)).toEqual(['pair', 'start']);
+    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
+    act(() => app.engine.setStartAnswer('failed'));
+    await flush();
+    expect(forgetButton().getAttribute('aria-disabled')).not.toBe('true');
+    expect(card().getByText('Waiting for Go live')).toBeTruthy();
+    forget();
+    await flush();
+    expect(intentKinds(app)).toEqual(['pair', 'start', 'unpair']);
+    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
+    expect(screen.queryByTestId('continue-card')).toBeNull();
+  });
+
+  // Court stream Task 13 fix round 1 and fix round 2 m2: a Forget tapped just before the start showed reaches native
+  // while the start is in flight and is ignored there, so it is sent again once the start fails, and the code goes.
+  it('forgets once native fails a start that began before it heard the Forget, and never gives up while it waits', async () => {
+    const app = await pairedThenHome();
+    const native = holdIntents(app.engine, ['unpair']);
+    forget();
+    app.engine.setStartAnswer('hold');
+    act(() => app.engine.send({ kind: 'start' }));
+    act(() => native.release());
+    await flush(UNPAIR_GIVE_UP_MS + 1_000);
+    expect(app.engine.getSnapshot().state.kind).toBe('paired');
+    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
+    expect(readRecord(app.record).map((entry) => entry.event)).not.toContain('unpair.gave-up');
+    act(() => app.engine.setStartAnswer('failed'));
+    await flush();
+    expect(intentKinds(app)).toEqual(['pair', 'start', 'unpair', 'unpair']);
+    expect(app.engine.getSnapshot().state.kind).toBe('idle');
+    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
+    expect(screen.queryByRole('button', { name: 'Forget' })).toBeNull();
+  });
+
+  it('keeps the code when a start is accepted after the give-up, and shows its broadcast', async () => {
+    const app = await pairedThenHome();
+    holdIntents(app.engine, ['unpair']);
+    forget();
+    await flush(UNPAIR_GIVE_UP_MS + 100);
+    act(() => app.engine.hear({ word: 'go-live', cause: 'organiser' }));
+    await flush();
+    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
+    expect(app.engine.getSnapshot().state.kind).not.toBe('idle');
+    expect(app.nav.current()).toBe('stream');
   });
 
   // Second call: a double tap before the card goes clears the pairing once.
@@ -166,7 +227,27 @@ describe('Forget while the code is paired (I1)', () => {
       { event: 'intent.pair', fields: { action: 'pair', claim: 'new', slot: 1 } },
       { event: 'intent.unpair', fields: { action: 'forget' } },
     ]);
-    expect(app.nav.current()).toBe('home');
+    // The foreground reopened /stream under the unanswered unpair, so Home ended the clearing as `left` with the engine
+    // still paired: the code stays (whole-branch review I2), as a start native is still holding may yet arm with it.
+    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
+  });
+
+  // Whole-branch review I2: Home unmounts under an unanswered Forget (the gear, a foreground reopen). The clearing ends
+  // as `left` with the engine still paired, which native may be ignoring (its start in flight): the code stays, so a
+  // start then accepted arms with it, and Home does not pull the operator back from where they went.
+  it('keeps the code when Home is left while native has not answered the unpair', async () => {
+    const app = await pairedThenHome();
+    holdIntents(app.engine, ['unpair']);
+    forget();
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    await flush(UNPAIR_GIVE_UP_MS + 100);
+    expect(app.nav.current()).toBe('settings');
+    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
+    act(() => app.engine.hear({ word: 'go-live', cause: 'organiser' }));
+    await flush();
+    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
+    expect(app.nav.current()).toBe('stream');
   });
 
   // C4b-I2, the reviewer's probe P4: Forget X, then Y is scanned before the

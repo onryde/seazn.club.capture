@@ -7,7 +7,7 @@ import { useReopenGate } from '@/hooks/useReopenGate';
 import { STORE_KEYS } from '@/services/modeStore';
 import { createUploadCredentialStore } from '@/services/uploadCredentialStore';
 import { createFakePorts, readRecord, type FakePorts } from '../../test/fakePorts';
-import { savedStreamCode } from '../../test/fixtures/savedStream';
+import { savedCourtCode, savedStreamCode } from '../../test/fixtures/savedStream';
 import { captureRaw, FIXTURE_TOKEN } from '../../test/fixtures/wire';
 import { pairCode } from '../../test/pairCode';
 import { flush as flushApp, launchApp, scanFromHome, type LaunchedApp } from '../../test/routedApp';
@@ -148,6 +148,44 @@ describe('useEngineFollow: native’s word on the saved code', () => {
     });
     expect(savedOf(fakes)).toBeUndefined();
     expect(fakes.navigation.current()).toBe('stream');
+  });
+
+  // Court stream (spec 2026-11-14 §6.3, O5): a court's Stop ends the match, not the pairing, so the forget rule never
+  // fires and the code stays saved for the court's next match. Its twin is the test above, on a fixture's code.
+  it('keeps a court code on the operator’s Stop: native stays paired, the forget rule does not fire', async () => {
+    const court = savedCourtCode();
+    const fakes = await shell({ saved: court });
+    expect(fakes.engine.getSnapshot().pairing?.court).toBe('Court 2');
+    const forget = vi.spyOn(fakes.ports.modeStore, 'forget');
+    act(() => fakes.engine.send({ kind: 'start' }));
+    await flush(5_000);
+    expect(fakes.engine.getSnapshot().state.kind).toBe('publishing');
+    act(() => fakes.engine.send({ kind: 'stop' }));
+    await flush();
+    expect(fakes.engine.getSnapshot().state).toEqual({ kind: 'paired' });
+    expect(fakes.engine.getSnapshot().lastEnd).toBe('stopped');
+    // Four questions (1): native's 1 Hz reports re-run the follow; a second Stop holds nothing to stop.
+    act(() => fakes.engine.send({ kind: 'stop' }));
+    await flush(3_000);
+    expect(savedOf(fakes)).toEqual(court);
+    expect(forget).not.toHaveBeenCalled();
+    expect(fakes.navigation.current()).toBe('stream');
+  });
+
+  // Review Focus 1: the organiser withdrew the court link mid-match (a 401 held), then the Stop: the code is dead.
+  it('forgets a court code stopped after a held 401', async () => {
+    const court = savedCourtCode();
+    const fakes = await shell({ saved: court });
+    act(() => fakes.engine.send({ kind: 'start' }));
+    await flush(5_000);
+    act(() => fakes.engine.hear({ word: 'code-ended' }));
+    act(() => fakes.engine.send({ kind: 'stop' }));
+    await flush();
+    expect(fakes.engine.getSnapshot().state).toMatchObject({
+      kind: 'ended',
+      reason: 'operator-stopped',
+    });
+    expect(savedOf(fakes)).toBeUndefined();
   });
 
   it('marks a permanent failure tapToPair and keeps the code; pairing it again clears the mark', async () => {

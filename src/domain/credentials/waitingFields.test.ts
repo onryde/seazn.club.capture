@@ -37,6 +37,7 @@ describe('the waiting fields at the scan', () => {
     expect(Object.keys(read ?? {}).sort()).toEqual([
       'autoAllowed',
       'code',
+      'court',
       'destinationName',
       'heartbeatUrl',
       'label',
@@ -151,5 +152,52 @@ describe('the stage at the scan (spec §2, R-F20)', () => {
     const none = parseWaitingFields(fields(), HOST);
     if (none === null) throw new Error('the fixture must parse');
     expect(Object.keys(waitingToWire(none))).not.toContain('stage');
+  });
+});
+
+describe('the court at the scan (court stream spec 2026-11-14 §6.1)', () => {
+  it("reads a court code's court name, and none on a fixture's code", () => {
+    expect(parseWaitingFields(fields({ court: { name: 'Court 2' } }), HOST)?.court).toBe('Court 2');
+    expect(parseWaitingFields(fields(), HOST)?.court).toBeNull();
+    expect(parseWaitingFields(fields({ court: null }), HOST)?.court).toBeNull();
+  });
+
+  // A malformed court is never no court: a fixture-style Stop on a court phone would unlink the court (spec §3).
+  it.each([
+    ['an empty name', { name: '' }],
+    ['a name of 81 characters', { name: 'x'.repeat(81) }],
+    ['a name that is not a string', { name: 2 }],
+    ['no name', {}],
+    ['a string, not an object', 'Court 2'],
+    ['an array', [{ name: 'Court 2' }]],
+    ['a number', 2],
+  ])('refuses the whole answer for a court with %s', (_why, court) => {
+    expect(parseWaitingFields(fields({ court }), HOST)).toBeNull();
+  });
+
+  // Readers ignore what they do not use (the QR's tampered.json, D-2): an extra key in court is still a court.
+  it('reads a court with a key the phone does not use, never as no court', () => {
+    expect(parseWaitingFields(fields({ court: { name: 'Court 2', id: 'c2' } }), HOST)?.court).toBe(
+      'Court 2',
+    );
+  });
+
+  it('reads the same court twice from the same answer', () => {
+    const body = fields({ court: { name: 'Court 2' } });
+    expect(parseWaitingFields(body, HOST)).toEqual(parseWaitingFields(body, HOST));
+  });
+
+  it('round-trips a court through the saved wire, and a saved code from before this change reads none', () => {
+    const read = parseWaitingFields(fields({ court: { name: 'Court 2' } }), HOST);
+    if (read === null) throw new Error('the fixture must parse');
+    expect(waitingToWire(read)).toMatchObject({ court: { name: 'Court 2' } });
+    const back = parseWaitingFields(waitingToWire(read), HOST);
+    expect(back?.court).toBe('Court 2');
+    expect(back).toEqual(read);
+    // A fixture's code saves no `court` key at all, so a code saved before this build and a new one agree.
+    const none = parseWaitingFields(fields(), HOST);
+    if (none === null) throw new Error('the fixture must parse');
+    expect(Object.keys(waitingToWire(none))).not.toContain('court');
+    expect(parseWaitingFields(waitingToWire(none), HOST)?.court).toBeNull();
   });
 });

@@ -1,4 +1,4 @@
-import { act, fireEvent, renderHook, screen } from '@testing-library/react';
+import { act, fireEvent, renderHook, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ModeCode } from '@/domain/mode/Mode';
 import { encodeSavedCode } from '@/domain/mode/savedCode';
@@ -186,27 +186,77 @@ describe('Home: another mode while paired (A7)', () => {
     expect(saved(h)?.active).toBe('stream');
   });
 
-  // Review C5 m-1, CD26: native never answers, so the unpair is given up. The operator asked, so
-  // the stream code is forgotten (an engine still paired is then an orphan, cleared at the next
-  // settle); the other mode is asked for again, since the phone is still paired.
-  it('forgets the stream code when native never answers the unpair', async () => {
+  // Review C5 m-1, CD26: native never answers, so the unpair is given up. Ruling RP9 (P4 review I1): native ignores an
+  // unpair while the operator's start is in flight, so a give-up with the engine still paired keeps the stream code,
+  // stays on Home and opens nothing; the operator can ask again, and a start accepted meanwhile arms with its code.
+  it('keeps the stream code and opens nothing when native never answers the unpair', async () => {
     const h = await home({ paired: true });
     await openScoring(h);
     const held = holdIntents(h.engine, ['unpair']);
     act(() => actions(h).confirmUnpair());
-    await flush(UNPAIR_GIVE_UP_MS - 20);
-    expect(saved(h)?.codes.stream).toBeDefined();
-    await flush(40);
+    await flush(UNPAIR_GIVE_UP_MS + 20);
     expect(held.held()).toEqual(['unpair']);
     expect(h.engine.getSnapshot().state.kind).toBe('paired');
-    expect(saved(h)?.codes.stream).toBeUndefined();
+    expect(readRecord(h.record)).toContainEqual(
+      expect.objectContaining({ event: 'unpair.gave-up', fields: { action: 'otherMode' } }),
+    );
+    expect(saved(h)?.codes.stream).toBeDefined();
     expect(saved(h)?.codes.scoring).toBeUndefined();
-    expect(view(h).panel).toEqual({
-      kind: 'unpairConfirm',
-      tapped: 'scoring',
-      code: scoring,
-      scoring: { kind: 'scan', match: MATCH, sportKey: 'badminton' },
-    });
+    expect(saved(h)?.active).toBe('stream');
+    expect(view(h).panel).toBeNull();
+    // The operator asks again: the sheet, and a new unpair on Confirm.
+    await openScoring(h);
+    expect(view(h).panel?.kind).toBe('unpairConfirm');
+    act(() => actions(h).confirmUnpair());
+    await flush();
+    expect(held.held()).toEqual(['unpair', 'unpair']);
+  });
+
+  it('keeps the stream code when a start is accepted after the give-up', async () => {
+    const h = await home({ paired: true });
+    await openScoring(h);
+    holdIntents(h.engine, ['unpair']);
+    act(() => actions(h).confirmUnpair());
+    await flush(UNPAIR_GIVE_UP_MS + 20);
+    act(() => h.engine.hear({ word: 'go-live', cause: 'organiser' }));
+    await flush();
+    expect(h.engine.getSnapshot().state.kind).not.toBe('idle');
+    expect(saved(h)?.codes.stream).toBeDefined();
+    expect(saved(h)?.codes.scoring).toBeUndefined();
+    expect(saved(h)?.active).toBe('stream');
+  });
+
+  // Whole-branch review I2: Home unmounts under the unanswered unpair, which ends it as `left` with the engine still
+  // paired: the stream code stays and nothing opens, as at the give-up.
+  it('keeps the stream code and opens nothing when Home unmounts under the unanswered unpair', async () => {
+    const h = await home({ paired: true });
+    await openScoring(h);
+    holdIntents(h.engine, ['unpair']);
+    act(() => actions(h).confirmUnpair());
+    h.hook.unmount();
+    await flush();
+    expect(h.engine.getSnapshot().state.kind).toBe('paired');
+    expect(saved(h)?.codes.stream).toBeDefined();
+    expect(saved(h)?.codes.scoring).toBeUndefined();
+    expect(saved(h)?.active).toBe('stream');
+  });
+
+  // Court stream Task 13 fix round 1: a Confirm during the operator's start waits for native's answer (useUnpair), so
+  // it is honoured once the start fails, not dropped at the 5 s give-up.
+  it('unpairs and opens the other mode once native fails a start that was in flight at Confirm', async () => {
+    const h = await home({ paired: true });
+    await openScoring(h);
+    h.engine.setStartAnswer('hold');
+    act(() => h.engine.send({ kind: 'start' }));
+    act(() => actions(h).confirmUnpair());
+    await flush(UNPAIR_GIVE_UP_MS + 1_000);
+    expect(kinds(h)).toEqual(['pair', 'start']);
+    expect(saved(h)?.active).toBe('stream');
+    act(() => h.engine.setStartAnswer('failed'));
+    await flush();
+    expect(kinds(h)).toEqual(['pair', 'start', 'unpair']);
+    expect(saved(h)?.codes.stream).toBeUndefined();
+    expect(saved(h)?.active).toBe('scoring');
   });
 
   it('opens the other mode at once with nothing paired', async () => {
@@ -324,6 +374,60 @@ describe('the unpair sheet’s answers', () => {
   });
 });
 
+/**
+ * Court stream Task 13 fix round 2 m4: native ignores an unpair while the operator's start is in flight, so the sheet's
+ * Unpair & open is off until native answers it, and the sheet says why, in the stream screen's own words.
+ */
+describe('the unpair sheet while the operator’s start is in flight', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('turns Unpair & open off and says the link is opening, then offers it again once the start fails', async () => {
+    const fakes = renderWithPorts(<HomeScreen />, { kvSeed: inStream });
+    act(() => pairCode(fakes.engine, stream));
+    await act(() => fakes.ports.modeStore.load());
+    fakes.scanner.queue({ outcome: 'scanned', raw: scoring.raw });
+    act(() => screen.getByRole('button', { name: /Remote Scoring/ }).click());
+    await flush(200);
+    const confirm = () => screen.getByRole('button', { name: 'Unpair & open' });
+    // The sheet's own words: the card under the dim says the same while the start is in flight.
+    const sheet = () => {
+      const node = document.querySelector('[aria-modal="true"]');
+      if (!(node instanceof HTMLElement)) throw new Error('the sheet is up');
+      return within(node);
+    };
+    expect(confirm().getAttribute('aria-disabled')).not.toBe('true');
+    expect(sheet().queryByText('Opening the link.')).toBeNull();
+    fakes.engine.setStartAnswer('hold');
+    act(() => fakes.engine.send({ kind: 'start' }));
+    expect(confirm().getAttribute('aria-disabled')).toBe('true');
+    expect(sheet().getByText('Opening the link.')).toBeTruthy();
+    fireEvent.click(confirm());
+    await flush(UNPAIR_GIVE_UP_MS + 1_000);
+    expect(kinds(fakes)).toEqual(['pair', 'start']);
+    expect(saved(fakes)?.active).toBe('stream');
+    act(() => fakes.engine.setStartAnswer('failed'));
+    expect(confirm().getAttribute('aria-disabled')).not.toBe('true');
+    expect(sheet().queryByText('Opening the link.')).toBeNull();
+    fireEvent.click(confirm());
+    await flush();
+    expect(kinds(fakes)).toEqual(['pair', 'start', 'unpair']);
+    expect(saved(fakes)?.codes.stream).toBeUndefined();
+    expect(saved(fakes)?.active).toBe('scoring');
+  });
+
+  it('leaves every other panel its own words and buttons', () => {
+    const h = panelHandlers();
+    const panel: HomePanel = { kind: 'otherMode', tapped: 'stream', code: scoring };
+    renderWithPorts(<CodePanel outcome={panel} time={null} starting {...h} />);
+    const open = screen.getByRole('button', { name: 'Open Remote Scoring' });
+    expect(open.getAttribute('aria-disabled')).not.toBe('true');
+    expect(screen.queryByText('Opening the link.')).toBeNull();
+    fireEvent.click(open);
+    expect(h.onOpen).toHaveBeenCalledWith(scoring);
+  });
+});
+
 /** HomeScreen hands the sheet's two buttons to Home's two actions. */
 describe('HomeScreen’s unpair sheet', () => {
   it('wires Unpair & open and Cancel to their actions', () => {
@@ -337,6 +441,7 @@ describe('HomeScreen’s unpair sheet', () => {
         scoring: { current: null, leftovers: [] },
         sending: [],
         matchDayHint: null,
+        starting: false,
       },
       actions: {
         tapTile: vi.fn(),

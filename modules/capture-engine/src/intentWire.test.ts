@@ -71,6 +71,13 @@ describe('the intents as native reads them (Task 11)', () => {
     }
   });
 
+  // Court stream (spec 2026-11-14 §6.1): a court code's pair names its court; a fixture's code sends no `court` key.
+  it('sends the court when the intent carries one, and no court key when it does not', () => {
+    expect(intentWire({ ...PAIR, court: 'Court 2' })).toMatchObject({ court: 'Court 2' });
+    expect(Object.keys(intentWire(PAIR))).not.toContain('court');
+    expect(Object.keys(intentWire({ ...PAIR, court: undefined }))).not.toContain('court');
+  });
+
   it('drops a field the intent should not carry, whatever a caller added', () => {
     const extra = { ...PAIR, cred: { streamKey: 'fake-key-0000' } } as PairIntent;
     expect(Object.keys(intentWire(extra))).not.toContain('cred');

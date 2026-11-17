@@ -2,6 +2,7 @@ import type {
   BroadcastInfo,
   Cause,
   LastEnd,
+  NextMatch,
   NotReady,
   PairingInfo,
   Readiness,
@@ -41,7 +42,14 @@ export const WIRE_VOCABULARY = {
   endReason: new Set(['operator-stopped', 'fatal-error']),
   cause: new Set(['organiser', 'automatic', 'operator', 'rejoin']),
   notReady: new Set(['camera', 'sound', 'network', 'held']),
-  refusal: new Set(['no_destination', 'no_credit', 'not_entitled', 'unknown', 'start-failed']),
+  refusal: new Set([
+    'no_destination',
+    'no_credit',
+    'not_entitled',
+    'no_match',
+    'unknown',
+    'start-failed',
+  ]),
   lastEnd: new Set([
     'stopped-by-organiser',
     'stopped-automatically',
@@ -247,6 +255,36 @@ function toUnpaired(value: unknown): Unpaired | null | undefined {
   return { reason, code, slot, tokenTag };
 }
 
+/** Code points, as native counts the bounds it wrote (a 🏸 is one character, two UTF-16 units). */
+const characters = (text: string) => [...text].length;
+const textWithin = (value: unknown, max: number): value is string =>
+  isText(value) && characters(value) >= 1 && characters(value) <= max;
+
+/**
+ * The court (court stream spec 2026-11-14 §6.1): null, or the name native held to 1 to 80 characters. Anything else is
+ * undefined, which makes the pairing, and so the snapshot, malformed: a malformed court is never read as no court.
+ */
+function toCourt(value: unknown): string | null | undefined {
+  if (value === null) return null;
+  return textWithin(value, 80) ? value : undefined;
+}
+
+const isEpochSeconds = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 1;
+
+/**
+ * The court's next streamed match (§5.3), display only: anything but a label of 1 to 200 and a start is none. The start
+ * is null, or whole epoch seconds from 1 as native writes it (Bodies) and a Date holds (P1 review M5).
+ */
+function toNext(value: unknown): NextMatch | null {
+  if (!isObject(value) || !textWithin(value.label, 200)) return null;
+  const { scheduledStart } = value;
+  if (scheduledStart === null) return { label: value.label, scheduledStart: null };
+  if (!isEpochSeconds(scheduledStart)) return null;
+  const at = new Date(scheduledStart * 1000);
+  return Number.isNaN(at.getTime()) ? null : { label: value.label, scheduledStart: at };
+}
+
 /** Epoch seconds across the bridge (amendment, The engine port), a Date here. */
 function toPairing(value: Wire): PairingInfo | undefined {
   const { code, slot, tokenTag, automatic, label, venueTimezone, scheduledStart, autoAllowed } =
@@ -258,6 +296,9 @@ function toPairing(value: Wire): PairingInfo | undefined {
   if (scheduledStart !== null && !isNumber(scheduledStart)) return undefined;
   if (!textOrNull(destinationName)) return undefined;
   if (!textOrNull(stageLabel)) return undefined;
+  const court = toCourt(value.court);
+  // Court stream Task 13 (P2): the Go live in flight. Never guessed: anything but a flag is a malformed pairing.
+  if (court === undefined || !isFlag(value.starting)) return undefined;
   return {
     code,
     slot,
@@ -270,6 +311,9 @@ function toPairing(value: Wire): PairingInfo | undefined {
     destinationName,
     pollSeconds,
     stageLabel,
+    court,
+    next: toNext(value.next),
+    starting: value.starting,
   };
 }
 

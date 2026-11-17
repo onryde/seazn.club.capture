@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { cameraBoxSize, STRIP_RESERVE, stripReserve } from '@/ui/theme/cameraBox';
+import {
+  cameraBoxSize,
+  STRIP_RESERVE,
+  STRIP_RESERVE_NO_LABEL,
+  stripReserve,
+} from '@/ui/theme/cameraBox';
 import { layout } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
 
@@ -149,6 +154,15 @@ describe('stripReserve (the strip a measured label needs)', () => {
   it.each(LABELS)('%s: the reserve is the fixed 66 and the label, %d', (_name, height, literal) => {
     expect(height).toBe(literal);
     expect(stripReserve(height)).toBe(FIXED + height);
+  });
+
+  // A court code waiting between matches draws no label (court stream spec §6.2): no label row and one gap fewer, so
+  // 16 + 16 + 22 + 6 = 60, written out by hand, and under the one-line label's 88 (anti-vacuity: it is not the worst case).
+  it('is 60 with no label row: the padding, the round line, one gap and the message line', () => {
+    expect(STRIP_RESERVE_NO_LABEL).toBe(60);
+    expect(STRIP_RESERVE_NO_LABEL).toBe(FIXED - GAP);
+    expect(STRIP_RESERVE_NO_LABEL).toBeLessThan(stripReserve(22));
+    expect(STRIP_RESERVE_NO_LABEL).toBeLessThan(STRIP_RESERVE);
   });
 
   it('is 88, 110 and 154 for one, two and four lines, written out by hand', () => {

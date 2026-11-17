@@ -1,12 +1,12 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SavedCode } from '@/domain/mode/savedCode';
+import { decodeSavedCode, encodeSavedCode, type SavedCode } from '@/domain/mode/savedCode';
 import type { EngineIntent } from '@/engine/CaptureEnginePort';
 import { sampleWaiting } from '@/services/fakeCodePort';
 import { pairIntentFor, usePairing } from '@/hooks/usePairing';
 import { createFakePorts, readRecord, type FakePorts } from '../../test/fakePorts';
 import { savedStreamCode } from '../../test/fixtures/savedStream';
-import { captureRaw, FIXTURE_TOKEN } from '../../test/fixtures/wire';
+import { captureRaw, FIXTURE_CODE, FIXTURE_TOKEN } from '../../test/fixtures/wire';
 import { pairCode } from '../../test/pairCode';
 import { wrapperFor } from '../../test/renderWithPorts';
 
@@ -20,6 +20,16 @@ const pairLines = (fakes: FakePorts) =>
 function pairer(fakes: FakePorts) {
   return renderHook(() => usePairing(), { wrapper: wrapperFor(fakes) });
 }
+
+/** A court code (court stream §6.1), as Home saves it after a scan: the fixture code with a court. */
+const courtCode = (): SavedCode =>
+  savedStreamCode({
+    stream: {
+      waiting: sampleWaiting({ code: FIXTURE_CODE, court: 'Court 2' }),
+      codeUrl: CODE_URL,
+      tapToPair: false,
+    },
+  });
 
 /** The same code at another camera position (C7). */
 const slotTwo = (): SavedCode => savedStreamCode({ raw: captureRaw({ slot: 2 }), slot: 2 });
@@ -72,6 +82,34 @@ describe('pairIntentFor', () => {
     expect(bare).not.toBeNull();
     expect(Object.keys(bare ?? {})).not.toContain('stageLabel');
     expect(Object.keys(bare ?? {})).not.toContain('stageMatch');
+  });
+
+  // Court stream, Review Focus 2: after process death the re-pair reads the code back from the store, before any GET.
+  // Its court must ride the pair, or native's Stop would be a fixture's and unlink the court.
+  it('pairIntentFor carries the saved court on a resume', () => {
+    const facts = {
+      language: 'nl',
+      automatic: true,
+      environment: 'staging',
+      claim: 'resume',
+    } as const;
+    const stored = decodeSavedCode(encodeSavedCode(courtCode()));
+    if (stored === null) throw new Error('the saved court code must read back');
+    const intent = pairIntentFor(stored, facts);
+    expect(intent?.court).toBe('Court 2');
+    expect(intent?.claim).toBe('resume');
+    // Four questions (4): a court changes nothing else the pair carries.
+    expect(intent).toEqual({ ...pairIntentFor(savedStreamCode(), facts), court: 'Court 2' });
+  });
+
+  it('sends no court key for a code with no court, a code saved before this build included', () => {
+    const facts = {
+      language: 'en',
+      automatic: true,
+      environment: 'staging',
+      claim: 'resume',
+    } as const;
+    expect(Object.keys(pairIntentFor(savedStreamCode(), facts) ?? {})).not.toContain('court');
   });
 
   it.each<[string, SavedCode]>([
@@ -131,6 +169,17 @@ describe('usePairing', () => {
       { action: 'adopt', claim: 'new', slot: 1 },
       { action: 'adopt', claim: 'new', slot: 1 },
     ]);
+  });
+
+  // Four questions (1): a second scan of the same court code pairs nothing new (scanStep, unchanged).
+  it('sends nothing when the same court code is already paired', () => {
+    const fakes = createFakePorts();
+    pairCode(fakes.engine, courtCode());
+    const { result } = pairer(fakes);
+    act(() => result.current(courtCode(), 'new'));
+    act(() => result.current(courtCode(), 'new'));
+    expect(kinds(fakes)).toEqual(['pair']);
+    expect(fakes.engine.intents[0]).toMatchObject({ court: 'Court 2' });
   });
 
   it('pairs another slot of the same code over the first', () => {

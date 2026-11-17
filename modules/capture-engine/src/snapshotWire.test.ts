@@ -22,9 +22,19 @@ const PAIRING = {
   destinationName: 'YouTube · Example Town CC',
   pollSeconds: 10,
   stageLabel: null,
+  court: null,
+  next: null,
+  starting: false,
 };
 // W28: the pairing of the case that carries a round line, by hand from its override { stageLabel: 'Open · QF' }.
 const PAIRING_STAGED = { ...PAIRING, stageLabel: 'Open · QF' };
+// Court stream (spec 2026-11-14 §6.1, §5.3): by hand from the court cases' overrides. 1793538000 s is 13:00 UTC.
+const PAIRING_COURT = {
+  ...PAIRING,
+  court: 'Court 2',
+  next: { label: 'Northside v Riverside', scheduledStart: new Date('2026-11-01T13:00:00Z') },
+};
+const PAIRING_COURT_NO_NEXT = { ...PAIRING, court: 'Court 2' };
 const BROADCAST = {
   sid: 'sess_42',
   cause: 'organiser',
@@ -248,12 +258,55 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
     reportedAtMs: 1_790_000_007_000,
     survivesBackground: true,
   },
+  'paired-court-with-next': {
+    ...REST,
+    state: { kind: 'paired' },
+    pairing: PAIRING_COURT,
+    broadcast: null,
+    ready: READY,
+    camera: 'own',
+    reportedAtMs: 1_790_000_008_000,
+    survivesBackground: true,
+  },
+  // Court stream (capture-start.v1): the start's no_match, said on the court's paired line until the next start.
+  'paired-refused-no-match': {
+    ...REST,
+    refusal: 'no_match',
+    state: { kind: 'paired' },
+    pairing: PAIRING_COURT_NO_NEXT,
+    broadcast: null,
+    ready: READY,
+    camera: 'own',
+    reportedAtMs: 1_790_000_009_500,
+    survivesBackground: true,
+  },
+  'paired-court-no-next': {
+    ...REST,
+    state: { kind: 'paired' },
+    pairing: PAIRING_COURT_NO_NEXT,
+    broadcast: null,
+    ready: READY,
+    camera: 'own',
+    reportedAtMs: 1_790_000_009_000,
+    survivesBackground: true,
+  },
+  // Court stream Task 13 (P2): the operator's Go live is in flight, waiting for POST start's answer.
+  'paired-starting': {
+    ...REST,
+    state: { kind: 'paired' },
+    pairing: { ...PAIRING, starting: true },
+    broadcast: null,
+    ready: READY,
+    camera: 'own',
+    reportedAtMs: 1_790_000_010_000,
+    survivesBackground: true,
+  },
 };
 
 describe('carries 2-6: the snapshot wire, as native writes it (Task 12)', () => {
   // The file's count, so an emptied or truncated file cannot pass by sweeping nothing (PV12).
-  it('has an expectation for each of the 17 cases, and a case for every expectation', () => {
-    expect(vectors.cases).toHaveLength(17);
+  it('has an expectation for each of the 21 cases, and a case for every expectation', () => {
+    expect(vectors.cases).toHaveLength(21);
     expect(vectors.cases.map((c) => c.name).sort()).toEqual(Object.keys(EXPECTED).sort());
   });
 
@@ -333,6 +386,102 @@ describe('carries 2-6: the snapshot wire, as native writes it (Task 12)', () => 
     expect(toEngineSnapshot({ ...staged, pairing: without })).toBeNull();
     refused += 1;
     expect(refused).toBe(5);
+  });
+
+  // Court stream (spec §3, Global Constraints): a malformed court is never no court, so the snapshot is malformed whole.
+  it.each([
+    ['an empty court', ''],
+    ['a court of 81 characters', 'x'.repeat(81)],
+    ['a court of 80 characters and an emoji', 'x'.repeat(80) + '🏸'],
+    ['a court that is a number', 7],
+    ['a court that is an object', { name: 'Court 2' }],
+  ])('reads a pairing with %s as no snapshot', (_why, court) => {
+    const wire = vectorWire('paired-court-with-next');
+    expect(toEngineSnapshot({ ...wire, pairing: { ...wire.pairing, court } })).toBeNull();
+  });
+
+  it('reads a court of 80 characters, counted in code points, and a pairing without the key as no snapshot', () => {
+    const wire = vectorWire('paired-court-no-next');
+    const wide = 'x'.repeat(79) + '🏸';
+    expect(
+      toEngineSnapshot({ ...wire, pairing: { ...wire.pairing, court: wide } })?.pairing?.court,
+    ).toBe(wide);
+    const { court: _gone, ...without } = wire.pairing as Record<string, unknown>;
+    expect(toEngineSnapshot({ ...wire, pairing: without })).toBeNull();
+  });
+
+  // Court stream Task 13 (P2): `starting` decides whether Go live can be held. A malformed one is never read as false
+  // (a hold native would ignore) or true (Go live off for nothing): the snapshot is malformed whole, as a court is.
+  it.each([
+    ['a starting that is text', 'true'],
+    ['a starting that is null', null],
+    ['a starting that is a number', 1],
+  ])('reads a pairing with %s as no snapshot', (_why, starting) => {
+    const wire = vectorWire('paired-starting');
+    expect(toEngineSnapshot({ ...wire, pairing: { ...wire.pairing, starting } })).toBeNull();
+  });
+
+  it('reads a pairing without the starting key as no snapshot, and each flag as sent', () => {
+    const wire = vectorWire('paired-starting');
+    expect(toEngineSnapshot(wire)?.pairing?.starting).toBe(true);
+    const off = { ...wire, pairing: { ...wire.pairing, starting: false } };
+    expect(toEngineSnapshot(off)?.pairing?.starting).toBe(false);
+    const { starting: _gone, ...without } = wire.pairing as Record<string, unknown>;
+    expect(toEngineSnapshot({ ...wire, pairing: without })).toBeNull();
+  });
+
+  // Court stream (spec §5.3): next is display only, so a bad one reads as none and the snapshot stands.
+  it.each([
+    ['a number', 5],
+    ['an empty label', { label: '', scheduledStart: null }],
+    ['a label of 201 characters', { label: 'x'.repeat(201), scheduledStart: null }],
+    ['a label that is not text', { label: 7, scheduledStart: null }],
+    ['a start in text', { label: 'A v B', scheduledStart: '1793538000' }],
+    ['no start key', { label: 'A v B' }],
+    ['no next key', undefined],
+    // P1 review M5: native writes a whole number of seconds from 1 (Bodies), so anything else is no next.
+    ['a start of 0', { label: 'A v B', scheduledStart: 0 }],
+    ['a negative start', { label: 'A v B', scheduledStart: -1793538000 }],
+    ['a start with a fraction', { label: 'A v B', scheduledStart: 1793538000.5 }],
+    ['a start past 2^53 - 1', { label: 'A v B', scheduledStart: Number.MAX_SAFE_INTEGER + 1 }],
+    ['a start no Date holds', { label: 'A v B', scheduledStart: 9_000_000_000_000 }],
+  ])('reads a next that is %s as no next, and keeps the snapshot', (_why, next) => {
+    const wire = vectorWire('paired-court-with-next');
+    const pairing: Record<string, unknown> = { ...wire.pairing, next };
+    if (next === undefined) delete pairing.next;
+    const snapshot = toEngineSnapshot({ ...wire, pairing });
+    expect(snapshot?.pairing).toEqual({ ...PAIRING_COURT, next: null });
+  });
+
+  it('reads a next with no start, and a label of 200 characters, counted in code points', () => {
+    const wire = vectorWire('paired-court-with-next');
+    const label = '🏸'.repeat(200);
+    const read = toEngineSnapshot({
+      ...wire,
+      pairing: { ...wire.pairing, next: { label, scheduledStart: null } },
+    });
+    expect(read?.pairing?.next).toEqual({ label, scheduledStart: null });
+  });
+
+  it('reads a next at the lowest start native writes, 1 s after the epoch', () => {
+    const wire = vectorWire('paired-court-with-next');
+    const read = toEngineSnapshot({
+      ...wire,
+      pairing: { ...wire.pairing, next: { label: 'A v B', scheduledStart: 1 } },
+    });
+    expect(read?.pairing?.next).toEqual({ label: 'A v B', scheduledStart: new Date(1000) });
+  });
+
+  // Four questions (1): the same next twice is the same pairing object, so a selector over it does not re-render.
+  it('hands back the same court pairing while its JSON is unchanged, and a new one when next goes', () => {
+    const cache = createWireCache();
+    const wire = vectorWire('paired-court-with-next');
+    const first = toEngineSnapshot(wire, cache) as EngineSnapshot;
+    const second = toEngineSnapshot({ ...wire, reportedAtMs: wire.reportedAtMs + 1000 }, cache);
+    expect(second?.pairing).toBe(first.pairing);
+    const cleared = toEngineSnapshot({ ...wire, pairing: { ...wire.pairing, next: null } }, cache);
+    expect(cleared?.pairing?.next).toBeNull();
+    expect(cleared?.pairing?.court).toBe('Court 2');
   });
 
   const idle = () => vectorWire('idle');

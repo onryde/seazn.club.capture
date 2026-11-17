@@ -3,9 +3,13 @@ import type { SessionState } from '@/domain/session/SessionState';
 import { selectShedding } from '@/hooks/advisory';
 import {
   selectAutomaticOn,
+  selectCourt,
   selectDestination,
+  selectNextLabel,
+  selectNextStartMs,
   selectPlaybackUrl,
   selectScheduledStartMs,
+  selectStarting,
   selectStateKind,
   selectVenueZone,
 } from '@/hooks/engineSelectors';
@@ -49,10 +53,18 @@ export type Viewfinder = {
   readonly reason: BlockerKey | null;
   readonly action: ViewfinderAction;
   /**
-   * Stop ends the pairing too: the broadcast went live. Owner decision 1 (2026-10-05): a Stop before the first
-   * frame (Arming, Armed, Connecting) ends the broadcast only, and the pairing stays Paired.
+   * The operator's hold posted start and native waits for its answer (court stream Task 13, P2): Go live says
+   * "Starting…" and cannot be held, and the plate reads Connecting, as the Arming it leads to.
+   */
+  readonly starting: boolean;
+  /**
+   * Stop ends the pairing too: the broadcast went live, on a fixture's code. Owner decision 1 (2026-10-05): a Stop
+   * before the first frame (Arming, Armed, Connecting) ends the broadcast only, and the pairing stays Paired. A court
+   * code's Stop never ends the pairing (court stream §6.3, O5): native's `stop` takes the court's match only.
    */
   readonly stopUnpairs: boolean;
+  /** The court's name on a court code (court stream §6.1), null on a fixture's: its Stop ends this match only. */
+  readonly court: string | null;
   readonly onAir: boolean;
   /** The camera picture shows, so Take photo is offered: Paired and on air (design follow-up §8, the owner's scope cut). */
   readonly shutter: boolean;
@@ -71,6 +83,10 @@ export type Viewfinder = {
   readonly auto: boolean;
   /** The pre-picked destination, uncut; the column cuts it for the line. Null with none. */
   readonly destination: string | null;
+  /** The court's next streamed match, uncut (the column cuts it for the Next line, `cutNextLabel`). Null with none. */
+  readonly nextLabel: string | null;
+  /** When that match starts, in the venue's zone (court stream §6.2); null with none or no start. */
+  readonly nextAt: string | null;
   start(): void;
   stop(): void;
 };
@@ -112,9 +128,22 @@ export function useViewfinder(): Viewfinder {
   const playable = useEngineSelector(selectPlaybackUrl) !== null;
   const shed = useEngineSelector(selectShedding);
   const engineSilent = useEngineSilent();
+  const court = useEngineSelector(selectCourt);
+  const starting = useEngineSelector(selectStarting);
   return useMemo(
     () => ({
-      ...project({ kind, preflight, blocker, engineKey, playable, shed, waiting, engineSilent }),
+      ...project({
+        kind,
+        preflight,
+        blocker,
+        engineKey,
+        playable,
+        shed,
+        waiting,
+        engineSilent,
+        court,
+        starting,
+      }),
       ...countdown,
       ...intents,
     }),
@@ -127,6 +156,8 @@ export function useViewfinder(): Viewfinder {
       shed,
       waiting,
       engineSilent,
+      court,
+      starting,
       countdown,
       intents,
     ],
@@ -143,6 +174,8 @@ type ProjectInput = {
   readonly waiting: WaitingFields;
   /** CD17: no report for three seconds while native holds a pairing. */
   readonly engineSilent: boolean;
+  readonly court: string | null;
+  readonly starting: boolean;
 };
 
 /**
@@ -154,35 +187,44 @@ type ProjectInput = {
 function project(
   input: ProjectInput,
 ): Omit<Viewfinder, 'holdRemaining' | 'holdWindow' | 'start' | 'stop'> {
-  const { kind, blocker, waiting, engineSilent } = input;
+  const { kind, blocker, waiting, engineSilent, court, starting } = input;
   const action = ACTION[kind];
   return {
     kind,
-    plate: engineSilent ? 'trouble' : tallyPlateFor(kind, blocker === null),
+    plate: engineSilent ? 'trouble' : plateFor(kind, blocker === null, starting),
     statusKey: engineSilent ? 'stream.status.engineSilent' : input.engineKey,
     preflight: input.preflight,
     blocker,
     reason: blockerReason(blocker),
     action,
-    stopUnpairs: LIVE.has(kind),
+    stopUnpairs: LIVE.has(kind) && court === null,
+    court,
     onAir: action === 'stop',
     shutter: kind === 'paired' || action === 'stop',
     scoring: kind === 'paired' || action === 'stop',
     peekable: action === 'stop' && input.playable,
     shed: input.shed,
+    starting,
     ...waiting,
   };
+}
+
+/** The tally plate: the hold's start in flight reads Connecting, as the Arming it leads to (court stream Task 13, P2). */
+function plateFor(kind: Kind, ready: boolean, starting: boolean): TallyPlate {
+  return starting ? 'connecting' : tallyPlateFor(kind, ready);
 }
 
 type WaitingFields = {
   readonly startsAt: string | null;
   readonly auto: boolean;
   readonly destination: string | null;
+  readonly nextLabel: string | null;
+  readonly nextAt: string | null;
 };
 
 /**
  * Amendment §2, Viewfinder paired: "Starts {time}" in the venue's zone, AUTO,
- * and the destination. Primitives from the snapshot, formatted here, memoised
+ * the destination, and a court's next match with its start (§6.2). Primitives from the snapshot, formatted here, memoised
  * on them (M7): a 1 Hz tick that changes none of them changes nothing.
  */
 function useWaitingFields(): WaitingFields {
@@ -190,14 +232,18 @@ function useWaitingFields(): WaitingFields {
   const zone = useEngineSelector(selectVenueZone);
   const auto = useEngineSelector(selectAutomaticOn);
   const destination = useEngineSelector(selectDestination);
+  const nextLabel = useEngineSelector(selectNextLabel);
+  const nextStartMs = useEngineSelector(selectNextStartMs);
   const formatTime = useFormatTime();
   return useMemo(
     () => ({
       startsAt: startMs === null ? null : formatTime(new Date(startMs), zone),
       auto,
       destination,
+      nextLabel,
+      nextAt: nextStartMs === null ? null : formatTime(new Date(nextStartMs), zone),
     }),
-    [startMs, zone, auto, destination, formatTime],
+    [startMs, zone, auto, destination, nextLabel, nextStartMs, formatTime],
   );
 }
 

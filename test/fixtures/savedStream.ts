@@ -20,3 +20,13 @@ export function savedStreamCode(overrides: Partial<SavedCode> = {}): SavedCode {
     ...overrides,
   };
 }
+
+/**
+ * A court code as Home saves it (court stream spec 2026-11-14 §6.1): the descriptor named the court, so it is saved
+ * with the code, and the pair seeds native's court from it. Made up.
+ */
+export function savedCourtCode(court = 'Court 2'): SavedCode {
+  const saved = savedStreamCode();
+  if (saved.stream === null) throw new Error('a stream code holds its stream fields');
+  return { ...saved, stream: { ...saved.stream, waiting: { ...saved.stream.waiting, court } } };
+}

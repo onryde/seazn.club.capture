@@ -1,5 +1,5 @@
 {
-  "about": "POST scoring-link answers (capture-scoring-link.v1 at web 7e75fd4a7) as Bodies.scoringLink in Kotlin reads them, and as the contract allows them (scoringLinkBodies.test.ts, ajv). env is the build's. expected is the outcome word. The 2xx rows that carry a url are also fed to the JS port (scoringLinkPort.test.ts), which must accept exactly the rows Kotlin calls ok. Change only with both.",
+  "about": "POST scoring-link answers (capture-scoring-link.v1 at web 7e75fd4a7) as Bodies.scoringLink in Kotlin reads them, and as the contract allows them (scoringLinkBodies.test.ts, ajv). env is the build's. expected is the outcome word, and expectedLabel an ok row's label (absent: none). The 2xx rows that carry a url are also fed to the JS port (scoringLinkPort.test.ts), which must accept exactly the rows Kotlin calls ok. Change only with both.",
   "cases": [
     {
       "why": "ok on the build's host",
@@ -152,6 +152,86 @@
       "body": {
         "url": "http://stg.seazn.club/score/dl_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdE"
       },
+      "expected": "unavailable",
+      "contractValid": false
+    },
+    {
+      "why": "ok with the match's label",
+      "env": "staging",
+      "status": 200,
+      "body": {
+        "url": "https://stg.seazn.club/score/dl_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdE",
+        "label": "Example Town v Sample CC"
+      },
+      "expected": "ok",
+      "expectedLabel": "Example Town v Sample CC"
+    },
+    {
+      "why": "ok with a label of 200 code points keeps it (the last one astral)",
+      "env": "staging",
+      "status": 200,
+      "body": {
+        "url": "https://stg.seazn.club/score/dl_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdE",
+        "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx🏸"
+      },
+      "expected": "ok",
+      "expectedLabel": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx🏸"
+    },
+    {
+      "why": "ok with a 201-character label is a link with no label",
+      "env": "staging",
+      "status": 200,
+      "body": {
+        "url": "https://stg.seazn.club/score/dl_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdE",
+        "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      },
+      "expected": "ok",
+      "expectedLabel": null,
+      "contractValid": false
+    },
+    {
+      "why": "ok with an empty label is a link with no label",
+      "env": "staging",
+      "status": 200,
+      "body": {
+        "url": "https://stg.seazn.club/score/dl_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdE",
+        "label": ""
+      },
+      "expected": "ok",
+      "expectedLabel": null,
+      "contractValid": false
+    },
+    {
+      "why": "ok with a label that is not a string is a link with no label",
+      "env": "staging",
+      "status": 200,
+      "body": {
+        "url": "https://stg.seazn.club/score/dl_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdE",
+        "label": 3
+      },
+      "expected": "ok",
+      "expectedLabel": null,
+      "contractValid": false
+    },
+    {
+      "why": "409 no_match",
+      "env": "staging",
+      "status": 409,
+      "body": { "code": "no_match", "message": "m" },
+      "expected": "no_match"
+    },
+    {
+      "why": "404 no_match is no_match, never code_ended",
+      "env": "staging",
+      "status": 404,
+      "body": { "code": "no_match", "message": "m" },
+      "expected": "no_match"
+    },
+    {
+      "why": "404 with no code is no answer (X1)",
+      "env": "staging",
+      "status": 404,
+      "body": { "message": "m" },
       "expected": "unavailable",
       "contractValid": false
     }

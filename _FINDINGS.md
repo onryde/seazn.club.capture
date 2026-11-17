@@ -1162,8 +1162,11 @@ phone logged `stopped-delivered 200`. One `broadcast-start`, no rejoin, one Clou
 
 ### N38 — Send record could keep none of a long session's lines
 
-**Status:** fixed — feat/s1-d3-fixes, Batch 18 (0d3fefd, e144a38); device-checked on R-N4F3, R-DJSE and R-1WRJ
-**Where:** capture app · `src/services/recordPins.ts` · `ring.linesToSend` · `recordUploadPort.ts`
+**Status:** fixed — feat/s1-d3-fixes, Batch 18 (0d3fefd, e144a38); device-checked on R-N4F3, R-DJSE and R-1WRJ. The
+reload and process-death gap below: fixed on feat/court-stream (court stream P1, 2026-11-16, 40ecdaa4); a process death
+restores closed since its fix round 1 (cff0754d); device check open
+**Where:** capture app · `src/services/recordPins.ts` · `ring.linesToSend` · `recordUploadPort.ts` · `RecordPins.kt` ·
+`BridgeCore.tail` · `RecordPinStore.kt` · `nativeCaptureEngine.ts` (`seedRecord`)
 
 R-MA1P (2026-10-12, 10 s after a session ended) arrived with 1000 lines received, 0 kept, 1000 dropped. The JS ring
 holds 1000 lines and drops the oldest; ten minutes of a live session fill it, and the `pair` line (which carries the
@@ -1179,10 +1182,38 @@ only and every send follows a close); the amendment is cited in code as "the con
 **Device proof:** R-N4F3 received 178, kept 76, dropped 102 (the lines before the #4 pair), invalid 0, pair line
 leading; R-DJSE received 328, kept 197, dropped 131, invalid 0, covering two sessions; R-1WRJ received 623, kept 621,
 dropped 2, invalid 0 (evidence: `$HOME/seazn-d3-evidence/2026-10-13/n37-cut-web-report.md`). The 1000-line overflow case
-is covered by unit and end-to-end tests but not yet seen on a device. Parked: the native 5 MB disk record is still never
-read by Send; the owner decides whether it should be. After a process death or a cold start the JS ring holds only
-native's in-memory tail (`BridgeCore.tail`, at most `SessionRecord.LAST_LINES`, 20 lines, and empty in a new process),
-so a Send within the upload credential's 24 h can carry none of the match and still shows "Sent · ref" (kept 0).
+is covered by unit and end-to-end tests but not yet seen on a device.
+
+**Reload and process death (court stream device check, 2026-11-16; the controller's ruling):** a court code paired for
+hours sent 34 lines and the web kept none ("sessions: none named"). After a JS reload or a process death the ring is
+seeded from native's tail alone (`BridgeCore.tail`, at most `SessionRecord.LAST_LINES`, 20 lines, and empty in a new
+process), and the pins lived only in the old ring. Now native pins the same two lines by the same rule (`RecordPins.kt`,
+`recordPins.ts`'s rule for rule), and its tail carries those it has let go of beside its lines (`{pins, lines}`). An open
+window's start is kept in the private store (`record-pins`, `RecordPinStore.kt`): written when it changes, deleted when
+the window closes or a re-pair replaces it. The seed hands the pins to the ring before the tail's first line, once
+(`RingRecord.adoptPins`, `pinsAdopted`), and the ring sends them first. In one process they stand, as the ring's do,
+until the closing line has left native's tail; a closed window is never restored.
+
+**Process death, closed restore (fix round 1 of P1, I1 of its review; the controller's ruling):** a restored window
+first came back open, so a cold start that did not re-pair (an expired code, a tap to pair never made, a Forget whose
+marker was written before its `unpaired` line) filed every new line under the dead code. Restored pins now come back
+CLOSED: the new process carries the kept `broadcast-start` alone, first, so the old session is still named (A1 judges
+it by its sid), and no `pair` line. The web opens an A2 window at any `pair` line in the body and runs it to a closing
+line or the next `pair`, neither of which such a cold start writes, so a restored pair would file the new process's
+lines under the old code; that is why the pair is neither kept nor restored. The restored start opens no window, no
+line moves it, and a new `pair` replaces it, opening a fresh window as before. The store then holds the start alone,
+so every later start restores it closed again, for at most 24 h after it was written: an older start is not restored
+(`RecordPins.RESTORE_WITHIN_MS`; fix rounds 2 and 3). That is a hygiene bound counted from the line's write, so a stale
+start does not lead every Send until a re-pair; it is R4's length but not its upload credential's life, which runs from
+the code's drop (a saved code keeps a live credential for days). A start dated ahead of the clock is restored (the
+controller's ruling: no clamp; it only names a dead session). A pairing that never started a broadcast restores nothing: its own lines died with the process. No new
+line kind: the Send upload contract and the web's allow-list are unchanged.
+
+**Parked:** Send still never reads the native 5 MB disk record (the owner decides whether it should), so after a reload
+a Send carries the pinned pair and start and the lines since the seed, and after a process death the restored start
+and the new process's lines, never the match's lines in between. The new process's `previous-session-lost` line carries
+no sid (`PreviousExit.kt`), so the web files it under no code (parked by the controller; not a regression: before this
+fix it was never filed either).
 
 ---
 
@@ -1436,6 +1467,66 @@ should know the event exists, since a record without it hid every such drop.
 **Deferred, not mended:** a key goes in the web's list only through a web change and `pnpm contracts:vendor`, and the
 test that holds the two lists equal (`recordContract.test.ts`) then moves with it. Asked for with the next change to the
 record contract, `said`, `foreign` and `queued` together. Until then the counts are read from a shared record.
+
+---
+
+### N44 — After a lost beat the phone was deaf to a Go live for a minute, and a held Go live looked like nothing happened
+
+**Status:** fixed on `feat/court-stream` (court stream Task 13: P1, P2 and review fix rounds 1 and 2); the device re-check
+on the NE2211 against staging is open
+**Where:** native core · `Heartbeat.kt`, `BeatCadence.kt` (`retryMs`) · `Projection.kt`, `SnapshotWire.kt`
+(`pairing.starting`) · capture app · `src/hooks/useUnpair.ts` (`START_ANSWER_WAIT_MS`) · `StreamColumn.tsx` ·
+`ContinueCard.tsx`, `CodePanel.tsx` (Home while starting)
+
+Two things seen in Task 13's device check of the court stream, both native-owned.
+
+**The deaf minute.** A beat timed out at the server's 60 s cadence. `HeartbeatState.failed()` kept the last send's time,
+so the next beat waited the whole 60 s, and a Go live the desk gave in that minute reached the phone up to a minute late.
+The rule now (the controller's ruling, fix round 1):
+
+- A _passing_ failure brings the next beat forward: no answer (a transport failure), a beat given up at 10 s, a 408 or a
+  5xx. The next goes 5 s after the failure, then 10 s and 20 s for the second and third in a row; from the fourth the
+  cadence decides. Never later than the cadence (a retry only brings a beat forward), never sooner than 5 s (the poll
+  floor, `BeatCadence.MIN_POLL_S`). A 2xx resets the count.
+- Any other 4xx (400, 404, 422, …) keeps the cadence: the server answered, and a retry would get the same answer.
+- A 429 with no Retry-After keeps the cadence; with one, the beat goes when it ends, even past the cadence.
+- Every failure in a row takes a step, a 4xx included, though a 4xx brings no beat forward itself; only a 2xx resets the
+  count. Kept so on review (fix round 2, the controller's ruling): the steps stay bounded at the cadence whatever the mix,
+  one counter is simpler than one per class of failure, and a test pins it (a 404 then a 503: the retry comes 10 s after
+  the 503, `HeartbeatTest`).
+
+Rejected: retrying at the cadence (the old behaviour): it is the deaf minute. Rejected: a flat 5 s retry (P1 as first
+built): when the server is in trouble every phone at the venue would beat every 5 s, twelve times the 60 s load at the
+moment it can least take it, and it retried answers that cannot change. The held cadence (10 s) is untouched: its first
+retry is the 5 s, and the 10 s and 20 s steps are never sooner than the cadence, which then decides. Two pins moved with
+it: a heartbeat that fails forever while live beats at 10, 15, 25, 35, 45 … 595 s (60 failures in 600 s), and N37's
+offline stopped beat at 8, 13, 23 and 33 s (4).
+
+**The silent hold.** After the 3 s hold, native posts start and waits for the answer for up to its HTTP bound (8 s,
+`Http.TIMEOUT_MS`). All that time the screen still read Ready and "Waiting for Go live" over an enabled Go live, so the
+operator could not tell the hold took. Native's snapshot now says so: `pairing.starting`, true in Paired from the post
+until its answer, and only in Paired (`Phase.ended()` keeps the pairing, so an end with the start unanswered would
+otherwise carry it into Ended). It is a non-telemetry field, so it is published at once. JS words it: Go live becomes a
+disabled "Starting…" plate with no hold on it, the tally reads Connecting, and the line is the operator's own "Opening
+the link.", the line its Arming says, so nothing moves when the server answers Started. A failed answer clears it with
+the start-failed line, and Go live comes back.
+
+Native ignores an unpair while a start is in flight (`Pairings.unpair`), so a Forget, a court Leave or A7's Confirm sent
+then was dropped at the 5 s give-up, with the code kept. `useUnpair` now waits for native's answer to the start, bounded
+at 17 s (`START_ANSWER_WAIT_MS`), then unpairs after a failed start or answers `held` for one that armed; the unpair then
+has its own 5 s. The bound was 10 s (the 8 s HTTP bound with room); fix round 2 (the controller's ruling) raised it to
+outlast the bridge's backstop (`BridgeCore.ANSWER_BACKSTOP_MS`, 16 s), the latest native answers a start, so a slow
+answer is never given up as no answer. An unpair sent just before the start showed reaches native while it is in flight
+and is ignored, so the wait asks again once the start is answered (fix round 2). Chosen over hiding Leave and Forget while
+starting (the other way the fix round 1 ruling allowed): one place covers all three callers and the reopen gate's own
+clearing, no control appears or disappears under the operator's finger, and the tap is honoured rather than dropped. Fix
+round 2 (the controller's ruling) adds, on Home only: while the start is in flight, Forget on the Live Stream card and
+A7's Unpair & open are disabled, not hidden, and the card and the sheet say "Opening the link." in place of "Waiting for
+Go live"; the wait still covers a tap that lands just before, a court Leave and the reopen gate.
+
+**Open:** "Opening the link." is a routine line, so on an uncharged or warm phone an advisory caption wins the strip
+(AGENTS §6's two tiers); the Starting… plate and the Connecting tally still say it. An urgent line for it would be the
+owner's call.
 
 ---
 

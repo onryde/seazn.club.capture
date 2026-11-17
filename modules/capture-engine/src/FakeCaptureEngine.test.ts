@@ -489,10 +489,11 @@ describe('scenes: every state spec §6 and the amendment list', () => {
     fatal: { kind: 'ended', reason: 'fatal-error' },
     shed: { kind: 'publishing' },
     'unpaired-replaced': { kind: 'idle' },
+    'court-waiting': { kind: 'paired' },
   };
 
   it('lists every scene once, for the dev controls', () => {
-    expect(FAKE_SCENES).toHaveLength(24);
+    expect(FAKE_SCENES).toHaveLength(25);
     expect([...FAKE_SCENES].sort()).toEqual(Object.keys(EXPECTED).sort());
   });
 
@@ -702,6 +703,7 @@ describe('whose camera is on air (carry 10)', () => {
     fatal: null,
     shed: 'own',
     'unpaired-replaced': null,
+    'court-waiting': 'own',
   };
 
   it.each(FAKE_SCENES)('%s', (scene) => {
@@ -832,5 +834,229 @@ describe('surviving the background (CD18)', () => {
     expect(snapshot().survivesBackground).toBe(false);
     wait(1_000);
     expect(snapshot().survivesBackground).toBe(false);
+  });
+});
+
+/**
+ * Court stream (spec 2026-11-14 §6.1, §6.3, O5, O12), as native's CourtTest and ForgetTest: a court pairing's Stop ends
+ * this match only, back to Paired with `stopped`, unless a 401 was held; a fixture's live Stop still ends the pairing.
+ */
+describe('court codes', () => {
+  const COURT: PairIntent = { ...KIT_CODE_A, court: 'Court 2' };
+  const NEXT = {
+    label: 'Example Town v Sample CC',
+    scheduledStart: new Date('2026-11-14T14:00:00Z'),
+  };
+  const courtLive = () => {
+    pair(COURT);
+    engine.send({ kind: 'start' });
+    wait(1_000);
+    expect(state().kind).toBe('publishing');
+  };
+
+  it('seeds the pairing’s court from the pair, and a fixture’s pair holds none', () => {
+    pair(COURT);
+    expect(snapshot().pairing?.court).toBe('Court 2');
+    // An empty input: a court with no next streamed match yet.
+    expect(snapshot().pairing?.next).toBeNull();
+    engine.send({ kind: 'unpair' });
+    pair(KIT_CODE_B);
+    expect(snapshot().pairing?.court).toBeNull();
+  });
+
+  it('goes back to paired, stopped, on a live Stop on a court, keeping the pairing; a second Stop does nothing', () => {
+    courtLive();
+    engine.send({ kind: 'stop' });
+    expect(state()).toEqual({ kind: 'paired' });
+    expect([snapshot().lastEnd, snapshot().broadcast]).toEqual(['stopped', null]);
+    expect(snapshot().pairing).toMatchObject({ court: 'Court 2', tokenTag: TAG_A });
+    expect(snapshot().unpaired).toBeNull();
+    engine.send({ kind: 'stop' });
+    wait(5_000);
+    expect(state()).toEqual({ kind: 'paired' });
+    expect(snapshot().lastEnd).toBe('stopped');
+  });
+
+  it('still ends the pairing on a fixture’s live Stop (the twin)', () => {
+    onAirLive();
+    expect(snapshot().pairing?.court).toBeNull();
+    engine.send({ kind: 'stop' });
+    expect(state()).toMatchObject({ kind: 'ended', reason: 'operator-stopped' });
+  });
+
+  // Review Focus 1: the organiser withdraws the court link mid-match, then the volunteer holds Stop.
+  it('ends a court’s pairing when stopped after a held 401, as native does', () => {
+    courtLive();
+    engine.hear({ word: 'code-ended' });
+    expect(snapshot().codeEndedPending).toBe(true);
+    engine.send({ kind: 'stop' });
+    expect(state()).toMatchObject({ kind: 'ended', reason: 'operator-stopped' });
+  });
+
+  it('lets a test set the court’s next match, and clear it', () => {
+    pair(COURT);
+    engine.setPairing({ next: NEXT });
+    expect(snapshot().pairing?.next).toEqual(NEXT);
+    expect(snapshot().pairing?.court).toBe('Court 2');
+    engine.setPairing({ next: null });
+    expect(snapshot().pairing?.next).toBeNull();
+  });
+
+  it('plays court-waiting: paired on Court 2, with the next streamed match and its start', () => {
+    engine.scene('court-waiting');
+    expect(state()).toEqual({ kind: 'paired' });
+    expect(snapshot().pairing).toMatchObject({ court: 'Court 2', next: NEXT });
+    expect(snapshot().lastEnd).toBeNull();
+  });
+
+  // P2 review m3: native resets the court with each pair request, so a fixture pair after a court one holds none,
+  // even when the court was set by setPairing (which the fake keeps for every later pairing).
+  it('gives a fixture pair no court or next, whatever setPairing set before', () => {
+    engine.setPairing({ court: 'Court 2', next: NEXT });
+    pair(KIT_CODE_B);
+    expect(snapshot().pairing).toMatchObject({ court: null, next: null });
+    // A court's pair keeps what setPairing set for it.
+    engine.send({ kind: 'unpair' });
+    pair(COURT);
+    expect(snapshot().pairing).toMatchObject({ court: 'Court 2', next: NEXT });
+  });
+
+  // P2 review m2: a scene's own pairing fields end with the scene.
+  it('drops court-waiting’s court and next when the next scene plays', () => {
+    engine.scene('court-waiting');
+    engine.scene('paired-ready');
+    expect(snapshot().pairing).toMatchObject({ court: null, next: null });
+    // A court from the pair stays through a later scene: it is the pairing's, not the scene's.
+    engine.send({ kind: 'unpair' });
+    pair(COURT);
+    engine.scene('live');
+    expect(snapshot().pairing?.court).toBe('Court 2');
+  });
+
+  it('keeps a field setPairing changed after the scene, through the next scene', () => {
+    engine.scene('court-waiting');
+    engine.setPairing({ next: { ...NEXT, label: 'Another v Match' } });
+    engine.scene('paired-ready');
+    expect(snapshot().pairing).toMatchObject({ court: null, next: { label: 'Another v Match' } });
+  });
+
+  // O12 (owner, 2026-11-15): no one-tap Forget on a court's notification; a late tap is ignored, as native's.
+  it('ignores the notification’s Forget on a court pairing, and keeps it paired', () => {
+    pair(COURT);
+    engine.notificationForget();
+    expect(state()).toEqual({ kind: 'paired' });
+    expect(snapshot().unpaired).toBeNull();
+    expect(snapshot().pairing?.court).toBe('Court 2');
+  });
+});
+
+// Court stream Task 13 (NE2211, staging): native's POST start can take up to 8 s to answer, and Go live must say it took.
+describe('the operator’s start in flight (court stream Task 13, P2)', () => {
+  const holdStart = () => {
+    pair();
+    engine.setStartAnswer('hold');
+    engine.send({ kind: 'start' });
+  };
+
+  it('goes live at once by default, never saying starting', () => {
+    pair();
+    expect(snapshot().pairing?.starting).toBe(false);
+    engine.send({ kind: 'start' });
+    expect(state().kind).toBe('connecting');
+    expect(snapshot().pairing?.starting).toBe(false);
+  });
+
+  it('holds a start in flight: Paired and starting, the refusal and last end cleared as native’s post clears them', () => {
+    pair();
+    engine.hear({ word: 'refused', refusal: 'no_credit' });
+    engine.setStartAnswer('hold');
+    engine.send({ kind: 'start' });
+    expect(state()).toEqual({ kind: 'paired' });
+    expect(snapshot().pairing?.starting).toBe(true);
+    expect(snapshot().refusal).toBeNull();
+    // For as long as the answer takes: the fake has no timeout of its own (native's HTTP one answers failed).
+    wait(8_000);
+    expect(state()).toEqual({ kind: 'paired' });
+    expect(snapshot().pairing?.starting).toBe(true);
+  });
+
+  it('answers the held start started: it goes live as the hold would have, and starting goes', () => {
+    holdStart();
+    engine.setStartAnswer('started');
+    expect(state().kind).toBe('connecting');
+    expect(snapshot().pairing?.starting).toBe(false);
+    expect(snapshot().broadcast?.cause).toBe('operator');
+    wait(1_000);
+    expect(state().kind).toBe('publishing');
+  });
+
+  it('answers the held start failed: Paired with start-failed and starting gone, and the next hold goes again', () => {
+    holdStart();
+    engine.setStartAnswer('failed');
+    expect(state()).toEqual({ kind: 'paired' });
+    expect(snapshot().refusal).toBe('start-failed');
+    expect(snapshot().pairing?.starting).toBe(false);
+    // A second call: the answer stays failed until set again, so the next hold fails at once.
+    engine.send({ kind: 'start' });
+    expect([state().kind, snapshot().refusal, snapshot().pairing?.starting]).toEqual([
+      'paired',
+      'start-failed',
+      false,
+    ]);
+    engine.setStartAnswer('started');
+    engine.send({ kind: 'start' });
+    expect(state().kind).toBe('connecting');
+    expect(snapshot().refusal).toBeNull();
+  });
+
+  it('lets the organiser’s Go live arm over the start in flight, starting gone, and the late answer moves nothing', () => {
+    holdStart();
+    engine.hear({ word: 'go-live', cause: 'organiser' });
+    expect(state().kind).toBe('connecting');
+    expect(snapshot().pairing?.starting).toBe(false);
+    expect(snapshot().broadcast?.cause).toBe('organiser');
+    engine.setStartAnswer('failed');
+    expect(state().kind).toBe('connecting');
+    expect(snapshot().refusal).toBeNull();
+  });
+
+  // Review fix round 1: the not-ready branch arms too, into Armed, and retires the start as Connecting does.
+  it('retires the start in flight when the organiser’s Go live arms a phone that is not ready', () => {
+    holdStart();
+    engine.setReady({ sound: false });
+    engine.hear({ word: 'go-live', cause: 'organiser' });
+    expect(state()).toEqual({ kind: 'armed', cause: 'organiser', notReady: 'sound' });
+    expect(snapshot().pairing?.starting).toBe(false);
+  });
+
+  // Review fix round 1: native ignores a second start while one is in flight (`Pairings.start`, `inFlightId`), so it
+  // posts nothing and clears nothing: a refusal a beat brought meanwhile stays, where a post would clear it.
+  it('ignores a second start while one is in flight, clearing nothing a post would', () => {
+    holdStart();
+    engine.hear({ word: 'refused', refusal: 'no_credit' });
+    engine.send({ kind: 'start' });
+    expect(state()).toEqual({ kind: 'paired' });
+    expect(snapshot().refusal).toBe('no_credit');
+    expect(snapshot().pairing?.starting).toBe(true);
+  });
+
+  it('ignores an unpair and the notification’s Forget while the start is in flight, as native does', () => {
+    holdStart();
+    engine.send({ kind: 'unpair' });
+    expect(state()).toEqual({ kind: 'paired' });
+    expect(snapshot().pairing?.starting).toBe(true);
+    engine.notificationForget();
+    expect(state()).toEqual({ kind: 'paired' });
+    expect(snapshot().unpaired).toBeNull();
+    // Answered, they act again.
+    engine.setStartAnswer('failed');
+    engine.send({ kind: 'unpair' });
+    expect(state()).toEqual({ kind: 'idle' });
+  });
+
+  it('plays a scene as native’s own report, with no start in flight', () => {
+    holdStart();
+    engine.scene('paired-ready');
+    expect(snapshot().pairing?.starting).toBe(false);
   });
 });

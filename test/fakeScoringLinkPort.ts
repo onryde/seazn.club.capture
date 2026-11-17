@@ -6,7 +6,7 @@ export const FAKE_SCORING_URL = `https://stg.seazn.club/score/${FAKE_SCORING_SEC
 
 export type FakeScoringLinkPort = ScoringLinkPort & {
   readonly calls: number;
-  /** Every later request answers with this, until changed. Default: ok, with FAKE_SCORING_URL. */
+  /** Every later request answers with this, until changed. Default: ok, with FAKE_SCORING_URL and no label. */
   answerWith(outcome: ScoringLinkOutcome): void;
   /** The next request stays pending until `release`. */
   hold(): void;
@@ -16,7 +16,7 @@ export type FakeScoringLinkPort = ScoringLinkPort & {
 
 export function createFakeScoringLinkPort(): FakeScoringLinkPort {
   let calls = 0;
-  let next: ScoringLinkOutcome = { kind: 'ok', url: FAKE_SCORING_URL };
+  let next: ScoringLinkOutcome = { kind: 'ok', url: FAKE_SCORING_URL, label: null };
   let holdNext = false;
   const held: ((outcome: ScoringLinkOutcome) => void)[] = [];
   return {

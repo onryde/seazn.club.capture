@@ -14,7 +14,7 @@ import { captureRaw } from '../../test/fixtures/wire';
 import { pairCode } from '../../test/pairCode';
 import { wrapperFor } from '../../test/renderWithPorts';
 
-const OK: ScoringLinkOutcome = { kind: 'ok', url: FAKE_SCORING_URL };
+const OK: ScoringLinkOutcome = { kind: 'ok', url: FAKE_SCORING_URL, label: null };
 /**
  * A different pairing, by each of the three scalars that name one: the slot, the code and the token (its tag). The
  * slot and the token ride inside the scanned text, so they are changed there, not on the SavedCode.
@@ -80,12 +80,39 @@ describe('useScoringLink (spec §10, D7, D8)', () => {
   it('2: shown, then hidden after exactly SCORING_SHOW_MS, and the url is gone', async () => {
     const { view, tap } = setup();
     await tap();
-    expect(view()).toEqual({ kind: 'shown', url: FAKE_SCORING_URL });
+    expect(view()).toEqual({ kind: 'shown', url: FAKE_SCORING_URL, label: null });
     act(() => vi.advanceTimersByTime(SCORING_SHOW_MS - 1));
     expect(view().kind).toBe('shown');
     act(() => vi.advanceTimersByTime(1));
     expect(view()).toEqual({ kind: 'hidden' });
     expect(JSON.stringify(view())).not.toContain(FAKE_SCORING_SECRET);
+  });
+
+  // Court stream §5.6: the answer names its match, and the shown view carries the name beside the url. The record line
+  // is the word only: never the label, never the url.
+  it('2b: a link that names its match is shown with its label, which reaches no record line', async () => {
+    const { fakes, view, tap } = setup();
+    fakes.scoringLink.answerWith({
+      kind: 'ok',
+      url: FAKE_SCORING_URL,
+      label: 'Northside v Riverside',
+    });
+    await tap();
+    expect(view()).toEqual({
+      kind: 'shown',
+      url: FAKE_SCORING_URL,
+      label: 'Northside v Riverside',
+    });
+    const lines = JSON.stringify(readRecord(fakes.record));
+    expect(lines).toContain('scoring.shown');
+    expect(lines).not.toContain('Northside');
+  });
+
+  it('2c: a no_match refusal is said as itself (four questions 2: an empty court)', async () => {
+    const { fakes, view, tap } = setup();
+    fakes.scoringLink.answerWith(refused('no_match'));
+    await tap();
+    expect(view()).toEqual({ kind: 'refused', word: 'no_match', retryAfterS: null });
   });
 
   it('3: the 10 s runs from the answer, not from the tap', async () => {
@@ -137,10 +164,10 @@ describe('useScoringLink (spec §10, D7, D8)', () => {
     await tap(); // ask B
     expect(fakes.scoringLink.calls).toBe(2);
     // release answers oldest first: A is dropped, B is shown.
-    await act(async () => fakes.scoringLink.release({ kind: 'ok', url: other }));
+    await act(async () => fakes.scoringLink.release({ kind: 'ok', url: other, label: null }));
     expect(view()).toEqual({ kind: 'asking' });
     await act(async () => fakes.scoringLink.release(OK));
-    expect(view()).toEqual({ kind: 'shown', url: FAKE_SCORING_URL });
+    expect(view()).toEqual({ kind: 'shown', url: FAKE_SCORING_URL, label: null });
     expect(JSON.stringify(view())).not.toContain(other);
   });
 
@@ -157,7 +184,7 @@ describe('useScoringLink (spec §10, D7, D8)', () => {
 
   let wordsRun = 0;
   it('8: every refusal word, from the port’s own list, is shown with its word and hides after 10 s', async () => {
-    expect(SCORING_WORDS).toHaveLength(6);
+    expect(SCORING_WORDS).toHaveLength(7);
     for (const word of SCORING_WORDS) {
       const { fakes, view, tap, hook } = setup();
       const retryAfterS = word === 'rate_limited' ? 30 : null;
@@ -172,7 +199,7 @@ describe('useScoringLink (spec §10, D7, D8)', () => {
       hook.unmount();
       wordsRun += 1;
     }
-    expect(wordsRun).toBe(6);
+    expect(wordsRun).toBe(7);
   });
 
   it('9: a rate limit blocks taps until its Retry-After has passed, and says what is left', async () => {
@@ -234,7 +261,7 @@ describe('useScoringLink (spec §10, D7, D8)', () => {
       act(() => pairCode(fakes.engine, other()));
       await tap();
       expect(fakes.scoringLink.calls, `${name}: asks again`).toBe(2);
-      expect(view(), name).toEqual({ kind: 'shown', url: FAKE_SCORING_URL });
+      expect(view(), name).toEqual({ kind: 'shown', url: FAKE_SCORING_URL, label: null });
       rows += 1;
     }
     expect(rows).toBe(OTHER_PAIRINGS.length);
@@ -492,7 +519,7 @@ describe('useScoringLink’s refusal, then a tap (B3, D7)', () => {
     act(() => vi.advanceTimersByTime(5_000)); // past where the refusal's timer would have fired
     expect(view().kind).toBe('asking');
     await act(async () => fakes.scoringLink.release(OK));
-    expect(view()).toEqual({ kind: 'shown', url: FAKE_SCORING_URL });
+    expect(view()).toEqual({ kind: 'shown', url: FAKE_SCORING_URL, label: null });
     expect(left()).toBe(10);
     act(() => vi.advanceTimersByTime(SCORING_SHOW_MS));
     expect(view()).toEqual({ kind: 'hidden' });

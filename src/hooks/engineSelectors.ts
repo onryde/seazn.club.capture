@@ -1,6 +1,6 @@
 import { NO_NAME, type CodeName } from '@/domain/mode/codeName';
 import type { EngineStatus } from '@/domain/mode/reopen';
-import { stageLine } from '@/domain/session/stageLine';
+import { roundLine } from '@/domain/session/stageLine';
 import type { EngineSnapshot } from '@/engine/CaptureEnginePort';
 
 /**
@@ -71,17 +71,48 @@ export const selectPlaybackUrl = (snapshot: EngineSnapshot) =>
 export const selectLabel = (snapshot: EngineSnapshot) =>
   snapshot.broadcast?.label || snapshot.pairing?.label || null;
 /**
- * The round line (spec §2): the pairing's stage label, once the match label is known. Native keeps it only for
- * the match it was read with; the length is held again here, so an over-long one can never paint.
+ * The round line (spec §2): the pairing's stage label, once the match label is known, led on a court code by the
+ * court's name (court stream spec 2026-11-14 §6.2). Native keeps the stage only for the match it was read with; the
+ * length is held again here, so an over-long one can never paint.
  */
-export const selectStageLine = (snapshot: EngineSnapshot) =>
-  selectLabel(snapshot) === null ? null : stageLine(snapshot.pairing?.stageLabel);
+export const selectRoundLine = (snapshot: EngineSnapshot) =>
+  roundLine(
+    selectCourt(snapshot),
+    selectLabel(snapshot) === null ? null : snapshot.pairing?.stageLabel,
+  );
+/**
+ * A court code waiting between matches (§6.2, I4): the Next line names the match, so the match label is not drawn
+ * a second time. A boolean, so a 1 Hz tick re-renders nobody.
+ */
+export const selectCourtWaiting = (snapshot: EngineSnapshot) =>
+  selectCourt(snapshot) !== null && snapshot.state.kind === 'paired';
 /** The venue's zone from the pairing: every time the operator reads is in it (spec §2). */
 export const selectVenueZone = (snapshot: EngineSnapshot) =>
   snapshot.pairing?.venueTimezone || null;
 /** When the match is scheduled to start, as epoch ms (a primitive); null with none. */
 export const selectScheduledStartMs = (snapshot: EngineSnapshot) =>
   snapshot.pairing?.scheduledStart?.getTime() ?? null;
+/** The court's name on a court code's pairing (court stream spec 2026-11-14 §6.1); null on a fixture's code. */
+export const selectCourt = (snapshot: EngineSnapshot) => snapshot.pairing?.court ?? null;
+/**
+ * The operator's Go live is waiting for `POST start`'s answer (court stream Task 13, P2): native's fact, set in Paired
+ * only. Go live says "Starting…" and cannot be held while it is true.
+ */
+export const selectStarting = (snapshot: EngineSnapshot) => snapshot.pairing?.starting === true;
+/** The court's next streamed match (§5.3, a beat's `next`), display only: its label, or null with none. */
+export const selectNextLabel = (snapshot: EngineSnapshot) => snapshot.pairing?.next?.label ?? null;
+/**
+ * What names the match behind a court (court stream spec 2026-11-14, the scoring stale guard), as one string: the held
+ * sid, the match label and the next streamed match. Empty on a fixture's code, so it never moves there. A scoring link
+ * asked for on a court is for this match (O10): when the string changes, the link in hand is the old match's.
+ */
+export const selectCourtMatchKey = (snapshot: EngineSnapshot): string =>
+  selectCourt(snapshot) === null
+    ? ''
+    : `${snapshot.broadcast?.sid ?? ''}|${selectLabel(snapshot) ?? ''}|${selectNextLabel(snapshot) ?? ''}`;
+/** When the court's next streamed match is scheduled to start, as epoch ms (a primitive); null with none. */
+export const selectNextStartMs = (snapshot: EngineSnapshot) =>
+  snapshot.pairing?.next?.scheduledStart?.getTime() ?? null;
 /** AUTO shows only when automatic mode is on at both ends (A4): the organiser's and the phone's. */
 export const selectAutomaticOn = (snapshot: EngineSnapshot) =>
   snapshot.pairing !== null && snapshot.pairing.autoAllowed && snapshot.pairing.automatic;

@@ -1,5 +1,5 @@
 {
-  "about": "The made-up server bodies the native tests answer with (PairWire.kt, the host's ScriptedServer.kt), each checked against the web's contract it stands for by serverBodies.test.ts, with ajv, so a fixture that drifts from the contract reds (review C4a m-4). The contracts are contracts/, vendored from the web repo (contracts/VENDORED.json names the commit) and pinned by test/contractPins.test.ts. Each Kotlin side asserts its bodies equal these. Change only with both. The credentials are the tests' own made-up values.",
+  "about": "The made-up server bodies the native tests answer with (PairWire.kt, the host's ScriptedServer.kt), each checked against the web's contract it stands for by serverBodies.test.ts, with ajv, so a fixture that drifts from the contract reds (review C4a m-4). The contracts are contracts/, vendored from the web repo (contracts/VENDORED.json names the commit) and pinned by test/contractPins.test.ts. Each Kotlin side asserts its bodies equal these; the `court/` rows are a court code's additive shapes (court stream spec 2026-11-14 §5.3, §5.6, §6.1). Change only with both. The credentials are the tests' own made-up values.",
   "bodies": [
     {
       "name": "pair-wire/beat-waiting",
@@ -136,6 +136,85 @@
       "schema": "capture-scoring-link.v1.json#/$defs/ok",
       "body": {
         "url": "https://stg.seazn.club/score/dl_HostLinkAbCdEfGhIjKlMnOpQrStUvWxYz012345678"
+      }
+    },
+    {
+      "name": "court/code-waiting",
+      "schema": "capture-descriptor.v1.json",
+      "body": {
+        "state": "waiting",
+        "code": "c2rt4hmnp7kq",
+        "label": "Example Town v Sample CC",
+        "venueTimezone": "Europe/London",
+        "scheduledStart": 1793534400,
+        "pollSeconds": 10,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": null,
+        "heartbeatUrl": "https://stg.seazn.club/api/v1/capture/codes/c2rt4hmnp7kq/beats",
+        "startUrl": "https://stg.seazn.club/api/v1/capture/codes/c2rt4hmnp7kq/start",
+        "court": {
+          "name": "Court 2"
+        }
+      }
+    },
+    {
+      "name": "court/beat-waiting-next",
+      "schema": "capture-beat.v1.json#/$defs/answer",
+      "body": {
+        "state": "waiting",
+        "label": "Example Town v Sample CC",
+        "scheduledStart": 1793534400,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": null,
+        "pollSeconds": 10,
+        "next": {
+          "label": "Example Town v Sample CC",
+          "scheduledStart": 1793534400
+        }
+      }
+    },
+    {
+      "name": "court/beat-live-next",
+      "schema": "capture-beat.v1.json#/$defs/answer",
+      "body": {
+        "state": "live",
+        "sid": "6f1c2b7a-3d4e-4f50-8a9b-0c1d2e3f4a5b",
+        "label": "Example Town v Sample CC",
+        "scheduledStart": null,
+        "autoAllowed": true,
+        "destinationName": "YouTube · Example Town CC",
+        "overlayUrl": null,
+        "pollSeconds": 10,
+        "next": {
+          "label": "Northside v Riverside",
+          "scheduledStart": 1793538000
+        }
+      }
+    },
+    {
+      "name": "court/scoring-ok-label",
+      "schema": "capture-scoring-link.v1.json#/$defs/ok",
+      "body": {
+        "url": "https://stg.seazn.club/score/dl_CourtLinkAbCdEfGhIjKlMnOpQrStUvWxYz01234567",
+        "label": "Northside v Riverside"
+      }
+    },
+    {
+      "name": "court/scoring-no-match",
+      "schema": "capture-scoring-link.v1.json#/$defs/refusal",
+      "body": {
+        "code": "no_match",
+        "message": "the court has no match queued"
+      }
+    },
+    {
+      "name": "court/start-no-match",
+      "schema": "capture-start.v1.json#/$defs/refusal",
+      "body": {
+        "code": "no_match",
+        "message": "the court has no streamed match in play"
       }
     }
   ]

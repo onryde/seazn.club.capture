@@ -44,6 +44,8 @@ enum class Refusal(override val wire: String) : Wire {
   NO_DESTINATION("no_destination"),
   NO_CREDIT("no_credit"),
   NOT_ENTITLED("not_entitled"),
+  /** Court stream (capture-start.v1's 409): a court code with no streamed match in play (a court's start only). */
+  NO_MATCH("no_match"),
   UNKNOWN("unknown"),
   START_FAILED("start-failed");
 
@@ -110,6 +112,9 @@ data class PhoneFacts(val phoneId: String, val appVersion: String, val model: St
   }
 }
 
+/** A court's next streamed match, from a beat's `next` (capture-beat.v1, court stream §5.3): shown, never acted on. */
+data class NextMatch(val label: String, val scheduledStartEpochS: Long?)
+
 /**
  * The fields the server sends on every 2xx answer, beat or code (amendment, _Contract shapes_).
  * [pollSeconds] is the server's, unclamped: [BeatCadence] clamps it where it is used.
@@ -125,22 +130,36 @@ data class WaitingFields(
   val stageLabel: String? = null,
   /** The match [label] the stage was read with: a stage is only true of that match (the code is stable, so a beat can move the label). */
   val stageFor: String? = null,
+  /**
+   * The descriptor's `court.name` (court stream spec 2026-11-14 §6.1), on a court code only; null on a fixture's code. A
+   * pairing is a court pairing exactly when this is not null, and a malformed court never reads as null: it makes the
+   * waiting fields unreadable.
+   */
+  val courtName: String? = null,
+  /** The beat's `next` (court stream §5.3): the court's next streamed match. Display only; null when none or malformed. */
+  val next: NextMatch? = null,
 ) {
   /**
-   * These fields over the ones [held]: the venue's zone is the engine's to keep. A beat's answer carries
-   * none (D4, read as ""), so an empty zone keeps the one held; any other replaces it.
+   * These fields over the ones [held], as a descriptor lands: the venue's zone is the engine's to keep. A beat's answer
+   * carries none (D4, read as ""), so an empty zone keeps the one held; any other replaces it. A court the answer
+   * names replaces the held one, and silence keeps it, so a court pairing never becomes a fixture's by an answer that
+   * omits the court (court stream spec 2026-11-14 §3). A descriptor never carries `next`, so the held one stands.
    */
-  fun over(held: WaitingFields): WaitingFields = if (venueTimezone.isEmpty()) copy(venueTimezone = held.venueTimezone) else this
+  fun over(held: WaitingFields): WaitingFields =
+    copy(venueTimezone = venueTimezone.ifEmpty { held.venueTimezone }, courtName = courtName ?: held.courtName, next = held.next)
 
   /**
    * A beat's answer over what is held. The beat carries no `stage` (capture-beat.v1), so the held stage
    * stays while this answer's [label] is the match it was read with, and goes when the label moved: the
    * stable code may now point at the next match, and the old round line would be a wrong fact on the tripod.
+   * The beat carries no `court` either, so the held court stays, even when an off-contract beat names one (P1 review
+   * M1: the schema bars it on every answer branch); its `next` is the court's next streamed match now, so it replaces
+   * the held one, and a beat with none clears it (court stream §5.3).
    */
   fun overBeat(held: WaitingFields): WaitingFields {
     val merged = over(held)
     val still = held.stageLabel != null && held.stageFor == label
-    return merged.copy(stageLabel = held.stageLabel.takeIf { still }, stageFor = held.stageFor.takeIf { still })
+    return merged.copy(stageLabel = held.stageLabel.takeIf { still }, stageFor = held.stageFor.takeIf { still }, courtName = held.courtName, next = next)
   }
 
   companion object {
@@ -169,6 +188,12 @@ class PairRequest(
   /** The round line the scan's GET gave, and the match label it was read with; both or neither. Not a secret. */
   val stageLabel: String? = null,
   val stageMatch: String? = null,
+  /**
+   * The court's name from the code's GET at the scan, saved with the code (court stream spec 2026-11-14 §6.1); null on a
+   * fixture's code. It seeds the pairing's [WaitingFields.courtName], so a cold-start re-pair is a court pairing before
+   * any GET. Not a secret. Held to 1 to 80 characters by [problems]: a malformed court refuses the pair, never no court.
+   */
+  val court: String? = null,
 ) {
   val name: PairingName
     get() = PairingName(code, slot, TokenTag.of(token))
@@ -187,6 +212,7 @@ class PairRequest(
     for ((key, url) in listOf("heartbeatUrl" to heartbeatUrl, "startUrl" to startUrl)) {
       if (!Hosts.onSeazn(url, environment)) add("$key is not on ${environment.seaznHost}")
     }
+    if (court != null && court.characters !in 1..80) add("court is not 1 to 80 characters")
   }
 
   /** The token: masked in every line, as plan B's `tok` was. */

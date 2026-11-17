@@ -1,7 +1,7 @@
 import type { SessionState } from '@/domain/session/SessionState';
 import type { CaptureEnginePort, EngineSnapshot } from './CaptureEnginePort';
 import { intentWire } from './intentWire';
-import type { CaptureEngineNative, RecordLine, Subscription } from './nativeModule';
+import type { CaptureEngineNative, RecordLine, RecordTail, Subscription } from './nativeModule';
 import { createWireCache, toEngineSnapshot } from './snapshotWire';
 import { UNREPORTED } from './unreported';
 
@@ -57,11 +57,15 @@ export const MALFORMED_LOG_MS = 60_000;
  * snapshot wire (the last good one is kept through a malformed body, which is
  * counted and recorded), intents go out through the intent wire numbered for
  * CD8, and the record is seeded from native's tail without losing or doubling
- * a line (D3).
+ * a line (D3), its pinned lines handed on first (N38).
  */
 export function createNativeCaptureEngine(
   native: CaptureEngineNative,
-  deps: { onRecordLine: (line: string) => void; now?: () => number },
+  deps: {
+    onRecordLine: (line: string) => void;
+    onRecordPins: (pins: readonly string[]) => void;
+    now?: () => number;
+  },
 ): NativeCaptureEngine {
   const cache = createWireCache();
   const listeners = new Set<() => void>();
@@ -87,7 +91,7 @@ export function createNativeCaptureEngine(
       for (const listener of listeners) listener();
     }),
     native.addListener('onAck', ({ seq }) => acks.acked(seq)),
-    seedRecord(native, deps.onRecordLine),
+    seedRecord(native, deps.onRecordLine, deps.onRecordPins),
   ];
   return {
     send: (intent) => acks.next((seq) => native.send({ ...intentWire(intent), seq })),
@@ -132,9 +136,14 @@ export function createNativeCaptureEngine(
  * the last one handed on, so a tail line that arrives again is dropped, and a
  * new line is kept whatever its text, one equal to a tail line included. A
  * line delivered while the tail is still being read waits for it, and passes
- * the same check.
+ * the same check. N38: the tail's pinned lines are handed on before its first
+ * line, so the ring adopts them ahead of every line it is given.
  */
-function seedRecord(native: CaptureEngineNative, onLine: (line: string) => void): Subscription {
+function seedRecord(
+  native: CaptureEngineNative,
+  onLine: (line: string) => void,
+  onPins: (pins: readonly string[]) => void,
+): Subscription {
   let early: RecordLine[] | null = [];
   /** The seq of the last line handed on: native's first line is 1. */
   let last = 0;
@@ -147,12 +156,31 @@ function seedRecord(native: CaptureEngineNative, onLine: (line: string) => void)
     if (early === null) arrived(body);
     else early.push(body);
   });
-  const tail = native.tail();
+  const tail = tailOf(native.tail());
   const during = early;
   early = null;
-  tail.forEach(arrived);
+  onPins(tail.pins);
+  tail.lines.forEach(arrived);
   during.forEach(arrived);
   return subscription;
+}
+
+/**
+ * Native's tail read at the boundary (N38): its pins that are text, and its lines that are a number `seq` and a text
+ * `line`, as native numbered them. Any other answer or item, a build from before N38's (a list of lines) included, is
+ * dropped, so a stale build seeds nothing and never throws.
+ */
+function tailOf(body: unknown): RecordTail {
+  const { pins, lines } = Object(body) as { readonly pins?: unknown; readonly lines?: unknown };
+  return {
+    pins: Array.isArray(pins) ? pins.filter((pin): pin is string => typeof pin === 'string') : [],
+    lines: Array.isArray(lines) ? lines.filter(isRecordLine) : [],
+  };
+}
+
+function isRecordLine(item: unknown): item is RecordLine {
+  const { seq, line } = Object(item) as { readonly seq?: unknown; readonly line?: unknown };
+  return typeof seq === 'number' && typeof line === 'string';
 }
 
 /**

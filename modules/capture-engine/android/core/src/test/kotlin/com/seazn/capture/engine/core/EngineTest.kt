@@ -468,6 +468,28 @@ class EngineTest {
     assertEquals(listOf(shown + 1, 70), listOf(published.size, published.last().second.device?.batteryPercent), "the tick carries it")
   }
 
+  // Court stream Task 13 (P2): the operator's hold changes only `pairing.starting` (its refusal and last end were
+  // already clear), so the snapshot that says so goes up with the input, not at the next tick; so does its answer.
+  @Test
+  fun `P2 the operator's hold goes up at once as starting, and a failed answer at once clears it`() {
+    val engine = engine()
+    val waiting = Input.HeartbeatAnswered(1, HeartbeatResponse.Answered(200, BeatReply("waiting", null, null, null, Configs.waiting())))
+    engine.sendAll(
+      listOf(Input.Pair(Configs.pairRequest(), Configs.PHONE, stopped = null), Input.PermissionsAnswered(granted = true), Input.Network(true), waiting, Input.ReadinessChanged(Configs.READY)),
+    )
+    scheduler.advanceBy(0)
+    assertEquals(listOf(SnapshotState.Paired to false), published.takeLast(1).map { it.second.state to it.second.pairing?.starting })
+    val shown = published.size
+    engine.send(Input.Start)
+    scheduler.advanceBy(0)
+    assertEquals(listOf(shown + 1, true), listOf(published.size, published.last().second.pairing?.starting), "the hold goes up with its input")
+    val id = executed.filterIsInstance<Command.PostStart>().single().requestId
+    engine.send(Input.StartAnswered(id, StartAnswer.Failed("503")))
+    scheduler.advanceBy(0)
+    assertEquals(listOf(shown + 2, false), listOf(published.size, published.last().second.pairing?.starting), "and so does its answer")
+    assertEquals(Refusal.START_FAILED, published.last().second.refusal)
+  }
+
   @Test
   fun `B6 review m3 ids outlive a fatal error, so the next session's attempts are new`() {
     val engine = engine { phase, input, now -> if (input == Input.SwitchCamera) error("bug") else SessionMachine.reduce(phase, input, now) }

@@ -130,8 +130,14 @@ object NotificationText {
       else -> "starting"
     }
 
-  /** R6 of the D3 findings design: the Forget action is on the notification only while the pairing waits (the snapshot's `paired`). */
-  fun forgetShown(kind: String?): Boolean = tallyKey(kind) == "paired"
+  /**
+   * R6 of the D3 findings design: the Forget action is on the notification only while the pairing waits (the snapshot's
+   * `paired`). O12 (owner, 2026-11-15): never on a [court] pairing, where Exit, which asks first, is the only way off.
+   */
+  fun forgetShown(kind: String?, court: Boolean): Boolean = tallyKey(kind) == "paired" && !court
+
+  /** The snapshot wire's pairing is a court's (court stream spec 2026-11-14 §6.1): its `court` is not null. */
+  fun court(wire: Map<String, Any?>): Boolean = (wire["pairing"] as? Map<*, *>)?.get("court") != null
 
   /** The tally [word], upper-cased in [locale], then the target when known, then whole minutes on air. */
   fun line(word: String, targetKbps: Int?, liveSinceEpochMs: Long?, nowEpochMs: Long, locale: Locale): String {

@@ -67,6 +67,8 @@ type Wiring = {
   engine: string | null;
   /** R5: what it gives `createNativePower`, each dependency as `name:initializer`, sorted. */
   powerDeps: string | null;
+  /** D3 and N38: what it gives `chooseEngine` for the record (`onRecord…`), as sorted `name:initializer`. */
+  record: string | null;
   loads: number;
 };
 
@@ -104,6 +106,7 @@ function wiringOf(source: string): Wiring {
     hostsBinding: null,
     engine: null,
     powerDeps: null,
+    record: null,
     loads: 0,
   };
   const calledAs = (node: ts.CallExpression, name: string) =>
@@ -140,6 +143,11 @@ function wiringOf(source: string): Wiring {
     if (ts.isCallExpression(node) && calledAs(node, 'chooseEngine')) {
       const options = node.arguments[0];
       if (options !== undefined && ts.isObjectLiteralExpression(options)) {
+        const record = options.properties.filter((property) =>
+          property.name?.getText(file).startsWith('onRecord'),
+        );
+        if (record.length > 0)
+          result.record = depsOf(ts.factory.createObjectLiteralExpression(record), file);
         for (const property of options.properties) {
           if (property.name?.getText(file) !== 'native') continue;
           result.engine = ts.isShorthandPropertyAssignment(property)
@@ -184,8 +192,17 @@ describe('createNativePorts hands the module it loaded once to the engine, the p
       hostsBinding: 'seaznHosts(env)',
       engine: 'native',
       powerDeps: POWER_DEPS,
+      record: null,
       loads: 1,
     });
+    // N38: the record's two hand-ons, read by name and value, so an inert one is not the wiring.
+    const recording = SKELETON(PHOTO, SCORING, LOAD).replace(
+      'chooseEngine({ dev: true, native })',
+      'chooseEngine({ dev: true, native, onRecordLine: ring.appendLine, onRecordPins: () => undefined })',
+    );
+    expect(wiringOf(recording).record).toBe(
+      'onRecordLine:ring.appendLine, onRecordPins:() => undefined',
+    );
     // R5: the battery port without the module, or not through createNativePower, is not the wiring.
     expect(
       wiringOf(SKELETON(PHOTO, SCORING, LOAD, POWER.replace('{ native,', '{ native: null,')))
@@ -216,7 +233,7 @@ describe('createNativePorts hands the module it loaded once to the engine, the p
     expect(wiringOf(SKELETON(PHOTO, SCORING, 'null')).loads).toBe(0);
   });
 
-  it('the real createNativePorts: photoPortFor(native), scoringLinkPortFor(native, { hosts, logger }), createNativePower({ native, … }), chooseEngine({ native }), one load', () => {
+  it('the real createNativePorts: photoPortFor(native), scoringLinkPortFor(native, { hosts, logger }), createNativePower({ native, … }), chooseEngine({ native, onRecordLine, onRecordPins }), one load', () => {
     const source = readFileSync(join(__dirname, 'nativePorts.ts'), 'utf8');
     expect(wiringOf(source)).toEqual({
       photo: 'native',
@@ -226,6 +243,7 @@ describe('createNativePorts hands the module it loaded once to the engine, the p
       hostsBinding: 'seaznHosts(env)',
       engine: 'native',
       powerDeps: POWER_DEPS,
+      record: 'onRecordLine:ring.appendLine, onRecordPins:ring.adoptPins',
       loads: 1,
     });
   });

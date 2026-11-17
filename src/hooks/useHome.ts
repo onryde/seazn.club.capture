@@ -28,7 +28,9 @@ import {
   selectHeldCode,
   selectHeldSlot,
   selectHeldTokenTag,
+  selectCourt,
   selectLabel,
+  selectStarting,
   selectStateKind,
   selectUnpairedKey,
   selectUnpairedReason,
@@ -43,7 +45,7 @@ import {
   type SetPanel,
 } from '@/hooks/useCodeCheck';
 import type { ScoringCode } from '@/hooks/useScoringCheck';
-import { useUnpair } from '@/hooks/useUnpair';
+import { codeStays, useUnpair } from '@/hooks/useUnpair';
 import { useFormatDay, useFormatTime } from '@/hooks/useFormatTime';
 import { useT } from '@/hooks/useLanguage';
 import { usePairing } from '@/hooks/usePairing';
@@ -74,6 +76,7 @@ import type { Translator } from '@/i18n/translate';
 import type { CodeScannerPort, ScanResult, ScanUnavailableReason } from '@/scanner/CodeScannerPort';
 import type { Logger } from '@/services/logger';
 import type { ModeStore, ModeStoreSnapshot } from '@/services/modeStore';
+import { savedStream } from '@/hooks/savedStream';
 
 /** A scan that did not simply open: what the panel explains. */
 export type PanelOutcome = Exclude<ScanOutcome, { kind: 'open' }>;
@@ -135,6 +138,11 @@ export type HomeView = {
   readonly sending: readonly SendingCard[];
   /** What the Match Day tile's second line says while a code is saved (owner, 2026-11-12); null leaves its own hint. */
   readonly matchDayHint: string | null;
+  /**
+   * The operator's start is in flight (`pairing.starting`). Native ignores an unpair then, so Home's Forget and A7's
+   * Unpair & open are off until it answers (court stream Task 13 fix round 2 m4, the controller's ruling).
+   */
+  readonly starting: boolean;
 };
 
 export type HomeActions = {
@@ -182,11 +190,6 @@ const SCANNER_MESSAGE: Readonly<Record<ScanUnavailableReason, MessageKey>> = {
 };
 
 const DID_NOT_OPEN: ScanResult = { outcome: 'unavailable', reason: 'failed' };
-
-function savedStream(store: ModeStore): SavedCode | null {
-  const snapshot = store.getSnapshot();
-  return snapshot.status === 'ready' ? (snapshot.saved.codes.stream ?? null) : null;
-}
 
 /**
  * Home's behaviour (spec §3): tap, scan, recognise, then open or explain.
@@ -346,10 +349,13 @@ function openScoring(
  * A7's sheet. Confirm unpairs (`useUnpair('otherMode')`), forgets the stream
  * code once the engine is Idle, as the operator's Stop does (Process death and
  * reopen), then opens the other mode. A Go live that raced it holds the
- * broadcast: the code is kept and nothing opens. A refused forget is never
- * silent (R19): the line says so, and the other mode does not open. The sheet
- * closes as Cancel when the engine leaves Paired under it; a panel that
- * replaced it in the same moment (Task 29's unpair) is left standing.
+ * broadcast: the code is kept and nothing opens. So does a give-up with the
+ * engine not Idle (`codeStays`, ruling RP9): Home stays and the operator can
+ * ask again. A Confirm during the operator's start waits for native's answer
+ * (`useUnpair`, Task 13 fix round 1). A refused forget is never silent (R19): the line says so, and the
+ * other mode does not open. The sheet closes as Cancel when the engine leaves
+ * Paired under it; a panel that replaced it in the same moment (Task 29's
+ * unpair) is left standing.
  */
 function useUnpairConfirm(
   panel: HomePanel | null,
@@ -357,7 +363,7 @@ function useUnpairConfirm(
   openCode: OpenCode,
   saveFailed: SaveFailed,
 ): { confirm: () => void; cancel: () => void } {
-  const { modeStore } = usePorts();
+  const { engine, modeStore } = usePorts();
   const unpair = useUnpair();
   const status = useEngineSelector(selectEngineStatus);
   const open = panel?.kind === 'unpairConfirm' ? panel : null;
@@ -368,7 +374,7 @@ function useUnpairConfirm(
     if (open === null) return;
     setPanel(closeSheet);
     unpair('otherMode', (outcome) => {
-      if (outcome === 'held') return;
+      if (codeStays(outcome, engine)) return;
       const code = savedStream(modeStore);
       const forgot = code === null ? Promise.resolve(true) : modeStore.forget(code);
       forgot
@@ -378,7 +384,7 @@ function useUnpairConfirm(
         )
         .catch(ignoreUnexpected);
     });
-  }, [open, setPanel, unpair, modeStore, openCode, saveFailed]);
+  }, [open, setPanel, unpair, engine, modeStore, openCode, saveFailed]);
   const cancel = useCallback(() => setPanel(null), [setPanel]);
   return { confirm, cancel };
 }
@@ -500,6 +506,7 @@ function useHomeView(
   const courts = useSendingCourts(rowsKey(rows));
   const { cards: sending, leftovers } = useMemo(() => sendingCards(courts, all), [courts, all]);
   const scoring = useMemo(() => ({ current: all.current, leftovers }), [all, leftovers]);
+  const starting = useEngineSelector(selectStarting);
   return {
     statusText: statusText(ready, statusKey, t, { time: format, day: formatDay }),
     panel,
@@ -509,6 +516,7 @@ function useHomeView(
     scoring,
     sending,
     matchDayHint,
+    starting,
   };
 }
 
@@ -525,10 +533,11 @@ function useContinueCopy(code: SavedCode | null): ContinueCopy | null {
   const heldSlot = useEngineSelector(selectHeldSlot);
   const heldTag = useEngineSelector(selectHeldTokenTag);
   const heldLabel = useEngineSelector(selectLabel);
+  const heldCourt = useEngineSelector(selectCourt);
   if (code === null) return null;
   const held = { code: heldCode, slot: heldSlot, tokenTag: heldTag };
   const validTill = code.expiresAt === null ? null : format(code.expiresAt, venueZone(code));
-  return continueCard({ pairing, saved: code, engine, held, heldLabel, validTill });
+  return continueCard({ pairing, saved: code, engine, held, heldLabel, heldCourt, validTill });
 }
 
 /**
@@ -677,16 +686,14 @@ function useContinue(setStatusKey: SetStatusKey, saveFailed: SaveFailed): () => 
  * so nothing is left to reopen or go live on. The amendment (Identity rules
  * in JS): unpair first, and forget the code once the engine is Idle. If a
  * remote Go live raced the tap, the broadcast stands, the code is kept, and
- * the route rule shows /stream. A give-up (CD26) forgets: the operator asked,
- * and an engine still paired is then an orphan, unpaired at the next settle.
- * A refused forget keeps the code, with the engine already Idle.
- *
- * I1 (never a viewfinder for a forgotten code): a foreground before native
- * answers reopens /stream on the still-paired code, which unmounts Home and
- * ends the unpair as a give-up. The forget then lands Home again.
+ * the route rule shows /stream. A give-up (CD26) with the engine still not
+ * Idle keeps the code too (`codeStays`, P4 review I1): the engine may yet arm,
+ * and the card still offers Forget. A tap during the operator's start waits for
+ * native's answer (`useUnpair`, Task 13 fix round 1). A refused forget keeps the code, with the engine
+ * already Idle.
  */
 function useForget(setStatusKey: SetStatusKey, saveFailed: SaveFailed): () => void {
-  const { modeStore, navigation } = usePorts();
+  const { engine, modeStore, navigation } = usePorts();
   const unpair = useUnpair();
   return useCallback(() => {
     // C4b-I2: the code on the card when Forget was pressed. A code scanned
@@ -695,7 +702,7 @@ function useForget(setStatusKey: SetStatusKey, saveFailed: SaveFailed): () => vo
     const code = savedStream(modeStore);
     if (code === null) return;
     unpair('forget', (outcome) => {
-      if (outcome === 'held') return;
+      if (codeStays(outcome, engine)) return;
       void modeStore.forget(code).then(
         (forgot) => {
           if (!forgot) return;
@@ -705,7 +712,7 @@ function useForget(setStatusKey: SetStatusKey, saveFailed: SaveFailed): () => vo
         () => saveFailed('forget'),
       );
     });
-  }, [modeStore, navigation, setStatusKey, saveFailed, unpair]);
+  }, [engine, modeStore, navigation, setStatusKey, saveFailed, unpair]);
 }
 
 /**

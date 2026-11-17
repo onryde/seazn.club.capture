@@ -30,6 +30,8 @@ export function chooseEngine(input: {
   native: CaptureEngineNative | null;
   now: () => number;
   onRecordLine: (line: string) => void;
+  /** N38: native's pinned lines, for the ring to adopt ahead of its lines (`RingRecord.adoptPins`). */
+  onRecordPins: (pins: readonly string[]) => void;
 }): WiredEngine {
   if (input.dev && input.fakeFlag === '1') {
     const fake = createFakeCaptureEngine(input.now);
@@ -40,6 +42,7 @@ export function chooseEngine(input: {
   }
   const native = createNativeCaptureEngine(input.native, {
     onRecordLine: input.onRecordLine,
+    onRecordPins: input.onRecordPins,
     now: input.now,
   });
   return { engine: native, devEngine: null, native };

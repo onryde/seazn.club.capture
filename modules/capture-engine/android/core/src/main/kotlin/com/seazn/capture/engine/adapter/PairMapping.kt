@@ -37,5 +37,9 @@ object PairMapping {
       // refuses a pair. JS read the kind rule at the scan.
       stageLabel = WireValues.text(wire["stageLabel"]).takeIf { it.characters in 1..40 && WireValues.text(wire["stageMatch"]).characters in 1..200 },
       stageMatch = WireValues.text(wire["stageMatch"]).takeIf { it.characters in 1..200 && WireValues.text(wire["stageLabel"]).characters in 1..40 },
+      // The court the scan's GET gave (court stream §6.1), as given: absent or null is none; anything else is kept as
+      // text, a non-string as "", so [PairRequest.problems] names a malformed court and the pair is refused. Unlike the
+      // display fields above, a court decides what Stop does, so it is never quietly dropped.
+      court = wire["court"]?.let { WireValues.text(it) },
     )
 }

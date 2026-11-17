@@ -6,7 +6,7 @@ import type {
   SessionState,
 } from '@/domain/session/SessionState';
 import type { CameraState, EngineSnapshot } from '@/engine/CaptureEnginePort';
-import { selectDestination } from '@/hooks/engineSelectors';
+import { selectCourt, selectDestination, selectStarting } from '@/hooks/engineSelectors';
 import type { MessageKey } from '@/i18n/messages';
 
 export type StatusKey = Extract<MessageKey, `stream.status.${string}`>;
@@ -46,6 +46,7 @@ const REFUSED: Readonly<Record<Refusal, StatusKey>> = {
   no_destination: 'stream.status.refusedDestination',
   no_credit: 'stream.status.refusedCredit',
   not_entitled: 'stream.status.refusedEntitlement',
+  no_match: 'stream.status.refusedNoMatch',
   unknown: 'stream.status.refusedUnknown',
   'start-failed': 'stream.status.startFailed',
 };
@@ -153,7 +154,7 @@ function stateKey(snapshot: EngineSnapshot): StatusKey {
     case 'connecting':
       return 'stream.status.connecting';
     case 'publishing':
-      return 'stream.status.live';
+      return nextKey(snapshot) ?? 'stream.status.live';
     case 'degraded':
       return DEGRADED[state.reason];
     case 'reconnecting':
@@ -164,17 +165,41 @@ function stateKey(snapshot: EngineSnapshot): StatusKey {
 }
 
 /**
- * Amendment §2, the paired status line: a refusal, the last end, then what it
- * waits for. A refusal outranks a last end: a refused restart is the newer
+ * The ends a court phone is calm about (court stream spec 2026-11-14 §6.2, Review Focus 5): the match finished or the
+ * organiser stopped it, and the court has a next one to wait for, so the Next line gives way to nothing. A failure end
+ * (no signal, a refusal, a lost phone, a time limit) still says what happened.
+ */
+const CALM_ENDS: ReadonlySet<LastEnd> = new Set<LastEnd>([
+  'stopped-automatically',
+  'stopped-by-organiser',
+  'stopped',
+]);
+
+/**
+ * Amendment §2, the paired status line: the hold's start in flight, a refusal, the last end, then what it
+ * waits for. The start in flight (court stream Task 13, P2) says what its Arming will, "Opening the link.", so the
+ * line does not move when the server answers Started; native clears the refusal and the last end when it posts. A refusal outranks a last end: a refused restart is the newer
  * fact (native clears both at the next start). Readiness is never named here:
- * the chips and the blocker at Go live say it.
+ * the chips and the blocker at Go live say it. On a court code (§6.2) a calm end gives way to the Next line, and
+ * the line after the destination says what the court waits for: automatic off, the next match, or nothing.
  */
 function pairedKey(snapshot: EngineSnapshot): StatusKey {
+  if (selectStarting(snapshot)) return GOING_LIVE.operator;
   if (snapshot.refusal !== null) return REFUSED[snapshot.refusal];
-  if (snapshot.lastEnd !== null) return LAST_END[snapshot.lastEnd];
-  return selectDestination(snapshot) === null
-    ? 'stream.status.waitingDestination'
-    : 'stream.status.waitingGoLive';
+  const court = selectCourt(snapshot) !== null;
+  const { lastEnd } = snapshot;
+  if (lastEnd !== null && !(court && CALM_ENDS.has(lastEnd))) return LAST_END[lastEnd];
+  if (selectDestination(snapshot) === null) return 'stream.status.waitingDestination';
+  if (!court) return 'stream.status.waitingGoLive';
+  if (snapshot.pairing?.automatic === false) return 'stream.status.courtAutomaticOff';
+  return nextKey(snapshot) ?? 'stream.status.courtNone';
+}
+
+/** The Next line's key on a court code, or null with no next streamed match. Paired and on air share it. */
+function nextKey(snapshot: EngineSnapshot): StatusKey | null {
+  const next = snapshot.pairing?.next ?? null;
+  if (selectCourt(snapshot) === null || next === null) return null;
+  return next.scheduledStart === null ? 'stream.status.courtNext' : 'stream.status.courtNextAt';
 }
 
 /** Amendment §2, Starting: retrying, then what the phone still needs, then who started it. */
@@ -195,6 +220,9 @@ const CALM_ON_AIR: ReadonlySet<StatusKey> = new Set<StatusKey>([
   'stream.status.goingLiveMatch',
   'stream.status.rejoining',
   'stream.status.live',
+  // A court's live line names the next match (court stream §6.2); Back's "hold Stop" stands in for it as for Live.
+  'stream.status.courtNextAt',
+  'stream.status.courtNext',
 ]);
 
 /** Every sentence the strip's one message line can say as its status: a status key, or Back's refusal. */
@@ -219,10 +247,16 @@ export const LINE_TIER: Readonly<Record<LineKey, LineTier>> = {
   'stream.status.starting': 'routine',
   'stream.status.pairing': 'routine',
   'stream.status.waitingGoLive': 'routine',
+  // A court phone waiting between matches, or live with a next match to name (court stream spec 2026-11-14 §6.2).
+  'stream.status.courtNextAt': 'routine',
+  'stream.status.courtNext': 'routine',
+  'stream.status.courtNone': 'routine',
+  'stream.status.courtAutomaticOff': 'routine',
   'stream.status.waitingDestination': 'urgent',
   'stream.status.refusedDestination': 'urgent',
   'stream.status.refusedCredit': 'urgent',
   'stream.status.refusedEntitlement': 'urgent',
+  'stream.status.refusedNoMatch': 'urgent',
   'stream.status.refusedUnknown': 'urgent',
   'stream.status.startFailed': 'urgent',
   'stream.status.startRetrying': 'urgent',

@@ -24,6 +24,9 @@ class BridgeCoreForgetTest {
 
   private fun lines(platform: RecordingPlatform, kind: String) = platform.lines.map(::JSONObject).filter { it.getString("kind") == kind }
 
+  /** The store's refusal for the marker: N38's record pins share the store, and their refusals name their own key. */
+  private fun forgottenFailed(platform: RecordingPlatform) = lines(platform, "store-failed").single { it.getString("key") == PairingStore.FORGOTTEN }
+
   private fun pairedCore(platform: RecordingPlatform = RecordingPlatform()): BridgeCore {
     val core = build(platform)
     core.start()
@@ -87,7 +90,7 @@ class BridgeCoreForgetTest {
     core.send(PairWire.valid())
     scheduler.advanceBy(0)
     assertEquals("paired", (core.current()["state"] as Map<*, *>)["kind"])
-    val failed = lines(platform, "store-failed").single()
+    val failed = forgottenFailed(platform)
     assertEquals(listOf("delete", PairingStore.FORGOTTEN), listOf(failed.getString("op"), failed.getString("key")))
   }
 
@@ -115,7 +118,7 @@ class BridgeCoreForgetTest {
     store.readFailure = null
     assertNull(unpaired(core))
     scheduler.advanceBy(0)
-    val failed = lines(platform, "store-failed").single()
+    val failed = forgottenFailed(platform)
     assertEquals(listOf("read", PairingStore.FORGOTTEN), listOf(failed.getString("op"), failed.getString("key")))
   }
 
@@ -127,7 +130,7 @@ class BridgeCoreForgetTest {
     core.forget()
     scheduler.advanceBy(0)
     assertEquals("forgotten", unpaired(core)?.get("reason"))
-    val failed = lines(platform, "store-failed").single()
+    val failed = forgottenFailed(platform)
     assertEquals(listOf("write", PairingStore.FORGOTTEN), listOf(failed.getString("op"), failed.getString("key")))
   }
 

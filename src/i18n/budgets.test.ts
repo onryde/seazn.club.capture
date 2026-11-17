@@ -40,6 +40,8 @@ const BUDGETS: readonly (readonly [keys: RegExp, max: number])[] = [
   // countdown (B3), the sentences, and Hide, which the What viewers see cover reads too (D2 §4.3).
   [/^stream\.scoring\.open$/, 20],
   [/^stream\.scoring\.(title|hidesIn)$/, 24],
+  // Court stream §5.6: the panel's title naming its match, `{label}` filled with the widest cut (below).
+  [/^stream\.scoring\.titleMatch$/, 32],
   [/^stream\.scoring\.refused\./, 56],
   // `code` is a screen-reader name, but a row per key keeps a new key from being added unbudgeted.
   [/^stream\.scoring\.(hint|asking|code)$/, 48],
@@ -48,6 +50,10 @@ const BUDGETS: readonly (readonly [keys: RegExp, max: number])[] = [
   // The link is the Settings icon's accessible name, in the icon row (spec §3).
   [/^stream\.link\./, 14],
   [/^stream\.back$/, 20],
+  // Court stream (spec 2026-11-14 §6.4): ⋯'s accessible name, and Leave's two plates. The question's title and body are
+  // measured by leaveCourtFit.test.ts, not counted.
+  [/^stream\.court\.more$/, 14],
+  [/^stream\.court\.(leave|stay)$/, 16],
 ];
 
 const WIDEST: Readonly<Record<string, string>> = {
@@ -59,6 +65,9 @@ const WIDEST: Readonly<Record<string, string>> = {
   seconds: '300',
   // Amendment §2, footnote 1: `cutDestination` never lets the name past 24.
   destination: 'X'.repeat(DESTINATION_CAP),
+  // Court stream: `cutNextLabel` cuts by width, not by count (stripTextFit.test.ts proves the line fits at 386 dp). A
+  // label's characters are counted here as 24 of the widest capital, more than any realistic label has.
+  label: `${'W'.repeat(23)}…`,
 };
 
 const fill = (text: string) =>
@@ -77,5 +86,25 @@ describe.each([
       const text = fill(dictionary[key] ?? '');
       expect({ key, text, fits: text.length <= max }).toEqual({ key, text, fits: true });
     }
+  });
+});
+
+// Court stream (spec 2026-11-14 §6.2): the four lines a court phone says while it waits are in the status row's 48, with
+// the label cut as the line cuts it and a time with its zone. Named, so the row above can never match none of them.
+describe.each([
+  ['en', en],
+  ['es', es],
+  ['fr', fr],
+  ['nl', nl],
+] as const)('%s court waiting lines', (_lang, dictionary: Readonly<Record<string, string>>) => {
+  it('has the four stream.status.court* keys, each within 48 characters filled with the widest values', () => {
+    const keys = Object.keys(dictionary).filter((key) => key.startsWith('stream.status.court'));
+    expect(keys.sort()).toEqual([
+      'stream.status.courtAutomaticOff',
+      'stream.status.courtNext',
+      'stream.status.courtNextAt',
+      'stream.status.courtNone',
+    ]);
+    for (const key of keys) expect(fill(dictionary[key] ?? '').length).toBeLessThanOrEqual(48);
   });
 });

@@ -98,6 +98,13 @@ data class PairingState(
 
   val token: String
     get() = request.token
+
+  /**
+   * A court code's pairing (court stream spec 2026-11-14 §6.1), exactly when the waiting fields hold a court: seeded by
+   * the pair from the saved code, or named by a descriptor. Its Stop ends the match, not the pairing (O5).
+   */
+  val isCourt: Boolean
+    get() = waiting.courtName != null
 }
 
 /** What one broadcast carries from Armed to its end, inside its pairing. */

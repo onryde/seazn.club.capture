@@ -1,5 +1,6 @@
 import { act, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import type { PairingInfo } from '@/domain/session/Pairing';
 import { ADVISORY_KEY, type Advisory } from '@/hooks/advisory';
 import en from '@/i18n/en.json';
 import { StatusStrip } from '@/ui/components/StatusStrip';
@@ -149,5 +150,51 @@ describe('the status strip always shows the round line, whenever there is one (o
     stripWith('Open · QF', '');
     label(44);
     expect(line()).toBeNull();
+  });
+});
+
+// Court stream (spec 2026-11-14 §6.2, I4): a court code's round line leads with the court's name, and while the court
+// waits (Paired) the match label is not drawn: the Next line names the match. The strip says no height then (the stage
+// sizes the picture against a strip with no label row, STRIP_RESERVE_NO_LABEL), and the label row comes back on air.
+describe('the status strip on a court code', () => {
+  const courtStrip = (pairing: Partial<PairingInfo>, onLabelHeight?: (height: number) => void) => {
+    standIn.report = undefined;
+    const view = renderWithPorts(
+      <StatusStrip line="Ready" lineTier="routine" advisory={null} onLabelHeight={onLabelHeight} />,
+    );
+    act(() => {
+      view.engine.setPairing({ label: 'A v B', stageLabel: null, ...pairing });
+      view.engine.scene('paired-ready');
+    });
+    return view;
+  };
+
+  it('says the court alone when the match has no stage, and the court and the stage when it has one', () => {
+    const view = courtStrip({ court: 'Court 2' });
+    expect(line()?.textContent).toBe('Court 2');
+    act(() => view.engine.setPairing({ stageLabel: 'Semi-final' }));
+    expect(line()?.textContent).toBe('Court 2 · Semi-final');
+  });
+
+  it('hides the match label while paired, and reports no label height (there is no label to measure)', () => {
+    const heights: number[] = [];
+    courtStrip({ court: 'Court 2' }, (height) => heights.push(height));
+    expect(screen.queryByTestId('match-label')).toBeNull();
+    expect(heights).toEqual([]);
+  });
+
+  it('brings the match label back on air, and keeps the court on the round line', () => {
+    const view = courtStrip({ court: 'Court 2', stageLabel: 'Semi-final' });
+    expect(screen.queryByTestId('match-label')).toBeNull();
+    act(() => view.engine.scene('live'));
+    expect(screen.getByTestId('match-label')).toBeTruthy();
+    expect(line()?.textContent).toBe('Court 2 · Semi-final');
+  });
+
+  // The twin: a fixture code keeps its label while paired, and its round line is the stage alone.
+  it('keeps the label and the stage alone on a fixture code', () => {
+    stripWith('Semi-final');
+    expect(screen.getByTestId('match-label')).toBeTruthy();
+    expect(line()?.textContent).toBe('Semi-final');
   });
 });

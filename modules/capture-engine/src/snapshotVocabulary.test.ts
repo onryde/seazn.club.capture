@@ -73,6 +73,7 @@ const REFUSAL: Readonly<Record<Refusal, true>> = {
   no_destination: true,
   no_credit: true,
   not_entitled: true,
+  no_match: true,
   unknown: true,
   'start-failed': true,
 };
@@ -112,7 +113,7 @@ describe("the port names exactly what native's snapshot sends", () => {
   it.each([
     ['cause', CAUSE, vectors.vocabulary.cause, 4],
     ['notReady', NOT_READY, vectors.vocabulary.notReady, 4],
-    ['refusal', REFUSAL, vectors.vocabulary.refusal, 5],
+    ['refusal', REFUSAL, vectors.vocabulary.refusal, 6],
     ['lastEnd', LAST_END, vectors.vocabulary.lastEnd, 9],
     ['unpairReason', UNPAIR, vectors.vocabulary.unpairReason, 5],
     ['endReason', END, vectors.vocabulary.endReason, 2],

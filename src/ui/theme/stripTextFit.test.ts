@@ -3,6 +3,7 @@ import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
 import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
+import { advanceOf, cutNextLabel } from '@/domain/session/nextLine';
 import { font, layout } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
 import { loadFont } from '../../../test/fontMetrics';
@@ -39,6 +40,10 @@ const DESTINATIONS = {
   w24: `${'W'.repeat(23)}…`, // 24 of the widest capital, the worst a destination can be
 } as const;
 
+/** The Next line's fills (court stream §6.2): a realistic label as the line cuts it, and a time with its zone. */
+const NEXT_LABEL = cutNextLabel('Example Town v Sample Cricket Club'); // "Example Town v Sample Crick…"
+const NEXT_TIME = '14:32 CEST';
+
 const geist400 = loadFont('geist-400');
 const geist500 = loadFont('geist-500');
 /** The widest digit the status font has, so `{remaining}` and `{window}` (up to three digits) are the worst. */
@@ -73,7 +78,9 @@ const ROWS: readonly Row[] = LANGUAGES.flatMap(([lang, dictionary]) =>
       const text = template
         .replaceAll('{remaining}', WIDEST_DIGIT.repeat(3))
         .replaceAll('{window}', WIDEST_DIGIT.repeat(3))
-        .replaceAll('{destination}', cut);
+        .replaceAll('{destination}', cut)
+        .replaceAll('{label}', NEXT_LABEL)
+        .replaceAll('{time}', NEXT_TIME);
       const width =
         kind === 'status'
           ? geist400.width(text, typeScale.body.fontSize)
@@ -92,6 +99,7 @@ const OVER_NARROW: Readonly<Record<string, readonly string[]>> = {
   en: [
     'stream.advisory.keepOpen',
     'stream.status.cameraTaken',
+    'stream.status.courtNextAt',
     'stream.status.holdingNotDelivered',
     'stream.status.notReadyHeld',
     'stream.status.stoppedBySeazn',
@@ -104,11 +112,13 @@ const OVER_NARROW: Readonly<Record<string, readonly string[]>> = {
     'stream.advisory.keepOpen',
     'stream.leaveOnAir',
     'stream.status.cameraTaken',
+    'stream.status.courtNextAt',
     'stream.status.holdingNotDelivered',
     'stream.status.holdingStalled',
     'stream.status.notReadyCamera',
     'stream.status.notReadyHeld',
     'stream.status.notReadySound',
+    'stream.status.refusedNoMatch',
     'stream.status.refusedUnknown',
     'stream.status.startRetrying',
     'stream.status.stoppedBySeazn',
@@ -123,10 +133,12 @@ const OVER_NARROW: Readonly<Record<string, readonly string[]>> = {
     'stream.leaveOnAir',
     'stream.status.cameraReopening',
     'stream.status.cameraTaken',
+    'stream.status.courtNextAt',
     'stream.status.engineSilent',
     'stream.status.goingLiveOrganiser',
     'stream.status.holdingNotDelivered',
     'stream.status.notReadyHeld',
+    'stream.status.refusedNoMatch',
     'stream.status.refusedUnknown',
     'stream.status.startRetrying',
     'stream.status.stoppedBySeazn',
@@ -141,11 +153,13 @@ const OVER_NARROW: Readonly<Record<string, readonly string[]>> = {
     'stream.advisory.notCharging',
     'stream.leaveOnAir',
     'stream.status.cameraTaken',
+    'stream.status.courtNextAt',
     'stream.status.engineSilent',
     'stream.status.fellBack',
     'stream.status.holdingNotDelivered',
     'stream.status.refusedDestination',
     'stream.status.refusedEntitlement',
+    'stream.status.refusedNoMatch',
     'stream.status.startFailed',
     'stream.status.startRetrying',
     'stream.status.stoppedBySeazn',
@@ -173,8 +187,8 @@ describe('the strip’s one message line, measured in every language (owner, 202
     expect(AT_804).toBe(462);
   });
 
-  it('measures 43 status strings and 5 captions in each of the four languages, and every glyph is in the font', () => {
-    // Anti-vacuity: the table is the whole copy, not a sample. 42 `stream.status.*` keys and Back's refusal; the
+  it('measures 48 status strings and 5 captions in each of the four languages, and every glyph is in the font', () => {
+    // Anti-vacuity: the table is the whole copy, not a sample. 47 `stream.status.*` keys and Back's refusal; the
     // captions are keep the app open, not charging, and heat's three (the spec's, which names What viewers see, and
     // "Phone hot · still live" and "Phone hot" with the view hidden: the owner's ruling, 2026-10-09).
     for (const [lang] of LANGUAGES) {
@@ -182,15 +196,15 @@ describe('the strip’s one message line, measured in every language (owner, 202
       expect(
         rows.filter((row) => row.kind === 'status'),
         lang,
-      ).toHaveLength(43);
+      ).toHaveLength(48);
       expect(
         rows.filter((row) => row.kind === 'caption'),
         lang,
       ).toHaveLength(5);
     }
-    expect(REALISTIC).toHaveLength(4 * 48);
+    expect(REALISTIC).toHaveLength(4 * 53);
     // The destination variants add two rows to the waiting line in each language.
-    expect(ROWS).toHaveLength(4 * 48 + 4 * 2);
+    expect(ROWS).toHaveLength(4 * 53 + 4 * 2);
     // A code point the font lacks is measured as its .notdef: the width would be wrong. None is missing.
     const missing = new Set<string>();
     for (const row of ROWS) {
@@ -240,9 +254,10 @@ describe('the strip’s one message line, measured in every language (owner, 202
     for (const row of over) byLanguage[row.lang]?.push(row.key);
     for (const keys of Object.values(byLanguage)) keys.sort();
     expect(byLanguage).toEqual(OVER_NARROW);
-    // 56 strings: 9 en, 16 es, 16 fr, 15 nl.
-    expect(over).toHaveLength(56);
-    expect(Object.values(OVER_NARROW).map((keys) => keys.length)).toEqual([9, 16, 16, 15]);
+    // 63 strings: 10 en, 18 es, 18 fr, 17 nl (court stream added the Next line with its time, one per language, and the
+    // start's no_match refusal, cut in es, fr and nl).
+    expect(over).toHaveLength(63);
+    expect(Object.values(OVER_NARROW).map((keys) => keys.length)).toEqual([10, 18, 18, 17]);
   });
 
   it('has strings on BOTH sides of 298 dp, so the line above can neither be everything nor nothing (anti-vacuity)', () => {
@@ -253,7 +268,7 @@ describe('the strip’s one message line, measured in every language (owner, 202
     const widest = (kind: Row['kind']) =>
       REALISTIC.filter((row) => row.kind === kind).reduce((a, b) => (b.width > a.width ? b : a));
     expect(name(widest('caption'))).toBe('nl stream.advisory.keepOpen');
-    expect(name(widest('status'))).toBe('nl stream.status.waitingDestination');
+    expect(name(widest('status'))).toBe('nl stream.status.courtNextAt');
     expect(widest('caption').width).toBeGreaterThan(NARROW);
     expect(widest('caption').width).toBeLessThan(AT_804);
     expect(widest('status').width).toBeGreaterThan(NARROW);
@@ -261,6 +276,120 @@ describe('the strip’s one message line, measured in every language (owner, 202
     // N35: both are inside the owner's phone's 386 too.
     expect(widest('caption').width).toBeLessThan(PHONE);
     expect(widest('status').width).toBeLessThan(PHONE);
+  });
+
+  // Court stream (capture-start.v1's 409 no_match): the start's refusal refusal is ONE line at the owner's phone's 386 dp in all four languages, named
+  // here so the sweep above can never miss it. As measured: en 278.7, es 315.8, fr 304.9, nl 334.4.
+  it('fits the no_match refusal on ONE line at 386 dp in all four languages', () => {
+    const rows = REALISTIC.filter((row) => row.key === 'stream.status.refusedNoMatch');
+    expect(rows.map((row) => row.lang)).toEqual(['en', 'es', 'fr', 'nl']);
+    expect(rows.map((row) => Math.round(row.width * 10) / 10)).toEqual([
+      278.7, 315.8, 304.9, 334.4,
+    ]);
+    for (const row of rows) expect(row.width, row.lang).toBeLessThanOrEqual(PHONE);
+  });
+
+  // Court stream (spec 2026-11-14 §6.2): what a court phone says while it waits is ONE line at the owner's phone's 386 dp, in
+  // all four languages, the time visible (I4): the label is cut by how wide it draws (`cutNextLabel`), so the time is
+  // never the part an ellipsis eats.
+  it('fits the court waiting lines on ONE line at 386 dp in all four languages, the time visible', () => {
+    const KEYS = [
+      'stream.status.courtNextAt',
+      'stream.status.courtNext',
+      'stream.status.courtNone',
+      'stream.status.courtAutomaticOff',
+    ];
+    const rows = REALISTIC.filter((row) => KEYS.includes(row.key));
+    expect(rows).toHaveLength(16);
+    expect(NEXT_LABEL).toBe('Example Town v Sample Crick…');
+    expect(
+      rows.filter(
+        (row) => row.key === 'stream.status.courtNextAt' && !row.text.endsWith(NEXT_TIME),
+      ),
+    ).toEqual([]);
+    expect(rows.filter((row) => row.width > PHONE).map(name)).toEqual([]);
+  });
+
+  // P3 review m2: the label's CHARACTER count is not its width, and organisers type team names in capitals. Every label
+  // below, as the line cuts it, leaves the whole line (with the widest time and zone) inside 386 dp in every language:
+  // realistic ones in capitals and not, then the worst a label can be of each kind of glyph.
+  describe('the Next line keeps its time at 386 dp whatever the label is', () => {
+    const lineWidth = (dictionary: Record<string, string>, label: string, key: string) =>
+      geist400.width(
+        (dictionary[key] as string)
+          .replaceAll('{label}', cutNextLabel(label))
+          .replaceAll('{time}', NEXT_TIME),
+        typeScale.body.fontSize,
+      );
+    const REAL_LABELS = [
+      'WOLVERHAMPTON WANDERERS',
+      'MANCHESTER UNITED FC U12',
+      'EXAMPLE TOWN V SAMPLE CRICKET CLUB',
+      'Wolverhampton Wanderers',
+      'Atlético Madrid v Málaga CF',
+      'Example Town v Sample Cricket Club',
+      'Centre Court, Show Arena',
+    ];
+    // The worst of each class: the widest capital, the widest lower-case, the widest digit, a symbol, a wide ligature,
+    // a glyph the font lacks, and a mix of the widest of each.
+    const WORST_LABELS = [
+      'W'.repeat(60),
+      'm'.repeat(60),
+      '0'.repeat(60),
+      '@'.repeat(60),
+      'Œ'.repeat(60),
+      '字'.repeat(60),
+      'WmW@mW0WmW@mW0WmW@mW0WmW@mW0',
+    ];
+
+    it.each(LANGUAGES)(
+      '%s: every label leaves the time on the line, with and without a time',
+      (_lang, dictionary) => {
+        for (const label of [...REAL_LABELS, ...WORST_LABELS])
+          for (const key of ['stream.status.courtNextAt', 'stream.status.courtNext']) {
+            const width = lineWidth(dictionary, label, key);
+            expect({ label, key, fits: width <= PHONE }).toEqual({ label, key, fits: true });
+          }
+      },
+    );
+
+    // Anti-vacuity: the cut is what saves it, a 24-character count would not (24 of the widest capital is 340 dp
+    // of label), and a realistic capitals label is cut only where the line would otherwise not fit.
+    it('is the cut that fits it: uncut, a row of 24 capitals is wider than the line in every language', () => {
+      for (const [lang, dictionary] of LANGUAGES) {
+        const uncut = (dictionary['stream.status.courtNextAt'] as string)
+          .replaceAll('{label}', 'W'.repeat(24))
+          .replaceAll('{time}', NEXT_TIME);
+        expect(geist400.width(uncut, typeScale.body.fontSize) > PHONE, lang).toBe(true);
+        expect(cutNextLabel('W'.repeat(24)), lang).not.toBe('W'.repeat(24));
+      }
+    });
+
+    it('does not cut a label that fits: 24 characters of mixed case and of capitals with room, in the tightest language', () => {
+      for (const label of [
+        'Example Town v Sample CC',
+        'MANCHESTER UNITED FC U12',
+        'Centre Court, Show Arena',
+      ])
+        expect(cutNextLabel(label)).toBe(label);
+    });
+
+    // The advances written in nextLine.ts are an upper bound of the font file's, glyph by glyph over U+0020 to U+017F
+    // (the Latin letters, digits and punctuation a team's name has), so the sums above bound the real line.
+    it('has an advance for every glyph of U+0020 to U+017F no smaller than the font’s own', () => {
+      const size = typeScale.body.fontSize;
+      const short: string[] = [];
+      let checked = 0;
+      for (let code = 0x20; code <= 0x17f; code += 1) {
+        if (code >= 0x7f && code < 0xa0) continue;
+        const letter = String.fromCodePoint(code);
+        checked += 1;
+        if ((geist400.width(letter, size) / size) * 1000 > advanceOf(letter))
+          short.push(`${letter} U+${code.toString(16)}`);
+      }
+      expect(short).toEqual([]);
+      expect(checked).toBe(319);
+    });
   });
 
   // The heat caption with What viewers see hidden (the owner's ruling, 2026-10-09): both wordings are ONE line at 298 dp

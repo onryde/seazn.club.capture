@@ -197,15 +197,20 @@ class CaptureNotification(private val context: Context, private val language: ()
   private var shownAtMs = 0L
   private var shownKind: Any? = null
 
+  /** O12: the pairing last shown is a court's, so its notification carries no Forget. Read with [shownKind]. */
+  @Volatile private var shownCourt = false
+
   /** At most once every 5 s, or on a change of state word: notifications are rate-limited. Main looper. */
   @SuppressLint("MissingPermission") // posted only when areNotificationsEnabled (POST_NOTIFICATIONS on API 33+)
   fun update(wire: Map<String, Any?>) {
     lang = NotificationText.language(language().orEmpty(), Locale.getDefault().language)
     val kind = (wire["state"] as? Map<*, *>)?.get("kind")
+    val court = NotificationText.court(wire)
     val now = SystemClock.elapsedRealtime()
     text = NotificationText.content(wire, System.currentTimeMillis(), lang)
-    if (kind == shownKind && now - shownAtMs < RATE_MS) return
+    if (kind == shownKind && court == shownCourt && now - shownAtMs < RATE_MS) return
     shownKind = kind
+    shownCourt = court
     shownAtMs = now
     NotificationManagerCompat.from(context).takeIf { it.areNotificationsEnabled() }?.notify(ID, current())
   }
@@ -215,7 +220,7 @@ class CaptureNotification(private val context: Context, private val language: ()
    * collapsed row, so the expanded notification shows it whole.
    *
    * R6 of the D3 findings design: while the kind last shown is `paired`, one action, Forget, in the notification's
-   * language. [update] posts again at once on a change of kind, so the action goes the moment the pairing leaves
+   * language, except on a court's pairing (O12). [update] posts again at once on a change of kind, so the action goes the moment the pairing leaves
    * waiting. The kind last shown lives for the process and is never reset: the service's first post for a pairing
    * carries the kind the previous pairing showed last (none in a fresh process, so no action until the first
    * `paired` update; `paired` after a Forget, which is right, as the service starts at Paired).
@@ -232,7 +237,7 @@ class CaptureNotification(private val context: Context, private val language: ()
         .setOngoing(true)
         .setOnlyAlertOnce(true)
         .setContentIntent(tap)
-    if (NotificationText.forgetShown(shownKind as? String)) {
+    if (NotificationText.forgetShown(shownKind as? String, court = shownCourt)) {
       val forget = Intent(context, ForgetReceiver::class.java).setAction(ForgetReceiver.ACTION)
       val tapForget = PendingIntent.getBroadcast(context, FORGET_REQUEST, forget, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
       val words = NotificationText.WORDS[lang] ?: NotificationText.WORDS.getValue("en")

@@ -183,7 +183,7 @@ describe('the sequence (Review Focus 3)', () => {
     ).toBeTruthy();
     act(() => vi.advanceTimersByTime(SCORING_SHOW_MS));
     view.setNow(new Date(t0 + 30_000));
-    view.scoringLink.answerWith({ kind: 'ok', url: FAKE_SCORING_URL });
+    view.scoringLink.answerWith({ kind: 'ok', url: FAKE_SCORING_URL, label: null });
     await tap();
     expect(view.scoringLink.calls).toBe(2);
     expect(within(byId('scoring-panel')).getByTestId('seazn-qr')).toBeTruthy();
@@ -297,7 +297,7 @@ describe('the drawn code is the answered link’s', () => {
     fireEvent.click(
       within(byId('scoring-panel')).getByRole('button', { name: en['stream.scoring.hide'] }),
     );
-    view.scoringLink.answerWith({ kind: 'ok', url: other });
+    view.scoringLink.answerWith({ kind: 'ok', url: other, label: null });
     await tap();
     expect(within(byId('scoring-panel')).getByTestId('seazn-qr').dataset.digest).toBe(second);
     expect(view.scoringLink.calls).toBe(2);

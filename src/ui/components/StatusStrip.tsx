@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { ADVISORY_KEY, type Advisory } from '@/hooks/advisory';
-import { selectStageLine } from '@/hooks/engineSelectors';
+import { selectCourtWaiting, selectRoundLine } from '@/hooks/engineSelectors';
 import type { LineTier } from '@/hooks/statusKey';
 import { useEngineSelector } from '@/hooks/useCaptureEngine';
 import { useT } from '@/hooks/useLanguage';
@@ -32,7 +32,8 @@ type StatusStripProps = {
 
 /**
  * Under the camera box (spec §1), top to bottom: the round line whenever the match has one (spec §2; owner, 2026-10-08,
- * option B: always shown, its room is in the reserve), the match label, and ONE message line (owner, 2026-10-08, "one
+ * option B: always shown, its room is in the reserve; on a court code it leads with the court's name), the match label
+ * (not on a court code waiting between matches: the Next line names the match, I4), and ONE message line (owner, 2026-10-08, "one
  * single line all the time"): never both, always exactly one line (an ellipsis if it is longer than the strip's text).
  * Two tiers decide which: a status line that needs action or reports a failure is URGENT and always wins; an advisory
  * caption beats only a ROUTINE status line (`LINE_TIER`). Solid surface, in the flow below the shot: nothing here is
@@ -47,11 +48,13 @@ export const StatusStrip = memo(function StatusStrip({
   onLabelHeight,
 }: StatusStripProps) {
   const { t } = useT();
-  const stage = useEngineSelector(selectStageLine);
+  const round = useEngineSelector(selectRoundLine);
+  // A court code waiting between matches: the Next line names the match, so the label is not shown twice (I4).
+  const courtWaiting = useEngineSelector(selectCourtWaiting);
   return (
     <View testID="status-strip" style={styles.strip}>
-      {stage !== null ? <StageLine text={stage} /> : null}
-      <MatchLabel onLayoutHeight={onLabelHeight} />
+      {round !== null ? <StageLine text={round} /> : null}
+      {courtWaiting ? null : <MatchLabel onLayoutHeight={onLabelHeight} />}
       {/* One line of body height either way, so the strip is the same height whichever it says. */}
       <View testID="strip-message" style={styles.message}>
         {advisory !== null && lineTier === 'routine' ? (

@@ -10,7 +10,8 @@ sealed interface ScoringLinkAnswer {
   /** "ok", or a refusal word (plan decision D3). */
   val word: String
 
-  class Link(val url: String) : ScoringLinkAnswer {
+  /** [label] names the match the link scores (court stream §5.6): display only, and never written to the record. */
+  class Link(val url: String, val label: String?) : ScoringLinkAnswer {
     override val word: String get() = "ok"
 
     override fun toString(): String = "Link(url=<${url.length} chars>)"
@@ -26,7 +27,10 @@ object ScoringLinks {
   fun wire(answer: ScoringLinkAnswer): Map<String, Any?> =
     linkedMapOf<String, Any?>("outcome" to answer.word).also {
       when (answer) {
-        is ScoringLinkAnswer.Link -> it["url"] = answer.url
+        is ScoringLinkAnswer.Link -> {
+          it["url"] = answer.url
+          answer.label?.let { label -> it["label"] = label }
+        }
         is ScoringLinkAnswer.Refused -> answer.retryAfterS?.let { s -> it["retryAfterS"] = s.toDouble() }
       }
     }

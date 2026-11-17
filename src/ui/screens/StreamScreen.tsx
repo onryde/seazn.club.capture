@@ -1,14 +1,18 @@
 import { StyleSheet, View } from 'react-native';
 import { cutDestination } from '@/domain/session/destination';
+import { cutNextLabel } from '@/domain/session/nextLine';
 import { columnLineKey, LINE_TIER, type LineTier } from '@/hooks/statusKey';
 import { useT } from '@/hooks/useLanguage';
 import { useEndedToHome } from '@/hooks/useEndedNotice';
+import { useBackCloses } from '@/hooks/useBackCloses';
+import { useCourtExit, type CourtExit } from '@/hooks/useCourtExit';
 import { useStreamLeave } from '@/hooks/useStreamLeave';
 import { useStreamLinks } from '@/hooks/useStreamLinks';
 import { useScoringLink } from '@/hooks/useScoringLink';
 import { useStreamSettings } from '@/hooks/useStreamSettings';
 import { useViewerCheck, type ViewerCheckView } from '@/hooks/useViewerCheck';
 import { useViewfinder, type Viewfinder } from '@/hooks/useViewfinder';
+import { LeaveCourtSheet } from '@/ui/components/LeaveCourtSheet';
 import { StreamColumn } from '@/ui/components/StreamColumn';
 import { StreamStage } from '@/ui/components/StreamStage';
 import { FEATURES } from '@/ui/features';
@@ -40,6 +44,9 @@ export function StreamScreen({ viewerCheck = FEATURES.viewerCheck }: ScreenProps
   const links = useStreamLinks();
   const scoring = useScoringLink(view.plate === 'trouble');
   const line = useColumnLine(view, leave.blocked);
+  const exit = useCourtExit(view.court, view.kind);
+  // Back while a Leave is under way is swallowed (I2): it would end the unpair as `left` and forget the code.
+  useBackCloses(exit.open || exit.leaving, exit.stay);
   const halves: HalvesProps = {
     view,
     line,
@@ -48,6 +55,7 @@ export function StreamScreen({ viewerCheck = FEATURES.viewerCheck }: ScreenProps
     canLeave: leave.canLeave,
     onHome: leave.leave,
     onSettings: links.settings,
+    exit,
   };
   return viewerCheck ? <HalvesWithViewer {...halves} /> : <Halves {...halves} viewer={null} />;
 }
@@ -61,6 +69,8 @@ type HalvesProps = {
   readonly canLeave: boolean;
   readonly onHome: () => void;
   readonly onSettings: () => void;
+  /** Exit on a court code that waits (court stream §6.4): its ⋯ and its question. */
+  readonly exit: CourtExit;
 };
 
 /**
@@ -79,9 +89,30 @@ function HalvesWithViewer(props: HalvesProps) {
 
 /** The camera half and the controls half. `viewer` is null with What viewers see hidden (`FEATURES.viewerCheck`). */
 function Halves(props: HalvesProps & { readonly viewer: ViewerCheckView | null }) {
-  const { view, line, scoring, viewer } = props;
+  const { view, exit } = props;
   return (
-    <View testID="viewfinder" style={props.mirrored ? styles.mirrored : styles.halves}>
+    <View testID="viewfinder-screen" style={styles.screen}>
+      {/* The halves are hidden from a screen reader while the Leave question covers them, as Match Day's list is (§6.4). */}
+      <View
+        testID="viewfinder"
+        style={props.mirrored ? styles.mirrored : styles.halves}
+        aria-hidden={exit.open}
+        importantForAccessibility={exit.open ? 'no-hide-descendants' : 'auto'}
+      >
+        <TwoHalves {...props} />
+      </View>
+      {exit.open && view.court !== null ? (
+        <LeaveCourtSheet court={view.court} onStay={exit.stay} onLeave={exit.leave} />
+      ) : null}
+    </View>
+  );
+}
+
+/** The camera half, then the controls half: the two children of the viewfinder's row. */
+function TwoHalves(props: HalvesProps & { readonly viewer: ViewerCheckView | null }) {
+  const { view, line, scoring, viewer, exit } = props;
+  return (
+    <>
       <StreamStage
         line={line.text}
         lineTier={line.tier}
@@ -98,8 +129,9 @@ function Halves(props: HalvesProps & { readonly viewer: ViewerCheckView | null }
         onSettings={props.onSettings}
         onScoringLink={scoring.open}
         scoringOpen={scoring.view.kind !== 'hidden'}
+        onMore={exit.offered ? exit.ask : null}
       />
-    </View>
+    </>
   );
 }
 
@@ -108,8 +140,8 @@ type ColumnLine = { readonly text: string; readonly tier: LineTier };
 /**
  * The one true sentence: the status line, or Back's refusal over a calm one
  * (ruling I2), with its tier (`LINE_TIER`: an urgent line always wins the strip's one
- * message line, a routine one gives way to a caption). `{destination}` is cut at 24, the
- * width every budget counts. It is said in the status strip, under the shot, and made here once.
+ * message line, a routine one gives way to a caption). `{destination}` is cut at 24, the width every budget counts, and a court's
+ * `{label}` by how wide it draws (`cutNextLabel`). It is said in the status strip, under the shot, and made here once.
  */
 function useColumnLine(view: Viewfinder, blocked: boolean): ColumnLine {
   const { t } = useT();
@@ -117,12 +149,16 @@ function useColumnLine(view: Viewfinder, blocked: boolean): ColumnLine {
     remaining: view.holdRemaining ?? '',
     window: view.holdWindow ?? '',
     destination: view.destination === null ? '' : cutDestination(view.destination),
+    // A court's Next line (§6.2, I4): the label cut by its measured width so the time is never the part an ellipsis eats.
+    label: view.nextLabel === null ? '' : cutNextLabel(view.nextLabel),
+    time: view.nextAt ?? '',
   };
   const key = columnLineKey(view.statusKey, blocked);
   return { text: t(key, vars), tier: LINE_TIER[key] };
 }
 
 const styles = StyleSheet.create({
+  screen: { flex: 1 },
   halves: { flex: 1, flexDirection: 'row' },
   mirrored: { flex: 1, flexDirection: 'row-reverse' },
 });

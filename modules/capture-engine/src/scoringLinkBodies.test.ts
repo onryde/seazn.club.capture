@@ -17,9 +17,9 @@ const refusal = ajv.getSchema(`${contract.$id}#/$defs/refusal`)!;
 const rows = vectors.cases.filter((row) => 'body' in row);
 
 describe('the made-up scoring-link bodies are the contract’s shapes', () => {
-  it('sweeps 18 of the 19 rows (the portal page has no JSON body)', () => {
-    expect(vectors.cases).toHaveLength(19);
-    expect(rows).toHaveLength(18);
+  it('sweeps 26 of the 27 rows (the portal page has no JSON body)', () => {
+    expect(vectors.cases).toHaveLength(27);
+    expect(rows).toHaveLength(26);
   });
 
   it.each(rows.map((row) => [row.why, row] as const))('%s', (_why, row) => {

@@ -32,7 +32,7 @@ type Listener = (body: never) => void;
 
 /** One line the host writes (Task 21's protocol). */
 type HostLine =
-  | { ev: 'ready'; current: unknown; tail: RecordLine[] }
+  | { ev: 'ready'; current: unknown; tail: unknown }
   | { ev: 'snapshot'; body: unknown }
   | { ev: 'record'; line: string; seq: number }
   | { ev: 'ack'; seq: number }
@@ -69,7 +69,7 @@ class HostModule implements CaptureEngineNative {
 
   constructor(
     private readonly write: (op: Record<string, unknown>) => void,
-    private readonly state: { current: unknown; tail: readonly RecordLine[] },
+    private readonly state: { current: unknown; tail: unknown },
   ) {}
 
   send(intent: Record<string, unknown>): void {
@@ -82,7 +82,8 @@ class HostModule implements CaptureEngineNative {
   current(): unknown {
     return this.state.current;
   }
-  tail(): readonly RecordLine[] {
+  /** The host's `BridgeCore.tail`, as its ready line carried it (N38: `{pins, lines}`). */
+  tail(): unknown {
     return this.state.tail;
   }
   /** The JVM host has no camera and no gallery: a photo is never taken through it, so asking is loud. */
@@ -175,7 +176,7 @@ export async function startHostEngine(binary: string = HOST_BINARY): Promise<Hos
     }
   };
 
-  const state: { current: unknown; tail: readonly RecordLine[] } = { current: null, tail: [] };
+  const state: { current: unknown; tail: unknown } = { current: null, tail: null };
   const native = new HostModule(write, state);
   const requests: { path: string; body: unknown }[] = [];
   let started: () => void = () => undefined;
@@ -237,7 +238,11 @@ export async function startHostEngine(binary: string = HOST_BINARY): Promise<Hos
     throw error;
   }
   const record: string[] = [];
-  const engine = createNativeCaptureEngine(native, { onRecordLine: (line) => record.push(line) });
+  // N38: a new host's store is memory, so it has no pins to hand on; the kit's record is the lines alone.
+  const engine = createNativeCaptureEngine(native, {
+    onRecordLine: (line) => record.push(line),
+    onRecordPins: () => undefined,
+  });
   const numbered = (op: Record<string, unknown>, ms: number) =>
     bounded(
       engine.sendNumbered((seq) => write({ ...op, seq })),

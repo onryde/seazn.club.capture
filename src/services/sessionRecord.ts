@@ -1,5 +1,11 @@
 import type { SessionState } from '@/domain/session/SessionState';
-import { NO_PINS, pinnedAndNewest, pinsAfter, type RecordPins } from '@/services/recordPins';
+import {
+  NO_PINS,
+  pinnedAndNewest,
+  pinsAdopted,
+  pinsAfter,
+  type RecordPins,
+} from '@/services/recordPins';
 import type { LogFields } from '@/services/scrub';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -78,7 +84,15 @@ export function parseRecordLine(line: string): RecordedEntry {
 }
 
 /** The JS ring, which also takes native's lines as written (Task 26): one view of the record. */
-export type RingRecord = SessionRecord & { appendLine(line: string): void };
+export type RingRecord = SessionRecord & {
+  appendLine(line: string): void;
+  /**
+   * N38 after a JS reload or a process death: native's pinned lines (`BridgeCore.tail`), as lines given before the
+   * ring's first (`pinsAdopted`; a start alone is native's closed restore). The seed's, once, before any line: a call
+   * once the ring holds a line or a pin is ignored.
+   */
+  adoptPins(pins: readonly string[]): void;
+};
 
 export function createRingRecord(capacity: number = RECORD_CAPACITY): RingRecord {
   let lines: readonly string[] = [];
@@ -96,6 +110,10 @@ export function createRingRecord(capacity: number = RECORD_CAPACITY): RingRecord
   return {
     append: (entry) => push(toRecordLine(entry)),
     appendLine: push,
+    adoptPins: (pinned) => {
+      if (lines.length > 0 || pins.pair !== null || pins.start !== null) return;
+      pins = pinsAdopted(pinned, first);
+    },
     lines: () => lines,
     linesToSend: (max) => pinnedAndNewest(lines, first, pins, max),
     subscribe: (onChange) => {

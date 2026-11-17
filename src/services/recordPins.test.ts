@@ -306,6 +306,116 @@ describe('N38: Send record keeps the pairing’s pair and broadcast-start lines'
 });
 
 /**
+ * N38 after a JS reload or a process death (device, 2026-11-16: a court code paired for hours sent 34 lines, and the web
+ * kept none). A new ring is seeded from native's last 20 lines, which had let the pair and its start go; native now
+ * hands its pinned lines on beside them (`BridgeCore.tail`), and the ring adopts them ahead of every line it is given,
+ * by its own rule, so from there they are its pins like any other.
+ */
+describe('N38: a ring seeded after a reload adopts native’s pinned lines', () => {
+  function seeded(pins: readonly string[], lines: readonly string[]): RingRecord {
+    const ring = createRingRecord();
+    ring.adoptPins(pins);
+    for (const line of lines) ring.appendLine(line);
+    return ring;
+  }
+
+  it('sends the adopted pair and start first, then the tail and every line after it', () => {
+    const tail = beats(20, 'tail');
+    const ring = seeded([PAIR, START], tail);
+    expect(ring.linesToSend(1_000)).toEqual([PAIR, START, ...tail]);
+    // Share record and Diagnostics show the ring alone.
+    expect(ring.lines()).toEqual(tail);
+  });
+
+  it('adopting none is the ring as it was (an empty input)', () => {
+    const tail = beats(20);
+    expect(seeded([], tail).linesToSend(1_000)).toEqual(tail);
+    expect(seeded([], []).linesToSend(1_000)).toEqual([]);
+  });
+
+  it('keeps them first as the ring fills and lets its own lines go', () => {
+    const b = beats(3_000);
+    expect(seeded([PAIR, START], b).linesToSend(1_000)).toEqual([PAIR, START, ...b.slice(-998)]);
+  });
+
+  it('a window end in the tail keeps them until it has left the ring, then lets them go', () => {
+    const before = beats(5, 'before');
+    const after = beats(994, 'after');
+    const ring = seeded([PAIR, START], [...before, ENDED, ...after]);
+    expect(ring.linesToSend(1_000)).toEqual([PAIR, START, ...before.slice(2), ENDED, ...after]);
+    const later = beats(6, 'later');
+    for (const line of later) ring.appendLine(line);
+    // ENDED has left the ring: the pins are let go, and the newest 1,000 go alone.
+    expect(ring.linesToSend(1_000)).toEqual([...after, ...later]);
+  });
+
+  it('a pair later in the tail replaces them (a second pairing)', () => {
+    const b = beats(3_000);
+    expect(seeded([PAIR, START], [PAIR_2, ...b]).linesToSend(1_000)).toEqual([
+      PAIR_2,
+      ...b.slice(-999),
+    ]);
+  });
+
+  it('a start later in the tail replaces the adopted start, under the adopted pair (a second call)', () => {
+    const b = beats(3_000);
+    expect(seeded([PAIR, START], [START_2, ...b]).linesToSend(1_000)).toEqual([
+      PAIR,
+      START_2,
+      ...b.slice(-998),
+    ]);
+  });
+
+  // Fix round 1 of P1 (the controller's ruling): native restores a start alone after a process death, CLOSED. It is
+  // sent first, so the old session is named (A1 judges it by its sid), but no window is open under it.
+  it('a start adopted alone is the closed restore: sent first, and no later start or end moves it', () => {
+    const b = beats(3_000);
+    expect(seeded([START], b).linesToSend(1_000)).toEqual([START, ...b.slice(-999)]);
+    const moved = seeded([START], [START_2, ENDED, ...b]);
+    expect(moved.linesToSend(1_000)).toEqual([START, ...b.slice(-999)]);
+  });
+
+  // Fix round 2 of P1: only a start whose sid A1 can judge is adopted alone, as the ring's own rule pins one.
+  it('a lone start whose sid A1 cannot judge is not adopted (an empty input)', () => {
+    const b = beats(3_000);
+    expect(seeded([startWith('***')], b).linesToSend(1_000)).toEqual(b.slice(-1_000));
+    expect(seeded([startWith('sess_42')], b).linesToSend(1_000)).toEqual(b.slice(-1_000));
+  });
+
+  // Fix round 3 of P1: a lone line with a sid A1 can judge is adopted only if it is a start.
+  it('a lone line with a judgeable sid that is not a start is not adopted (an empty input)', () => {
+    const b = beats(3_000);
+    expect(seeded([lineOf('live', { sid: SID })], b).linesToSend(1_000)).toEqual(b.slice(-1_000));
+  });
+
+  it('a pair after a closed restore replaces it, as a re-pair in the new process does', () => {
+    const b = beats(3_000);
+    expect(seeded([START], [PAIR_2, START_2, ...b]).linesToSend(1_000)).toEqual([
+      PAIR_2,
+      START_2,
+      ...b.slice(-998),
+    ]);
+  });
+
+  // The seed adopts once, before the ring's first line: a second call, or one after a line, is ignored.
+  it('adopts once, before any line: a second seed or one after a line is ignored (a second call)', () => {
+    const b = beats(1_000);
+    const afterLine = createRingRecord();
+    afterLine.appendLine(b[0] ?? '');
+    afterLine.adoptPins([PAIR, START]);
+    expect(afterLine.linesToSend(1_000)).toEqual([b[0]]);
+    const afterPair = seeded([PAIR], []);
+    afterPair.adoptPins([START_2]);
+    for (const line of b) afterPair.appendLine(line);
+    expect(afterPair.linesToSend(1_000)).toEqual([PAIR, ...b.slice(-999)]);
+    const afterStart = seeded([START], []);
+    afterStart.adoptPins([PAIR_2]);
+    for (const line of b) afterStart.appendLine(line);
+    expect(afterStart.linesToSend(1_000)).toEqual([START, ...b.slice(-999)]);
+  });
+});
+
+/**
  * Acceptance 7 of Batch 18: the body Send record posts, through the flight and the real port, is the vendored
  * contract's line for line, and every line in it files under the pairing. A2 is walked here as the contract's
  * description words it; A1 (a uuid sid's session) is the server's to judge, so a line with a sid is not counted here.
@@ -342,6 +452,34 @@ function unfiled(body: readonly string[]): number {
   return outside;
 }
 
+/**
+ * The lines the web keeps for one code, as the contract words it: A1, a line with a sid is kept iff the session is the
+ * code's (a masked sid names none); A2, a line with none is kept iff it is in a window opened by a `pair` with the code's
+ * tag, which runs through the next closing line, or up to the next `pair` or refused line.
+ */
+function keptFor(
+  body: readonly string[],
+  code: { sessions: readonly string[]; tag: string },
+): string[] {
+  let open = false;
+  return body.filter((text) => {
+    const line = JSON.parse(text) as Record<string, unknown>;
+    if (!admitsLine(line)) {
+      open = false;
+      return false;
+    }
+    if (line.kind === 'pair') open = line.tokenTag === code.tag;
+    const sid = line.sid ?? null;
+    const kept = sid === null ? open : typeof sid === 'string' && code.sessions.includes(sid);
+    if (CLOSING.includes(String(line.kind))) open = false;
+    return kept;
+  });
+}
+
+/** The code `PAIR` paired, whose session is `SID`, and the code `PAIR_2` paired, whose session is `SID_2`. */
+const DEAD_CODE = { sessions: [SID], tag: 'c980ff38' };
+const NEW_CODE = { sessions: [SID_2], tag: '0d15ea5e' };
+
 /** Made up (AGENTS §13): a code URL of the QR's shape on the staging host, and a token, that belong to nothing. */
 const CREDENTIAL: UploadCredential = {
   codeUrl: 'https://stg.seazn.club/api/v1/capture/codes/abcdefghjkmn',
@@ -354,10 +492,10 @@ afterEach(() => vi.useRealTimers());
 
 describe('N38: the body posted is the contract’s, and files under its pairing', () => {
   /** A match's worth of native lines: beats with no sid, the broadcast's own with one, a warning now and then. */
-  const match = (count: number) =>
+  const match = (count: number, sid = SID) =>
     Array.from({ length: count }, (_, n) =>
       n % 10 === 0
-        ? lineOf('live', { sid: SID, transport: 'srt' })
+        ? lineOf('live', { sid, transport: 'srt' })
         : n % 7 === 0
           ? lineOf('thermal', { level: 'warn', status: 2, headroom: 0.5 })
           : lineOf('beats', { sent: n, late: 0 }),
@@ -408,6 +546,35 @@ describe('N38: the body posted is the contract’s, and files under its pairing'
     // final-beat and reset come after the window's end: the web files neither, pins or no pins.
     expect(unfiled(body)).toBe(2);
     expect(unfiled(body.slice(2))).toBeGreaterThan(800);
+  });
+
+  // I1 of P1's review: a process death that is not followed by a re-pair. The restored start names the old session, and
+  // no line of the new process files under the dead code: by A2 none is in its window, and by A1 none is its session
+  // (the new process's lines carry `SID_2`, never the dead code's `SID`; fix round 2).
+  it('after a process death, the web keeps the restored start alone for the dead code, no line of the new process', async () => {
+    const lines = match(1_500, SID_2);
+    const ring = createRingRecord();
+    ring.adoptPins([START]);
+    for (const line of lines) ring.appendLine(line);
+    const body = await posted(ring);
+    expect(body).toEqual([START, ...lines.slice(-999)]);
+    expect(body.filter((line) => !admitsLine(JSON.parse(line)))).toEqual([]);
+    expect(keptFor(body, DEAD_CODE)).toEqual([START]);
+    // Anti-vacuity: the pair an open restore carried would have filed the new process's lines with no sid under it.
+    const sidless = lines.slice(-999).filter((line) => !('sid' in JSON.parse(line)));
+    expect(sidless.length).toBeGreaterThan(800);
+    expect(keptFor([PAIR, ...body], DEAD_CODE)).toEqual([PAIR, START, ...sidless]);
+  });
+
+  it('after a process death and a re-pair, the new code keeps every line and the dead code none', async () => {
+    const lines = match(1_500, SID_2);
+    const ring = createRingRecord();
+    ring.adoptPins([START]);
+    for (const line of [PAIR_2, ...lines]) ring.appendLine(line);
+    const body = await posted(ring);
+    expect(body).toEqual([PAIR_2, ...lines.slice(-999)]);
+    expect(keptFor(body, NEW_CODE)).toEqual(body);
+    expect(keptFor(body, DEAD_CODE)).toEqual([]);
   });
 
   it('once 1,000 lines follow the end, the body is the newest 1,000 alone', async () => {

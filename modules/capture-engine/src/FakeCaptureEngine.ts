@@ -56,7 +56,8 @@ export type FakeScene =
   | 'stopped'
   | 'fatal'
   | 'shed'
-  | 'unpaired-replaced';
+  | 'unpaired-replaced'
+  | 'court-waiting';
 
 export const FAKE_SCENES: readonly FakeScene[] = [
   'pairing',
@@ -83,10 +84,17 @@ export const FAKE_SCENES: readonly FakeScene[] = [
   'fatal',
   'shed',
   'unpaired-replaced',
+  'court-waiting',
 ];
 
 /** How the permission dialog answers a `pair`. */
 export type PermissionAnswer = 'grant' | 'hold' | 'refuse';
+
+/**
+ * How native's `POST start` answers the operator's hold (court stream Task 13, P2): at once and started (the default),
+ * held in flight (Paired with `pairing.starting`, as native waits up to 8 s), or failed (Paired with `start-failed`).
+ */
+export type StartAnswer = 'started' | 'hold' | 'failed';
 
 export type FakeCaptureEngine = CaptureEnginePort & {
   /** Jump to a named state from spec §6's list, with telemetry and readiness to match. */
@@ -103,11 +111,17 @@ export type FakeCaptureEngine = CaptureEnginePort & {
   setReady(ready: Partial<Readiness>): void;
   /** How the permission dialog answers the next `pair`, or the one held open now. */
   setPermissions(answer: PermissionAnswer): void;
-  /** The waiting fields this pairing, and every later one, reports. */
+  /** How `POST start` answers the operator's next hold, or (`started`, `failed`) the one held in flight now. */
+  setStartAnswer(answer: StartAnswer): void;
+  /**
+   * The waiting fields this pairing, and every later one, reports: a court's `next` (court stream §5.3) is set here,
+   * as a beat would bring it, and so is a `court` a descriptor names.
+   */
   setPairing(pairing: Partial<PairingInfo>): void;
   /**
    * R6 of the D3 findings design: the notification's Forget, as native hears it (`Pairings.forget`): it acts only
-   * while paired and waiting, leaving for Idle naming the code and `forgotten`; any other state ignores it.
+   * while paired and waiting, leaving for Idle naming the code and `forgotten`; any other state ignores it, and so
+   * does a court's pairing, whose notification carries no Forget (O12).
    */
   notificationForget(): void;
   /**
@@ -225,6 +239,9 @@ export const FAKE_PAIRING: PairingInfo = {
   destinationName: 'YouTube · Fake CC',
   pollSeconds: 60,
   stageLabel: null,
+  court: null,
+  next: null,
+  starting: false,
 };
 
 const broadcastFor = (pairing: PairingInfo, cause: Cause): BroadcastInfo => ({
@@ -267,6 +284,8 @@ type Scene = {
   /** Native's readiness; every check passes when absent. */
   readonly ready?: Readiness;
   readonly extra?: Partial<Pick<EngineSnapshot, 'refusal' | 'lastEnd'>>;
+  /** Waiting fields the scene's pairing carries over the held one: a court and its next match. */
+  readonly pairing?: Partial<PairingInfo>;
   /** A snapshot native reports by itself a moment later: our camera's first frame, ready again. */
   readonly then?: { readonly afterMs: number; readonly state: SessionState };
 };
@@ -294,6 +313,12 @@ const ended = (reason: EndReason, durationMs: number | null): SessionState => ({
   reason,
   durationMs,
 });
+
+/** The court-waiting scene's next streamed match: a fixed start, so screens can assert the time. Made up. */
+const COURT_NEXT = {
+  label: 'Example Town v Sample CC',
+  scheduledStart: new Date('2026-11-14T14:00:00Z'),
+} as const;
 
 /** Spec §6's states. A table, exempt from the line count (AGENTS §12). */
 function sceneOf(name: FakeScene, now: number): Scene {
@@ -335,6 +360,13 @@ function sceneOf(name: FakeScene, now: number): Scene {
       };
     case 'unpaired-replaced':
       return { state: IDLE, telemetry: IDLE_TELEMETRY, ready: NOT_READY };
+    case 'court-waiting':
+      // Court stream (spec 2026-11-14 §6.2): a court code paired and waiting for its next streamed match.
+      return {
+        state: { kind: 'paired' },
+        telemetry: ARMED,
+        pairing: { court: 'Court 2', next: COURT_NEXT },
+      };
     case 'connecting':
       return { state: { kind: 'connecting', transport: 'srt' }, telemetry: ARMED };
     case 'live':
@@ -493,7 +525,13 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
   };
   const primary: Transport = 'srt';
   let permissions: PermissionAnswer = 'grant';
+  let startAnswer: StartAnswer = 'started';
   let waiting: Partial<PairingInfo> = {};
+  /**
+   * What a scene's own `pairing` fields replaced, so the next scene puts them back: a scene's override ends with the
+   * scene (P2 review m2). A pair, a rest and `setPairing` (for the fields it changes) clear it.
+   */
+  let sceneUndo: Partial<PairingInfo> = {};
   const intentKinds: EngineIntent['kind'][] = [];
   const listeners = new Set<() => void>();
   let pending: ReturnType<typeof setTimeout> | null = null;
@@ -567,8 +605,14 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
       ...(intent.stageLabel !== undefined && intent.stageMatch !== undefined
         ? { stageLabel: intent.stageLabel }
         : {}),
+      // Native seeds the court from the pair (court stream §6.1), so a court code's pairing is one before any GET.
+      // Native resets both with each pair request, so a fixture pair holds neither, whatever `setPairing` set
+      // before (P2 review m3): `waiting` is kept for a court's pair only.
+      court: intent.court ?? null,
+      next: intent.court === undefined ? null : (waiting.next ?? null),
       automatic: intent.automatic,
     };
+    sceneUndo = {};
     if (permissions === 'hold') {
       return show({ kind: 'pairing' }, { ...AT_REST, pairing, ready: NOT_READY });
     }
@@ -580,8 +624,17 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     paired(pairing);
   };
 
+  /** The hold's `POST start` is in flight: native's `pairing.starting` (court stream Task 13, P2). */
+  const startInFlight = (): boolean => snapshot.pairing?.starting === true;
+  /** Whatever arms a broadcast retires the hold's start in flight (native's `Starts.arm`, I1): its answer is late. */
+  const retired = (): Partial<EngineSnapshot> =>
+    snapshot.pairing === null ? {} : { pairing: { ...snapshot.pairing, starting: false } };
+
   const connect = (broadcast: BroadcastInfo): void => {
-    show({ kind: 'connecting', transport: primary }, { broadcast, refusal: null, lastEnd: null });
+    show(
+      { kind: 'connecting', transport: primary },
+      { broadcast, refusal: null, lastEnd: null, ...retired() },
+    );
     later(CONNECT_MS, () => publishing(primary, now()));
   };
 
@@ -590,27 +643,45 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     const broadcast = snapshot.broadcast ?? broadcastFor(snapshot.pairing ?? FAKE_PAIRING, cause);
     const notReady = firstNotReady(snapshot.ready);
     if (notReady !== null) {
-      return show({ kind: 'armed', cause, notReady }, { broadcast, refusal: null, lastEnd: null });
+      const armed = { broadcast, refusal: null, lastEnd: null, ...retired() };
+      return show({ kind: 'armed', cause, notReady }, armed);
     }
     connect(broadcast);
   };
 
-  /** The operator's hold: only from Paired, and only when ready (Go live is off otherwise). */
+  /**
+   * `POST start`'s answer as native's `Pairings.started` decides it in Paired, or the start held in flight: the post
+   * clears the refusal and the last end, a failure says `start-failed`, and Started goes live as the hold would have.
+   */
+  const answerStart = (answer: StartAnswer): void => {
+    if (answer === 'started') return goLive('operator');
+    const pairing =
+      snapshot.pairing === null ? null : { ...snapshot.pairing, starting: answer === 'hold' };
+    publish({ pairing, refusal: answer === 'failed' ? 'start-failed' : null, lastEnd: null });
+  };
+
+  /**
+   * The operator's hold: only from Paired, and only when ready (Go live is off otherwise). One at a time: native ignores
+   * a start while one is in flight (`Pairings.start`), so it posts nothing and clears nothing.
+   */
   const start = (): void => {
     if (snapshot.state.kind !== 'paired' || firstNotReady(snapshot.ready) !== null) return;
-    goLive('operator');
+    if (startInFlight()) return;
+    answerStart(startAnswer);
   };
 
   /**
    * Owner decision 1 (2026-10-05), as native's `SessionMachine.stop`: a broadcast that never went live ends and the
    * pairing stays, Paired with the last end `stopped`, so Go live can be tried again (native beats the stopped sid
-   * at once); one that went live, or one held past a 401, ends the pairing.
+   * at once); one that went live, or one held past a 401, ends the pairing. A court's pairing (court stream §6.3,
+   * O5) stays Paired live or not: its Stop ends this match only, unless a 401 was held.
    */
   const stop = (): void => {
     if (!BROADCAST.has(snapshot.state.kind)) return;
     cancelPending();
     const since = sinceOf(snapshot.state);
-    if (since === null && !snapshot.codeEndedPending) {
+    const court = (snapshot.pairing?.court ?? null) !== null;
+    if ((since === null || court) && !snapshot.codeEndedPending) {
       return show({ kind: 'paired' }, { broadcast: null, lastEnd: 'stopped' });
     }
     show(ended('operator-stopped', since === null ? null : now() - since), {
@@ -619,9 +690,10 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     });
   };
 
+  /** Native ignores an unpair while the hold's start is in flight (`Pairings.unpair`), as it ignores Forget. */
   const unpair = (): void => {
     const { kind } = snapshot.state;
-    if (kind === 'pairing' || kind === 'paired') atRest();
+    if ((kind === 'pairing' || kind === 'paired') && !startInFlight()) atRest();
   };
 
   // N1: native resets only from Ended (plan B's SessionMachine.kt); so does the fake.
@@ -686,8 +758,18 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
 
   const play = (scene: Scene): void => {
     cancelPending();
-    const held = snapshot.pairing ?? { ...FAKE_PAIRING, ...waiting };
     const resting = scene.state.kind === 'idle';
+    const base =
+      snapshot.pairing === null
+        ? { ...FAKE_PAIRING, ...waiting }
+        : { ...snapshot.pairing, ...sceneUndo };
+    // A scene is a report native makes by itself, never with the operator's start in flight.
+    const held = { ...base, ...scene.pairing, starting: false };
+    sceneUndo = resting
+      ? {}
+      : (Object.fromEntries(
+          Object.keys(scene.pairing ?? {}).map((key) => [key, base[key as keyof PairingInfo]]),
+        ) as Partial<PairingInfo>);
     // A pairing native left was paired first: on native an unpair is always reached through
     // Pairing, which names none (review C5, re-review round 1).
     if (resting) show({ kind: 'pairing' }, { ...AT_REST, pairing: held, ready: NOT_READY });
@@ -757,12 +839,19 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     hear,
     setReady,
     setPermissions,
+    setStartAnswer: (answer) => {
+      startAnswer = answer;
+      if (startInFlight()) answerStart(answer);
+    },
     setPairing: (change) => {
       waiting = { ...waiting, ...change };
+      for (const key of Object.keys(change)) delete sceneUndo[key as keyof PairingInfo];
       if (snapshot.pairing !== null) publish({ pairing: { ...snapshot.pairing, ...change } });
     },
+    // Native's Forget acts only while paired and waiting: never on a court (O12), nor with the hold's start in flight.
     notificationForget: () => {
-      if (snapshot.state.kind === 'paired') unpaired('forgotten');
+      const court = (snapshot.pairing?.court ?? null) !== null;
+      if (snapshot.state.kind === 'paired' && !court && !startInFlight()) unpaired('forgotten');
     },
     patch: (telemetry) => publish({ telemetry: { ...snapshot.telemetry, ...telemetry } }),
     setCamera: (camera) => publish({ camera }),

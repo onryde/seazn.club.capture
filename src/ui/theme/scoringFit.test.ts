@@ -4,6 +4,7 @@ import en from '@/i18n/en.json';
 import es from '@/i18n/es.json';
 import fr from '@/i18n/fr.json';
 import nl from '@/i18n/nl.json';
+import { cutNextLabel } from '@/domain/session/nextLine';
 import type { ScoringWord } from '@/services/scoringLinkPort';
 import { layout, space } from '@/ui/theme/tokens';
 import { typeScale } from '@/ui/theme/type';
@@ -238,6 +239,36 @@ describe('the code panel (F7, D13)', () => {
     expect([typeScale.panelTitle.fontSize, typeScale.panelTitle.lineHeight]).toEqual([22, 24]);
   });
 
+  // Court stream §5.6: the title names the match, `{label}` cut as the Next line cuts it (`cutNextLabel`), on ONE line
+  // (`numberOfLines` 1): what still does not fit is cut by the line's own ellipsis, so the panel's height never moves.
+  // The owner's phone (728 × 328) gives the panel 386 dp. As measured with the shipped font.
+  it('the titled panel: a short label whole at 298, a realistic one whole at 386, and the cut’s widest at 386, in all four languages', () => {
+    const titled = (dictionary: Dictionary, label: string) =>
+      titleWidth(
+        (dictionary['stream.scoring.titleMatch'] ?? '').replace('{label}', cutNextLabel(label)),
+      );
+    const at = (label: string) =>
+      LANGUAGES.map(([, dictionary]) => Math.round(titled(dictionary, label) * 10) / 10);
+    expect(panelWidth(728)).toBe(386);
+    // "Northside v Riverside" fits the narrowest panel whole.
+    expect(at('Northside v Riverside')).toEqual([262.2, 265.0, 274.0, 262.9]);
+    for (const width of at('Northside v Riverside'))
+      expect(width).toBeLessThanOrEqual(panelWidth(640));
+    // "Example Town v Sample CC" is cut at 640's 298 by the line's ellipsis, and whole on the owner's phone.
+    const realistic = at('Example Town v Sample CC');
+    expect(realistic).toEqual([305.3, 308.2, 317.2, 306.1]);
+    for (const width of realistic) {
+      expect(width).toBeGreaterThan(panelWidth(640));
+      expect(width).toBeLessThanOrEqual(panelWidth(728));
+    }
+    // The longest realistic label, as the cut leaves it ("Example Town v Sample Crick…"), still fits 386.
+    const cut = at('Example Town v Sample Cricket Club');
+    expect(cut).toEqual([350.0, 352.8, 361.8, 350.7]);
+    for (const width of cut) expect(width).toBeLessThanOrEqual(panelWidth(728));
+    // The one line is the title's 24 dp in the stack below, label or none.
+    expect(typeScale.panelTitle.lineHeight).toBe(24);
+  });
+
   const hintLines = () => {
     const lines = LANGUAGES.map(([, dictionary]) =>
       linesOf(dictionary['stream.scoring.hint'] ?? '', panelWidth(640), unitWidth),
@@ -317,21 +348,22 @@ describe('the code panel (F7, D13)', () => {
 });
 
 describe('the panel without a code fits too', () => {
-  // The asking sentence and the six refusals are `body` text, with {seconds} filled with 300 (the widest, as
+  // The asking sentence and the seven refusals are `body` text, with {seconds} filled with 300 (the widest, as
   // budgets.test.ts does), measured in the narrowest panel.
   const SENTENCE_KEYS: Readonly<Record<ScoringWord, string>> = {
     code_ended: 'stream.scoring.refused.codeEnded',
     replaced: 'stream.scoring.refused.replaced',
     match_finished: 'stream.scoring.refused.matchFinished',
+    no_match: 'stream.scoring.refused.noMatch',
     not_entitled: 'stream.scoring.refused.notEntitled',
     rate_limited: 'stream.scoring.refused.rateLimited',
     unavailable: 'stream.scoring.refused.unavailable',
   };
 
-  it('every sentence, in every language, leaves the title and Hide room in 360: (6 + 1) × 4 = 28 strings', () => {
-    // Typed over every word, so a seventh word is a compile error here; a UI file may not import the port's value list.
+  it('every sentence, in every language, leaves the title and Hide room in 360: (7 + 1) × 4 = 32 strings', () => {
+    // Typed over every word, so an eighth word is a compile error here; a UI file may not import the port's value list.
     const keys = ['stream.scoring.asking', ...Object.values(SENTENCE_KEYS)];
-    expect(keys).toHaveLength(7);
+    expect(keys).toHaveLength(8);
     let checked = 0;
     let worst = 0;
     for (const [lang, dictionary] of LANGUAGES) {
@@ -348,7 +380,7 @@ describe('the panel without a code fits too', () => {
         checked += 1;
       }
     }
-    expect(checked).toBe(28);
+    expect(checked).toBe(32);
     expect(worst).toBeGreaterThanOrEqual(1);
     expect(worst).toBeLessThanOrEqual(3);
   });

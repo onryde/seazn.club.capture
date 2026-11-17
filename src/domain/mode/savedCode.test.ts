@@ -107,6 +107,8 @@ describe('saved codes, v3 (amendment §3)', () => {
           scheduledStart: new Date(1790003600_000),
           // A record written before the stage existed has no such key: it reads as none.
           stage: null,
+          // Nor before the court (court stream §6.1): it reads as a fixture's code, as it was.
+          court: null,
         },
         codeUrl: CODE_URL,
         tapToPair: false,
@@ -140,6 +142,31 @@ describe('saved codes, v3 (amendment §3)', () => {
       },
     });
     expect(decodeSavedCode(future)?.stream?.waiting.stage).toBeNull();
+  });
+
+  // Court stream (spec 2026-11-14 §6.1, Review Focus 2): the court is kept with the code, so a cold-start re-pair is a
+  // court pairing before any GET.
+  it('keeps a court through encode and decode, and drops a record whose court is malformed', () => {
+    const code = savedStreamCode({
+      stream: {
+        waiting: sampleWaiting({ court: 'Court 2' }),
+        codeUrl: CODE_URL,
+        tapToPair: false,
+      },
+    });
+    const back = decodeSavedCode(encodeSavedCode(code));
+    expect(back?.stream?.waiting.court).toBe('Court 2');
+    expect(back).toEqual(code);
+    expect(JSON.parse(encodeSavedCode(code)).stream.waiting.court).toEqual({ name: 'Court 2' });
+    // Never read as a fixture's code: a stored court the parser refuses drops the record, as any bad waiting field does.
+    const bad = record({
+      stream: {
+        waiting: waitingWire({ court: { name: '' } }),
+        codeUrl: CODE_URL,
+        tapToPair: false,
+      },
+    });
+    expect(decodeSavedCode(bad)).toBeNull();
   });
 
   it('drops a v1 record: clean slate, never migrated', () => {

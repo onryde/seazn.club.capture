@@ -39,23 +39,28 @@ class BridgeCore(
   private val clock: Clock,
   scheduler: Scheduler,
   private val platform: Platform,
-  store: PrivateStore,
+  private val store: PrivateStore,
   private val appVersion: String,
   private val model: String,
   newId: () -> String = { java.util.UUID.randomUUID().toString() },
 ) {
   private val guarded = GuardedScheduler(scheduler, ::failed)
-  /** Carry C4c-I3: inside the sink, the record's newest seq is the line's own. */
-  private val record: SessionRecord = SessionRecord { line -> platform.recordLine(line, record.lastSeq) }
+
+  /** What the marker's and the pins' reads had to say, held until the engine exists to take the lines. */
+  private val markerLines = mutableListOf<RecordEntry>()
+
+  /**
+   * Carry C4c-I3: inside the sink, the record's newest seq is the line's own. N38: the record starts from the start the
+   * last process kept, restored closed (fix round 1 of P1), and keeps its own on each change.
+   */
+  private val record: SessionRecord =
+    SessionRecord(RecordPinStore.read(store, clock.wallMs()) { markerLines += it }, ::keepPins) { line -> platform.recordLine(line, record.lastSeq) }
   private val sticky: StickyFailure = StickyFailure(CommandSink(::route), { engine.phase.attemptInHand }, ::report)
   private val pollers = AttemptPollers(guarded, ::frames, platform::link, ::report)
   private val ticks = TickLateness()
   private val gaps = FrameGaps()
   private val errors = ErrorLines()
   private val readinessLines = CappedLines("readiness")
-
-  /** What the marker's read had to say, held until the engine exists to take the lines. */
-  private val markerLines = mutableListOf<RecordEntry>()
 
   /** R6 of the D3 findings design: a Forget the last process wrote and JS may not have heard. */
   private val forgottenAtStart: PairingName? = PairingStore.readForgotten(store) { markerLines += it }
@@ -309,10 +314,13 @@ class BridgeCore(
    * The record's last lines, oldest first, each with its seq (carry C4c-I3), as the bridge carries them:
    * `{seq, line}`, the seq a Double like every number JS reads. The platform hands each new line on with
    * the same seq, so JS drops an arriving line the tail already holds by number, never by its text.
+   * Beside them, `pins` (N38): the pairing's pinned lines the tail has let go of, the pair first, or after a
+   * process death the restored start alone, closed (no pair), which JS's seed pins in its ring ahead of the
+   * lines. One read of the record, so the two always agree.
    */
-  fun tail(): List<Map<String, Any?>> {
+  fun tail(): Map<String, Any?> {
     val held = record.numberedTail()
-    return held.lines.mapIndexed { index, line -> mapOf("seq" to (held.firstSeq + index).toDouble(), "line" to line) }
+    return mapOf("pins" to held.pins, "lines" to held.lines.mapIndexed { index, line -> mapOf("seq" to (held.firstSeq + index).toDouble(), "line" to line) })
   }
 
   /** [request] is the pairing held, by identity, and the pairing is not over. */
@@ -473,6 +481,9 @@ class BridgeCore(
       engine.log(RecordEntry("store-failed", listOf("op" to op, "key" to key, "error" to failure.javaClass.simpleName)))
     }
   }
+
+  /** N38: what the record keeps (an open window's start), on disk, or deleted once none. A refused write is a `store-failed` line. */
+  private fun keepPins(lines: List<String>) = stored(if (lines.isEmpty()) "delete" else "write", RecordPinStore.KEY) { RecordPinStore.save(store, lines) }
 
   /** CD11: a permanent failure is sticky, never retried; anything else is plan B's `command-failed`. */
   private fun executed(command: Command) {

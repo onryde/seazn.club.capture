@@ -4,7 +4,11 @@ import type { SessionState } from '@/domain/session/SessionState';
 import type { FakeScene } from '@/engine/FakeCaptureEngine';
 import { HOLD_MS } from '@/hooks/useHold';
 import en from '@/i18n/en.json';
+import es from '@/i18n/es.json';
+import fr from '@/i18n/fr.json';
+import nl from '@/i18n/nl.json';
 import type { FakePorts } from '../../../test/fakePorts';
+import { savedCourtCode } from '../../../test/fixtures/savedStream';
 import { pressIn } from '../../../test/press';
 import { renderViewfinder } from '../../../test/renderViewfinder';
 
@@ -377,5 +381,74 @@ describe('the status strip’s one caption', () => {
     // And back: the line is routine again, so the caption that never went away takes the line.
     act(() => view.engine.scene('live'));
     expect(screen.getByTestId('strip-message').textContent).toBe(NOT_CHARGING);
+  });
+});
+
+/**
+ * Court stream (spec 2026-11-14 §6.3, O5): on a court code the Stop hold ends this match, not the pairing, live or not
+ * (native's CourtTest), so a screen reader hears "Hold to stop this match", never the unpair copy. A fixture's code
+ * keeps today's rule. Every name is read from the dictionaries.
+ */
+describe('Stop on a court code', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const named = (name: string | undefined) => {
+    expect(name).toBeDefined();
+    return screen.queryByRole('button', { name });
+  };
+
+  it('names the hold "Hold to stop this match" on air on a court code, and before the first frame', async () => {
+    const view = await renderViewfinder({}, { saved: savedCourtCode() });
+    expect(view.engine.getSnapshot().pairing?.court).toBe('Court 2');
+    act(() => view.engine.scene('live'));
+    expect(named(en['stream.action.stopMatchLabel'])).not.toBeNull();
+    expect(named(en['stream.action.stopUnpairLabel'])).toBeNull();
+    act(() => view.engine.scene('connecting'));
+    expect(named(en['stream.action.stopMatchLabel'])).not.toBeNull();
+    expect(named(en['stream.action.stopLabel'])).toBeNull();
+  });
+
+  it('keeps "Hold to stop and unpair" on air on a fixture’s code (the twin)', async () => {
+    await onAir('live');
+    expect(named(en['stream.action.stopUnpairLabel'])).not.toBeNull();
+    expect(named(en['stream.action.stopMatchLabel'])).toBeNull();
+  });
+
+  // Four questions (2): a court with no next streamed match still names the court's Stop.
+  it('names the court’s Stop with no next match known', async () => {
+    const view = await renderViewfinder({}, { saved: savedCourtCode() });
+    act(() => view.engine.setPairing({ next: null }));
+    act(() => view.engine.scene('live'));
+    expect(view.engine.getSnapshot().pairing?.next).toBeNull();
+    expect(named(en['stream.action.stopMatchLabel'])).not.toBeNull();
+  });
+
+  // Four questions (1): the hold goes back to waiting on the court, so a second hold has nothing to stop.
+  it('a full hold on a court code sends one stop, and the viewfinder waits for the court’s next match', async () => {
+    const view = await renderViewfinder({}, { saved: savedCourtCode() });
+    act(() => view.engine.scene('live'));
+    const hold = named(en['stream.action.stopMatchLabel']);
+    if (hold === null) throw new Error('no court Stop');
+    pressIn(hold);
+    act(() => vi.advanceTimersByTime(HOLD_MS));
+    expect(sent(view, 'stop')).toHaveLength(1);
+    expect(view.engine.getSnapshot().state).toEqual({ kind: 'paired' });
+    expect(view.navigation.current()).toBe('stream');
+    expect(named(en['stream.action.stopMatchLabel'])).toBeNull();
+    expect(goLive()).toBeTruthy();
+  });
+
+  // Four questions (4): another language.
+  it.each([
+    ['es', es],
+    ['fr', fr],
+    ['nl', nl],
+  ] as const)('names the court’s Stop in %s', async (lang, dictionary) => {
+    const view = await renderViewfinder({ deviceLanguages: [lang] }, { saved: savedCourtCode() });
+    act(() => view.engine.scene('live'));
+    const said: Readonly<Record<string, string>> = dictionary;
+    expect(said['stream.action.stopMatchLabel']).not.toBe(en['stream.action.stopMatchLabel']);
+    expect(named(said['stream.action.stopMatchLabel'])).not.toBeNull();
   });
 });
