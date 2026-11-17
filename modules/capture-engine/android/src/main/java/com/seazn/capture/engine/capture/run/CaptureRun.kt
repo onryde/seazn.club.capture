@@ -15,8 +15,10 @@ import com.seazn.capture.engine.core.Side
 import java.io.IOException
 import java.util.concurrent.TimeoutException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -37,6 +39,8 @@ class CaptureRun(
   private val calls: CoreCalls,
   private val side: () -> Side,
   private val scope: CoroutineScope,
+  /** N45 I1: the monotonic clock in ms, which spaces the probe's record lines; the test's virtual clock in core's tests. */
+  private val monoMs: () -> Long = { System.nanoTime() / 1_000_000 },
 ) {
   private val serial = CaptureSerial(scope, calls.failure)
 
@@ -73,14 +77,42 @@ class CaptureRun(
   private var lossRebuilds = 0
   private var lossGaveUp = false
 
+  /** N45 I1: the take's probe ([probeWhileSlated]), from the slate's rise to its fall. */
+  private var probing: Job? = null
+
+  /** N45 I1: a word that the camera may be free now ([mayBeFree]): the next probe goes at once. */
+  private val nudges = Channel<Unit>(Channel.CONFLATED)
+
+  /** N45 I1: refused probes since the last that opened, and when the last line of them was written. */
+  private var probeFails = 0
+  private var probeLineAt: Long? = null
+
+  /** N45 I1, review M1: when a probe last told a take over, and how many takes came back within [RETAKE_MS] of one. */
+  private var probeReleasedAt: Long? = null
+  private var quickRetakes = 0
+
   fun open(asked: PairRequest) = serial.submit { opened(asked) }
 
   fun close() = serial.submit { closed() }
 
   fun execute(command: Command) = serial.submit { run(command) }
 
-  /** Re-review 4 cap: the app came back to the foreground, which re-arms the camera's loss rebuilds ([rearm]). */
-  fun foreground() = serial.submit { rearm() }
+  /**
+   * Re-review 4 cap: the app came back to the foreground, which re-arms the camera's loss rebuilds ([rearm]). N45 I1:
+   * and the camera may be free: the operator's return is the likeliest moment its holder let it go.
+   */
+  fun foreground() {
+    serial.submit { rearm() }
+    mayBeFree()
+  }
+
+  /**
+   * N45 I1: a word that our camera may be free now (Camera2's available for a camera, its access priorities' change,
+   * the app's return): while a take holds the slate up, the next probe goes at once. Any thread; nothing otherwise.
+   */
+  fun mayBeFree() {
+    nudges.trySend(Unit)
+  }
 
   /** N2: never two streamers. One already held serves the new pairing, which its failures now name. */
   private suspend fun opened(asked: PairRequest) {
@@ -121,7 +153,14 @@ class CaptureRun(
             serial.submit(::openSeen)
           }
         }
-        launch { parts.busyOpens().collect { id -> serial.submit { busyByDevice(id) } } }
+        // N45 I2: the busy word is marked as it is heard, before its take is queued: StreamPack's "streaming" report
+        // of the same failed open comes on the opens' flow, and is no open once marked.
+        launch {
+          parts.busyOpens().collect { id ->
+            cameras.busyOpen(id)
+            serial.submit { busyByDevice(id) }
+          }
+        }
         parts.cameraLosses().collect { id -> serial.submit { lostByDevice(id) } }
       }
   }
@@ -142,7 +181,7 @@ class CaptureRun(
     if (!cameras.lost(camera)) return
     calls.line(RecordEntry("camera-lost", listOf("from" to "device", "attempt" to attempt)))
     if (attempt == null) return rebuildLost()
-    cameras.taken(camera)?.let(calls.report)
+    tellTaken(camera)
   }
 
   /**
@@ -155,7 +194,95 @@ class CaptureRun(
   private fun busyByDevice(camera: String) {
     if (attempt == null || !cameras.lost(camera)) return
     calls.line(RecordEntry("camera-lost", listOf("from" to "busy", "attempt" to attempt)))
-    cameras.taken(camera)?.let(calls.report)
+    tellTaken(camera)
+  }
+
+  /**
+   * N45: the take told once. Review M1: one that comes back within [RETAKE_MS] of a probe telling the last one over is
+   * a camera that fails as it opens, not a holder; after [QUICK_RETAKES] such, the probe waits [PROBE_SLOW_MS].
+   */
+  private fun tellTaken(camera: String) {
+    val told = cameras.taken(camera) ?: return
+    val released = probeReleasedAt
+    quickRetakes = if (released != null && monoMs() - released < RETAKE_MS) quickRetakes + 1 else 0
+    probeReleasedAt = null
+    calls.report(told)
+  }
+
+  /**
+   * N45 I1 (review, probe B): a take's only release was an available for the camera the other app held, which may never
+   * come: a holder on an id hidden from our watch (the device check's error 2), or ours made available once, by our
+   * own eviction. So while the slate is up the capture asks Camera2 itself whether our camera opens
+   * ([CaptureParts.probeCamera]): every [PROBE_EVERY_MS], and at once on a word that it may be free ([mayBeFree]). A
+   * probe that opens it tells the take over and the machine reopens it; a refused one keeps the slate. Never the
+   * transport: nothing here rebuilds, reconnects or stops. It ends itself once no take is told or there is nothing to
+   * probe (StreamPack holds a camera source again, or nothing is held), so a release or a stop needs no cancel.
+   */
+  private fun probeWhileSlated() {
+    probeFails = 0
+    probeLineAt = null
+    probing =
+      scope.launch {
+        do {
+          delay(PROBE_GAP_MS)
+          withTimeoutOrNull(probeEvery() - PROBE_GAP_MS) { nudges.receive() }
+          val going = CompletableDeferred<Boolean>()
+          serial.submit {
+            var more = false
+            try {
+              more = probeTake()
+            } finally {
+              going.complete(more)
+            }
+          }
+        } while (going.await())
+      }
+  }
+
+  private fun probeEvery(): Long = if (quickRetakes >= QUICK_RETAKES) PROBE_SLOW_MS else PROBE_EVERY_MS
+
+  /** The slate's: each slate starts its probing afresh, never on the last one's count and 30 s (see [slate]). */
+  private fun stopProbing() {
+    probing?.cancel()
+    probing = null
+  }
+
+  /** N45 I1: one probe, on the queue, so never beside a reopen or a build of ours. False ends the probing. */
+  private suspend fun probeTake(): Boolean {
+    if (!cameras.takeTold()) return false
+    val found =
+      try {
+        parts.probeCamera() ?: return false
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        Probe.Refused(e.javaClass.simpleName) // a probe's throw is a refusal, never the session's failure
+      }
+    return when (found) {
+      is Probe.Refused -> refused(found.error)
+      is Probe.Opened -> opened(found.cameraId)
+    }
+  }
+
+  /** N45 I1: a refused probe keeps the slate. One line at the first, then one each [PROBE_LINE_MS], with the count. */
+  private fun refused(error: String): Boolean {
+    probeFails += 1
+    val now = monoMs()
+    if (probeLineAt?.let { now - it < PROBE_LINE_MS } != true) {
+      probeLineAt = now
+      calls.line(RecordEntry("camera-probe", listOf("ok" to false, "error" to error, "failures" to probeFails)))
+    }
+    return true
+  }
+
+  /** N45 I1: the probe opened our camera: the take is told over, and the machine reopens it under the slate. */
+  private fun opened(camera: String): Boolean {
+    calls.line(RecordEntry("camera-probe", listOf("ok" to true, "failures" to probeFails)))
+    cameras.probed(camera)?.let { released ->
+      probeReleasedAt = monoMs()
+      calls.report(released)
+    }
+    return false
   }
 
   /**
@@ -270,7 +397,7 @@ class CaptureRun(
       is Command.SetMaxBw -> parts.maxBw(command.attemptId, command.bytesPerSecond)
       Command.SwitchCamera -> parts.switchCamera()
       Command.ReopenCamera -> reopen()
-      is Command.Slate -> parts.slate(command.on)
+      is Command.Slate -> slate(command.on)
       Command.StopBroadcast, is Command.End -> stopBroadcast()
       else -> Unit // HTTP, the store, permissions, the service and record lines are BridgeCore's or the keeper's
     }
@@ -307,6 +434,17 @@ class CaptureRun(
       else -> rebuild("reopen")
     }
     if (parts.held) calls.report(Input.CameraReopened(true))
+  }
+
+  /**
+   * N45 I1: the slate, and the probe of the take it stands for while it is up. Each slate ends the last one's
+   * probing, which may still wait for its next step (a take told over by an available or an open seen), so the
+   * next take's first refusal is written with its own count.
+   */
+  private suspend fun slate(on: Boolean) {
+    parts.slate(on)
+    stopProbing()
+    if (on) probeWhileSlated()
   }
 
   private fun nothingHeld(connect: Command.Connect) {
@@ -487,6 +625,22 @@ class CaptureRun(
      * rebuild and two lines every RETRY_MS while Paired, draining battery and record space.
      */
     const val MAX_LOSS_REBUILDS = 5
+
+    /** N45 I1 (controller's ruling, fix round 1): a take is probed every 5 s while the slate is up. */
+    const val PROBE_EVERY_MS = 5_000L
+
+    /** N45 I1: the least time between two probes, a word's included, so a burst of words is one probe a second. */
+    const val PROBE_GAP_MS = 1_000L
+
+    /** N45 I1: a refused probe's line, at the first and then at most one in this long (the ruling: first + every 30 s). */
+    const val PROBE_LINE_MS = 30_000L
+
+    /** Review M1: a take told this soon after a probe told the last one over is a retake: the camera failed as it opened. */
+    const val RETAKE_MS = 10_000L
+
+    /** Review M1: after this many retakes in a row, the probe waits [PROBE_SLOW_MS]; a word that the camera may be free still probes at once. */
+    const val QUICK_RETAKES = 3
+    const val PROBE_SLOW_MS = 30_000L
 
     /** The cause chain read for a start's failure, as `SrtOptions` and the adapter read it. */
     private const val MAX_CAUSES = 8

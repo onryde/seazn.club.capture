@@ -224,9 +224,10 @@ class CameraAvailabilityTest {
   /**
    * N45 (device check 2026-11-17): another app that opens OUR camera evicts us, and Camera2 says so only as our
    * device's disconnect; its availability events for our id are ours by id ([CameraAvailability.unavailable] skips
-   * them). With a broadcast held the capture reads that loss as a take: contended, told once, not ready, and the
-   * holder's release (the camera available again) is told, so the engine reopens it under the slate. Another
-   * camera's loss, or one with nothing of ours open, is nothing.
+   * them). With a broadcast held the capture reads that loss as a take: contended, told once, not ready. N45 I1: our
+   * camera's own available is no release of it (our eviction says it too, review I1); the probe that opens it is
+   * ([CameraAvailability.probed]), so the engine reopens it under the slate. Another camera's loss, or one with
+   * nothing of ours open, is nothing.
    */
   @Test
   fun `N45 our camera taken on air is contention, told once, and its release is told`() {
@@ -242,12 +243,62 @@ class CameraAvailabilityTest {
     assertFalse(fresh.ready(camera = true), "taken: not ready")
     assertEquals(null, fresh.taken("0"), "told once")
     assertEquals(null, fresh.unavailable("0", 2_000), "the holder's own events of our camera are no news")
-    assertEquals(Input.CameraReleased, fresh.available("0", 3_000), "the holder let go: the engine reopens")
+    assertEquals(null, fresh.available("0", 3_000), "N45 I1: our own camera's available is no release of a take of it")
+    assertTrue(fresh.takeTold())
+    assertEquals(null, fresh.probed("1"), "N45 I1: a probe of another camera ends nothing")
+    assertEquals(Input.CameraReleased, fresh.probed("0"), "N45 I1: the probe opened it: the engine reopens")
+    assertFalse(fresh.takeTold())
+    assertEquals(null, fresh.probed("0"), "told over once")
     fresh.opening("0") // the reopen
     assertTrue(fresh.ready(camera = true))
     assertEquals(null, fresh.opened("0"), "its open tells nothing more")
     fresh.held(null) // released
     assertEquals(null, fresh.taken("0"), "nothing of ours held: nothing taken")
+  }
+
+  /**
+   * N45 I1: a take told by the availability watch (F-P5-9, another app's camera) ends by its release as before, or by
+   * a probe that opens ours, whichever comes first: whichever camera the other app held, our camera opening is the
+   * end of it. Off air the probe is never made; a new open asked ends the capture's own take's hold on our available.
+   */
+  @Test
+  fun `N45 I1 a probe that opens our camera ends any take, and a new open asked gives our available back`() {
+    val watched = CameraAvailability()
+    watched.opening("0")
+    assertEquals(null, watched.sessionStarted())
+    assertEquals(Input.CameraContended, watched.unavailable("1", 1_000), "F-P5-9")
+    assertEquals(Input.CameraReleased, watched.probed("0"), "ours opened beside it")
+    assertEquals(null, watched.available("1", 2_000), "its release after: nothing more")
+    assertFalse(watched.contended("1"))
+
+    val own = CameraAvailability()
+    own.opening("0")
+    own.sessionStarted()
+    assertEquals(Input.CameraContended, own.taken("0"))
+    own.opening("0") // the broadcast ended: the slate's end opens ours afresh (afterBroadcast)
+    assertEquals(Input.CameraReleased, own.available("0", 3_000), "off air the available is the release again (I3)")
+  }
+
+  /**
+   * N45 I2 (review, probe A): StreamPack 3.2.1 reports a source streaming after its open failed busy (javap). After the
+   * busy word, our open reports are no open, so no take is told over by one, until a new open of ours is asked.
+   * Another camera's word marks nothing.
+   */
+  @Test
+  fun `N45 I2 after a busy word our open reports are no open until a new open is asked`() {
+    val fresh = CameraAvailability()
+    fresh.opening("0")
+    fresh.sessionStarted()
+    fresh.busyOpen("1")
+    assertEquals(null, fresh.opened("0"), "another camera's word marks nothing: ours open, nothing told")
+    assertTrue(fresh.ready(camera = true))
+    fresh.busyOpen("0")
+    assertEquals(Input.CameraContended, fresh.taken("0"), "the word's take")
+    assertEquals(null, fresh.opened("0"), "StreamPack's streaming report of the failed open")
+    assertTrue(fresh.contended("0"), "still taken")
+    assertFalse(fresh.ready(camera = true))
+    fresh.opening("0") // a new open asked: the reopen
+    assertEquals(Input.CameraReleased, fresh.opened("0"), "its open is one")
   }
 
   @Test

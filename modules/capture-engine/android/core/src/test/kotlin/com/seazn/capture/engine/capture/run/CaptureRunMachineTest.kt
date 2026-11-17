@@ -38,6 +38,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -64,7 +65,9 @@ class CaptureRunMachineTest {
       // BridgeCore's cameraBusy: the camera is taken (its `holds` check is BridgeCoreTest's).
       val busy = { request: PairRequest -> told.busy += request; engine.send(Input.CameraContended); scheduler.advanceBy(0) }
       val calls = told.calls(report = { told.reports += it; engine.send(it); scheduler.advanceBy(0) }, cameraBusy = busy)
-      run = CaptureRun(parts, signals, cameras, calls, { Side.LEFT }, scope.queueScope())
+      run = CaptureRun(parts, signals, cameras, calls, { Side.LEFT }, scope.queueScope(), monoMs = { scope.testScheduler.currentTime })
+      parts.cameras = cameras
+      parts.later = scope.queueScope()
       engine.start()
       run.open(Configs.pairRequest())
     }
@@ -334,6 +337,7 @@ class CaptureRunMachineTest {
     runTest {
       val rig = Rig(this)
       live(rig)
+      rig.parts.probeAnswer = HELD // N45 I1: while the other app keeps it, each probe of it is refused
       rig.parts.lose("0") // StreamPack: "Camera 0 has been disconnected"
       both(rig, 10_000) // past the stall watchdog's 3 s and the first-frame grace, twice over
       assertEquals(1, rig.kindCount("camera-taken"), rig.lines.joinToString("\n"))
@@ -341,9 +345,12 @@ class CaptureRunMachineTest {
       assertHeld(rig, "taken")
       assertShownTaken(rig, "taken")
 
-      val released = assertNotNull(rig.cameras.available("0", 20_000), "CameraWatch: the holder let go")
-      rig.engine.send(released)
-      both(rig, 500)
+      // N45 I1: our own camera's available is no release of a take of it (our eviction says it too); CameraWatch asks
+      // for a probe, which finds it free.
+      assertNull(rig.cameras.available("0", 20_000), "the holder let go: the probe decides")
+      rig.parts.probeAnswer = Probe.Opened("0")
+      rig.run.mayBeFree()
+      both(rig, 1_500)
       assertEquals(1, rig.executed.count { it == Command.ReopenCamera }, "${rig.executed}")
       assertEquals(listOf("reopen", "slate false"), rig.parts.log.filter { it == "reopen" || it.startsWith("slate f") }, "the camera swapped back in")
       rig.engine.send(Input.Frames(1, 40, 60))
@@ -358,41 +365,195 @@ class CaptureRunMachineTest {
     }
 
   /**
-   * N45, the order the device can also deliver: our eviction's own "available" reaches CameraWatch after the take, so
-   * the release is told while the other app still holds the camera. The reopen's open fails busy, which StreamPack
-   * logs and carries on ("Camera 0 is in error 2"), so the reopen answers true over a camera with no picture. That
-   * word is a take again: the slate goes back up and nothing reconnects; the real release brings the camera back.
+   * N45 I1, the order the device can also deliver: our eviction's own "available" reaches CameraWatch after the take,
+   * while the other app still holds the camera. Before round 1 it told the take over, and the reopen landed on the
+   * held camera (review I2). It is no release now: the probe it asks for is refused, the slate stays, and nothing
+   * reconnects; the probe that finds the camera free brings it back.
    */
   @Test
-  fun `N45 a reopen that lands on a camera still held is taken again - the slate goes back up and nothing reconnects`() =
+  fun `N45 I1 our eviction's own available after the take is no release - the slate stays and nothing reconnects`() =
     runTest {
       val rig = Rig(this)
       live(rig)
+      rig.parts.probeAnswer = HELD
       rig.parts.lose("0")
       both(rig, 500)
-      rig.engine.send(assertNotNull(rig.cameras.available("0", 1_000), "the eviction's own: told as a release"))
-      both(rig, 500)
-      assertEquals(listOf("slate true", "reopen", "slate false"), rig.parts.log.filter { it == "reopen" || it.startsWith("slate") })
-      rig.parts.busyOpen("0") // StreamPack: the reopen's open failed busy, and it carried on
+      assertNull(rig.cameras.available("0", 1_000), "the eviction's own")
+      rig.run.mayBeFree() // CameraWatch asks for a probe on it
       both(rig, 10_000)
-      assertEquals(2, rig.kindCount("camera-taken"), rig.lines.joinToString("\n"))
-      assertEquals(listOf("slate true", "reopen", "slate false", "slate true"), rig.parts.log.filter { it == "reopen" || it.startsWith("slate") })
-      assertHeld(rig, "taken again")
-      assertShownTaken(rig, "taken again")
+      assertEquals(listOf("slate true"), rig.parts.log.filter { it == "reopen" || it.startsWith("slate") })
+      assertEquals(0, rig.executed.count { it == Command.ReopenCamera }, "${rig.executed}")
+      assertTrue(rig.parts.probeCount >= 2, "probed: ${rig.parts.probeCount}")
+      assertHeld(rig, "taken")
+      assertShownTaken(rig, "taken")
 
-      rig.engine.send(assertNotNull(rig.cameras.available("0", 20_000), "the real release"))
-      both(rig, 500)
+      rig.parts.probeAnswer = Probe.Opened("0")
+      until(rig, 5_100) { Command.ReopenCamera in rig.executed }
+      both(rig, 200)
       rig.engine.send(Input.Frames(1, 40, 60))
       both(rig, 500)
       rig.engine.send(Input.Frames(1, 55, 83))
       both(rig, 500)
-      assertEquals(2, rig.executed.count { it == Command.ReopenCamera }, "${rig.executed}")
+      assertEquals(1, rig.executed.count { it == Command.ReopenCamera }, "${rig.executed}")
       assertEquals(1, rig.kindCount("camera-resumed"), rig.lines.joinToString("\n"))
       assertEquals(CameraState.OWN, rig.engine.phase.session?.camera)
       assertHeld(rig, "resumed")
     }
 
+  /**
+   * N45 I2 (review, probe A): StreamPack 3.2.1 reports a reopen whose open failed busy as streaming (javap:
+   * `CameraController.addTarget` swallows the failure, then `CameraSource.startStream` reports streaming). Read after
+   * the busy word's take, that report told the take over before the fix: the machine reopened a camera another app
+   * held, found no picture, and reconnected twice in 10 s. Only a new open asked ends a busy word's hold now. Here the
+   * release is another camera's (F-P5-9), so the reopen's busy word is its first take of ours.
+   */
+  @Test
+  fun `N45 I2 a reopen reported streaming after its busy word is taken again and nothing reconnects - the report read after the word`() =
+    runTest { staleOpen(this, StaleOpen.AFTER) }
+
+  @Test
+  fun `N45 I2 a reopen reported streaming after its busy word is taken again and nothing reconnects - the report read before the word`() =
+    runTest { staleOpen(this, StaleOpen.BEFORE) }
+
+  @Test
+  fun `N45 I2 a reopen reported streaming after its busy word is taken again and nothing reconnects - both heard before the queue has the word`() =
+    runTest { staleOpen(this, StaleOpen.AT_ONCE) }
+
+  private fun staleOpen(scope: TestScope, order: StaleOpen) =
+    with(scope) {
+      val rig = Rig(this)
+      live(rig)
+      rig.engine.send(assertNotNull(rig.cameras.unavailable("1", 5_000), "F-P5-9: another app opened camera 1"))
+      both(rig, 500)
+      assertEquals(listOf("slate true"), rig.parts.log.filter { it.startsWith("slate") }, order.name)
+      rig.parts.busyReopens += order
+      rig.engine.send(assertNotNull(rig.cameras.available("1", 6_000), "camera 1 let go"))
+      both(rig, 10_000)
+      val record = rig.lines.joinToString("\n")
+      assertEquals(1, rig.executed.count { it == Command.ReopenCamera }, "${order.name}: one reopen, ${rig.executed}")
+      assertEquals(2, rig.kindCount("camera-taken"), "${order.name}: $record")
+      assertEquals(listOf("slate true", "reopen", "slate false", "slate true"), rig.parts.log.filter { it == "reopen" || it.startsWith("slate") }, order.name)
+      assertHeld(rig, order.name)
+      assertShownTaken(rig, order.name)
+    }
+
+  /** Advances both clocks a tenth of a second at a time until [what] holds, for at most [ms]: the time it took. */
+  private fun TestScope.until(rig: Rig, ms: Long, what: () -> Boolean): Long {
+    var spent = 0L
+    while (!what() && spent < ms) {
+      both(rig, STEP_MS)
+      spent += STEP_MS
+    }
+    assertTrue(what(), "not within $ms ms: ${rig.told.lines}")
+    return spent
+  }
+
+  /**
+   * N45 I1 (review, probe B): the device check's holder sat on another camera id, hidden from our availability watch
+   * (Camera2 refused our open with error 2, MAX_CAMERAS_IN_USE), so no available for ours comes when it lets go, and
+   * the take held the slate until Stop. The probe tries our camera every 5 s, and never the transport: refused, the
+   * slate stays and the record has one line at the first and one 30 s after, with the count; opened, the camera is
+   * back within 5 s of its holder letting go, at worst just after a refusal.
+   */
+  @Test
+  fun `N45 I1 a take no release reaches ends by the probe within 5 s of its holder letting go, and nothing reconnects`() =
+    runTest {
+      val rig = Rig(this)
+      live(rig)
+      rig.parts.probeAnswer = HELD
+      rig.parts.lose("0")
+      both(rig, 60_000)
+      assertHeld(rig, "a minute held")
+      assertShownTaken(rig, "a minute held")
+      assertTrue(rig.parts.probeCount in 11..12, "every 5 s: ${rig.parts.probeCount}")
+      val refused = listOf<Pair<String, Any?>>("ok" to false, "error" to "max-in-use")
+      assertEquals(listOf(refused + ("failures" to 1), refused + ("failures" to 7)), rig.told.lines.filter { it.kind == "camera-probe" }.map { it.fields })
+
+      val probed = rig.parts.probeCount
+      until(rig, 6_000) { rig.parts.probeCount > probed }
+      rig.parts.probeAnswer = Probe.Opened("0") // let go just after a refusal: the worst case
+      val took = until(rig, 6_000) { Command.ReopenCamera in rig.executed }
+      assertTrue(took <= 5_000, "within 5 s: $took ms")
+      assertEquals(listOf<Pair<String, Any?>>("ok" to true, "failures" to 13), rig.told.lines.last { it.kind == "camera-probe" }.fields)
+      both(rig, 500)
+      rig.engine.send(Input.Frames(1, 40, 60))
+      both(rig, 500)
+      rig.engine.send(Input.Frames(1, 55, 83))
+      both(rig, 500)
+      assertEquals(CameraState.OWN, rig.engine.phase.session?.camera)
+      assertEquals(listOf(1, 1, 1), listOf("camera-released", "camera-reopened", "camera-resumed").map { rig.kindCount(it) }, rig.lines.joinToString("\n"))
+      assertHeld(rig, "resumed")
+      val after = rig.parts.probeCount
+      both(rig, 20_000)
+      assertEquals(after, rig.parts.probeCount, "the slate down: no probe")
+    }
+
+  /**
+   * N45 I1: three words that the camera may be free now each probe at once, not at the next 5 s: Camera2's available
+   * for a camera and its access priorities' change (CameraWatch's, both `mayBeFree`), and the app's return to the
+   * foreground, the moment the operator most often lets the camera go.
+   */
+  @Test
+  fun `N45 I1 Camera2's word that the camera may be free probes at once`() = runTest { nudged(this, "camera watch") { it.run.mayBeFree() } }
+
+  @Test
+  fun `N45 I1 the app's return to the foreground probes at once`() = runTest { nudged(this, "foreground") { it.run.foreground() } }
+
+  private fun nudged(scope: TestScope, label: String, nudge: (Rig) -> Unit) =
+    with(scope) {
+      val rig = Rig(this)
+      live(rig)
+      rig.parts.probeAnswer = Probe.Refused("in-use")
+      rig.parts.lose("0")
+      both(rig, 6_500) // refused at 5 s; the next is due at 10 s
+      assertEquals(1, rig.parts.probeCount, label)
+      rig.parts.probeAnswer = Probe.Opened("0")
+      nudge(rig)
+      both(rig, 300)
+      assertEquals(2, rig.parts.probeCount, label)
+      assertEquals(1, rig.executed.count { it == Command.ReopenCamera }, "$label: ${rig.executed}")
+      assertHeld(rig, label)
+    }
+
+  /**
+   * N45 I1, review M1 (probe D): a camera lost at every open, a device error that is no other app's. Each probe opens
+   * it and each reopen loses it again at once; after three such, the probe waits 30 s, not 5, so the take does not
+   * churn a reopen and its lines every 5 s for the rest of the match. Nothing reconnects.
+   */
+  @Test
+  fun `N45 I1 a camera lost at every reopen is probed every 30 s after three quick retakes, and nothing reconnects`() =
+    runTest {
+      val rig = Rig(this)
+      live(rig)
+      rig.parts.probeAnswer = Probe.Opened("0")
+      rig.parts.losesOnReopen = true
+      rig.parts.lose("0")
+      both(rig, 120_000)
+      val reopens = rig.executed.count { it == Command.ReopenCamera }
+      assertEquals(6, reopens, "at 5, 10 and 15 s, then 45, 75 and 105 s: ${rig.executed.filter { it == Command.ReopenCamera || it is Command.Slate }}")
+      assertHeld(rig, "lost at every open")
+      assertShownTaken(rig, "lost at every open")
+
+      rig.parts.losesOnReopen = false // the camera mended: the next slow probe brings it back
+      until(rig, 31_000) { rig.kindCount("camera-resumed") == 0 && rig.executed.count { it == Command.ReopenCamera } == 7 }
+      both(rig, 200)
+      rig.engine.send(Input.Frames(1, 40, 60))
+      both(rig, 500)
+      rig.engine.send(Input.Frames(1, 55, 83))
+      both(rig, 15_000)
+      assertEquals(CameraState.OWN, rig.engine.phase.session?.camera, "resumed")
+      rig.engine.send(Input.Frames(1, 600, 900))
+      rig.parts.lose("0") // a take long after: no retake, so probed every 5 s again
+      both(rig, 5_500)
+      assertEquals(8, rig.executed.count { it == Command.ReopenCamera }, "the quick count starts again")
+      rig.parts.probeAnswer = null // nothing to probe: the probing ends, so runTest's last drain does too
+      both(rig, 31_000)
+    }
+
   private companion object {
     const val STEP_MS = 100L
+
+    /** N45 I1: a probe's answer while another app holds a camera ours cannot open beside it (error 2). */
+    val HELD = Probe.Refused("max-in-use")
   }
 }

@@ -393,6 +393,39 @@ class CaptureRunTest {
     }
 
   /**
+   * N45 I1: the slate with no take told probes nothing, and its probing ends by itself (the next `Slate(true)`, the
+   * machine's answer to a take, starts it again). A probe that throws is a
+   * refusal named by its class, never the session's failure, and its line is the allow-list's: a listed kind, each key
+   * plain or a scalar. The slate's fall ends the probing.
+   */
+  @Test
+  fun `N45 I1 a probe's throw is a refusal, never a failure, its line is the allow-list's, and a slate with no take probes nothing`() =
+    runTest {
+      val s = opened()
+      s.parts.probeAnswer = Probe.Opened("0")
+      does(s, connect(1), Command.Slate(true))
+      assertEquals(0, s.parts.probeCount, "no take told: nothing probed")
+      s.parts.probeFailure = IllegalStateException("made-up")
+      s.parts.lose("0")
+      runCurrent()
+      s.run.execute(Command.Slate(true)) // the machine's answer to the take; never drained: a held take probes on
+      advanceTimeBy(5_500)
+      runCurrent()
+      assertEquals(1, s.parts.probeCount)
+      assertEquals(emptyList(), s.told.failures, "never the session's failure")
+      val line = s.told.lines.single { it.kind == "camera-probe" }
+      assertEquals(listOf<Pair<String, Any?>>("ok" to false, "error" to "IllegalStateException", "failures" to 1), line.fields)
+      val list = Shared.read("scrub/allow-list.json")
+      val plain = list.getJSONArray("plain").let { a -> (0 until a.length()).map { a.getString(it) }.toSet() }
+      assertTrue(line.kind in list.getJSONObject("kinds").keySet(), "the kind is listed")
+      assertEquals(emptyList(), line.fields.map { it.first }.filterNot { it in plain || it in list.getJSONObject("scalars").keySet() }, "each key plain or a scalar")
+      does(s, Command.Slate(false))
+      advanceTimeBy(20_000)
+      runCurrent()
+      assertEquals(1, s.parts.probeCount, "the slate down: no probe")
+    }
+
+  /**
    * Session 7, F-S7-1: every SRT start failed with `site: Preconditions.outOfBounds`, the JDK's bounds check, which
    * names no call of ours or StreamPack's. The stack below is the one a list's `get(0)` makes in StreamPack 3.2.1's
    * `TsMuxer.addStreams` (reproduced on the JVM against its bytecode): the site is the first frame outside the Java
@@ -554,6 +587,60 @@ class CaptureRunTest {
    * once, never a rebuild. With nothing on air it is the open's own failure, read where the open fails (I4, I-2):
    * nothing here. Another camera's is nothing.
    */
+  /**
+   * N45 I1: each slate ends the last one's probing, so the next take is probed afresh, by one probing only: its first
+   * refusal is written with its own count, never folded into the last take's 30 s. A take told over by another path
+   * (an available, an open seen) leaves the probing waiting for its next step, and the slate comes down before it.
+   */
+  @Test
+  fun `N45 I1 a take after the slate came down is probed afresh - its first refusal is written`() =
+    runTest {
+      val s = opened()
+      s.parts.probeAnswer = Probe.Refused("max-in-use")
+      try {
+        does(s, connect(1))
+        s.parts.lose("0")
+        runCurrent()
+        s.run.execute(Command.Slate(true))
+        advanceTimeBy(5_500)
+        runCurrent()
+        assertEquals(listOf<Any?>(1), probeCounts(s), "the first refusal")
+        assertNotNull(s.cameras.probed("0"), "told over by another path, the probing waiting")
+        s.run.execute(Command.Slate(false))
+        runCurrent()
+        s.parts.lose("0")
+        runCurrent()
+        s.run.execute(Command.Slate(true))
+        advanceTimeBy(5_500)
+        runCurrent()
+        assertEquals(listOf<Any?>(1, 1), probeCounts(s), "the next take's first refusal, written")
+        assertEquals(2, s.parts.probeCount, "one probing at a time: the last one's step never comes")
+      } finally {
+        s.parts.probeAnswer = null // nothing to probe: the probing ends, so runTest's drain does, pass or fail
+      }
+    }
+
+  private fun probeCounts(s: Scene): List<Any?> =
+    s.told.lines.filter { it.kind == "camera-probe" }.map { line -> line.fields.single { it.first == "failures" }.second }
+
+  /**
+   * N45 I2: the busy word is marked as it is heard, not when the queue gets to it. StreamPack sends the word and its
+   * "streaming" report of the same failed open together, from inside the open. The preview's busy failure tells the
+   * take from the glue, outside the queue (C7 I-2), so a report read before a queued mark was our open, and told the
+   * take over while the other app still held the camera: the machine reopened into its hold.
+   */
+  @Test
+  fun `N45 I2 a busy word and its streaming report heard together are no open - the preview's take stands`() =
+    runTest {
+      val s = opened()
+      assertEquals(Input.CameraContended, s.cameras.openFailed("0", busy = true), "the preview's busy failure: a take")
+      s.parts.busyOpen("0")
+      s.parts.opened("0")
+      advanceUntilIdle()
+      assertEquals(emptyList(), s.told.reports, "the report of a busy open is no open: no release")
+      assertTrue(s.cameras.contended("0"), "the take stands")
+    }
+
   @Test
   fun `N45 a busy open of our camera on air is a take, told once - with nothing on air it is the open's own`() =
     runTest {

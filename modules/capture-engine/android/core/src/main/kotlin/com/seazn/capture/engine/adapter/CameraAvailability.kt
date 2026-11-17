@@ -19,6 +19,9 @@ import com.seazn.capture.engine.core.Input
  *   open ([opened]). The camera reads ready ([ready]) unless that open failed ([openFailed]).
  * - Device session 4, F-S4-1: StreamPack's word that ours was lost ([lost]) reads as a failed open does: not
  *   ready until a new open is asked (the capture builds it afresh) or one is seen.
+ * - N45: on air the capture tells a loss or a busy open of ours as a take ([taken]). Our own camera's available is
+ *   no release of that take (our eviction says it too, review I1); a probe that opens our camera is ([probed]), and
+ *   ends any take. After a busy word our open reports are no open until a new open is asked ([busyOpen]).
  *
  * The camera callback (main looper, Task 37) and the capture scope (Task 36) both call it.
  */
@@ -33,6 +36,12 @@ class CameraAvailability(private val selfWindowMs: Long = 1_500) {
 
   /** I-2: the open of [ours] failed, or it was [lost], since it was asked; a new open asked, or one seen, clears it. */
   private var failed = false
+
+  /** N45 I2: StreamPack logged the open of [ours] failed busy since it was asked ([busyOpen]); only a new open asked clears it. */
+  private var busySinceOpening = false
+
+  /** N45 I1: the take told is the capture's own, of [ours] ([taken]): its available is no release. A new open asked, or the release, ends it. */
+  private var ownTake = false
 
   /** The camera we hold now, or null. Ours is never contended. */
   @Synchronized
@@ -49,15 +58,21 @@ class CameraAvailability(private val selfWindowMs: Long = 1_500) {
   fun opening(id: String) {
     ours = id
     failed = false
+    busySinceOpening = false
+    ownTake = false
   }
 
   /**
    * I-2: StreamPack reports [id]'s source open (previewing or streaming): ours, so no longer contended, and
-   * a take told that this clears is told over. The open of a source we have moved off is nothing.
+   * a take told that this clears is told over. The open of a source we have moved off is nothing. N45 I2: nor is
+   * one whose open StreamPack logged busy since it was asked ([busyOpen]): 3.2.1 reports such a source streaming
+   * all the same (javap: `CameraController.addTarget` swallows the failure, then `CameraSource.startStream` emits
+   * streaming), and read after the busy word's take it told the take over, so the machine reopened a camera another
+   * app held and reconnected twice in 10 s (review, probe A).
    */
   @Synchronized
   fun opened(id: String): Input? {
-    if (id != ours) return null
+    if (id != ours || busySinceOpening) return null
     held(id)
     failed = false
     return if (inSession && told && contended.isEmpty()) releasedTold() else null
@@ -93,11 +108,42 @@ class CameraAvailability(private val selfWindowMs: Long = 1_500) {
    * N45 (device check 2026-11-17): another app took [id], ours, while a broadcast holds it. An app that opens OUR
    * camera evicts us, and Camera2 says so only as our device's disconnect, while its availability events for our id
    * read as ours ([unavailable]); and StreamPack keeps a busy open of it to itself where it swallows the open's
-   * failure. So the capture, which knows a broadcast is held, tells it here: not ready, contended, told once, and the
-   * holder's release ([available]) is told, so the engine reopens it. Null when [id] is not ours, or already told.
+   * failure. So the capture, which knows a broadcast is held, tells it here: not ready, contended, told once, and a
+   * probe that opens it ([probed]) is told as its release, so the engine reopens it. Null when [id] is not ours, or
+   * already told.
    */
   @Synchronized
-  fun taken(id: String): Input? = openFailed(id, busy = true)
+  fun taken(id: String): Input? {
+    val told = openFailed(id, busy = true)
+    if (id == ours) ownTake = true
+    return told
+  }
+
+  /**
+   * N45 I2: StreamPack logged an open of [id] failed busy (its `CameraUtils` error 1 or 2, read by `VendorLines`). Ours:
+   * its open reports are no open until a new open is asked ([opening]). Marked as the word is heard, before its take
+   * is queued, so a report read after the take always finds it.
+   */
+  @Synchronized
+  fun busyOpen(id: String) {
+    if (id == ours) busySinceOpening = true
+  }
+
+  /**
+   * N45 I1: a probe opened [id], ours, while a take is told: nothing holds it from us, whichever camera the other app
+   * held, so the take is told over and the engine reopens it. The contended set goes with it: our camera opening is
+   * its answer. Null when [id] is not ours, or no take is told.
+   */
+  @Synchronized
+  fun probed(id: String): Input? {
+    if (id != ours || !told) return null
+    contended.clear()
+    return releasedTold()
+  }
+
+  /** N45 I1: a take is told and not yet told over: the capture probes it while the slate is up. */
+  @Synchronized
+  fun takeTold(): Boolean = told
 
   /**
    * I-2: the camera reads ready while the source is a [camera] and no open of it has failed since it was
@@ -123,6 +169,9 @@ class CameraAvailability(private val selfWindowMs: Long = 1_500) {
 
   @Synchronized
   fun available(id: String, monoMs: Long): Input? {
+    // N45 I1: our eviction makes ours available too, before or after its take, while the other app still holds it
+    // (review I1, I2), and a holder on a conflicting id may never make ours change again: the probe decides.
+    if (ownTake && id == ours) return null
     if (!contended.remove(id) || contended.isNotEmpty() || !inSession) return null
     return releasedTold()
   }
@@ -167,6 +216,7 @@ class CameraAvailability(private val selfWindowMs: Long = 1_500) {
 
   private fun releasedTold(): Input {
     told = false
+    ownTake = false
     return Input.CameraReleased
   }
 

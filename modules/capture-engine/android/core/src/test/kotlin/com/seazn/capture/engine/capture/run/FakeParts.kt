@@ -1,5 +1,6 @@
 package com.seazn.capture.engine.capture.run
 
+import com.seazn.capture.engine.adapter.CameraAvailability
 import com.seazn.capture.engine.adapter.CameraFailures
 import com.seazn.capture.engine.core.Command
 import com.seazn.capture.engine.core.Input
@@ -11,6 +12,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 
@@ -55,6 +57,19 @@ class FakeParts : CaptureParts {
   /** Whether a stop or a release shows as the endpoint's close. False: a vendor close that failed quietly, which no watch sees. */
   var closeShows = true
   var reopens = true
+
+  /** N45 I2: the run's [CameraAvailability], told of each open the adapter asks for, as `StreamerAdapter` tells it. */
+  var cameras: CameraAvailability? = null
+
+  /** N45 I2: where a [StaleOpen.AFTER] report is sent from, later; the test's own scope. */
+  var later: CoroutineScope? = null
+
+  /**
+   * N45 I2: reopens that land on a camera another app still holds, in turn, as StreamPack 3.2.1 makes them (javap:
+   * `CameraController.addTarget` logs the busy error and swallows it, then `CameraSource.startStream` reports the
+   * source streaming). The busy word, then the open report, in the order each one names.
+   */
+  val busyReopens = ArrayDeque<StaleOpen>()
   private var closing = CompletableDeferred<Unit>()
 
   override var held = false
@@ -78,6 +93,7 @@ class FakeParts : CaptureParts {
     delay(STEP_MS)
     close()
     held = false
+    onSlate = false
     log += "release done"
     stopped?.invoke()
   }
@@ -124,6 +140,7 @@ class FakeParts : CaptureParts {
 
   override suspend fun afterBroadcast() {
     log += "after"
+    onSlate = false // the adapter's slate(false)
   }
 
   override fun bitrate(bps: Int) {
@@ -140,11 +157,63 @@ class FakeParts : CaptureParts {
 
   override suspend fun reopenCamera(): Boolean {
     log += "reopen"
+    val id = camera
+    if (reopens && id != null) {
+      onSlate = false
+      cameras?.opening(id) // the adapter's I-2 call, before the source
+      busyReopens.removeFirstOrNull()?.let { order -> stale(id, order) }
+      if (losesOnReopen) lose(id)
+    }
     return reopens
+  }
+
+  /** N45 I1 (review, probe D): a camera that is lost at every open, StreamPack's device error 4. */
+  var losesOnReopen = false
+
+  /** N45 I1: what each probe of our camera finds, in turn; [probeAnswer] once these run out. Null: nothing probed. */
+  val probes = ArrayDeque<Probe>()
+  var probeAnswer: Probe? = null
+
+  /** N45 I1: a probe that throws this. */
+  var probeFailure: Exception? = null
+
+  /** N45 I1: the probes made. */
+  var probeCount = 0
+    private set
+
+  /** Whether the slate is the source, as the adapter reads `sourceFlow`: a probe is made only then. */
+  private var onSlate = false
+
+  override suspend fun probeCamera(): Probe? {
+    if (!onSlate) return null // the adapter's: never beside a camera source of StreamPack's
+    probeCount += 1
+    probeFailure?.let { throw it }
+    return probes.removeFirstOrNull() ?: probeAnswer
+  }
+
+  private fun stale(id: String, order: StaleOpen) {
+    when (order) {
+      StaleOpen.BEFORE -> {
+        opened(id)
+        busyOpen(id)
+      }
+      StaleOpen.AFTER -> {
+        busyOpen(id)
+        checkNotNull(later) { "a report after the word needs a scope" }.launch {
+          delay(STALE_MS)
+          opened(id)
+        }
+      }
+      StaleOpen.AT_ONCE -> {
+        busyOpen(id)
+        opened(id)
+      }
+    }
   }
 
   override suspend fun slate(on: Boolean) {
     log += "slate $on"
+    onSlate = on
   }
 
   override fun micSessionKnown() = micKnown
@@ -199,7 +268,28 @@ class FakeParts : CaptureParts {
 
   companion object {
     const val STEP_MS = 10L
+
+    /** N45 I2: how long after the busy word a [StaleOpen.AFTER] report comes: after the run's queue has had the word. */
+    const val STALE_MS = 50L
   }
+}
+
+/**
+ * N45 I2: when StreamPack's "streaming" report of a reopen that failed busy is read, against its busy word: the two
+ * come on two flows, so either can be read first (review, probes A and A2).
+ */
+enum class StaleOpen {
+  /** The report read first, before the run has the word. */
+  BEFORE,
+
+  /** The word read first, its take told, and the report after it. */
+  AFTER,
+
+  /**
+   * StreamPack's own order: the word, then the report at once, both inside the reopen's `setVideoSource`, so both
+   * are heard before the run's queue has the word.
+   */
+  AT_ONCE,
 }
 
 /**

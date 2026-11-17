@@ -294,7 +294,7 @@ class GlueRulesTest {
     val started = build.indexOf("startWatchers(app, cameras,")
     assertTrue(started > build.indexOf("core.start()") && started < build.indexOf("return Parts("), "the watchers start after core.start() and before the build returns")
     val watchers = glue("EngineHost.kt").substringAfter("private fun startWatchers(")
-    assertTrue("CameraWatch(app, cameras, report, toCore).start()" in watchers, "CameraWatch is fed the same instance and started")
+    assertTrue("CameraWatch(app, cameras, report, toCore, capture::cameraMayBeFree).start()" in watchers, "CameraWatch is fed the same instance and started")
   }
 
   /**
@@ -827,17 +827,49 @@ class GlueRulesTest {
   /**
    * N45: the slate goes on air with silent audio and comes down with the mic back (decision 7). On air the reopen
    * swaps our camera back in before the machine takes the slate down (CaptureRun: `ReopenCamera`, then
-   * `Slate(false)` once the reopen is answered), so the slate's end finds a camera source already: the audio is set
-   * before the source check, or it stayed silent for the rest of the broadcast.
+   * `Slate(false)` once the reopen is answered), so the slate's end finds a camera source already: nothing returns
+   * between the source check and the mic, or it stayed silent for the rest of the broadcast. Review M2: the mic comes
+   * back after the swap to our camera, never over the slate; it goes silent before the slate goes up.
    */
   @Test
-  fun `N45 the slate's end gives the mic back even when the reopen already swapped the camera in`() {
+  fun `N45 the slate's end gives the mic back after our camera is the source, even when the reopen already swapped it in`() {
     val slate = body(glue("StreamerAdapter.kt"), "override suspend fun slate(on: Boolean)")
-    val muted = slate.indexOf("held.audioInput.isMuted = on")
-    val check = slate.indexOf("if (on == onSlate) return")
-    assertEquals(1, Regex("""held\.audioInput\.isMuted = on""").findAll(slate).count(), "set once: $slate")
-    assertTrue(muted in 0 until check, "the audio follows the slate before the source check: $slate")
-    assertEquals(1, Regex("""\bisMuted\b""").findAll(glue("StreamerAdapter.kt")).count(), "only the slate sets it")
+    val mute = slate.indexOf("if (on) held.audioInput.isMuted = true")
+    val check = slate.indexOf("val onSlate = held.videoInput.sourceFlow.value !is ICameraSource")
+    val swap = slate.indexOf("held.setVideoSource(CameraSourceFactory(it))")
+    val unmute = slate.indexOf("if (!on) held.audioInput.isMuted = false")
+    assertTrue(mute in 0 until check, "silent before the slate goes up: $slate")
+    assertTrue(check in 0 until swap && swap < unmute, "the mic back after the swap to our camera: $slate")
+    assertFalse(Regex("""\breturn\b""").containsMatchIn(code(slate.substring(check, unmute))), "nothing returns before the mic: $slate")
+    assertEquals(2, Regex("""\bisMuted\b""").findAll(glue("StreamerAdapter.kt")).count(), "only the slate sets it")
+  }
+
+  /**
+   * N45 I1 (fix round 1): a take is probed while the slate is up, with Camera2's own open of our camera, never beside
+   * a camera source of StreamPack's; the probe answers once the device is closed, closes every device it gets, and is
+   * bounded. CameraWatch tells the probe at once on a camera's available and on Camera2's change of access
+   * priorities, each guarded, so a throw is recorded, never fatal on the main looper.
+   */
+  @Test
+  fun `N45 I1 the take's probe opens our camera with Camera2 beside no source of ours, bounded, and CameraWatch nudges it`() {
+    val adapter = glue("StreamerAdapter.kt")
+    assertTrue("private val probe = CameraProbe(context.cameraManager, context.mainExecutor)" in adapter, "one probe")
+    val parts = body(adapter, "override suspend fun probeCamera(): Probe?")
+    val guard = parts.indexOf("if (held.videoInput.sourceFlow.value is ICameraSource) return null")
+    assertTrue(guard in 0 until parts.indexOf("return probe.open(id)"), "never beside StreamPack's camera source: $parts")
+    assertTrue("fun cameraMayBeFree() = run.mayBeFree()" in adapter, "the watch's word reaches the run")
+
+    val probe = glue("CameraProbe.kt")
+    assertTrue("withTimeoutOrNull(Probe.BOUND_MS) { attempt(id) } ?: Probe.Refused(\"timeout\")" in probe, "bounded")
+    for (callback in listOf("onOpened(device: CameraDevice)", "onDisconnected(device: CameraDevice)", "onError(device: CameraDevice, error: Int)")) {
+      assertTrue("device.close()" in body(probe, "override fun $callback"), "$callback closes the device")
+    }
+    assertTrue("override fun onClosed(device: CameraDevice) = answer(" in probe, "answered once closed")
+    assertTrue(Regex("""catch \(e: CameraAccessException\) \{\s+answer\(Probe\.refusedOnAccess\(e\.reason\)\)""").containsMatchIn(probe), "a refused open is an answer")
+
+    val watch = glue("CameraWatch.kt")
+    assertTrue(Regex("""override fun onCameraAvailable\(cameraId: String\) \{\s+guarded \{ rule\.available\(cameraId, SystemClock\.elapsedRealtime\(\)\) \}\s+guarded \{ nudged\(\) \}""").containsMatchIn(watch), "an available nudges, guarded")
+    assertTrue("override fun onCameraAccessPrioritiesChanged() = guarded { nudged() }" in watch, "Camera2's priorities nudge, guarded")
   }
 
   /**

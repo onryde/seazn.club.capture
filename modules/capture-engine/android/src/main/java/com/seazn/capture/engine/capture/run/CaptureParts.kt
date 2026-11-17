@@ -82,6 +82,37 @@ interface CaptureParts {
    * transport's. Asked after [busyCamera]: another app's take is that one. Null for any other failure.
    */
   fun cameraFailed(failure: Throwable): String?
+
+  /**
+   * N45 I1: whether our camera opens now, while the slate is up: Camera2 opens it and closes it at once, beside no
+   * source of StreamPack's, within [Probe.BOUND_MS]. Null when there is nothing to probe: nothing held, or StreamPack
+   * holds a camera source, beside which a second open of ours would evict our own.
+   */
+  suspend fun probeCamera(): Probe?
+}
+
+/** N45 I1: what a probe of our camera found ([CaptureParts.probeCamera]). */
+sealed interface Probe {
+  /** Camera2 opened [cameraId] for us, and it is closed again: nothing holds it from us now. */
+  data class Opened(val cameraId: String) : Probe
+
+  /** It did not open: [error] is a plain word, Camera2's reason ([refusedOnError], [refusedOnAccess]) or a class name. */
+  data class Refused(val error: String) : Probe
+
+  companion object {
+    /** The probe's bound: an open that answers nothing by then is refused, `timeout`. */
+    const val BOUND_MS = 2_000L
+
+    fun refusedOnError(code: Int) = Refused(STATE_ERRORS[code] ?: "error-$code")
+
+    fun refusedOnAccess(reason: Int) = Refused(ACCESS_REASONS[reason] ?: "access-$reason")
+
+    /** `CameraDevice.StateCallback`'s ERROR_* codes (javap -constants, android-36's android.jar). */
+    private val STATE_ERRORS = mapOf(1 to "in-use", 2 to "max-in-use", 3 to "disabled", 4 to "device", 5 to "service")
+
+    /** `CameraAccessException`'s reasons (the same jar). */
+    private val ACCESS_REASONS = mapOf(1 to "disabled", 2 to "disconnected", 3 to "error", 4 to "in-use", 5 to "max-in-use")
+  }
 }
 
 /** What a build made: a streamer, or why none. */

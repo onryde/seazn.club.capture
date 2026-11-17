@@ -126,7 +126,7 @@ object EngineHost {
    * process: the contended set and the network must be true before the first pairing.
    */
   private fun startWatchers(app: Context, cameras: CameraAvailability, capture: StreamerAdapter, device: DeviceSampler, report: (Input) -> Unit, toCore: (RecordEntry) -> Unit) {
-    CameraWatch(app, cameras, report, toCore).start()
+    CameraWatch(app, cameras, report, toCore, capture::cameraMayBeFree).start()
     MicWatch(app, capture::audioSessionId, MicSilenceWatch(), report, toCore).start()
     NetworkWatch(app, report, toCore).start()
     device.start()
