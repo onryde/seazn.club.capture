@@ -54,7 +54,7 @@ class BridgeCore(
    * last process kept, restored closed (fix round 1 of P1), and keeps its own on each change.
    */
   private val record: SessionRecord =
-    SessionRecord(RecordPinStore.read(store) { markerLines += it }, ::keepPins) { line -> platform.recordLine(line, record.lastSeq) }
+    SessionRecord(RecordPinStore.read(store, clock.wallMs()) { markerLines += it }, ::keepPins) { line -> platform.recordLine(line, record.lastSeq) }
   private val sticky: StickyFailure = StickyFailure(CommandSink(::route), { engine.phase.attemptInHand }, ::report)
   private val pollers = AttemptPollers(guarded, ::frames, platform::link, ::report)
   private val ticks = TickLateness()

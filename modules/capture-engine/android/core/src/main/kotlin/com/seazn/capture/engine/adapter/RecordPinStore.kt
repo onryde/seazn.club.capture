@@ -14,11 +14,11 @@ internal object RecordPinStore {
   const val KEY = "record-pins"
 
   /**
-   * The pins the last process kept, each line read again by [RecordPins.restoring], closed. Never throws an `Exception`:
-   * a read that fails, or a line that is not a JSON object with a kind, is no pins, reported through [problem] as every
-   * other key's is (AGENTS §13, class 3).
+   * The pins the last process kept, each line read again by [RecordPins.restoring] at [nowEpochMs], the wall clock,
+   * closed. Never throws an `Exception`: a read that fails, or a line that is not a JSON object with a kind, is no pins,
+   * reported through [problem] as every other key's is (AGENTS §13, class 3).
    */
-  fun read(store: PrivateStore, problem: (RecordEntry) -> Unit): RecordPins {
+  fun read(store: PrivateStore, nowEpochMs: Long, problem: (RecordEntry) -> Unit): RecordPins {
     val text =
       try {
         store.read(KEY)
@@ -31,7 +31,9 @@ internal object RecordPinStore {
       problem(RecordEntry("store-unreadable", listOf("key" to KEY)))
       return RecordPins.NONE
     }
-    return lines.filterNotNull().fold(RecordPins.NONE) { pins, (line, fields) -> pins.restoring(fields["kind"] as String, fields["sid"], line) }
+    return lines.filterNotNull().fold(RecordPins.NONE) { pins, (line, fields) ->
+      pins.restoring(fields["kind"] as String, fields["sid"], fields["at"], line, nowEpochMs)
+    }
   }
 
   /** The lines the record keeps, or none, which deletes the key. Throws when the store refuses, for `store-failed`. */

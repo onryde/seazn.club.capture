@@ -106,6 +106,25 @@ class BridgeCoreRecordPinsTest {
     assertEquals(mapOf("pins" to listOf(start), "lines" to emptyList<Any?>()), reborn().tail())
   }
 
+  /**
+   * Fix round 2 of P1: a cold start a day after the start was written restores it, and one a millisecond past 24 h does
+   * not (R4: the upload credential outlives its code by 24 h, so no Send could name it), and keeps it no longer.
+   */
+  @Test
+  fun `a process death restores the start for 24 h after it was written, and not a millisecond longer`() {
+    armed()
+    val start = line("broadcast-start")
+    // The test reads the line's own `at` on the JVM, where java.time exists (the core avoids it: minSdk 24).
+    val written = java.time.Instant.parse(JSONObject(start).getString("at")).toEpochMilli()
+    clock.wall = written + 86_400_000
+    assertEquals(listOf(start), pins(reborn()), "exactly 24 h old")
+    clock.wall = written + 86_400_001
+    val late = reborn()
+    assertEquals(emptyList<Any?>(), pins(late), "older than 24 h")
+    probes(25, of = late)
+    assertEquals(emptyList<Any?>(), pins(late))
+  }
+
   /** The new process re-pairs: its pair opens a fresh window, as today, and the restored start goes. */
   @Test
   fun `restored then re-paired - the new pair replaces the restored start, in the tail and on disk`() {
@@ -204,8 +223,8 @@ class BridgeCoreRecordPinsTest {
   /** Each text the store may hold, read as a new core is built: the pins it carries, and the keys of its problem lines. */
   @Test
   fun `stored pins are read by the closed rule, and pins no rule can read are no pins, recorded (an empty input)`() {
-    val pair = """{"at":"2026-11-16T10:00:00.000Z","kind":"pair","claim":"new","slot":1,"tokenTag":"c980ff38","stopped":false}"""
-    val start = """{"at":"2026-11-16T10:00:01.000Z","kind":"broadcast-start","sid":"${PairWire.SID}","cause":"operator"}"""
+    val pair = """{"at":"${IsoTime.utc(clock.wall - 2_000)}","kind":"pair","claim":"new","slot":1,"tokenTag":"c980ff38","stopped":false}"""
+    val start = """{"at":"${IsoTime.utc(clock.wall - 1_000)}","kind":"broadcast-start","sid":"${PairWire.SID}","cause":"operator"}"""
     val unreadable = listOf("not json", "42", "null", """["pair"]""", """{"kind":7}""", """{"at":"2026-11-16T10:00:00.000Z"}""", "$pair\nnot json")
     val expected =
       unreadable.associateWith { emptyList<Any?>() to listOf(RecordPinStore.KEY) } +

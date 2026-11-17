@@ -170,7 +170,7 @@ class RecordPinsTest {
   fun `a restored start is carried before any line, closed - no pair, and no later line moves it or is kept`() {
     pair()
     val start = start()
-    val reborn = recordOver(RecordPins.NONE.restoring("broadcast-start", SID, start))
+    val reborn = recordOver(RecordPins.NONE.restoring("broadcast-start", SID, IsoTime.utc(AT), start, AT))
     kept.clear()
     assertEquals(RecordTail(1, emptyList(), listOf(start)), reborn.numberedTail())
     beats(25, into = reborn)
@@ -186,7 +186,7 @@ class RecordPinsTest {
   @Test
   fun `a re-pair after a restore replaces the restored start, and keeps the new window's own`() {
     val start = start()
-    val reborn = recordOver(RecordPins.NONE.restoring("broadcast-start", SID, start))
+    val reborn = recordOver(RecordPins.NONE.restoring("broadcast-start", SID, IsoTime.utc(AT), start, AT))
     kept.clear()
     val again = pair(slot = 1, into = reborn)
     beats(25, into = reborn)
@@ -207,7 +207,7 @@ class RecordPinsTest {
     val pairKept = Triple("pair", null, pair)
     fun startKept(sid: String, line: String) = Triple("broadcast-start", sid, line)
     fun restore(vararg kept: Triple<String, String?, String>) =
-      kept.fold(RecordPins.NONE) { pins, (kind, sid, line) -> pins.restoring(kind, sid, line) }
+      kept.fold(RecordPins.NONE) { pins, (kind, sid, line) -> pins.restoring(kind, sid, IsoTime.utc(AT), line, AT) }
     assertEquals(RecordPins(null, PinnedLine(0, start), null), restore(pairKept, startKept(SID, start)))
     assertEquals(
       RecordPins(null, PinnedLine(0, second), null),
@@ -215,6 +215,25 @@ class RecordPinsTest {
     )
     assertEquals(RecordPins.NONE, restore(pairKept), "a pair alone restores nothing")
     assertEquals(RecordPins.NONE, restore(), "an empty input")
+  }
+
+  /**
+   * Fix round 2 of P1: the restored start is bounded. A Send names it only under its code's upload credential, which
+   * outlives the code by 24 h (R4, JS's `KEEP_AFTER_DROP_MS`), so a start written longer ago than that is not restored.
+   */
+  @Test
+  fun `a kept start is restored up to 24 h after it was written, and not a millisecond later`() {
+    pair()
+    val start = start()
+    val at = IsoTime.utc(AT)
+    fun restoredAt(now: Long, written: Any? = at) = RecordPins.NONE.restoring("broadcast-start", SID, written, start, now)
+    assertEquals(86_400_000L, RecordPins.KEEP_AFTER_DROP_MS, "R4's 24 h")
+    assertEquals(RecordPins(null, PinnedLine(0, start), null), restoredAt(AT + 86_400_000), "exactly 24 h old")
+    assertEquals(RecordPins.NONE, restoredAt(AT + 86_400_001), "older than 24 h")
+    assertEquals(RecordPins(null, PinnedLine(0, start), null), restoredAt(AT), "written this instant")
+    assertEquals(RecordPins.NONE, restoredAt(AT, written = null), "no at: its age is unknown")
+    assertEquals(RecordPins.NONE, restoredAt(AT, written = "yesterday"), "an at the record never writes")
+    assertEquals(RecordPins.NONE, restoredAt(AT, written = AT), "an at that is not text")
   }
 
   /** The sink's own rule: a throw from [SessionRecord]'s keeper is counted, never thrown, and the record goes on. */
