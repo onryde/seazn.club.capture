@@ -208,6 +208,27 @@ change (`useScoringLink.ts:126-132`). On a court code the match behind the link 
 - Court-code Stop → `stoppedHere`. Everything else (paired → live → paired, new sid per go-live,
   held-to-new sid handover) exists today (`Pairings.kt:253-306`).
 
+### 6.6 Beat retry and the start in flight (Task 13, `_FINDINGS.md` N44)
+
+A court phone waits at the server's 60 s cadence between matches, so two gaps found on the NE2211
+against staging matter more here than on a fixture's code:
+
+- **A lost beat no longer costs a minute.** After a passing failure (no answer, a beat given up,
+  a 408 or a 5xx) the next beat goes 5 s after it, then 10 s and 20 s for the second and third in a
+  row, then at the cadence; never later than the cadence, never sooner than 5 s, and a 2xx resets
+  it. Any other 4xx and a 429 with no Retry-After keep the cadence; a Retry-After decides when it
+  is given. A Go live given on the desk while a beat was lost now reaches the phone within seconds,
+  and a server in trouble is not met with a beat every 5 s from every court (the controller's
+  ruling, review fix round 1).
+- **The hold says it took.** Native's snapshot carries `pairing.starting` while the hold's
+  `POST start` waits for its answer (up to native's 8 s HTTP bound), in Paired only. Go live shows
+  a disabled "Starting…" and the line "Opening the link." until native answers; a failure brings Go
+  live back with the start-failed line. The court card on Match Day has no Go live, so nothing
+  changes there.
+- **Exit waits for the answer.** Native ignores an unpair while a start is in flight, so Leave
+  (and Home's Forget, and A7's Confirm) waits for the answer, at most 10 s, then unpairs after a
+  failed start or keeps the court when it armed, rather than giving up at 5 s with the code kept.
+
 ## 7. Testing (the four questions)
 
 1. **Second call:** two streamed matches started within a second on one court; a second scan of

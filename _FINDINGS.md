@@ -1470,6 +1470,55 @@ record contract, `said`, `foreign` and `queued` together. Until then the counts 
 
 ---
 
+### N44 — After a lost beat the phone was deaf to a Go live for a minute, and a held Go live looked like nothing happened
+
+**Status:** fixed on `feat/court-stream` (court stream Task 13: P1, P2 and review fix round 1); the device re-check on the
+NE2211 against staging is open
+**Where:** native core · `Heartbeat.kt`, `BeatCadence.kt` (`retryMs`) · `Projection.kt`, `SnapshotWire.kt`
+(`pairing.starting`) · capture app · `src/hooks/useUnpair.ts` (`START_ANSWER_WAIT_MS`) · `StreamColumn.tsx`
+
+Two things seen in Task 13's device check of the court stream, both native-owned.
+
+**The deaf minute.** A beat timed out at the server's 60 s cadence. `HeartbeatState.failed()` kept the last send's time,
+so the next beat waited the whole 60 s, and a Go live the desk gave in that minute reached the phone up to a minute late.
+The rule now (the controller's ruling, fix round 1):
+
+- A _passing_ failure brings the next beat forward: no answer (a transport failure), a beat given up at 10 s, a 408 or a
+  5xx. The next goes 5 s after the failure, then 10 s and 20 s for the second and third in a row; from the fourth the
+  cadence decides. Never later than the cadence (a retry only brings a beat forward), never sooner than 5 s (the poll
+  floor, `BeatCadence.MIN_POLL_S`). A 2xx resets the count.
+- Any other 4xx (400, 404, 422, …) keeps the cadence: the server answered, and a retry would get the same answer.
+- A 429 with no Retry-After keeps the cadence; with one, the beat goes when it ends, even past the cadence.
+
+Rejected: retrying at the cadence (the old behaviour): it is the deaf minute. Rejected: a flat 5 s retry (P1 as first
+built): when the server is in trouble every phone at the venue would beat every 5 s, twelve times the 60 s load at the
+moment it can least take it, and it retried answers that cannot change. The held cadence (10 s) is untouched: its first
+retry is the 5 s, and the 10 s and 20 s steps are never sooner than the cadence, which then decides. Two pins moved with
+it: a heartbeat that fails forever while live beats at 10, 15, 25, 35, 45 … 595 s (60 failures in 600 s), and N37's
+offline stopped beat at 8, 13, 23 and 33 s (4).
+
+**The silent hold.** After the 3 s hold, native posts start and waits for the answer for up to its HTTP bound (8 s,
+`Http.TIMEOUT_MS`). All that time the screen still read Ready and "Waiting for Go live" over an enabled Go live, so the
+operator could not tell the hold took. Native's snapshot now says so: `pairing.starting`, true in Paired from the post
+until its answer, and only in Paired (`Phase.ended()` keeps the pairing, so an end with the start unanswered would
+otherwise carry it into Ended). It is a non-telemetry field, so it is published at once. JS words it: Go live becomes a
+disabled "Starting…" plate with no hold on it, the tally reads Connecting, and the line is the operator's own "Opening
+the link.", the line its Arming says, so nothing moves when the server answers Started. A failed answer clears it with
+the start-failed line, and Go live comes back.
+
+Native ignores an unpair while a start is in flight (`Pairings.unpair`), so a Forget, a court Leave or A7's Confirm sent
+then was dropped at the 5 s give-up, with the code kept. `useUnpair` now waits for native's answer to the start, bounded
+at 10 s (`START_ANSWER_WAIT_MS`, the 8 s with room), then unpairs after a failed start or answers `held` for one that
+armed; the unpair then has its own 5 s. Chosen over hiding Leave and Forget while starting (the other way the ruling
+allowed): one place covers all three callers and the reopen gate's own clearing, no control appears or disappears under
+the operator's finger, and the tap is honoured rather than dropped.
+
+**Open:** "Opening the link." is a routine line, so on an uncharged or warm phone an advisory caption wins the strip
+(AGENTS §6's two tiers); the Starting… plate and the Connecting tally still say it. An urgent line for it would be the
+owner's call.
+
+---
+
 ## P5 device spike (Android)
 
 The P5 findings, as an index. The full text, evidence and corrections for each
