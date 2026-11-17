@@ -1020,6 +1020,26 @@ describe('the operator’s start in flight (court stream Task 13, P2)', () => {
     expect(snapshot().refusal).toBeNull();
   });
 
+  // Review fix round 1: the not-ready branch arms too, into Armed, and retires the start as Connecting does.
+  it('retires the start in flight when the organiser’s Go live arms a phone that is not ready', () => {
+    holdStart();
+    engine.setReady({ sound: false });
+    engine.hear({ word: 'go-live', cause: 'organiser' });
+    expect(state()).toEqual({ kind: 'armed', cause: 'organiser', notReady: 'sound' });
+    expect(snapshot().pairing?.starting).toBe(false);
+  });
+
+  // Review fix round 1: native ignores a second start while one is in flight (`Pairings.start`, `inFlightId`), so it
+  // posts nothing and clears nothing: a refusal a beat brought meanwhile stays, where a post would clear it.
+  it('ignores a second start while one is in flight, clearing nothing a post would', () => {
+    holdStart();
+    engine.hear({ word: 'refused', refusal: 'no_credit' });
+    engine.send({ kind: 'start' });
+    expect(state()).toEqual({ kind: 'paired' });
+    expect(snapshot().refusal).toBe('no_credit');
+    expect(snapshot().pairing?.starting).toBe(true);
+  });
+
   it('ignores an unpair and the notification’s Forget while the start is in flight, as native does', () => {
     holdStart();
     engine.send({ kind: 'unpair' });

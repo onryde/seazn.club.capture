@@ -660,9 +660,13 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     publish({ pairing, refusal: answer === 'failed' ? 'start-failed' : null, lastEnd: null });
   };
 
-  /** The operator's hold: only from Paired, and only when ready (Go live is off otherwise). */
+  /**
+   * The operator's hold: only from Paired, and only when ready (Go live is off otherwise). One at a time: native ignores
+   * a start while one is in flight (`Pairings.start`), so it posts nothing and clears nothing.
+   */
   const start = (): void => {
     if (snapshot.state.kind !== 'paired' || firstNotReady(snapshot.ready) !== null) return;
+    if (startInFlight()) return;
     answerStart(startAnswer);
   };
 
