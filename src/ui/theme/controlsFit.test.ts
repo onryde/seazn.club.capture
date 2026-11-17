@@ -364,7 +364,12 @@ describe('every line of text in the controls half fits the 278 dp it is given', 
     const lines = Math.floor((layout.holdHeight - 2 * 2) / typeScale.action.lineHeight);
     expect(lines).toBe(2);
     for (const [lang, dictionary] of LANGUAGES) {
-      for (const key of ['stream.action.goLive', 'stream.action.stop'] as const) {
+      // Starting… is the same control while the hold's start is in flight (court stream Task 13, P2).
+      for (const key of [
+        'stream.action.goLive',
+        'stream.action.starting',
+        'stream.action.stop',
+      ] as const) {
         const text = (dictionary as Dictionary)[key] ?? '';
         for (const piece of wordsOf(text)) {
           expect({ lang, key, piece, fits: actionWidth(piece) <= inside }).toEqual({
@@ -410,7 +415,7 @@ describe('every line of text in the controls half fits the 278 dp it is given', 
     }
   });
 
-  it('counted every row: 8 hold labels, 6 lines × 4 languages and 4 start lines = 36 (anti-vacuity)', () => {
-    expect(rows).toBe(8 + 24 + 4);
+  it('counted every row: 12 hold labels, 6 lines × 4 languages and 4 start lines = 40 (anti-vacuity)', () => {
+    expect(rows).toBe(12 + 24 + 4);
   });
 });

@@ -193,6 +193,13 @@ describe('the paired and starting lines (amendment §2)', () => {
   const armed = (cause: Cause, notReady: NotReady | null): Partial<EngineSnapshot> => ({
     state: { kind: 'armed', cause, notReady },
   });
+  /** `change` with the pairing's start in flight (court stream Task 13, P2), over whatever pairing it names. */
+  const starting = (change: Partial<EngineSnapshot>): Partial<EngineSnapshot> => {
+    const pairing = change.pairing ?? PAIRED_READY.pairing;
+    return { ...change, pairing: pairing === null ? null : { ...pairing, starting: true } };
+  };
+  const courtPairing =
+    PAIRED_READY.pairing === null ? null : { ...PAIRED_READY.pairing, court: 'Court 2' };
   const REFUSED: readonly (readonly [Refusal, StatusKey])[] = [
     ['no_destination', 'stream.status.refusedDestination'],
     ['no_credit', 'stream.status.refusedCredit'],
@@ -249,6 +256,29 @@ describe('the paired and starting lines (amendment §2)', () => {
     // The wire forbids an empty name (minLength 1): read as none, as selectLabel reads an empty label.
     ['paired, an empty destination', destination(''), 'stream.status.waitingDestination'],
     ['paired, a destination', {}, 'stream.status.waitingGoLive'],
+    // Court stream Task 13 (P2): the hold's start in flight says what Arming will, the operator's own "Opening the link."
+    ['paired, the hold’s start in flight', starting({}), 'stream.status.connecting'],
+    [
+      'paired, the hold’s start in flight with no destination',
+      starting(destination(null)),
+      'stream.status.connecting',
+    ],
+    [
+      'paired, the hold’s start in flight on a court',
+      starting({ pairing: courtPairing }),
+      'stream.status.connecting',
+    ],
+    // Native clears both at the post; a hand-built one still puts the start first, the newest fact.
+    [
+      'paired, the hold’s start in flight over a refusal and a last end',
+      starting({ refusal: 'no_credit', lastEnd: 'stopped-by-organiser' }),
+      'stream.status.connecting',
+    ],
+    [
+      'paired, another app’s camera over the start in flight',
+      starting({ camera: 'taken' }),
+      'stream.status.cameraInUse',
+    ],
     ['arming, retrying', arming('organiser', true), 'stream.status.startRetrying'],
     ['arming, retrying an operator start', arming('operator', true), 'stream.status.startRetrying'],
     ...GOING_LIVE.map(([cause, key]) => [`arming, ${cause}`, arming(cause, false), key] as const),
@@ -283,7 +313,7 @@ describe('the paired and starting lines (amendment §2)', () => {
   ];
 
   it('sweeps every row of the table (PV12: zero rows is a failure)', () => {
-    expect(ROWS).toHaveLength(41);
+    expect(ROWS).toHaveLength(46);
   });
 
   it.each(ROWS)('%s says %s', (_name, change, key) => {

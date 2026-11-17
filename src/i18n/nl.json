@@ -157,6 +157,7 @@
   "stream.meter.label": "Geluidsniveau {level} van 6",
   "stream.elapsed.label": "Al {time} live",
   "stream.action.goLive": "Live gaan",
+  "stream.action.starting": "Starten…",
   "stream.action.stop": "Stoppen",
   "stream.action.holdLabel": "{label}. Houd 3 seconden ingedrukt.",
   "stream.action.stopLabel": "Houd ingedrukt om te stoppen",

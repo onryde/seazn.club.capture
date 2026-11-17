@@ -24,6 +24,7 @@ const PAIRING = {
   stageLabel: null,
   court: null,
   next: null,
+  starting: false,
 };
 // W28: the pairing of the case that carries a round line, by hand from its override { stageLabel: 'Open · QF' }.
 const PAIRING_STAGED = { ...PAIRING, stageLabel: 'Open · QF' };
@@ -289,12 +290,23 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
     reportedAtMs: 1_790_000_009_000,
     survivesBackground: true,
   },
+  // Court stream Task 13 (P2): the operator's Go live is in flight, waiting for POST start's answer.
+  'paired-starting': {
+    ...REST,
+    state: { kind: 'paired' },
+    pairing: { ...PAIRING, starting: true },
+    broadcast: null,
+    ready: READY,
+    camera: 'own',
+    reportedAtMs: 1_790_000_010_000,
+    survivesBackground: true,
+  },
 };
 
 describe('carries 2-6: the snapshot wire, as native writes it (Task 12)', () => {
   // The file's count, so an emptied or truncated file cannot pass by sweeping nothing (PV12).
-  it('has an expectation for each of the 20 cases, and a case for every expectation', () => {
-    expect(vectors.cases).toHaveLength(20);
+  it('has an expectation for each of the 21 cases, and a case for every expectation', () => {
+    expect(vectors.cases).toHaveLength(21);
     expect(vectors.cases.map((c) => c.name).sort()).toEqual(Object.keys(EXPECTED).sort());
   });
 
@@ -395,6 +407,26 @@ describe('carries 2-6: the snapshot wire, as native writes it (Task 12)', () => 
       toEngineSnapshot({ ...wire, pairing: { ...wire.pairing, court: wide } })?.pairing?.court,
     ).toBe(wide);
     const { court: _gone, ...without } = wire.pairing as Record<string, unknown>;
+    expect(toEngineSnapshot({ ...wire, pairing: without })).toBeNull();
+  });
+
+  // Court stream Task 13 (P2): `starting` decides whether Go live can be held. A malformed one is never read as false
+  // (a hold native would ignore) or true (Go live off for nothing): the snapshot is malformed whole, as a court is.
+  it.each([
+    ['a starting that is text', 'true'],
+    ['a starting that is null', null],
+    ['a starting that is a number', 1],
+  ])('reads a pairing with %s as no snapshot', (_why, starting) => {
+    const wire = vectorWire('paired-starting');
+    expect(toEngineSnapshot({ ...wire, pairing: { ...wire.pairing, starting } })).toBeNull();
+  });
+
+  it('reads a pairing without the starting key as no snapshot, and each flag as sent', () => {
+    const wire = vectorWire('paired-starting');
+    expect(toEngineSnapshot(wire)?.pairing?.starting).toBe(true);
+    const off = { ...wire, pairing: { ...wire.pairing, starting: false } };
+    expect(toEngineSnapshot(off)?.pairing?.starting).toBe(false);
+    const { starting: _gone, ...without } = wire.pairing as Record<string, unknown>;
     expect(toEngineSnapshot({ ...wire, pairing: without })).toBeNull();
   });
 

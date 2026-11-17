@@ -41,6 +41,7 @@ const viewOf = (overrides: Partial<Viewfinder>): Viewfinder => ({
   action: 'goLive',
   stopUnpairs: false,
   court: null,
+  starting: false,
   onAir: false,
   shutter: false,
   scoring: false,
@@ -116,6 +117,45 @@ describe('StreamColumn’s Go live', () => {
     expect(screen.getByRole('button', { name: 'Hold to stop and unpair' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Hold to stop' })).toBeNull();
     expect(screen.queryByRole('button', { name: /^Stop\. Press and hold/ })).toBeNull();
+  });
+
+  // Court stream Task 13 (P2): the hold's start in flight. Its control is the same one (keyed by the action), so a
+  // finger still down cannot act twice, and no hold is offered on it until native answers.
+  it('says Starting… while the hold’s start is in flight, and cannot be held; Stop always says Stop', () => {
+    const view = viewOf({
+      starting: true,
+      plate: 'connecting',
+      statusKey: 'stream.status.connecting',
+    });
+    const { rerender } = renderWithPorts(<StreamColumn view={view} {...ICONS} viewer={VIEWER} />);
+    const control = screen.getByRole('button', { name: en['stream.action.starting'] });
+    expect(control.getAttribute('aria-disabled')).toBe('true');
+    expect(within(control).getByText(en['stream.action.starting'])).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Go live/ })).toBeNull();
+    pressIn(control);
+    act(() => vi.advanceTimersByTime(HOLD_MS));
+    expect(view.start).not.toHaveBeenCalled();
+    // Answered: the same control is Go live again.
+    rerender(<StreamColumn view={viewOf({})} {...ICONS} viewer={VIEWER} />);
+    expect(goLive().getAttribute('aria-disabled')).not.toBe('true');
+    // Not reachable through native (Arming retires the start), pinned here: Stop is never worded Starting….
+    rerender(
+      <StreamColumn
+        view={viewOf({
+          kind: 'arming',
+          action: 'stop',
+          onAir: true,
+          plate: 'connecting',
+          starting: true,
+        })}
+        {...ICONS}
+        viewer={VIEWER}
+      />,
+    );
+    expect(
+      screen.getByRole('button', { name: 'Hold to stop' }).getAttribute('aria-disabled'),
+    ).not.toBe('true');
+    expect(screen.queryByText(en['stream.action.starting'])).toBeNull();
   });
 
   // Spec §5: an Ended is the one frame before the viewfinder leaves for Home. It offers no hold control, neither

@@ -94,6 +94,11 @@ export const selectScheduledStartMs = (snapshot: EngineSnapshot) =>
   snapshot.pairing?.scheduledStart?.getTime() ?? null;
 /** The court's name on a court code's pairing (court stream spec 2026-11-14 §6.1); null on a fixture's code. */
 export const selectCourt = (snapshot: EngineSnapshot) => snapshot.pairing?.court ?? null;
+/**
+ * The operator's Go live is waiting for `POST start`'s answer (court stream Task 13, P2): native's fact, set in Paired
+ * only. Go live says "Starting…" and cannot be held while it is true.
+ */
+export const selectStarting = (snapshot: EngineSnapshot) => snapshot.pairing?.starting === true;
 /** The court's next streamed match (§5.3, a beat's `next`), display only: its label, or null with none. */
 export const selectNextLabel = (snapshot: EngineSnapshot) => snapshot.pairing?.next?.label ?? null;
 /**

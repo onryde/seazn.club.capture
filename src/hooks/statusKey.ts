@@ -6,7 +6,7 @@ import type {
   SessionState,
 } from '@/domain/session/SessionState';
 import type { CameraState, EngineSnapshot } from '@/engine/CaptureEnginePort';
-import { selectCourt, selectDestination } from '@/hooks/engineSelectors';
+import { selectCourt, selectDestination, selectStarting } from '@/hooks/engineSelectors';
 import type { MessageKey } from '@/i18n/messages';
 
 export type StatusKey = Extract<MessageKey, `stream.status.${string}`>;
@@ -176,13 +176,15 @@ const CALM_ENDS: ReadonlySet<LastEnd> = new Set<LastEnd>([
 ]);
 
 /**
- * Amendment §2, the paired status line: a refusal, the last end, then what it
- * waits for. A refusal outranks a last end: a refused restart is the newer
+ * Amendment §2, the paired status line: the hold's start in flight, a refusal, the last end, then what it
+ * waits for. The start in flight (court stream Task 13, P2) says what its Arming will, "Opening the link.", so the
+ * line does not move when the server answers Started; native clears the refusal and the last end when it posts. A refusal outranks a last end: a refused restart is the newer
  * fact (native clears both at the next start). Readiness is never named here:
  * the chips and the blocker at Go live say it. On a court code (§6.2) a calm end gives way to the Next line, and
  * the line after the destination says what the court waits for: automatic off, the next match, or nothing.
  */
 function pairedKey(snapshot: EngineSnapshot): StatusKey {
+  if (selectStarting(snapshot)) return GOING_LIVE.operator;
   if (snapshot.refusal !== null) return REFUSED[snapshot.refusal];
   const court = selectCourt(snapshot) !== null;
   const { lastEnd } = snapshot;

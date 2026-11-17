@@ -2,7 +2,7 @@ import { act, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HOLD_MS } from '@/hooks/useHold';
 import en from '@/i18n/en.json';
-import { pressIn } from '../../../test/press';
+import { pressIn, pressOut } from '../../../test/press';
 import { renderViewfinder } from '../../../test/renderViewfinder';
 
 const goLive = () => screen.getByRole('button', { name: 'Go live. Press and hold for 3 seconds.' });
@@ -248,5 +248,76 @@ describe('the paired viewfinder (spec §1)', () => {
     expect(
       screen.getByRole('button', { name: 'Passer en direct. Maintenez appuyé 3 secondes.' }),
     ).toBeTruthy();
+  });
+});
+
+/**
+ * Court stream Task 13 (NE2211, staging): native's POST start took up to 8 s to answer, and Go live still read Go live,
+ * so the operator could not tell the hold took. Native now says so (`pairing.starting`), and the column words it.
+ */
+describe('the operator’s Go live in flight (court stream Task 13, P2)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const starting = () => screen.getByRole('button', { name: en['stream.action.starting'] });
+  const starts = (view: Awaited<ReturnType<typeof renderViewfinder>>) =>
+    kinds(view).filter((kind) => kind === 'start').length;
+  /** The operator's 3 s hold on Go live, released, with native's answer held in flight. */
+  const holdInFlight = async () => {
+    const view = await renderPaired();
+    act(() => view.engine.setStartAnswer('hold'));
+    const control = goLive();
+    pressIn(control);
+    act(() => vi.advanceTimersByTime(HOLD_MS));
+    pressOut(control);
+    return view;
+  };
+
+  it('says Starting… on a control that cannot be held, and Opening the link., until native answers', async () => {
+    const view = await holdInFlight();
+    expect(view.engine.getSnapshot().state.kind).toBe('paired');
+    expect(starting().getAttribute('aria-disabled')).toBe('true');
+    expect(screen.queryByRole('button', { name: /^Go live/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Hold to stop/ })).toBeNull();
+    expect(screen.getByText(en['stream.status.connecting'])).toBeTruthy();
+    expect(screen.queryByText(WAITING)).toBeNull();
+    expect(plate()).toBe(en['stream.tally.connecting']);
+    // A second hold on it sends nothing more, however long the answer takes.
+    pressIn(starting());
+    act(() => vi.advanceTimersByTime(HOLD_MS + 8_000));
+    expect(starts(view)).toBe(1);
+    expect(starting().getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it('brings Go live back on a failed answer, with the try-again line, and the next hold goes again', async () => {
+    const view = await holdInFlight();
+    act(() => view.engine.setStartAnswer('failed'));
+    expect(screen.queryByRole('button', { name: en['stream.action.starting'] })).toBeNull();
+    expect(goLive().getAttribute('aria-disabled')).not.toBe('true');
+    expect(screen.getByText(en['stream.status.startFailed'])).toBeTruthy();
+    expect(plate()).toBe(en['stream.tally.ready']);
+    act(() => view.engine.setStartAnswer('started'));
+    pressIn(goLive());
+    act(() => vi.advanceTimersByTime(HOLD_MS));
+    expect(starts(view)).toBe(2);
+    expect(stop()).toBeTruthy();
+  });
+
+  it('turns into Stop on a Started answer, the line unchanged', async () => {
+    const view = await holdInFlight();
+    act(() => view.engine.setStartAnswer('started'));
+    expect(view.engine.getSnapshot().state.kind).toBe('connecting');
+    expect(stop()).toBeTruthy();
+    expect(screen.getByText(en['stream.status.connecting'])).toBeTruthy();
+  });
+
+  it('reads in Dutch', async () => {
+    const view = await renderPaired({ deviceLanguages: ['nl'] });
+    act(() => view.engine.setStartAnswer('hold'));
+    act(() => view.engine.send({ kind: 'start' }));
+    expect(screen.getByRole('button', { name: 'Starten…' }).getAttribute('aria-disabled')).toBe(
+      'true',
+    );
+    expect(screen.getByText('Verbinding wordt geopend.')).toBeTruthy();
   });
 });

@@ -84,6 +84,7 @@ export const StreamColumn = memo(function StreamColumn(props: ColumnProps) {
         stopUnpairs={view.stopUnpairs}
         court={view.court !== null}
         goLiveOff={view.kind !== 'paired' || view.blocker !== null}
+        starting={view.starting}
         reason={view.kind === 'paired' ? view.reason : null}
         start={view.start}
         stop={view.stop}
@@ -217,6 +218,8 @@ type ActionProps = {
   readonly court: boolean;
   /** Go live is off: before the engine is armed, or with a chip off. */
   readonly goLiveOff: boolean;
+  /** The hold's start waits for native's answer (court stream Task 13, P2): Go live says so and cannot be held. */
+  readonly starting: boolean;
   /**
    * Why Go live is off, given only while armed (ruling I3): before that the
    * plate and line already say, and an armed engine never shows Stop.
@@ -243,15 +246,19 @@ const ColumnAction = memo(function ColumnAction(props: ActionProps) {
   // The one frame an Ended shows before the viewfinder leaves for Home (spec §5): nothing to press.
   if (props.action === 'none') return null;
   const stop = props.action === 'stop';
+  const { starting } = props;
+  const label = t(
+    stop ? 'stream.action.stop' : starting ? 'stream.action.starting' : 'stream.action.goLive',
+  );
   return (
     <HoldAction
       key={props.action}
-      label={t(stop ? 'stream.action.stop' : 'stream.action.goLive')}
+      label={label}
       // A3: Stop ends the broadcast and, once live, the pairing, and says which to a screen reader (owner decision 1).
-      // On a court code it ends this match only, and says so (court stream §6.3).
-      a11yLabel={stop ? t(stopLabel(props)) : undefined}
+      // On a court code it ends this match only, and says so (court stream §6.3). Starting… is no hold to offer.
+      a11yLabel={stop ? t(stopLabel(props)) : starting ? label : undefined}
       tone={stop ? 'stop' : 'go'}
-      disabled={!stop && props.goLiveOff}
+      disabled={!stop && (props.goLiveOff || starting)}
       reason={props.reason === null ? null : t(props.reason)}
       onHeld={stop ? props.stop : props.start}
     />

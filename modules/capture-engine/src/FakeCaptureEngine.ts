@@ -90,6 +90,12 @@ export const FAKE_SCENES: readonly FakeScene[] = [
 /** How the permission dialog answers a `pair`. */
 export type PermissionAnswer = 'grant' | 'hold' | 'refuse';
 
+/**
+ * How native's `POST start` answers the operator's hold (court stream Task 13, P2): at once and started (the default),
+ * held in flight (Paired with `pairing.starting`, as native waits up to 8 s), or failed (Paired with `start-failed`).
+ */
+export type StartAnswer = 'started' | 'hold' | 'failed';
+
 export type FakeCaptureEngine = CaptureEnginePort & {
   /** Jump to a named state from spec §6's list, with telemetry and readiness to match. */
   scene(name: FakeScene): void;
@@ -105,6 +111,8 @@ export type FakeCaptureEngine = CaptureEnginePort & {
   setReady(ready: Partial<Readiness>): void;
   /** How the permission dialog answers the next `pair`, or the one held open now. */
   setPermissions(answer: PermissionAnswer): void;
+  /** How `POST start` answers the operator's next hold, or (`started`, `failed`) the one held in flight now. */
+  setStartAnswer(answer: StartAnswer): void;
   /**
    * The waiting fields this pairing, and every later one, reports: a court's `next` (court stream §5.3) is set here,
    * as a beat would bring it, and so is a `court` a descriptor names.
@@ -233,6 +241,7 @@ export const FAKE_PAIRING: PairingInfo = {
   stageLabel: null,
   court: null,
   next: null,
+  starting: false,
 };
 
 const broadcastFor = (pairing: PairingInfo, cause: Cause): BroadcastInfo => ({
@@ -516,6 +525,7 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
   };
   const primary: Transport = 'srt';
   let permissions: PermissionAnswer = 'grant';
+  let startAnswer: StartAnswer = 'started';
   let waiting: Partial<PairingInfo> = {};
   /**
    * What a scene's own `pairing` fields replaced, so the next scene puts them back: a scene's override ends with the
@@ -614,8 +624,17 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     paired(pairing);
   };
 
+  /** The hold's `POST start` is in flight: native's `pairing.starting` (court stream Task 13, P2). */
+  const startInFlight = (): boolean => snapshot.pairing?.starting === true;
+  /** Whatever arms a broadcast retires the hold's start in flight (native's `Starts.arm`, I1): its answer is late. */
+  const retired = (): Partial<EngineSnapshot> =>
+    snapshot.pairing === null ? {} : { pairing: { ...snapshot.pairing, starting: false } };
+
   const connect = (broadcast: BroadcastInfo): void => {
-    show({ kind: 'connecting', transport: primary }, { broadcast, refusal: null, lastEnd: null });
+    show(
+      { kind: 'connecting', transport: primary },
+      { broadcast, refusal: null, lastEnd: null, ...retired() },
+    );
     later(CONNECT_MS, () => publishing(primary, now()));
   };
 
@@ -624,15 +643,27 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     const broadcast = snapshot.broadcast ?? broadcastFor(snapshot.pairing ?? FAKE_PAIRING, cause);
     const notReady = firstNotReady(snapshot.ready);
     if (notReady !== null) {
-      return show({ kind: 'armed', cause, notReady }, { broadcast, refusal: null, lastEnd: null });
+      const armed = { broadcast, refusal: null, lastEnd: null, ...retired() };
+      return show({ kind: 'armed', cause, notReady }, armed);
     }
     connect(broadcast);
+  };
+
+  /**
+   * `POST start`'s answer as native's `Pairings.started` decides it in Paired, or the start held in flight: the post
+   * clears the refusal and the last end, a failure says `start-failed`, and Started goes live as the hold would have.
+   */
+  const answerStart = (answer: StartAnswer): void => {
+    if (answer === 'started') return goLive('operator');
+    const pairing =
+      snapshot.pairing === null ? null : { ...snapshot.pairing, starting: answer === 'hold' };
+    publish({ pairing, refusal: answer === 'failed' ? 'start-failed' : null, lastEnd: null });
   };
 
   /** The operator's hold: only from Paired, and only when ready (Go live is off otherwise). */
   const start = (): void => {
     if (snapshot.state.kind !== 'paired' || firstNotReady(snapshot.ready) !== null) return;
-    goLive('operator');
+    answerStart(startAnswer);
   };
 
   /**
@@ -655,9 +686,10 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     });
   };
 
+  /** Native ignores an unpair while the hold's start is in flight (`Pairings.unpair`), as it ignores Forget. */
   const unpair = (): void => {
     const { kind } = snapshot.state;
-    if (kind === 'pairing' || kind === 'paired') atRest();
+    if ((kind === 'pairing' || kind === 'paired') && !startInFlight()) atRest();
   };
 
   // N1: native resets only from Ended (plan B's SessionMachine.kt); so does the fake.
@@ -727,7 +759,8 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
       snapshot.pairing === null
         ? { ...FAKE_PAIRING, ...waiting }
         : { ...snapshot.pairing, ...sceneUndo };
-    const held = { ...base, ...scene.pairing };
+    // A scene is a report native makes by itself, never with the operator's start in flight.
+    const held = { ...base, ...scene.pairing, starting: false };
     sceneUndo = resting
       ? {}
       : (Object.fromEntries(
@@ -802,14 +835,19 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
     hear,
     setReady,
     setPermissions,
+    setStartAnswer: (answer) => {
+      startAnswer = answer;
+      if (startInFlight()) answerStart(answer);
+    },
     setPairing: (change) => {
       waiting = { ...waiting, ...change };
       for (const key of Object.keys(change)) delete sceneUndo[key as keyof PairingInfo];
       if (snapshot.pairing !== null) publish({ pairing: { ...snapshot.pairing, ...change } });
     },
+    // Native's Forget acts only while paired and waiting: never on a court (O12), nor with the hold's start in flight.
     notificationForget: () => {
-      if (snapshot.state.kind === 'paired' && (snapshot.pairing?.court ?? null) === null)
-        unpaired('forgotten');
+      const court = (snapshot.pairing?.court ?? null) !== null;
+      if (snapshot.state.kind === 'paired' && !court && !startInFlight()) unpaired('forgotten');
     },
     patch: (telemetry) => publish({ telemetry: { ...snapshot.telemetry, ...telemetry } }),
     setCamera: (camera) => publish({ camera }),

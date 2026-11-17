@@ -57,6 +57,8 @@ object SnapshotWire {
       // Court stream (spec 2026-11-14 §6.1, §5.3): the court on a court code, else null; the beat's next, else null.
       "court" to w.courtName,
       "next" to w.next?.let { linkedMapOf("label" to it.label, "scheduledStart" to it.scheduledStartEpochS?.let(::num)) },
+      // Court stream Task 13 (P2): the operator's Go live waiting for POST start's answer.
+      "starting" to view.starting,
     )
   }
 

@@ -949,3 +949,94 @@ describe('court codes', () => {
     expect(snapshot().pairing?.court).toBe('Court 2');
   });
 });
+
+// Court stream Task 13 (NE2211, staging): native's POST start can take up to 8 s to answer, and Go live must say it took.
+describe('the operator’s start in flight (court stream Task 13, P2)', () => {
+  const holdStart = () => {
+    pair();
+    engine.setStartAnswer('hold');
+    engine.send({ kind: 'start' });
+  };
+
+  it('goes live at once by default, never saying starting', () => {
+    pair();
+    expect(snapshot().pairing?.starting).toBe(false);
+    engine.send({ kind: 'start' });
+    expect(state().kind).toBe('connecting');
+    expect(snapshot().pairing?.starting).toBe(false);
+  });
+
+  it('holds a start in flight: Paired and starting, the refusal and last end cleared as native’s post clears them', () => {
+    pair();
+    engine.hear({ word: 'refused', refusal: 'no_credit' });
+    engine.setStartAnswer('hold');
+    engine.send({ kind: 'start' });
+    expect(state()).toEqual({ kind: 'paired' });
+    expect(snapshot().pairing?.starting).toBe(true);
+    expect(snapshot().refusal).toBeNull();
+    // For as long as the answer takes: the fake has no timeout of its own (native's HTTP one answers failed).
+    wait(8_000);
+    expect(state()).toEqual({ kind: 'paired' });
+    expect(snapshot().pairing?.starting).toBe(true);
+  });
+
+  it('answers the held start started: it goes live as the hold would have, and starting goes', () => {
+    holdStart();
+    engine.setStartAnswer('started');
+    expect(state().kind).toBe('connecting');
+    expect(snapshot().pairing?.starting).toBe(false);
+    expect(snapshot().broadcast?.cause).toBe('operator');
+    wait(1_000);
+    expect(state().kind).toBe('publishing');
+  });
+
+  it('answers the held start failed: Paired with start-failed and starting gone, and the next hold goes again', () => {
+    holdStart();
+    engine.setStartAnswer('failed');
+    expect(state()).toEqual({ kind: 'paired' });
+    expect(snapshot().refusal).toBe('start-failed');
+    expect(snapshot().pairing?.starting).toBe(false);
+    // A second call: the answer stays failed until set again, so the next hold fails at once.
+    engine.send({ kind: 'start' });
+    expect([state().kind, snapshot().refusal, snapshot().pairing?.starting]).toEqual([
+      'paired',
+      'start-failed',
+      false,
+    ]);
+    engine.setStartAnswer('started');
+    engine.send({ kind: 'start' });
+    expect(state().kind).toBe('connecting');
+    expect(snapshot().refusal).toBeNull();
+  });
+
+  it('lets the organiser’s Go live arm over the start in flight, starting gone, and the late answer moves nothing', () => {
+    holdStart();
+    engine.hear({ word: 'go-live', cause: 'organiser' });
+    expect(state().kind).toBe('connecting');
+    expect(snapshot().pairing?.starting).toBe(false);
+    expect(snapshot().broadcast?.cause).toBe('organiser');
+    engine.setStartAnswer('failed');
+    expect(state().kind).toBe('connecting');
+    expect(snapshot().refusal).toBeNull();
+  });
+
+  it('ignores an unpair and the notification’s Forget while the start is in flight, as native does', () => {
+    holdStart();
+    engine.send({ kind: 'unpair' });
+    expect(state()).toEqual({ kind: 'paired' });
+    expect(snapshot().pairing?.starting).toBe(true);
+    engine.notificationForget();
+    expect(state()).toEqual({ kind: 'paired' });
+    expect(snapshot().unpaired).toBeNull();
+    // Answered, they act again.
+    engine.setStartAnswer('failed');
+    engine.send({ kind: 'unpair' });
+    expect(state()).toEqual({ kind: 'idle' });
+  });
+
+  it('plays a scene as native’s own report, with no start in flight', () => {
+    holdStart();
+    engine.scene('paired-ready');
+    expect(snapshot().pairing?.starting).toBe(false);
+  });
+});

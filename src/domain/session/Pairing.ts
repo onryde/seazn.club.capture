@@ -50,6 +50,11 @@ export type PairingInfo = {
   readonly court: string | null;
   /** The court's next streamed match, from the last beat (§5.3); null when none. Display only. */
   readonly next: NextMatch | null;
+  /**
+   * The operator's Go live is waiting for the server's answer (`POST start` in flight), in Paired only (court stream
+   * Task 13, P2). Native's fact (AGENTS §2): Go live shows "Starting…" and cannot be held until it clears.
+   */
+  readonly starting: boolean;
 };
 
 /** The broadcast's non-secret fields, while one is held. `cred` never crosses the bridge (A1, A5). */

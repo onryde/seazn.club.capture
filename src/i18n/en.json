@@ -157,6 +157,7 @@
   "stream.meter.label": "Sound level {level} of 6",
   "stream.elapsed.label": "On air for {time}",
   "stream.action.goLive": "Go live",
+  "stream.action.starting": "Starting…",
   "stream.action.stop": "Stop",
   "stream.action.holdLabel": "{label}. Press and hold for 3 seconds.",
   "stream.action.stopLabel": "Hold to stop",

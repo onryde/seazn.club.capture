@@ -33,6 +33,7 @@ import {
   selectPlaybackUrl,
   selectScheduledStartMs,
   selectRoundLine,
+  selectStarting,
   selectUnpairedKey,
   selectUnpairedReason,
   selectVenueZone,
@@ -407,6 +408,18 @@ describe('the round line selector (spec §2)', () => {
     const bare = toEngineSnapshot(vectorWire('paired-after-organiser-stop'));
     expect(bare?.pairing?.label).toBe(vectors.pairingBase.label);
     expect(selectRoundLine(bare as EngineSnapshot)).toBeNull();
+  });
+
+  // Court stream Task 13 (P2): native's own fact, read through the real reader from the shared vector.
+  it('selectStarting is native’s start in flight: true only when the pairing says so', () => {
+    expect(selectStarting(toEngineSnapshot(vectorWire('paired-starting')) as EngineSnapshot)).toBe(
+      true,
+    );
+    expect(
+      selectStarting(toEngineSnapshot(vectorWire('paired-court-no-next')) as EngineSnapshot),
+    ).toBe(false);
+    // An empty input: no pairing at all.
+    expect(selectStarting(snapshot({ kind: 'idle' }))).toBe(false);
   });
 
   it('a known match label is the broadcast’s too: selectLabel reads it before the pairing’s', () => {

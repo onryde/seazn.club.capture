@@ -29,7 +29,8 @@ object Projection {
       shed = session?.device?.shed,
       device = session?.device,
       camera = phase.camera,
-      pairing = phase.pairing?.let { PairingView(it.name, it.automatic, it.waiting) },
+      // Court stream Task 13 (P2): only Paired posts the hold's start, and an end keeps the pairing with it unanswered.
+      pairing = phase.pairing?.let { PairingView(it.name, it.automatic, it.waiting, starting = phase is Phase.Paired && it.starts.inFlightId != null) },
       broadcast = session?.let { broadcastView(it) },
       ready = ready(phase),
       refusal = phase.pairing?.refusal,

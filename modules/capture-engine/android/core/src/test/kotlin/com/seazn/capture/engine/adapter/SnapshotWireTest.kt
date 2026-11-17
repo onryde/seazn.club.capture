@@ -200,6 +200,12 @@ class SnapshotWireTest {
         val snapshot = bare(SnapshotState.Paired, 1_790_000_009_000).copy(pairing = PairingView(name, true, waiting), ready = allReady, camera = CameraState.OWN)
         SnapshotWire.of(snapshot, PlatformFacts(survivesBackground = true), clean)
       },
+      // Court stream Task 13 (P2): the operator's Go live in flight, waiting for POST start's answer.
+      "paired-starting" to {
+        val snapshot =
+          bare(SnapshotState.Paired, 1_790_000_010_000).copy(pairing = PairingView(name, true, waiting(), starting = true), ready = allReady, camera = CameraState.OWN)
+        SnapshotWire.of(snapshot, PlatformFacts(survivesBackground = true), clean)
+      },
     )
 
   /** `{ ...base, ...overrides }` when the case's value is an object; `null` stays `null`. */
@@ -263,7 +269,7 @@ class SnapshotWireTest {
   @Test
   fun `carries 3, 5, 6 each native snapshot becomes the shared wire`() {
     val cases = cases()
-    assertEquals(20, cases.size, "the vector file's twenty cases")
+    assertEquals(21, cases.size, "the vector file's twenty-one cases")
     assertEquals(cases.map { it.first }.toSet(), builders.keys, "one builder per case")
     for ((name, expected) in cases) assertJsonEquals(expected, JSONObject(WireJson.encode(builders.getValue(name)())), name)
   }
@@ -467,7 +473,12 @@ class SnapshotWireTest {
     Sources(
       live.copy(
         // A court pairing with a next, so a change to the court or to either half of next can show.
-        pairing = live.pairing!!.copy(waiting = live.pairing!!.waiting.copy(courtName = "Court 1", next = NextMatch("Example Town v Sample CC", 1_793_534_400))),
+        // And a start in flight, so a change to starting can show.
+        pairing =
+          live.pairing!!.copy(
+            waiting = live.pairing!!.waiting.copy(courtName = "Court 1", next = NextMatch("Example Town v Sample CC", 1_793_534_400)),
+            starting = true,
+          ),
         refusal = Refusal.NO_CREDIT,
         lastEnd = LastEnd.NO_SIGNAL,
         unpaired = Unpaired(UnpairReason.TAKEN, name),
@@ -541,6 +552,7 @@ class SnapshotWireTest {
       "pairing.name.slot" to { s -> s.pairingName { copy(slot = 2) } },
       "pairing.name.tokenTag" to { s -> s.pairingName { copy(tokenTag = "95e90931") } },
       "pairing.automatic" to { s -> s.pairing { copy(automatic = false) } },
+      "pairing.starting" to { s -> s.pairing { copy(starting = false) } },
       "pairing.waiting.label" to { s -> s.waiting { copy(label = "Sample CC v Example Town") } },
       "pairing.waiting.venueTimezone" to { s -> s.waiting { copy(venueTimezone = "Europe/Amsterdam") } },
       "pairing.waiting.scheduledStartEpochS" to { s -> s.waiting { copy(scheduledStartEpochS = 1_790_003_660) } },

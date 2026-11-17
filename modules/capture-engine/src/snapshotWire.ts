@@ -297,7 +297,8 @@ function toPairing(value: Wire): PairingInfo | undefined {
   if (!textOrNull(destinationName)) return undefined;
   if (!textOrNull(stageLabel)) return undefined;
   const court = toCourt(value.court);
-  if (court === undefined) return undefined;
+  // Court stream Task 13 (P2): the Go live in flight. Never guessed: anything but a flag is a malformed pairing.
+  if (court === undefined || !isFlag(value.starting)) return undefined;
   return {
     code,
     slot,
@@ -312,6 +313,7 @@ function toPairing(value: Wire): PairingInfo | undefined {
     stageLabel,
     court,
     next: toNext(value.next),
+    starting: value.starting,
   };
 }
 

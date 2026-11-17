@@ -9,6 +9,7 @@ import {
   selectNextStartMs,
   selectPlaybackUrl,
   selectScheduledStartMs,
+  selectStarting,
   selectStateKind,
   selectVenueZone,
 } from '@/hooks/engineSelectors';
@@ -51,6 +52,11 @@ export type Viewfinder = {
   /** Why Go live is off, at the control (ruling I3); null with nothing blocking. */
   readonly reason: BlockerKey | null;
   readonly action: ViewfinderAction;
+  /**
+   * The operator's hold posted start and native waits for its answer (court stream Task 13, P2): Go live says
+   * "Starting…" and cannot be held, and the plate reads Connecting, as the Arming it leads to.
+   */
+  readonly starting: boolean;
   /**
    * Stop ends the pairing too: the broadcast went live, on a fixture's code. Owner decision 1 (2026-10-05): a Stop
    * before the first frame (Arming, Armed, Connecting) ends the broadcast only, and the pairing stays Paired. A court
@@ -123,6 +129,7 @@ export function useViewfinder(): Viewfinder {
   const shed = useEngineSelector(selectShedding);
   const engineSilent = useEngineSilent();
   const court = useEngineSelector(selectCourt);
+  const starting = useEngineSelector(selectStarting);
   return useMemo(
     () => ({
       ...project({
@@ -135,6 +142,7 @@ export function useViewfinder(): Viewfinder {
         waiting,
         engineSilent,
         court,
+        starting,
       }),
       ...countdown,
       ...intents,
@@ -149,6 +157,7 @@ export function useViewfinder(): Viewfinder {
       waiting,
       engineSilent,
       court,
+      starting,
       countdown,
       intents,
     ],
@@ -166,6 +175,7 @@ type ProjectInput = {
   /** CD17: no report for three seconds while native holds a pairing. */
   readonly engineSilent: boolean;
   readonly court: string | null;
+  readonly starting: boolean;
 };
 
 /**
@@ -177,11 +187,11 @@ type ProjectInput = {
 function project(
   input: ProjectInput,
 ): Omit<Viewfinder, 'holdRemaining' | 'holdWindow' | 'start' | 'stop'> {
-  const { kind, blocker, waiting, engineSilent, court } = input;
+  const { kind, blocker, waiting, engineSilent, court, starting } = input;
   const action = ACTION[kind];
   return {
     kind,
-    plate: engineSilent ? 'trouble' : tallyPlateFor(kind, blocker === null),
+    plate: engineSilent ? 'trouble' : plateFor(kind, blocker === null, starting),
     statusKey: engineSilent ? 'stream.status.engineSilent' : input.engineKey,
     preflight: input.preflight,
     blocker,
@@ -194,8 +204,14 @@ function project(
     scoring: kind === 'paired' || action === 'stop',
     peekable: action === 'stop' && input.playable,
     shed: input.shed,
+    starting,
     ...waiting,
   };
+}
+
+/** The tally plate: the hold's start in flight reads Connecting, as the Arming it leads to (court stream Task 13, P2). */
+function plateFor(kind: Kind, ready: boolean, starting: boolean): TallyPlate {
+  return starting ? 'connecting' : tallyPlateFor(kind, ready);
 }
 
 type WaitingFields = {

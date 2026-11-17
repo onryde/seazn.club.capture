@@ -157,6 +157,7 @@
   "stream.meter.label": "Nivel de sonido {level} de 6",
   "stream.elapsed.label": "En directo desde hace {time}",
   "stream.action.goLive": "Emitir",
+  "stream.action.starting": "Iniciando…",
   "stream.action.stop": "Detener",
   "stream.action.holdLabel": "{label}. Mantén pulsado 3 segundos.",
   "stream.action.stopLabel": "Mantén pulsado para detener",
