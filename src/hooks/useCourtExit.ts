@@ -12,7 +12,7 @@ export type CourtExit = {
   /** The Leave question is showing. Forced shut whenever Exit is not offered, so an arming engine closes it. */
   readonly open: boolean;
   /**
-   * A Leave is under way: unpair sent, at most 5 s (`UNPAIR_GIVE_UP_MS`), after up to 10 s waiting out a start in flight
+   * A Leave is under way: unpair sent, at most 5 s (`UNPAIR_GIVE_UP_MS`), after up to 17 s waiting out a start in flight
    * (`START_ANSWER_WAIT_MS`). The screen swallows Back for it, so leaving
    * the screen cannot end the unpair as `left` and forget a code native still holds (whole-branch review I2).
    */

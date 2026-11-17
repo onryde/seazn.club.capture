@@ -399,6 +399,38 @@ describe('useUnpair', () => {
       expect(kinds(view)).toEqual(['pair', 'start', 'unpair']);
     });
 
+    // Fix round 2 m3: native answers a start at the latest at its bridge backstop (`BridgeCore.ANSWER_BACKSTOP_MS`, 16 s),
+    // so an answer that late is still waited for.
+    it('still waits for a start answered at native’s 16 s backstop, then unpairs', () => {
+      const { view, outcomes } = starting();
+      act(() => vi.advanceTimersByTime(16_000));
+      expect(outcomes).toEqual([]);
+      act(() => view.engine.setStartAnswer('failed'));
+      expect(kinds(view)).toEqual(['pair', 'start', 'unpair']);
+      expect(outcomes).toEqual(['idle']);
+      expect(events(view)).not.toContain('unpair.gave-up');
+    });
+
+    // Fix round 2 m2: an unpair sent just before the start showed reached native while the start was in flight, and
+    // native ignored it, so once the start fails the same paired status is asked again.
+    it('sends the unpair again after a failed start that began before native heard the first', () => {
+      const view = renderUnpair({ paired: true });
+      const native = holdIntents(view.engine, ['unpair']);
+      const outcomes: UnpairOutcome[] = [];
+      act(() => view.unpair('forget', (outcome) => outcomes.push(outcome)));
+      expect(native.held()).toEqual(['unpair']);
+      view.engine.setStartAnswer('hold');
+      act(() => view.engine.send({ kind: 'start' }));
+      expect(view.engine.getSnapshot().pairing?.starting).toBe(true);
+      // The first unpair arrives while the start is in flight: native ignores it.
+      act(() => native.release());
+      expect(view.engine.getSnapshot().state.kind).toBe('paired');
+      act(() => view.engine.setStartAnswer('failed'));
+      expect(kinds(view)).toEqual(['pair', 'start', 'unpair', 'unpair']);
+      expect(view.engine.getSnapshot().state.kind).toBe('idle');
+      expect(outcomes).toEqual(['idle']);
+    });
+
     it('ends silently when its caller unmounts while it waits', () => {
       const fakes = createFakePorts();
       pair(fakes);

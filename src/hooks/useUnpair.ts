@@ -11,10 +11,11 @@ export const UNPAIR_GIVE_UP_MS = 5_000;
 /**
  * Court stream Task 13 fix round 1 (the controller's ruling): native ignores an unpair while the operator's start is in
  * flight (`Pairings.unpair`), so a clearing waits for native's answer to it, then acts on what it finds. Native answers a
- * start within its HTTP bound (8 s, `Http.TIMEOUT_MS`), as failed when the server does not; 10 s leaves it room, and a
- * wait past it is given up as an unanswered unpair is. The unpair then has its own 5 s.
+ * start within its HTTP bound (8 s, `Http.TIMEOUT_MS`), and at the latest at its bridge backstop (16 s,
+ * `BridgeCore.ANSWER_BACKSTOP_MS`), as failed when the server does not; 17 s outlasts the backstop (fix round 2 m3, the
+ * controller's ruling), and a wait past it is given up as an unanswered unpair is. The unpair then has its own 5 s.
  */
-export const START_ANSWER_WAIT_MS = 10_000;
+export const START_ANSWER_WAIT_MS = 17_000;
 
 /** Why the engine is cleared: its code was forgotten, no saved code owns it, or another mode is opening (A7). */
 export type UnpairCause = 'forget' | 'orphan' | 'otherMode';
@@ -126,6 +127,9 @@ function clear(
     if (selectStarting(snapshot)) {
       if (!waiting) giveUpIn(START_ANSWER_WAIT_MS);
       waiting = true;
+      // An unpair sent just before the start showed reached native while it was in flight and was ignored: once the
+      // start is answered, the same status is asked again (fix round 2 m2).
+      acted = null;
       return;
     }
     if (waiting) giveUpIn(UNPAIR_GIVE_UP_MS);
