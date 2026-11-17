@@ -179,6 +179,12 @@ Live Stream's paired·waiting viewfinder, on a court code:
 - match line: "Next: A v B · 14:00", or "No streamed match yet" when `next` is absent. The label is
   cut by how wide it draws, never by a count of characters, so the time always shows (revised
   2026-11-16, RP8);
+- while the server's automatic start of the court's match stands refused, the match line says why
+  instead (the waiting answer's `autoRefusal`, web #1247, owner "Ok" 2026-11-17): after the last
+  end, before the destination. "Destination not ready — ask the organiser", "Destination busy
+  with another match", "Streaming paused for this competition" (shortened from the proposal's
+  57 characters to the status line's 48), "Can't start yet — retrying" (routine: the server
+  retries every 60 s), and the existing no-credit and not-included lines. An unknown word is none;
 - *Tap to score* on the existing *Remote scoring* button (O8); the panel shows for 10 s as today.
 The camera half stays as today while waiting. While live on a court code, the strip's
 routine line shows "Next: C v D · 14:30" from the beat's `next`. Copy in en/es/fr/nl.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { LastEnd, PairingInfo, Refusal } from '@/domain/session/Pairing';
+import type { AutoRefusal, LastEnd, PairingInfo, Refusal } from '@/domain/session/Pairing';
 import type { SessionState } from '@/domain/session/SessionState';
 import type { EngineSnapshot } from '@/engine/CaptureEnginePort';
 import { createFakeCaptureEngine } from '@/engine/FakeCaptureEngine';
@@ -179,5 +179,94 @@ describe('on air on a court code', () => {
     // Waiting between matches is not on air: it is not a calm on-air line, so Back says nothing over it.
     expect(columnLineKey('stream.status.courtNone', true)).toBe('stream.status.courtNone');
     expect(columnLineKey('stream.status.courtNextAt', false)).toBe('stream.status.courtNextAt');
+  });
+});
+
+// E2 (2026-11-17): the server refused the court's automatic start, so the court's line says why instead of "No streamed
+// match yet". The keys and tiers are the brief's table, written out here, never read from the function under test.
+describe('a court whose automatic start the server refused', () => {
+  const REFUSED_LINES: readonly (readonly [AutoRefusal, string, 'urgent' | 'routine'])[] = [
+    ['no_destination', 'stream.status.courtRefusedDestination', 'urgent'],
+    ['destination_in_use', 'stream.status.courtDestinationBusy', 'urgent'],
+    ['competition_frozen', 'stream.status.courtFrozen', 'urgent'],
+    ['no_credit', 'stream.status.refusedCredit', 'urgent'],
+    ['not_entitled', 'stream.status.refusedEntitlement', 'urgent'],
+    // The server retries every 60 s: plain progress, so an advisory caption may beat it.
+    ['unavailable', 'stream.status.courtStartRetrying', 'routine'],
+  ];
+
+  it('names all six words the contract lists, once each', () => {
+    expect(REFUSED_LINES.map(([word]) => word).sort()).toEqual([
+      'competition_frozen',
+      'destination_in_use',
+      'no_credit',
+      'no_destination',
+      'not_entitled',
+      'unavailable',
+    ]);
+  });
+
+  it.each(REFUSED_LINES)('%s says %s, in the %s tier', (autoRefusal, expected, tier) => {
+    const line = key(court({ autoRefusal, next: null }));
+    expect(line).toBe(expected);
+    expect(LINE_TIER[line]).toBe(tier);
+  });
+
+  it('says it over the Next line, automatic off and a missing destination', () => {
+    const autoRefusal: AutoRefusal = 'destination_in_use';
+    expect(key(court({ autoRefusal, next: NEXT_AT }))).toBe('stream.status.courtDestinationBusy');
+    expect(key(court({ autoRefusal, automatic: false }))).toBe(
+      'stream.status.courtDestinationBusy',
+    );
+    expect(key(court({ autoRefusal, destinationName: null }))).toBe(
+      'stream.status.courtDestinationBusy',
+    );
+  });
+
+  it('gives way to the operator’s start in flight, the phone’s own refusal and a failure end', () => {
+    const autoRefusal: AutoRefusal = 'no_destination';
+    expect(key(court({ autoRefusal, starting: true }))).toBe('stream.status.connecting');
+    expect(key(court({ autoRefusal }, { refusal: 'start-failed' satisfies Refusal }))).toBe(
+      'stream.status.startFailed',
+    );
+    expect(key(court({ autoRefusal }, { lastEnd: 'no-signal' }))).toBe(
+      'stream.status.stoppedNoSignal',
+    );
+  });
+
+  // After an interruption: the match ended calmly and the server's next automatic start was refused.
+  it('says it after a calm end, where the Next line would be', () => {
+    const snapshot = court({ autoRefusal: 'unavailable', next: NEXT_AT }, { lastEnd: 'stopped' });
+    expect(key(snapshot)).toBe('stream.status.courtStartRetrying');
+  });
+
+  it('is the Next line again once the server stops sending it', () => {
+    const refused = court({ autoRefusal: 'competition_frozen', next: NEXT_AT });
+    expect(key(refused)).toBe('stream.status.courtFrozen');
+    expect(key(court({ autoRefusal: null, next: NEXT_AT }))).toBe('stream.status.courtNextAt');
+    expect(key(court({ autoRefusal: null, next: null }))).toBe('stream.status.courtNone');
+  });
+
+  it('says the same key twice for the same snapshot (a second call)', () => {
+    const snapshot = court({ autoRefusal: 'no_credit' });
+    expect([key(snapshot), key(snapshot)]).toEqual([
+      'stream.status.refusedCredit',
+      'stream.status.refusedCredit',
+    ]);
+  });
+
+  // Another mode: the contract sends it on court codes only; a fixture code's line never reads it.
+  it('is never said on a fixture code', () => {
+    expect(key(pairedWith({ court: null, autoRefusal: 'no_destination' }))).toBe(
+      'stream.status.waitingGoLive',
+    );
+  });
+
+  // Paired only: the live beats omit it, and native clears it at Arming, but the line never reads it on air either.
+  it('is never said on air', () => {
+    const publishing: SessionState = { kind: 'publishing', transport: 'srt', sinceEpochMs: 1 };
+    expect(key(court({ autoRefusal: 'no_destination', next: null }, { state: publishing }))).toBe(
+      'stream.status.live',
+    );
   });
 });

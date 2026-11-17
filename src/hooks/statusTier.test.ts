@@ -26,6 +26,8 @@ const ROUTINE: readonly LineKey[] = [
   'stream.status.courtNext', // the next streamed match, no start yet
   'stream.status.courtNone', // no streamed match yet
   'stream.status.courtAutomaticOff', // automatic is off: nothing will go live by itself
+  // E2 (2026-11-17): the server's automatic start failed for a passing reason and it retries every 60 s by itself.
+  'stream.status.courtStartRetrying', // can't start yet, retrying
 ];
 
 const URGENT: readonly LineKey[] = [
@@ -40,6 +42,10 @@ const URGENT: readonly LineKey[] = [
   'stream.status.refusedUnknown',
   'stream.status.startFailed',
   'stream.status.startRetrying',
+  // E2 (2026-11-17): the server refused the court's automatic start, and nothing goes live until the organiser acts.
+  'stream.status.courtRefusedDestination',
+  'stream.status.courtDestinationBusy',
+  'stream.status.courtFrozen',
   // The phone is not ready: the operator has to do something.
   'stream.status.notReadyCamera',
   'stream.status.notReadySound',
@@ -91,10 +97,10 @@ describe('the strip’s two tiers of line (owner ruling, 2026-10-08)', () => {
     ] as const) {
       expect(dictionaryKeys(dictionary), lang).toEqual(chosen);
     }
-    // Anti-vacuity: the lists are the whole copy, 47 status keys and Back's line.
-    expect(chosen).toHaveLength(48);
-    expect(ROUTINE).toHaveLength(12);
-    expect(URGENT).toHaveLength(36);
+    // Anti-vacuity: the lists are the whole copy, 51 status keys and Back's line.
+    expect(chosen).toHaveLength(52);
+    expect(ROUTINE).toHaveLength(13);
+    expect(URGENT).toHaveLength(39);
     // And the table has an entry for exactly those keys.
     expect(Object.keys(LINE_TIER).sort()).toEqual(chosen);
   });
