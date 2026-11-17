@@ -130,20 +130,35 @@ class CameraAvailability(private val selfWindowMs: Long = 1_500) {
   }
 
   /**
-   * N45 I1: a probe opened [id], ours, while a take is told: nothing holds it from us, whichever camera the other app
-   * held, so the take is told over and the engine reopens it. The contended set goes with it: our camera opening is
-   * its answer. Null when [id] is not ours, or no take is told.
+   * Review R1-I2: the broadcast ended. The busy mark is for StreamPack's "streaming" report, which only a broadcast
+   * makes, so it ends here: a take whose camera source stayed in asks no new open at the stop, and the preview's open
+   * after it (a failed one throws to its listener, C7 I-2, and reports nothing) is a real open again.
+   */
+  @Synchronized
+  fun offAir() {
+    busySinceOpening = false
+  }
+
+  /**
+   * N45 I1: a probe opened [id], ours, while a take of it is told: nothing holds it from us, whichever camera the
+   * other app held (a hidden id: the device check's error 2). Review R1-C1: only ours is freed. Another app's take of
+   * another camera (F-P5-9, a call on camera 1) keeps its own release, which reopens ours (F-P5-10's measured remedy),
+   * so the take is told over only when nothing else is contended. Null when [id] is not ours, no take is told, or
+   * another camera is still held.
    */
   @Synchronized
   fun probed(id: String): Input? {
     if (id != ours || !told) return null
-    contended.clear()
-    return releasedTold()
+    contended.remove(id)
+    return if (contended.isEmpty()) releasedTold() else null
   }
 
-  /** N45 I1: a take is told and not yet told over: the capture probes it while the slate is up. */
+  /**
+   * N45 I1: a take of OUR camera is told and not yet told over: the capture probes it while the slate is up. Review
+   * R1-C1: another app's take of another camera is never probed: its release is the end of it.
+   */
   @Synchronized
-  fun takeTold(): Boolean = told
+  fun oursTaken(): Boolean = told && ours?.let { it in contended } == true
 
   /**
    * I-2: the camera reads ready while the source is a [camera] and no open of it has failed since it was

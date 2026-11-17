@@ -244,10 +244,10 @@ class CameraAvailabilityTest {
     assertEquals(null, fresh.taken("0"), "told once")
     assertEquals(null, fresh.unavailable("0", 2_000), "the holder's own events of our camera are no news")
     assertEquals(null, fresh.available("0", 3_000), "N45 I1: our own camera's available is no release of a take of it")
-    assertTrue(fresh.takeTold())
+    assertTrue(fresh.oursTaken())
     assertEquals(null, fresh.probed("1"), "N45 I1: a probe of another camera ends nothing")
     assertEquals(Input.CameraReleased, fresh.probed("0"), "N45 I1: the probe opened it: the engine reopens")
-    assertFalse(fresh.takeTold())
+    assertFalse(fresh.oursTaken())
     assertEquals(null, fresh.probed("0"), "told over once")
     fresh.opening("0") // the reopen
     assertTrue(fresh.ready(camera = true))
@@ -257,19 +257,41 @@ class CameraAvailabilityTest {
   }
 
   /**
-   * N45 I1: a take told by the availability watch (F-P5-9, another app's camera) ends by its release as before, or by
-   * a probe that opens ours, whichever comes first: whichever camera the other app held, our camera opening is the
-   * end of it. Off air the probe is never made; a new open asked ends the capture's own take's hold on our available.
+   * N45 R1-C1 (re-review, probe E): a probe ends only the take of OUR camera. Another app's take of another camera
+   * (F-P5-9, a video call on 1) is not ours to probe, and its release is what reopens ours (F-P5-10's measured remedy):
+   * a probe that opens ours beside it ends nothing. With both taken (the call's open also cost us our device), the
+   * probe frees ours and the call's release, the last, tells the take over. Off air, a new open asked ends the
+   * capture's own take's hold on our available.
    */
   @Test
-  fun `N45 I1 a probe that opens our camera ends any take, and a new open asked gives our available back`() {
+  fun `N45 R1-C1 a probe ends only our camera's take - another app's camera keeps its own release`() {
     val watched = CameraAvailability()
     watched.opening("0")
     assertEquals(null, watched.sessionStarted())
     assertEquals(Input.CameraContended, watched.unavailable("1", 1_000), "F-P5-9")
-    assertEquals(Input.CameraReleased, watched.probed("0"), "ours opened beside it")
-    assertEquals(null, watched.available("1", 2_000), "its release after: nothing more")
-    assertFalse(watched.contended("1"))
+    assertFalse(watched.oursTaken(), "another camera's take: nothing of ours to probe")
+    assertEquals(null, watched.probed("0"), "ours opened beside it: the call goes on")
+    assertTrue(watched.contended("1"))
+    assertEquals(Input.CameraReleased, watched.available("1", 2_000), "the call ends: its release reopens ours")
+
+    val both = CameraAvailability()
+    both.opening("0")
+    both.sessionStarted()
+    assertEquals(Input.CameraContended, both.unavailable("1", 1_000), "the call")
+    assertEquals(null, both.taken("0"), "and its open cost us our device: told once")
+    assertTrue(both.oursTaken())
+    assertEquals(null, both.probed("0"), "ours is free again, the call is not")
+    assertFalse(both.contended("0"))
+    assertFalse(both.oursTaken(), "nothing of ours left to probe")
+    assertEquals(Input.CameraReleased, both.available("1", 2_000), "the call's release, the last, tells it over")
+
+    val ownFirst = CameraAvailability()
+    ownFirst.opening("0")
+    ownFirst.sessionStarted()
+    assertEquals(Input.CameraContended, ownFirst.taken("0"))
+    assertEquals(null, ownFirst.unavailable("1", 1_000), "then the call: told once")
+    assertEquals(null, ownFirst.available("1", 2_000), "the call ends first: ours is still taken")
+    assertEquals(Input.CameraReleased, ownFirst.probed("0"), "then the probe opens ours, the last")
 
     val own = CameraAvailability()
     own.opening("0")

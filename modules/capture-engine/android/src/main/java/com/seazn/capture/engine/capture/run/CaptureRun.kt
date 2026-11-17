@@ -154,10 +154,12 @@ class CaptureRun(
           }
         }
         // N45 I2: the busy word is marked as it is heard, before its take is queued: StreamPack's "streaming" report
-        // of the same failed open comes on the opens' flow, and is no open once marked.
+        // of the same failed open comes on the opens' flow, and is no open once marked. Review R1-I2: on air only,
+        // where StreamPack streams; off air the preview's failed open throws to its listener and reports nothing, so
+        // its open reports are real opens, and its own reopen heals a take the holder let go (C7 I-2).
         launch {
           parts.busyOpens().collect { id ->
-            cameras.busyOpen(id)
+            if (attempt != null) cameras.busyOpen(id)
             serial.submit { busyByDevice(id) }
           }
         }
@@ -221,11 +223,15 @@ class CaptureRun(
   private fun probeWhileSlated() {
     probeFails = 0
     probeLineAt = null
+    nudges.tryReceive() // review R1-I1: a word from before this slate is no news of its take
     probing =
       scope.launch {
         do {
           delay(PROBE_GAP_MS)
-          withTimeoutOrNull(probeEvery() - PROBE_GAP_MS) { nudges.receive() }
+          // Review R1-I1: backed off, the wait is a floor no word shortens. Camera2 announces our camera available at
+          // every close of it, each loss's and each probe's, and those words brought a camera that fails at every
+          // open back about once a second.
+          if (backedOff()) delay(PROBE_SLOW_MS - PROBE_GAP_MS) else withTimeoutOrNull(PROBE_EVERY_MS - PROBE_GAP_MS) { nudges.receive() }
           val going = CompletableDeferred<Boolean>()
           serial.submit {
             var more = false
@@ -239,7 +245,7 @@ class CaptureRun(
       }
   }
 
-  private fun probeEvery(): Long = if (quickRetakes >= QUICK_RETAKES) PROBE_SLOW_MS else PROBE_EVERY_MS
+  private fun backedOff(): Boolean = quickRetakes >= QUICK_RETAKES
 
   /** The slate's: each slate starts its probing afresh, never on the last one's count and 30 s (see [slate]). */
   private fun stopProbing() {
@@ -249,7 +255,7 @@ class CaptureRun(
 
   /** N45 I1: one probe, on the queue, so never beside a reopen or a build of ours. False ends the probing. */
   private suspend fun probeTake(): Boolean {
-    if (!cameras.takeTold()) return false
+    if (!cameras.oursTaken()) return false
     val found =
       try {
         parts.probeCamera() ?: return false
@@ -608,6 +614,7 @@ class CaptureRun(
   /** The broadcast ends; the pairing, the camera and the viewfinder stay (amendment, _States_). */
   private suspend fun stopBroadcast() {
     attempt?.let { stopHeld(it) }
+    cameras.offAir()
     parts.afterBroadcast()
   }
 

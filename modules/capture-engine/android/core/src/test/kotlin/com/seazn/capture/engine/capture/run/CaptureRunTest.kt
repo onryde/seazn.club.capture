@@ -624,21 +624,103 @@ class CaptureRunTest {
     s.told.lines.filter { it.kind == "camera-probe" }.map { line -> line.fields.single { it.first == "failures" }.second }
 
   /**
-   * N45 I2: the busy word is marked as it is heard, not when the queue gets to it. StreamPack sends the word and its
-   * "streaming" report of the same failed open together, from inside the open. The preview's busy failure tells the
-   * take from the glue, outside the queue (C7 I-2), so a report read before a queued mark was our open, and told the
-   * take over while the other app still held the camera: the machine reopened into its hold.
+   * N45 I2, on air: the busy word is marked as it is heard, not when the queue gets to it. StreamPack sends the word and
+   * its "streaming" report of the same failed open together, from inside the open. The preview's busy failure tells
+   * the take from the glue, outside the queue (C7 I-2), so a report read before a queued mark was our open, and told
+   * the take over while the other app still held the camera: the machine reopened into its hold.
    */
   @Test
-  fun `N45 I2 a busy word and its streaming report heard together are no open - the preview's take stands`() =
+  fun `N45 I2 on air a busy word and its streaming report heard together are no open - the preview's take stands`() =
     runTest {
       val s = opened()
+      does(s, connect(1))
       assertEquals(Input.CameraContended, s.cameras.openFailed("0", busy = true), "the preview's busy failure: a take")
       s.parts.busyOpen("0")
       s.parts.opened("0")
       advanceUntilIdle()
-      assertEquals(emptyList(), s.told.reports, "the report of a busy open is no open: no release")
+      assertEquals(listOf<Input>(Input.Connected(1)), s.told.reports, "the report of a busy open is no open: no release")
       assertTrue(s.cameras.contended("0"), "the take stands")
+    }
+
+  /**
+   * N45 R1-I2 (re-review, probe G): the busy mark is for StreamPack's "streaming" report of a failed open, and it streams
+   * only on air. Off air the preview opens the camera, and a failed preview open throws to its listener (C7 I-2,
+   * javap) and reports nothing, so an open report is a real open. A holder on another id (error 2) never makes ours
+   * available; the preview's own next start (the window shown again, with no open of ours asked) opens it once the
+   * holder lets go, and that open tells the take over: the camera reads ready, and Go live may go.
+   */
+  @Test
+  fun `N45 R1-I2 off air an error-2 take of the preview heals at the preview's next open, and the camera reads ready`() =
+    runTest {
+      val s = opened()
+      s.parts.opened("0")
+      advanceUntilIdle()
+      s.parts.busyOpen("0") // the preview's restart: "Camera 0 is in error 2"
+      advanceUntilIdle()
+      assertEquals(Input.CameraContended, s.cameras.openFailed("0", busy = true), "the preview's failure: a take")
+      assertFalse(s.cameras.ready(camera = true), "taken: not ready")
+      s.parts.opened("0") // the holder let go, and the preview's next start opened it
+      advanceUntilIdle()
+      assertEquals(listOf<Input>(Input.CameraReleased), s.told.reports, "its open tells the take over")
+      assertTrue(s.cameras.ready(camera = true), "and the camera reads ready")
+    }
+
+  /**
+   * N45 R1-I2: a mark set on air ends with the broadcast. A take whose camera source stayed in (no slate to swap back
+   * from) asks no new open at the stop, so without this the preview's open after it stayed no open, and Go live with it.
+   */
+  @Test
+  fun `N45 R1-I2 a busy word's mark ends with the broadcast - the preview's open after the stop tells the take over`() =
+    runTest {
+      val s = opened()
+      s.parts.opened("0")
+      advanceUntilIdle()
+      does(s, connect(1))
+      s.parts.busyOpen("0")
+      advanceUntilIdle()
+      assertEquals(listOf(Input.Connected(1), Input.CameraContended), s.told.reports, "on air: a take")
+      does(s, Command.StopBroadcast)
+      s.parts.opened("0") // off air, the preview's open
+      advanceUntilIdle()
+      assertEquals(Input.CameraReleased, s.told.reports.last(), "the mark went with the broadcast: ${s.told.reports}")
+    }
+
+  /**
+   * N45 M1 (re-review's surviving mutant): a retake is a take within 10 s of a probe telling the LAST take over, so a
+   * take ends that release's count: a take after one told over by another path is no retake, whatever its timing,
+   * and three such never back the probe off.
+   */
+  @Test
+  fun `N45 M1 only a take straight after a probe's release is a retake`() =
+    runTest {
+      val s = opened()
+      s.parts.probeAnswer = Probe.Opened("0")
+      try {
+        does(s, connect(1))
+        s.parts.lose("0")
+        runCurrent()
+        s.run.execute(Command.Slate(true))
+        advanceTimeBy(5_500)
+        runCurrent()
+        assertEquals(1, s.parts.probeCount, "the probe told the take over")
+        s.run.execute(Command.Slate(false))
+        runCurrent()
+        repeat(3) {
+          s.parts.lose("0") // within 10 s of that release: the first a retake, the others after another path's end
+          runCurrent()
+          assertNotNull(s.cameras.probed("0"), "told over by another path")
+          advanceTimeBy(1_000)
+          runCurrent()
+        }
+        s.parts.lose("0")
+        runCurrent()
+        s.run.execute(Command.Slate(true))
+        advanceTimeBy(5_500)
+        runCurrent()
+        assertEquals(2, s.parts.probeCount, "never backed off: probed within 5 s")
+      } finally {
+        s.parts.probeAnswer = null
+      }
     }
 
   @Test

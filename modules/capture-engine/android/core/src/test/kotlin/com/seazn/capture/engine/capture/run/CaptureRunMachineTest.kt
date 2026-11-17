@@ -550,6 +550,113 @@ class CaptureRunMachineTest {
       both(rig, 31_000)
     }
 
+  /**
+   * N45 R1-C1 (re-review, probe E): another app's take of another camera (F-P5-9, a video call on camera 1, which the
+   * NE2211 allowed beside ours) is its own path: our camera is never probed beside the call, nothing reopens mid-call,
+   * and the call's release reopens ours, F-P5-10's measured remedy (only a reopen after the release healed its noise).
+   */
+  @Test
+  fun `N45 R1-C1 another app's take of another camera is never probed, and its release reopens ours`() =
+    runTest {
+      val rig = Rig(this)
+      live(rig)
+      rig.parts.probeAnswer = Probe.Opened("0") // the device would let ours open beside camera 1
+      try {
+        rig.cameras.unavailable("1", 100_000)?.let(rig.engine::send)
+        both(rig, 2_000)
+        rig.run.mayBeFree()
+        rig.run.foreground()
+        both(rig, 30_000)
+        assertEquals(0, rig.parts.probeCount, "never opened beside the call")
+        assertEquals(0, rig.executed.count { it == Command.ReopenCamera }, "nothing reopens mid-call")
+        assertEquals(CameraState.TAKEN, rig.engine.phase.session?.camera)
+        assertHeld(rig, "the call")
+        assertShownTaken(rig, "the call")
+
+        rig.cameras.available("1", 200_000)?.let(rig.engine::send) // the call ends
+        both(rig, 200)
+        assertEquals(1, rig.executed.count { it == Command.ReopenCamera }, "its release reopens ours")
+        rig.engine.send(Input.Frames(1, 40, 60))
+        both(rig, 500)
+        rig.engine.send(Input.Frames(1, 55, 83))
+        both(rig, 500)
+        assertEquals(1, rig.kindCount("camera-resumed"), rig.lines.joinToString("\n"))
+        assertEquals(CameraState.OWN, rig.engine.phase.session?.camera)
+        assertEquals(listOf(1), rig.connects.map { it.attemptId }, "nothing reconnected")
+      } finally {
+        rig.parts.probeAnswer = null
+      }
+      both(rig, 31_000)
+    }
+
+  /**
+   * N45 R1-I1 (re-review, probe D): Camera2 announces our camera available whenever our device closes, each loss's and
+   * each probe's, and CameraWatch hands every one on as a word that the camera may be free. The back-off is a floor
+   * no word shortens: after three quick retakes, at most one reopen each 30 s. So in 120 s, with a word at every
+   * reopen and every second besides, no more than 7 reopens (the first take's, the two before the third retake, then
+   * one each 30 s), and the record grows with the reopens, never with the words.
+   */
+  @Test
+  fun `N45 R1-I1 a camera lost at every reopen keeps the 30 s back-off while Camera2's own availables nudge it`() =
+    runTest {
+      val rig = Rig(this)
+      live(rig)
+      rig.parts.probeAnswer = Probe.Opened("0")
+      rig.parts.losesOnReopen = true
+      val at = mutableListOf<Long>()
+      try {
+        rig.parts.lose("0")
+        var spent = 0L
+        while (spent < 120_000) {
+          both(rig, STEP_MS)
+          spent += STEP_MS
+          if (rig.executed.count { it == Command.ReopenCamera } > at.size) {
+            at += spent
+            // the reopen's loss closed our device: Camera2's available for ours, then the watch's word
+            rig.cameras.available("0", 300_000 + spent)?.let(rig.engine::send)
+            rig.run.mayBeFree()
+          }
+          if (spent % 1_000 == 0L) rig.run.mayBeFree()
+        }
+        assertTrue(at.size in 4..7, "no more than 7 reopens in 120 s: $at")
+        val slow = at.drop(2).zipWithNext { a, b -> b - a }
+        assertTrue(slow.isNotEmpty() && slow.all { it >= 30_000 }, "one each 30 s after the third quick retake: $at")
+        val probeLines = rig.told.lines.count { it.kind == "camera-probe" }
+        val lostLines = rig.told.lines.count { it.kind == "camera-lost" }
+        assertTrue(probeLines <= at.size && lostLines <= at.size + 1, "lines follow the reopens: $probeLines, $lostLines for $at")
+        assertHeld(rig, "nudged")
+      } finally {
+        rig.parts.probeAnswer = null
+        rig.parts.losesOnReopen = false
+      }
+      both(rig, 31_000)
+    }
+
+  /**
+   * N45 R1-I1: the words are conflated, and a word from before a take is no news of it: a new slate's probing drains
+   * it, so its first probe comes at 5 s, not at the 1 s floor.
+   */
+  @Test
+  fun `N45 R1-I1 a word that the camera may be free from before the take is no news of it`() =
+    runTest {
+      val rig = Rig(this)
+      live(rig)
+      rig.parts.probeAnswer = HELD
+      try {
+        repeat(3) { rig.run.mayBeFree() } // before any take: nothing probes, the words wait in the channel
+        both(rig, 2_000)
+        assertEquals(0, rig.parts.probeCount)
+        rig.parts.lose("0")
+        both(rig, 4_000)
+        assertEquals(0, rig.parts.probeCount, "no probe before 5 s: the old words were drained")
+        both(rig, 1_500)
+        assertEquals(1, rig.parts.probeCount, "the first, at 5 s")
+      } finally {
+        rig.parts.probeAnswer = null
+      }
+      both(rig, 31_000)
+    }
+
   private companion object {
     const val STEP_MS = 100L
 

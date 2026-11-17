@@ -860,12 +860,15 @@ class GlueRulesTest {
     assertTrue("fun cameraMayBeFree() = run.mayBeFree()" in adapter, "the watch's word reaches the run")
 
     val probe = glue("CameraProbe.kt")
-    assertTrue("withTimeoutOrNull(Probe.BOUND_MS) { attempt(id) } ?: Probe.Refused(\"timeout\")" in probe, "bounded")
+    val answer = probe.indexOf("withTimeoutOrNull(Probe.BOUND_MS) { closed.await() }?.let { return it }")
+    val settle = probe.indexOf("withTimeoutOrNull(Probe.SETTLE_MS) { closed.await() }")
+    val timeout = probe.indexOf("return Probe.Refused(\"timeout\")")
+    assertTrue(answer in 0 until settle && settle < timeout, "bounded, and a timed-out open's close awaited, bounded, before the queue moves on (R1-M2)")
     for (callback in listOf("onOpened(device: CameraDevice)", "onDisconnected(device: CameraDevice)", "onError(device: CameraDevice, error: Int)")) {
       assertTrue("device.close()" in body(probe, "override fun $callback"), "$callback closes the device")
     }
-    assertTrue("override fun onClosed(device: CameraDevice) = answer(" in probe, "answered once closed")
-    assertTrue(Regex("""catch \(e: CameraAccessException\) \{\s+answer\(Probe\.refusedOnAccess\(e\.reason\)\)""").containsMatchIn(probe), "a refused open is an answer")
+    assertTrue("override fun onClosed(device: CameraDevice) {" in probe && "closed.complete(" in body(probe, "override fun onClosed(device: CameraDevice)"), "answered once closed")
+    assertTrue(Regex("""catch \(e: CameraAccessException\) \{\s+return Probe\.refusedOnAccess\(e\.reason\)""").containsMatchIn(probe), "a refused open is an answer")
 
     val watch = glue("CameraWatch.kt")
     assertTrue(Regex("""override fun onCameraAvailable\(cameraId: String\) \{\s+guarded \{ rule\.available\(cameraId, SystemClock\.elapsedRealtime\(\)\) \}\s+guarded \{ nudged\(\) \}""").containsMatchIn(watch), "an available nudges, guarded")

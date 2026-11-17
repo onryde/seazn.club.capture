@@ -1591,8 +1591,13 @@ other app's hold, which StreamPack logged as error 2 (`ERROR_MAX_CAMERAS_IN_USE`
    `camera-resumed` at its first frame, within 5 s of the holder letting go. A refused probe keeps the slate and
    writes `camera-probe {ok: false, error, failures}` at the first and then once each 30 s; its error word is Camera2's
    reason (`in-use` for a holder on our id, `max-in-use` for one elsewhere, review M3). The probe never touches the
-   transport: no rebuild, reconnect or stop comes from it. A take the watch told (F-P5-9) ends by its release as
-   before, or by the probe, whichever comes first.
+   transport: no rebuild, reconnect or stop comes from it. Re-review R1-C1: it probes only a take of OUR camera, and
+   frees only ours. Another app's take of another camera (F-P5-9, a call on camera 1) is never probed: a probe would
+   open ours beside the call, and the reopen it brought mid-call was never measured, where F-P5-10 measured that only
+   a reopen after the release healed the noise. So the call's release reopens ours, as before. With both taken (the
+   call's open also cost us our device), the probe frees ours and the call's release, the last, tells the take over.
+   Re-review R1-M2: Camera2 cannot cancel an open asked, so a probe that times out waits up to 1 s more for that
+   open's close before the capture's queue moves on, where a reopen would open our camera a second time beside it.
 5. Our own camera's available is no release of the capture's own take of it: our eviction says it too, before or after
    the take, while the other app still holds the camera. Its probe decides. Off air (a new open of ours asked) it is
    the release again, as I3 has it.
@@ -1602,10 +1607,20 @@ other app's hold, which StreamPack logged as error 2 (`ERROR_MAX_CAMERAS_IN_USE`
    take, that report told the take over, and the machine reopened a held camera and reconnected twice in 10 s (the
    review's probe A, now a machine test that failed before the fix). The word is marked as it is heard, before its
    take is queued, and only a new open asked clears it: the preview's busy failure tells a take from outside the
-   queue (C7 I-2), and a report read before a queued mark told that take over.
+   queue (C7 I-2), and a report read before a queued mark told that take over. Re-review R1-I2: the mark is set only
+   while a broadcast is held, and ends with it. StreamPack streams only on air; off air the preview opens the camera,
+   and a failed preview open throws to its listener and reports nothing (C7 I-2, javap), so an open report off air is
+   a real open. Marked off air, it blocked the preview's own reopen (`PreviewView` restarts the preview each time its
+   window shows, with no open of ours asked) from telling an error-2 take over once the holder let go, and Go live
+   stayed disabled until a camera switch or an unpair (the re-review's probe G, now a test).
 7. **Review M1.** A camera lost at every open (a device error, no other app's) was reopened at every release with no
    cap. A take that comes back within 10 s of a probe telling the last one over is a retake; after three in a row
-   the probe waits 30 s, not 5. A word that the camera may be free still probes at once.
+   the probe waits 30 s, not 5. Re-review R1-I1: that wait is a floor no word shortens. Camera2 announces our camera
+   available at every close of it, each loss's and each probe's, and CameraWatch hands each on as a word that it may
+   be free, so with words honoured a camera that fails at every open came back about once a second (about 17,000
+   record lines an hour, the slate flipping each time). A new slate's probing also drains any word from before it.
+   With words at every reopen and every second besides, the machine test reads reopens at 1.1, 2 and 3 s, then 33,
+   63 and 93 s: 6 in 120 s, against a bound of 7, and one `camera-probe` line for each.
 
 **Keyframes and frames while the camera is gone** (the brief's question 4): nothing new. The slate keeps both tracks
 flowing. StreamPack 3.2.1's `BitmapSource.startStream` draws the bitmap with `scheduleWithFixedDelay`, every
@@ -1620,6 +1635,12 @@ honouring a release only after the holder's own "unavailable" has been seen sinc
 before the take is processed, the release never counts and the slate stays up until Stop. And (round 1): probing with
 the machine's own reopen, which takes the slate down to try, so viewers would see the slate drop every 5 s while the
 holder keeps the camera, and a reopen over a held camera has no first frame for the watchdog.
+
+**Residual (re-review R1-M1, by read):** a take of another camera told while our reopen is in flight (between the
+1.5 s self window and `camera-reopened`) leaves the machine taken with StreamPack holding the reopen's camera source.
+The probe stands aside beside that source, our own available is no release of the capture's take, and the reopen's
+busy word, if any, makes its later opens no open. The one exit is the other camera's release, which reopens over the
+camera source; a reopen that fails there rebuilds. Or Stop.
 
 **Open, for the device:** whether Camera2 refuses our probe while the camera app is on top and lets it open within
 5 s of the app closing, both from Recents and with Seazn brought to the front (the pass criterion: `camera-released`

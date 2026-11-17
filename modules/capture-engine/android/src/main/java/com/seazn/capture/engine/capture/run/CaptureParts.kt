@@ -103,6 +103,12 @@ sealed interface Probe {
     /** The probe's bound: an open that answers nothing by then is refused, `timeout`. */
     const val BOUND_MS = 2_000L
 
+    /**
+     * Review R1-M2: how long a timed-out probe still waits for its open's close before the capture's queue moves on.
+     * Camera2 cannot cancel an open asked; one that answers later still is closed as it comes.
+     */
+    const val SETTLE_MS = 1_000L
+
     fun refusedOnError(code: Int) = Refused(STATE_ERRORS[code] ?: "error-$code")
 
     fun refusedOnAccess(reason: Int) = Refused(ACCESS_REASONS[reason] ?: "access-$reason")
