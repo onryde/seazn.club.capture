@@ -212,15 +212,41 @@ describe('a court whose automatic start the server refused', () => {
     expect(LINE_TIER[line]).toBe(tier);
   });
 
-  it('says it over the Next line, automatic off and a missing destination', () => {
+  it('says it over the Next line', () => {
     const autoRefusal: AutoRefusal = 'destination_in_use';
     expect(key(court({ autoRefusal, next: NEXT_AT }))).toBe('stream.status.courtDestinationBusy');
-    expect(key(court({ autoRefusal, automatic: false }))).toBe(
-      'stream.status.courtDestinationBusy',
+  });
+
+  // Fix round 1, I1 (controller's ruling, 2026-11-17): the web retries a court's automatic start only while the phone is
+  // automatic, and a missing destination is the organiser's to fix first, so both say their own line over every word:
+  // "retrying" never promises a retry that cannot happen, nor hides the cue to start by hand.
+  it.each(REFUSED_LINES.map(([word]) => word))(
+    'says Automatic off over %s when the phone is manual',
+    (autoRefusal) => {
+      expect(key(court({ autoRefusal, automatic: false, next: NEXT_AT }))).toBe(
+        'stream.status.courtAutomaticOff',
+      );
+    },
+  );
+
+  it.each(REFUSED_LINES.map(([word]) => word))(
+    'says the missing destination over %s when the phone is automatic',
+    (autoRefusal) => {
+      expect(key(court({ autoRefusal, automatic: true, destinationName: null }))).toBe(
+        'stream.status.waitingDestination',
+      );
+    },
+  );
+
+  it('says the refusal again once the phone is automatic and the destination is back', () => {
+    const manual = court({ autoRefusal: 'unavailable', automatic: false, destinationName: null });
+    expect(key(manual)).toBe('stream.status.waitingDestination');
+    const noDestination = court({ autoRefusal: 'unavailable', destinationName: null });
+    expect(key(noDestination)).toBe('stream.status.waitingDestination');
+    expect(key(court({ autoRefusal: 'unavailable', automatic: false }))).toBe(
+      'stream.status.courtAutomaticOff',
     );
-    expect(key(court({ autoRefusal, destinationName: null }))).toBe(
-      'stream.status.courtDestinationBusy',
-    );
+    expect(key(court({ autoRefusal: 'unavailable' }))).toBe('stream.status.courtStartRetrying');
   });
 
   it('gives way to the operator’s start in flight, the phone’s own refusal and a failure end', () => {

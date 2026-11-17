@@ -195,8 +195,10 @@ const CALM_ENDS: ReadonlySet<LastEnd> = new Set<LastEnd>([
  * line does not move when the server answers Started; native clears the refusal and the last end when it posts. A refusal outranks a last end: a refused restart is the newer
  * fact (native clears both at the next start). Readiness is never named here:
  * the chips and the blocker at Go live say it. On a court code (§6.2) a calm end gives way to the Next line, and
- * the line after the destination says what the court waits for: automatic off, the next match, or nothing. Before the
- * destination, a court says why the server refused its automatic start while that stands (E2, 2026-11-17).
+ * the line after the destination says what the court waits for: automatic off, why the server refused its automatic
+ * start while that stands (E2, 2026-11-17), the next match, or nothing. The refusal comes after the destination and
+ * automatic off (fix round 1, I1, the controller's ruling): the web retries a court only while the phone is automatic,
+ * so a word there would promise what cannot happen and hide the cue to start by hand.
  */
 function pairedKey(snapshot: EngineSnapshot): StatusKey {
   if (selectStarting(snapshot)) return GOING_LIVE.operator;
@@ -204,11 +206,11 @@ function pairedKey(snapshot: EngineSnapshot): StatusKey {
   const court = selectCourt(snapshot) !== null;
   const { lastEnd } = snapshot;
   if (lastEnd !== null && !(court && CALM_ENDS.has(lastEnd))) return LAST_END[lastEnd];
-  const autoRefusal = snapshot.pairing?.autoRefusal ?? null;
-  if (court && autoRefusal !== null) return AUTO_REFUSED[autoRefusal];
   if (selectDestination(snapshot) === null) return 'stream.status.waitingDestination';
   if (!court) return 'stream.status.waitingGoLive';
   if (snapshot.pairing?.automatic === false) return 'stream.status.courtAutomaticOff';
+  const autoRefusal = snapshot.pairing?.autoRefusal ?? null;
+  if (autoRefusal !== null) return AUTO_REFUSED[autoRefusal];
   return nextKey(snapshot) ?? 'stream.status.courtNone';
 }
 
