@@ -1163,7 +1163,8 @@ phone logged `stopped-delivered 200`. One `broadcast-start`, no rejoin, one Clou
 ### N38 — Send record could keep none of a long session's lines
 
 **Status:** fixed — feat/s1-d3-fixes, Batch 18 (0d3fefd, e144a38); device-checked on R-N4F3, R-DJSE and R-1WRJ. The
-reload and process-death gap below: fixed on feat/court-stream (court stream P1, 2026-11-16, 40ecdaa4); device check open
+reload and process-death gap below: fixed on feat/court-stream (court stream P1, 2026-11-16, 40ecdaa4); a process death
+restores closed since its fix round 1 (cff0754d); device check open
 **Where:** capture app · `src/services/recordPins.ts` · `ring.linesToSend` · `recordUploadPort.ts` · `RecordPins.kt` ·
 `BridgeCore.tail` · `RecordPinStore.kt` · `nativeCaptureEngine.ts` (`seedRecord`)
 
@@ -1188,17 +1189,25 @@ hours sent 34 lines and the web kept none ("sessions: none named"). After a JS r
 seeded from native's tail alone (`BridgeCore.tail`, at most `SessionRecord.LAST_LINES`, 20 lines, and empty in a new
 process), and the pins lived only in the old ring. Now native pins the same two lines by the same rule (`RecordPins.kt`,
 `recordPins.ts`'s rule for rule), and its tail carries those it has let go of beside its lines (`{pins, lines}`). An open
-window's pins are kept in the private store (`record-pins`, `RecordPinStore.kt`): written when they change, deleted when
-the window closes, so a new process carries them before any line of its own. The seed hands them to the ring before the
-tail's first line (`RingRecord.adoptPins`), which reads them by its own rule and sends them first. In one process they
-stand, as the ring's do, until the closing line has left native's tail; a closed window is never restored. The Send
-upload contract is unchanged; no line carries anything it did not carry before.
+window's start is kept in the private store (`record-pins`, `RecordPinStore.kt`): written when it changes, deleted when
+the window closes or a re-pair replaces it. The seed hands the pins to the ring before the tail's first line, once
+(`RingRecord.adoptPins`, `pinsAdopted`), and the ring sends them first. In one process they stand, as the ring's do,
+until the closing line has left native's tail; a closed window is never restored.
+
+**Process death, closed restore (fix round 1 of P1, I1 of its review; the controller's ruling):** a restored window
+first came back open, so a cold start that did not re-pair (an expired code, a tap to pair never made, a Forget whose
+marker was written before its `unpaired` line) filed every new line under the dead code. Restored pins now come back
+CLOSED: the new process carries the kept `broadcast-start` alone, first, so the old session is still named (A1 judges
+it by its sid), and no `pair` line. The web opens an A2 window at any `pair` line in the body and runs it to a closing
+line or the next `pair`, neither of which such a cold start writes, so a restored pair would file the new process's
+lines under the old code; that is why the pair is neither kept nor restored. The restored start opens no window, no
+line moves it, and a new `pair` replaces it, opening a fresh window as before. The store then holds the start alone,
+so every later start restores it closed again. A pairing that never started a broadcast restores nothing: its own
+lines died with the process. No new line kind: the Send upload contract and the web's allow-list are unchanged.
 
 **Parked:** Send still never reads the native 5 MB disk record (the owner decides whether it should), so after a reload
-or a process death a Send carries the pinned pair and start and the lines since the seed, never the match's lines in
-between. After a process death with the window open and no re-pair, the restored window stays open until the next
-`pair` or closing line, so the new process's lines with no sid are filed under it (under that code's tag only: a Send
-with another code's credential keeps none of them).
+a Send carries the pinned pair and start and the lines since the seed, and after a process death the restored start
+and the new process's lines, never the match's lines in between.
 
 ---
 
