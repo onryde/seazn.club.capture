@@ -227,6 +227,11 @@ type CodePanelProps = {
   onConfirmDismiss: (fixtureId: string) => void;
   /** The not-yet-open sheet's Close: the Match Day code goes. The dim and Back only hide the sheet. */
   onCloseNotOpen: () => void;
+  /**
+   * The operator's start is in flight: native ignores an unpair then, so A7's Unpair & open is off until it answers,
+   * and the sheet says why, in the stream screen's own line (court stream Task 13 fix round 2 m4).
+   */
+  starting?: boolean;
 };
 
 /**
@@ -243,12 +248,14 @@ export const CodePanel = memo(function CodePanel(props: CodePanelProps) {
   const formatDay = useFormatDay();
   const formatTime = useFormatTime();
   const at = outcome.kind === 'dayNotOpen' ? outcome.at : null;
-  const copy = panelCopy(
+  const asked = panelCopy(
     outcome,
     translator,
     props.time,
     at === null ? null : { day: formatDay(at, null), time: formatTime(at, null) },
   );
+  const held = props.starting === true && outcome.kind === 'unpairConfirm';
+  const copy = held ? { ...asked, body: t('stream.status.connecting') } : asked;
   const open = useCallback(() => {
     if (outcome.kind === 'otherMode') onOpen(outcome.code);
     if (outcome.kind === 'unpairConfirm') onConfirmUnpair();
@@ -275,7 +282,7 @@ export const CodePanel = memo(function CodePanel(props: CodePanelProps) {
         </Text>
         <Text variant="title">{copy.title}</Text>
         {copy.body === null ? null : <Text variant="body">{copy.body}</Text>}
-        {copy.open === null ? null : <Button label={copy.open} onPress={open} />}
+        {copy.open === null ? null : <Button label={copy.open} onPress={open} disabled={held} />}
         {copy.close === null ? null : <Button label={copy.close} onPress={props.onCloseNotOpen} />}
         {copy.keep === null ? null : <Button label={copy.keep} onPress={props.onClose} />}
         {copy.cancel === null ? null : (

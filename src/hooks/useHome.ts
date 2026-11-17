@@ -30,6 +30,7 @@ import {
   selectHeldTokenTag,
   selectCourt,
   selectLabel,
+  selectStarting,
   selectStateKind,
   selectUnpairedKey,
   selectUnpairedReason,
@@ -137,6 +138,11 @@ export type HomeView = {
   readonly sending: readonly SendingCard[];
   /** What the Match Day tile's second line says while a code is saved (owner, 2026-11-12); null leaves its own hint. */
   readonly matchDayHint: string | null;
+  /**
+   * The operator's start is in flight (`pairing.starting`). Native ignores an unpair then, so Home's Forget and A7's
+   * Unpair & open are off until it answers (court stream Task 13 fix round 2 m4, the controller's ruling).
+   */
+  readonly starting: boolean;
 };
 
 export type HomeActions = {
@@ -500,6 +506,7 @@ function useHomeView(
   const courts = useSendingCourts(rowsKey(rows));
   const { cards: sending, leftovers } = useMemo(() => sendingCards(courts, all), [courts, all]);
   const scoring = useMemo(() => ({ current: all.current, leftovers }), [all, leftovers]);
+  const starting = useEngineSelector(selectStarting);
   return {
     statusText: statusText(ready, statusKey, t, { time: format, day: formatDay }),
     panel,
@@ -509,6 +516,7 @@ function useHomeView(
     scoring,
     sending,
     matchDayHint,
+    starting,
   };
 }
 

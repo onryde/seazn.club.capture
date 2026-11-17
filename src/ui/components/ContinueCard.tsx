@@ -22,9 +22,15 @@ export const ContinueCard = memo(function ContinueCard(props: {
   layout?: CardShape;
   onContinue: () => void;
   onForget?: () => void;
+  /**
+   * The operator's start is in flight: native ignores an unpair then, so Forget is off until it answers, and the
+   * card says what is happening (court stream Task 13 fix round 2 m4).
+   */
+  starting?: boolean;
 }) {
   const { t } = useT();
-  const { title, detail } = cardText(props.mode, props.copy, t);
+  const starting = props.starting === true;
+  const { title, detail } = cardText(props.mode, props.copy, t, starting);
   const forget = holdsCourt(props.copy) ? undefined : props.onForget;
   const heading = (
     <Text variant="state" style={styles.title}>
@@ -36,7 +42,7 @@ export const ContinueCard = memo(function ContinueCard(props: {
     <View style={styles.actions}>
       <Button label={t('home.continue.open')} onPress={props.onContinue} />
       {forget === undefined ? null : (
-        <GhostButton label={t('home.continue.forget')} onPress={forget} />
+        <GhostButton label={t('home.continue.forget')} onPress={forget} disabled={starting} />
       )}
     </View>
   );
@@ -72,6 +78,7 @@ function cardText(
   mode: Mode,
   copy: ContinueCopy,
   t: Translator['t'],
+  starting: boolean,
 ): { title: string; detail: string | null } {
   // A court code is named by its court (§6.5); every other card keeps its own title.
   const named = (title: string) =>
@@ -84,7 +91,8 @@ function cardText(
   if (copy.kind === 'paired') {
     return {
       title: named(t('home.continue.paired', { label: copy.label })),
-      detail: t('home.continue.waiting'),
+      // Not waiting while the operator's start is in flight: the stream screen's own line for it (fix round 2 m4).
+      detail: t(starting ? 'stream.status.connecting' : 'home.continue.waiting'),
     };
   }
   const slot = copy.slot ?? '–';

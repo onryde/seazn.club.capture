@@ -62,6 +62,7 @@ export function HomeScreen() {
           onDismiss={actions.askDismiss}
           onConfirmDismiss={actions.dismissScoring}
           onCloseNotOpen={actions.closeNotOpen}
+          starting={view.starting}
         />
       )}
     </View>
@@ -195,6 +196,7 @@ function ContinueSlot({
       layout={shape}
       onContinue={actions.continueStream}
       onForget={actions.forgetStream}
+      starting={view.starting}
     />
   );
 }

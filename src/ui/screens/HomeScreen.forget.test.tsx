@@ -1,4 +1,4 @@
-import { act, fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { decodeSavedCode } from '@/domain/mode/savedCode';
 import { UNPAIR_GIVE_UP_MS } from '@/hooks/useUnpair';
@@ -138,20 +138,49 @@ describe('Forget while the code is paired (I1)', () => {
     expect(native.held()).toEqual(['unpair', 'unpair']);
   });
 
-  // Court stream Task 13 fix round 1: native ignores an unpair while the operator's start is in flight, so Forget
-  // waits for native's answer (useUnpair) and is honoured once the start fails, never dropped at the 5 s give-up.
-  it('forgets once native fails a start that was in flight at the tap, and never gives up while it waits', async () => {
+  // Court stream Task 13 fix round 2 m4: native ignores an unpair while the operator's start is in flight, so Home's
+  // Forget is off until native answers it, and the card says what is happening, in the stream screen's own words.
+  it('turns Forget off while a start is in flight, says the link is opening, and offers it again once the start fails', async () => {
     const app = await pairedThenHome();
+    const card = () => within(screen.getByTestId('continue-card'));
+    const forgetButton = () => card().getByRole('button', { name: 'Forget' });
+    expect(card().getByText('Waiting for Go live')).toBeTruthy();
     app.engine.setStartAnswer('hold');
     act(() => app.engine.send({ kind: 'start' }));
+    expect(forgetButton().getAttribute('aria-disabled')).toBe('true');
+    expect(card().getByText('Opening the link.')).toBeTruthy();
+    expect(card().queryByText('Waiting for Go live')).toBeNull();
     forget();
     await flush(UNPAIR_GIVE_UP_MS + 1_000);
-    expect(intentKinds(app)).not.toContain('unpair');
+    expect(intentKinds(app)).toEqual(['pair', 'start']);
+    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
+    act(() => app.engine.setStartAnswer('failed'));
+    await flush();
+    expect(forgetButton().getAttribute('aria-disabled')).not.toBe('true');
+    expect(card().getByText('Waiting for Go live')).toBeTruthy();
+    forget();
+    await flush();
+    expect(intentKinds(app)).toEqual(['pair', 'start', 'unpair']);
+    expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
+    expect(screen.queryByTestId('continue-card')).toBeNull();
+  });
+
+  // Court stream Task 13 fix round 1 and fix round 2 m2: a Forget tapped just before the start showed reaches native
+  // while the start is in flight and is ignored there, so it is sent again once the start fails, and the code goes.
+  it('forgets once native fails a start that began before it heard the Forget, and never gives up while it waits', async () => {
+    const app = await pairedThenHome();
+    const native = holdIntents(app.engine, ['unpair']);
+    forget();
+    app.engine.setStartAnswer('hold');
+    act(() => app.engine.send({ kind: 'start' }));
+    act(() => native.release());
+    await flush(UNPAIR_GIVE_UP_MS + 1_000);
+    expect(app.engine.getSnapshot().state.kind).toBe('paired');
     expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(true);
     expect(readRecord(app.record).map((entry) => entry.event)).not.toContain('unpair.gave-up');
     act(() => app.engine.setStartAnswer('failed'));
     await flush();
-    expect(intentKinds(app)).toContain('unpair');
+    expect(intentKinds(app)).toEqual(['pair', 'start', 'unpair', 'unpair']);
     expect(app.engine.getSnapshot().state.kind).toBe('idle');
     expect(app.kv.entries.has(STORE_KEYS.code('stream'))).toBe(false);
     expect(screen.queryByRole('button', { name: 'Forget' })).toBeNull();
