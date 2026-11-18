@@ -19,7 +19,7 @@ of theirs changed. Before it, `1a6f5ebc9` (MD-1 Tasks 3 and 4) added Match Day's
 `capture-matchday-day.v1` and `capture-matchday-open.v1`, with their 22 fixtures, and changed no other file. Before
 it, `f0feab16c` (web #1037, merged 2026-10-26) changed only the record contract and its fixtures: it
 lists the regulator's seven scalars (`bandwidthBps`, `dropped`, `egressBps`, `gateBps`, `lost`, `sendBufferMs`,
-`target`; R-990P, `_FINDINGS.md` N41) and adds three `bitrate` fixtures. Before it, `a6cc1f038` (web #944, merged
+`target`; R-990P, `_FINDINGS.device.md` N41) and adds three `bitrate` fixtures. Before it, `a6cc1f038` (web #944, merged
 2026-10-12) changed only the record contract's description: a pairing
 window closes at `unpaired`, `ended`, `pair-refused` and `reset`, and no longer at `engine-error`, which the app also
 writes where the pairing goes on (every fatal end writes `ended {reason: "fatal-error"}` since capture Batch 13). Before

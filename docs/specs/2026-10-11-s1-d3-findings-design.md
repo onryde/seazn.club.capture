@@ -47,7 +47,7 @@ reader, and it opens the same Stream Settings (§6).
 
 ## 2. New findings to file
 
-These go in `_FINDINGS.md` in the first task of the plan, with the evidence named
+These go in `_FINDINGS.md` (now `_FINDINGS.device.md`, N27 onward) in the first task of the plan, with the evidence named
 above. N26 is the last number in use.
 
 | ID  | Finding                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
@@ -453,7 +453,7 @@ this branch:
 One plan, native execution with the owner's hands for the device checks, in
 this order:
 
-1. **Findings and docs:** N27–N34 into `_FINDINGS.md`; AGENTS §1, §6 and §9
+1. **Findings and docs:** N27–N34 into `_FINDINGS.md` (now `_FINDINGS.device.md`); AGENTS §1, §6 and §9
    amended (R2, R3, R5).
 2. **A3:** investigation on the device, then the fix (§3).
 3. **A4:** the rejoin (§5).

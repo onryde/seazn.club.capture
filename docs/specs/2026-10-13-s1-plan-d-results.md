@@ -25,7 +25,7 @@ the web answered (R-…). The working ledgers are git-ignored:
 `.superpowers/sdd/2026-10-09-s1-plan-d3-staging-run/progress.md` (main checkout) and
 `.superpowers/sdd/2026-10-11-s1-d3-fixes/progress.md` (the fixes worktree). Times are UTC.
 
-Findings are cited by ID (`_FINDINGS.md` N27–N40) and not repeated here. Rulings are cited with their source:
+Findings are cited by ID (`_FINDINGS.device.md` N27–N40) and not repeated here. Rulings are cited with their source:
 R-numbers name their spec, the D3 findings design's R1–R6 are the owner's and its R7–R13 the controller's, and a
 ruling the controller made during a session is named by its subject and date.
 
@@ -686,7 +686,7 @@ one video of 241 s; and 0 for every session of 2026-10-11. Cloudflare held recor
 
 ## Findings
 
-| ID  | Row            | For                | State (see `_FINDINGS.md`)                                                                       |
+| ID  | Row            | For                | State (see `_FINDINGS.device.md`)                                                                |
 | --- | -------------- | ------------------ | ------------------------------------------------------------------------------------------------ |
 | N27 | 2b             | owner              | mitigation landed (the battery row); the cause, OxygenOS's, stays open                           |
 | N28 | 2b, 11         | owner              | open; on be87d76 paths 1 and 3 delivered, path 2 held until the unlock; Step C dropped           |
