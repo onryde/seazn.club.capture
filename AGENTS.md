@@ -22,8 +22,8 @@ from documentation.
 
 **Quality-driven.** High standards for maintainability and documentation. A
 decision that exists only in a commit message is lost. Findings go in
-`_FINDINGS.md` with an ID, decisions go in `docs/specs/`, working rules go
-here. Record the reasoning, not just the outcome — a rejected option with its
+`_FINDINGS.md` (N27 onward, `_FINDINGS.device.md`) with an ID, decisions go in
+`docs/specs/`, working rules go here. Record the reasoning, not just the outcome — a rejected option with its
 reasoning intact (N12) is worth more than a silent choice.
 
 **Modular thinker.** Reusable, composable, independently testable. Every unit

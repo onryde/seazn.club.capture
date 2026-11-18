@@ -360,7 +360,7 @@ design surface.
   open on that match asks. The record gets `scoring.ask {foreign, queued}` when it begins and
   `scoring.asked {answer}` (`send`, `discard`, or `moot` when the taps went another way). The web's
   record allow-list does not carry `foreign` or `queued`, so Send record drops them and Share record
-  keeps them (`_FINDINGS.md` N43). Back on the sheet leaves the pad for Home, as the ending prompt does.
+  keeps them (`_FINDINGS.device.md` N43). Back on the sheet leaves the pad for Home, as the ending prompt does.
 - Undo of a tap still in the queue removes it from the queue; nothing is sent (_the controller's_).
 - Other scorers' events arrive in real time, as on the web (ruling 27): the web's Supabase Realtime
   channel carries a "something changed" ping with no payload (`use-fixture-stream.ts`), its token from

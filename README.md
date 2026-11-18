@@ -8,7 +8,8 @@ burns graphics into the stream.
 Five screens: Scan, Arm, Live, Settings, Diagnostics. Nothing else.
 
 - **[AGENTS.md](./AGENTS.md)** — working rules. Read before writing code.
-- **[_FINDINGS.md](./_FINDINGS.md)** — open findings and inherited register items.
+- **[_FINDINGS.md](./_FINDINGS.md)**, **[_FINDINGS.device.md](./_FINDINGS.device.md)** — open findings (N1–N26, then
+  N27 onward) and inherited register items.
 - **[docs/specs/](./docs/specs/)** — design decisions and open questions.
 
 ## Status

@@ -218,7 +218,7 @@ change (`useScoringLink.ts:126-132`). On a court code the match behind the link 
 - Court-code Stop → `stoppedHere`. Everything else (paired → live → paired, new sid per go-live,
   held-to-new sid handover) exists today (`Pairings.kt:253-306`).
 
-### 6.6 Beat retry and the start in flight (Task 13, `_FINDINGS.md` N44)
+### 6.6 Beat retry and the start in flight (Task 13, `_FINDINGS.device.md` N44)
 
 A court phone waits at the server's 60 s cadence between matches, so two gaps found on the NE2211
 against staging matter more here than on a fixture's code:

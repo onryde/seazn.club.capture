@@ -21,8 +21,8 @@ saved and the dispatch has failed.
 - Search for the concept, not one spelling: a screen, its route file, its
   hook, its test and its i18n key rarely share a token. Cover `app/`
   (Expo Router routes), `src/`, `modules/` (native Kotlin/Swift and their
-  TS specs), `test/` (fakes), `contracts/`, `docs/specs/`, `AGENTS.md` and
-  `_FINDINGS.md` before reporting that something does not exist.
+  TS specs), `test/` (fakes), `contracts/`, `docs/specs/`, `AGENTS.md`,
+  `_FINDINGS.md` and `_FINDINGS.device.md` before reporting that something does not exist.
 - Never search `android/` or `ios/` as source of truth — they are prebuild
   output and git-ignored. Native source lives in `modules/*/android` and
   `modules/*/ios`; manifest and plist entries come from `app.json` and
