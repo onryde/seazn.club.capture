@@ -302,7 +302,7 @@ class AnswerTableTest {
     assertEquals(UnpairReason.APP_OUTDATED, idle(rig).unpaired?.reason)
   }
 
-  @Test fun `a 426 from Armed on, where no claim goes, is counted and changes nothing else - the broadcast runs on`() {
+  @Test fun `a 426 from Armed on is counted and changes nothing else - the broadcast runs on`() {
     val cases =
       sweep(held.drop(1)) { name, rig ->
         val before = beatDue(rig)
@@ -314,6 +314,36 @@ class AnswerTableTest {
         assertTrue(rig.sent<Command.StopBroadcast>().isEmpty(), name)
       }
     assertEquals(3, cases)
+  }
+
+  // Review M1: only a 2xx clears the claim (SessionMachine.answered), so a claim whose answer was lost reaches Armed with
+  // the operator's start and rides every held beat. The server answers each 426; each is counted, and nothing stops.
+  @Test fun `a claim carried into Armed is answered 426 on every beat - counted, nothing stops, the broadcast untouched`() {
+    val rig = MachineRig().paired()
+    beatDue(rig)
+    val lost = rig.phase.beating!!.heartbeat.inFlightId!!
+    rig.send(Input.HeartbeatAnswered(lost, HeartbeatResponse.Failed("timeout")))
+    assertEquals(Claim.NEW, paired(rig).claim, "a lost answer keeps the claim")
+    rig.ready()
+    rig.starts = { StartAnswer.Started("sess_42") }
+    rig.send(Input.Start)
+    assertTrue(column(rig.phase) in setOf("Armed", "Connecting"), column(rig.phase))
+    rig.send(Input.Connected(rig.attempt!!))
+    rig.advance(1_000)
+    assertIs<Phase.OnAir>(rig.phase)
+    repeat(3) { at ->
+      val before = beatDue(rig)
+      val failures = before.pairing!!.heartbeat.failures
+      val body = org.json.JSONObject(rig.sent<Command.PostHeartbeat>().last().body)
+      assertEquals("new", body.getString("claim"), "beat $at carries the claim")
+      rig.hear(null, status = 426)
+      assertIs<Phase.OnAir>(rig.phase, "beat $at")
+      assertEquals("sess_42", rig.phase.heldSid, "beat $at")
+      assertEquals(failures + 1, rig.phase.pairing!!.heartbeat.failures, "beat $at")
+      assertEquals(Claim.NEW, rig.phase.pairing!!.claim, "beat $at")
+    }
+    assertTrue(rig.sent<Command.StopBroadcast>().isEmpty())
+    assertTrue(rig.records("unpaired").isEmpty())
   }
 
   @Test fun `after a 426 the same code paired again claims again, and the server's second 426 unpairs it again`() {

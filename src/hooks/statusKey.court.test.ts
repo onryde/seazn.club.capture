@@ -336,7 +336,6 @@ describe('a pairing the server has not answered yet', () => {
   ])('says Pairing this phone… on %s, never the destination line', (_name, code) => {
     const snapshot = pairedWith({ ...unheard, ...code }, { telemetry: failing });
     expect(key(snapshot)).toBe('stream.status.pairing');
-    expect(key(snapshot)).toBe('stream.status.pairing');
   });
 
   it('says it with no beat answered yet, as with every beat failing', () => {

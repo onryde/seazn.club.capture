@@ -830,8 +830,9 @@ below `COURT_MIN_APP_VERSION` with 426 `app_outdated` (503 `unavailable` while n
 as its own word: a beat's 426 naming `app_outdated` (the X1 rule, `Bodies.ENDING`) is `ServerWord.AppOutdated`, and
 while paired or Arming it unpairs with `unpaired.reason: app-outdated`. JS forgets the code, goes Home and names it in
 the panel a scan of a code that needs a newer app already shows: "Update the app" / "This code needs a newer version of
-the app." A 426 is the answer to a claim, and from Armed on no claim goes, so there it is counted and the broadcast runs
-on. On the code check a 426 is no evidence (`NoEvidence`), and on the start it is the start's unknown refusal, as any
+the app." A 426 is the answer to a claim. From Armed on a broadcast is held, and a claim whose 2xx was lost still rides
+every beat there (only a 2xx clears it, `SessionMachine.answered`), so a 426 there is counted and the broadcast runs on
+(review M1; `AnswerTableTest` carries such a claim on air through three 426s). On the code check a 426 is no evidence (`NoEvidence`), and on the start it is the start's unknown refusal, as any
 unnamed 4xx there is.
 
 Chosen over staying paired with a strip line: a build below the minimum can never be answered otherwise, so a pairing
@@ -857,5 +858,6 @@ refusals of a court's automatic start that need a person are. It is one line at 
 283.9, es 284.7, fr 290.4, nl 294.1 dp of 298; `stripTextFit.test.ts`). It names the phone's own hold and not the desk,
 since the operator reading it holds the phone.
 
-**Open, for the device:** the 426 panel on a build below the minimum, once staging sets `COURT_MIN_APP_VERSION`; the
+**Open, for the device:** the 426 panel. To see it on this build, staging's `COURT_MIN_APP_VERSION` must be above this
+build's commit count (its build number, `appVersion` `1.0.0-<count>`; AGENTS §11), and a court code claimed again; the
 stopped line after the court phone's own Stop and after the desk's, and the hold starting the latched match.

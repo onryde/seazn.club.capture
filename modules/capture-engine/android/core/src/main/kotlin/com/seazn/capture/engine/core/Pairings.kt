@@ -296,7 +296,8 @@ internal object Verdicts {
     return when {
       word == ServerWord.Replaced -> Pairings.unpaired(phase, UnpairReason.REPLACED, now)
       word == ServerWord.CodeEnded && phase is Phase.Arming -> Pairings.unpaired(phase, UnpairReason.CODE_ENDED, now)
-      // A 426 answers a claim only, and from Armed on no claim goes: there it is counted, and the broadcast runs on.
+      // A 426 answers a claim. From Armed on a broadcast is held, and a claim whose 2xx was lost still rides every beat
+      // there (only a 2xx clears it, SessionMachine.answered): its 426 is counted, and the broadcast runs on.
       word == ServerWord.AppOutdated && phase is Phase.Arming -> Pairings.unpaired(phase, UnpairReason.APP_OUTDATED, now)
       word == ServerWord.CodeEnded -> codeEndedPending(phase, pairing)
       word == ServerWord.NotFound && phase is Phase.Arming -> Starts.failed(phase, StartFailure.NOT_FOUND, now)
