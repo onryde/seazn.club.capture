@@ -65,13 +65,15 @@ object Bodies {
 
   /**
    * X1: the statuses that end something, each with the one word that says so (amendment, the answer
-   * table): a 401 forgets the code, a 404 refuses S. A 410 ends the held broadcast and delivers a stopped
-   * record (N1); neither route sends one (ask 8), so it names no word (null): any refusal's will do, and
-   * an `endReason` alone is none. A start's 404 and 410 end nothing, so a start holds only its 401 to this.
+   * table): a 401 forgets the code, a 404 refuses S, and a 426 leaves a court pairing this build cannot hold (court
+   * device check, 2026-11-19, web #1265: a claim from a build below the server's court minimum). A 410 ends the held
+   * broadcast and delivers a stopped record (N1); neither route sends one (ask 8), so it names no word (null): any
+   * refusal's will do, and an `endReason` alone is none. A start's 404 and 410 end nothing, so a start holds only its
+   * 401 to this.
    */
-  private val ENDING: Map<Int, String?> = mapOf(401 to "code_ended", 404 to "not_a_stream_code", 410 to null)
+  private val ENDING: Map<Int, String?> = mapOf(401 to "code_ended", 404 to "not_a_stream_code", 410 to null, 426 to "app_outdated")
 
-  /** Why a 401, 404 or 410 is no answer: its body is not the server's refusal. A literal, never the body. */
+  /** Why a 401, 404, 410 or 426 is no answer: its body is not the server's refusal. A literal, never the body. */
   private const val NOT_REFUSAL = "not-refusal"
 
   /** capture-descriptor.v1's bounds. Lengths are in characters (code points). */

@@ -6,7 +6,12 @@ import type {
   SessionState,
 } from '@/domain/session/SessionState';
 import type { CameraState, EngineSnapshot } from '@/engine/CaptureEnginePort';
-import { selectCourt, selectDestination, selectStarting } from '@/hooks/engineSelectors';
+import {
+  selectCourt,
+  selectDestination,
+  selectHeard,
+  selectStarting,
+} from '@/hooks/engineSelectors';
 import type { MessageKey } from '@/i18n/messages';
 
 export type StatusKey = Extract<MessageKey, `stream.status.${string}`>;
@@ -63,6 +68,7 @@ const AUTO_REFUSED: Readonly<Record<AutoRefusal, StatusKey>> = {
   destination_in_use: 'stream.status.courtDestinationBusy',
   unavailable: 'stream.status.courtStartRetrying',
   competition_frozen: 'stream.status.courtFrozen',
+  match_stopped: 'stream.status.courtMatchStopped',
 };
 
 /** Amendment §2, After a broadcast ends without the operator: back in Paired, saying how. */
@@ -198,7 +204,9 @@ const CALM_ENDS: ReadonlySet<LastEnd> = new Set<LastEnd>([
  * the line after the destination says what the court waits for: automatic off, why the server refused its automatic
  * start while that stands (E2, 2026-11-17), the next match, or nothing. The refusal comes after the destination and
  * automatic off (fix round 1, I1, the controller's ruling): the web retries a court only while the phone is automatic,
- * so a word there would promise what cannot happen and hide the cue to start by hand.
+ * so a word there would promise what cannot happen and hide the cue to start by hand. Until the server has answered the
+ * pairing at all (N46, court device check 2026-11-19), the destination and everything after it are unknown, not
+ * absent: the line is the pairing's, "Pairing this phone…", whatever the failing beats are answered.
  */
 function pairedKey(snapshot: EngineSnapshot): StatusKey {
   if (selectStarting(snapshot)) return GOING_LIVE.operator;
@@ -206,6 +214,7 @@ function pairedKey(snapshot: EngineSnapshot): StatusKey {
   const court = selectCourt(snapshot) !== null;
   const { lastEnd } = snapshot;
   if (lastEnd !== null && !(court && CALM_ENDS.has(lastEnd))) return LAST_END[lastEnd];
+  if (!selectHeard(snapshot)) return 'stream.status.pairing';
   if (selectDestination(snapshot) === null) return 'stream.status.waitingDestination';
   if (!court) return 'stream.status.waitingGoLive';
   if (snapshot.pairing?.automatic === false) return 'stream.status.courtAutomaticOff';
@@ -277,6 +286,8 @@ export const LINE_TIER: Readonly<Record<LineKey, LineTier>> = {
   'stream.status.courtRefusedDestination': 'urgent',
   'stream.status.courtDestinationBusy': 'urgent',
   'stream.status.courtFrozen': 'urgent',
+  // N46 (court device check, 2026-11-19): the match was stopped by hand, and nothing starts it until a person does.
+  'stream.status.courtMatchStopped': 'urgent',
   'stream.status.waitingDestination': 'urgent',
   'stream.status.refusedDestination': 'urgent',
   'stream.status.refusedCredit': 'urgent',

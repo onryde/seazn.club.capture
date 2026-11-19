@@ -163,7 +163,7 @@ class BodiesTest {
     answeredBeat(200, beat("waiting").dropLast(1) + ""","autoRefusal":$autoRefusal}""")
 
   @Test
-  fun `a court's autoRefusal is read - each of the six words the contract names`() {
+  fun `a court's autoRefusal is read - each of the seven words the contract names`() {
     // From capture-beat.v1's enum, written out by hand: never AutoRefusal.entries, which is what is judged.
     val words =
       mapOf(
@@ -173,9 +173,11 @@ class BodiesTest {
         "destination_in_use" to AutoRefusal.DESTINATION_IN_USE,
         "unavailable" to AutoRefusal.UNAVAILABLE,
         "competition_frozen" to AutoRefusal.COMPETITION_FROZEN,
+        // Court device check (2026-11-19, web #1265): the court's only match was stopped by hand, so nothing starts it by itself.
+        "match_stopped" to AutoRefusal.MATCH_STOPPED,
       )
     for ((word, expected) in words) assertEquals(expected, withAutoRefusal("\"$word\"").reply?.waiting?.autoRefusal, word)
-    assertEquals(6, words.size)
+    assertEquals(7, words.size)
     // Absent: no refusal, as on every fixture code and once a start succeeds or is in flight.
     assertNull(answeredBeat(200, beat("waiting")).reply?.waiting?.autoRefusal)
     // The waiting fields' one reader serves the descriptor too.
@@ -198,12 +200,12 @@ class BodiesTest {
     }
 
   @Test
-  fun `the six autoRefusal words are the vendored beat's and descriptor's enum, no more and no fewer`() {
-    // Fix round 1, M3: a re-vendor that adds a seventh word fails here, not silently as no refusal on the strip.
+  fun `the seven autoRefusal words are the vendored beat's and descriptor's enum, no more and no fewer`() {
+    // Fix round 1, M3: a re-vendor that adds a word fails here, not silently as no refusal on the strip (match_stopped did, web #1265).
     for (file in listOf("capture-beat.v1.json", "capture-descriptor.v1.json")) {
       val enums = autoRefusalEnums(JSONObject(Vendored.text(file)))
       assertEquals(1, enums.size, file)
-      assertEquals(6, enums.single().size, file)
+      assertEquals(7, enums.single().size, file)
       assertEquals(enums.single().sorted(), AutoRefusal.entries.map { it.wire }.sorted(), file)
       for (word in enums.single()) assertEquals(word, AutoRefusal.of(word)?.wire, "$file: $word")
     }
@@ -537,6 +539,29 @@ class BodiesTest {
     assertEquals(HeartbeatResponse.Answered(429, NO_REPLY, 12), Bodies.beat(429, "", 12, Environment.STAGING))
     assertEquals(HeartbeatResponse.Answered(503, NO_REPLY, null), Bodies.beat(503, PORTAL, 12, Environment.STAGING))
     assertEquals(HeartbeatResponse.Answered(401, NO_REPLY, null), Bodies.beat(401, refusal("code_ended"), 12, Environment.STAGING))
+  }
+
+  @Test
+  fun `a court claim's 426 app_outdated (court device check, web 1265) is the server's refusal naming it, read through ServerWord`() {
+    // The web's fixtures, answered with their statuses: the claim from a build below the court minimum, and the malformed code.
+    val outdated = Bodies.beat(426, Vendored.text("fixtures/capture-beat.v1/refusal-valid-app_outdated.json"), 12, Environment.STAGING)
+    assertEquals(HeartbeatResponse.Answered(426, NO_REPLY, null), outdated, "only a 429 keeps Retry-After")
+    assertEquals(ServerWord.AppOutdated, ServerWord.ofBeat(outdated, named = null))
+    // A stray sid (the web's invalid fixture) is never read: the word is what is read.
+    val withSid = Bodies.beat(426, Vendored.text("fixtures/capture-beat.v1/refusal-invalid-app_outdated-sid.json"), null, Environment.STAGING)
+    assertEquals(ServerWord.AppOutdated, ServerWord.ofBeat(withSid, named = SID))
+    val malformed = Bodies.beat(404, Vendored.text("fixtures/capture-beat.v1/refusal-valid-not_a_stream_code.json"), null, Environment.STAGING)
+    assertEquals(ServerWord.NotFound, ServerWord.ofBeat(malformed, named = null))
+    // X1: a 426 ends the pairing, so only the server's refusal naming it says so. An edge's page, nothing, a cut body, no
+    // code, a code that is no string, or another status's word is no answer, and ends nothing.
+    val pages =
+      listOf(PORTAL, "", refusal("app_outdated").dropLast(1), """{"message":"m"}""", """{"code":7,"message":"m"}""", refusal("code_ended"), refusal("not_a_stream_code"))
+    for (page in pages) assertEquals(HeartbeatResponse.Failed("426-not-refusal"), Bodies.beat(426, page, null, Environment.STAGING), page)
+    assertEquals(7, pages.size)
+    // The word is a claim beat's only: the descriptor's GET never answers it, so its 426 is no evidence there, and a
+    // start's is no refusal the phone has a line for.
+    assertEquals(ServerWord.NoEvidence, ServerWord.ofCode(Bodies.code(426, refusal("app_outdated"), null, Environment.STAGING), named = SID))
+    assertEquals(StartAnswer.Refused(Refusal.UNKNOWN, "m"), Bodies.start(426, refusal("app_outdated")))
   }
 
   @Test

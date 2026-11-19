@@ -44,7 +44,7 @@
       "hold-window-expired",
       "stopped"
     ],
-    "unpairReason": ["code-ended", "replaced", "taken", "permissions", "forgotten"],
+    "unpairReason": ["code-ended", "replaced", "taken", "permissions", "forgotten", "app-outdated"],
     "delivery": ["ok", "stalled", "unknown"],
     "shed": ["viewer-feed", "preview-framerate", "encode"],
     "heartbeatResult": ["ok", "failed", "session-over"],
@@ -58,7 +58,8 @@
       "not_entitled",
       "destination_in_use",
       "unavailable",
-      "competition_frozen"
+      "competition_frozen",
+      "match_stopped"
     ]
   },
   "telemetryKeys": {

@@ -35,14 +35,15 @@ class ServerWordTest {
       ServerWord.Taken -> "taken"
       ServerWord.CodeEnded -> "code-ended"
       ServerWord.NotFound -> "not-found"
+      ServerWord.AppOutdated -> "app-outdated"
       ServerWord.NoEvidence -> "no-evidence"
     }
 
   @Test
   fun `every row of the server's word, on both sources, and what it means for the held sid`() {
     val rows = Shared.read("wire/server-word-vectors.json").getJSONArray("rows")
-    // The file's row count, 13 code rows and 18 beat rows, so a truncated file cannot pass (PV12).
-    assertEquals(31, rows.length())
+    // The file's row count, 13 code rows and 19 beat rows, so a truncated file cannot pass (PV12).
+    assertEquals(32, rows.length())
     for (i in 0 until rows.length()) {
       val row = rows.getJSONObject(i)
       val named = row.text("named")

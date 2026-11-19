@@ -193,12 +193,16 @@ describe('a court whose automatic start the server refused', () => {
     ['not_entitled', 'stream.status.refusedEntitlement', 'urgent'],
     // The server retries every 60 s: plain progress, so an advisory caption may beat it.
     ['unavailable', 'stream.status.courtStartRetrying', 'routine'],
+    // Court device check (2026-11-19, web #1265): the match was stopped by hand, and nothing starts it by itself until
+    // a person does: the desk's Go live or this phone's hold.
+    ['match_stopped', 'stream.status.courtMatchStopped', 'urgent'],
   ];
 
-  it('names all six words the contract lists, once each', () => {
+  it('names all seven words the contract lists, once each', () => {
     expect(REFUSED_LINES.map(([word]) => word).sort()).toEqual([
       'competition_frozen',
       'destination_in_use',
+      'match_stopped',
       'no_credit',
       'no_destination',
       'not_entitled',
@@ -266,6 +270,24 @@ describe('a court whose automatic start the server refused', () => {
     expect(key(snapshot)).toBe('stream.status.courtStartRetrying');
   });
 
+  // N46 (court device check, 2026-11-19): the phone's own court Stop is a calm end, and the server's next waiting answer
+  // says the match was stopped by hand; the hold restarts it, and once a start is in flight the server omits the word.
+  it('says the stopped match after this phone’s own court Stop, then the hold’s start, then the Next line', () => {
+    const stopped = court({ autoRefusal: 'match_stopped', next: NEXT_AT }, { lastEnd: 'stopped' });
+    expect(key(stopped)).toBe('stream.status.courtMatchStopped');
+    const organiser = court(
+      { autoRefusal: 'match_stopped', next: NEXT_AT },
+      { lastEnd: 'stopped-by-organiser' },
+    );
+    expect(key(organiser)).toBe('stream.status.courtMatchStopped');
+    expect(key(court({ autoRefusal: 'match_stopped', starting: true }))).toBe(
+      'stream.status.connecting',
+    );
+    expect(key(court({ autoRefusal: null, next: NEXT_AT }, { lastEnd: 'stopped' }))).toBe(
+      'stream.status.courtNextAt',
+    );
+  });
+
   it('is the Next line again once the server stops sending it', () => {
     const refused = court({ autoRefusal: 'competition_frozen', next: NEXT_AT });
     expect(key(refused)).toBe('stream.status.courtFrozen');
@@ -294,5 +316,51 @@ describe('a court whose automatic start the server refused', () => {
     expect(key(court({ autoRefusal: 'no_destination', next: null }, { state: publishing }))).toBe(
       'stream.status.live',
     );
+  });
+});
+
+// N46 (court device check, 2026-11-19): a build the server refused had every beat answered 404, so nothing was ever heard,
+// and the line said "Waiting for the organiser to pick a destination": a fact about a destination nobody had read. Native
+// holds the waiting fields' defaults (label "", no destination) until the first 2xx; the contract's label is 1 to 200
+// characters, so an empty label is a pairing the server has not answered. Until it does, the line is the pairing's.
+describe('a pairing the server has not answered yet', () => {
+  const failing = {
+    ...PAIRED_READY.telemetry,
+    heartbeat: { lastSentAtEpochMs: 1, lastResult: 'failed', consecutiveFailures: 6, failures: 6 },
+  } as const;
+  const unheard: Partial<PairingInfo> = { label: '', destinationName: null, autoAllowed: false };
+
+  it.each<[string, Partial<PairingInfo>]>([
+    ['a fixture code', { court: null }],
+    ['a court code', { court: 'Court 2' }],
+  ])('says Pairing this phone… on %s, never the destination line', (_name, code) => {
+    const snapshot = pairedWith({ ...unheard, ...code }, { telemetry: failing });
+    expect(key(snapshot)).toBe('stream.status.pairing');
+    expect(key(snapshot)).toBe('stream.status.pairing');
+  });
+
+  it('says it with no beat answered yet, as with every beat failing', () => {
+    expect(key(court(unheard))).toBe('stream.status.pairing');
+    expect(key(pairedWith({ ...unheard, court: null }))).toBe('stream.status.pairing');
+  });
+
+  it('gives way to the hold’s start in flight and to a refusal, as every paired line does', () => {
+    expect(key(court({ ...unheard, starting: true }))).toBe('stream.status.connecting');
+    expect(key(court(unheard, { refusal: 'start-failed' satisfies Refusal }))).toBe(
+      'stream.status.startFailed',
+    );
+  });
+
+  // After an interruption: the first answer lands, and the destination it names (or its absence) is now a fact.
+  it('says what the first answer says once it lands', () => {
+    expect(key(pairedWith({ court: null, destinationName: null }))).toBe(
+      'stream.status.waitingDestination',
+    );
+    expect(key(court({ next: null }))).toBe('stream.status.courtNone');
+    expect(key(pairedWith({ court: null }))).toBe('stream.status.waitingGoLive');
+  });
+
+  it('is a routine line, as it is while native asks for permissions', () => {
+    expect(LINE_TIER[key(court(unheard))]).toBe('routine');
   });
 });

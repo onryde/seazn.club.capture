@@ -12,4 +12,6 @@ export type ServerSays =
   | { readonly word: 'refused'; readonly refusal: Refusal }
   | { readonly word: 'replaced' }
   | { readonly word: 'taken' }
-  | { readonly word: 'code-ended' };
+  | { readonly word: 'code-ended' }
+  /** N46 (web #1265): a court claim from a build below the server's court minimum, 426 `app_outdated`. */
+  | { readonly word: 'app-outdated' };

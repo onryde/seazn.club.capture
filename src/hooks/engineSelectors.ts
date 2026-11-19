@@ -92,6 +92,12 @@ export const selectVenueZone = (snapshot: EngineSnapshot) =>
 /** When the match is scheduled to start, as epoch ms (a primitive); null with none. */
 export const selectScheduledStartMs = (snapshot: EngineSnapshot) =>
   snapshot.pairing?.scheduledStart?.getTime() ?? null;
+/**
+ * Whether the server has answered this pairing yet (N46, court device check 2026-11-19). Native holds the waiting
+ * fields' defaults, label "" and no destination, until the first 2xx beat or code answer lands, and the contract's
+ * label is 1 to 200 characters: an empty label is a pairing nobody has answered, whatever its beats fail on.
+ */
+export const selectHeard = (snapshot: EngineSnapshot) => (snapshot.pairing?.label ?? '') !== '';
 /** The court's name on a court code's pairing (court stream spec 2026-11-14 §6.1); null on a fixture's code. */
 export const selectCourt = (snapshot: EngineSnapshot) => snapshot.pairing?.court ?? null;
 /**

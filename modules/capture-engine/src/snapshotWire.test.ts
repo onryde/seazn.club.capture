@@ -491,13 +491,13 @@ describe('carries 2-6: the snapshot wire, as native writes it (Task 12)', () => 
       walk(schema);
       expect(enums).toHaveLength(1);
       const words = [...(enums[0] as string[])].sort();
-      expect(words).toHaveLength(6);
+      expect(words).toHaveLength(7);
       expect([...vectors.vocabulary.autoRefusal].sort()).toEqual(words);
       expect([...WIRE_VOCABULARY.autoRefusal].sort()).toEqual(words);
     },
   );
 
-  it('reads each of the six autoRefusal words as sent, and a null as none', () => {
+  it('reads each of the seven autoRefusal words as sent, and a null as none', () => {
     const wire = vectorWire('paired-court-auto-refused');
     // capture-beat.v1's enum, by hand.
     const words = [
@@ -507,6 +507,7 @@ describe('carries 2-6: the snapshot wire, as native writes it (Task 12)', () => 
       'destination_in_use',
       'unavailable',
       'competition_frozen',
+      'match_stopped',
     ];
     for (const autoRefusal of words) {
       const read = toEngineSnapshot({ ...wire, pairing: { ...wire.pairing, autoRefusal } });

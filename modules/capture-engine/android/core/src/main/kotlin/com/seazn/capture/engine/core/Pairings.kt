@@ -287,6 +287,7 @@ internal object Verdicts {
       ServerWord.Replaced -> Pairings.unpaired(phase, UnpairReason.REPLACED, now)
       ServerWord.Taken -> Pairings.unpaired(phase, UnpairReason.TAKEN, now)
       ServerWord.CodeEnded -> Pairings.unpaired(phase, UnpairReason.CODE_ENDED, now)
+      ServerWord.AppOutdated -> Pairings.unpaired(phase, UnpairReason.APP_OUTDATED, now)
       else -> Step(phase)
     }
 
@@ -295,6 +296,8 @@ internal object Verdicts {
     return when {
       word == ServerWord.Replaced -> Pairings.unpaired(phase, UnpairReason.REPLACED, now)
       word == ServerWord.CodeEnded && phase is Phase.Arming -> Pairings.unpaired(phase, UnpairReason.CODE_ENDED, now)
+      // A 426 answers a claim only, and from Armed on no claim goes: there it is counted, and the broadcast runs on.
+      word == ServerWord.AppOutdated && phase is Phase.Arming -> Pairings.unpaired(phase, UnpairReason.APP_OUTDATED, now)
       word == ServerWord.CodeEnded -> codeEndedPending(phase, pairing)
       word == ServerWord.NotFound && phase is Phase.Arming -> Starts.failed(phase, StartFailure.NOT_FOUND, now)
       word is ServerWord.Open && word.sid == held -> if (phase is Phase.Arming && phase.notCurrent) Starts.claimed(phase, now) else Step(phase)

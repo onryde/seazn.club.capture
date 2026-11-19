@@ -46,6 +46,8 @@ const URGENT: readonly LineKey[] = [
   'stream.status.courtRefusedDestination',
   'stream.status.courtDestinationBusy',
   'stream.status.courtFrozen',
+  // N46 (court device check, 2026-11-19): the match was stopped by hand, and nothing starts it until a person does.
+  'stream.status.courtMatchStopped',
   // The phone is not ready: the operator has to do something.
   'stream.status.notReadyCamera',
   'stream.status.notReadySound',
@@ -97,10 +99,10 @@ describe('the strip’s two tiers of line (owner ruling, 2026-10-08)', () => {
     ] as const) {
       expect(dictionaryKeys(dictionary), lang).toEqual(chosen);
     }
-    // Anti-vacuity: the lists are the whole copy, 51 status keys and Back's line.
-    expect(chosen).toHaveLength(52);
+    // Anti-vacuity: the lists are the whole copy, 52 status keys and Back's line.
+    expect(chosen).toHaveLength(53);
     expect(ROUTINE).toHaveLength(13);
-    expect(URGENT).toHaveLength(39);
+    expect(URGENT).toHaveLength(40);
     // And the table has an entry for exactly those keys.
     expect(Object.keys(LINE_TIER).sort()).toEqual(chosen);
   });

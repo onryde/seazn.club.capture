@@ -104,6 +104,7 @@
   "stream.status.courtDestinationBusy": "Bestemming bezet door een andere wedstrijd",
   "stream.status.courtFrozen": "Streamen gepauzeerd voor deze competitie",
   "stream.status.courtStartRetrying": "Starten lukt nog niet: opnieuw proberen",
+  "stream.status.courtMatchStopped": "Stream gestopt: houd Live gaan ingedrukt",
   "stream.status.waitingDestination": "Wachten tot de organisator een bestemming kiest",
   "stream.status.refusedDestination": "Vraag de organisator een bestemming te kiezen",
   "stream.status.refusedCredit": "Geen streamtegoed: vraag de organisator",

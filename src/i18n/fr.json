@@ -104,6 +104,7 @@
   "stream.status.courtDestinationBusy": "Destination occupée par un autre match",
   "stream.status.courtFrozen": "Direct suspendu pour cette compétition",
   "stream.status.courtStartRetrying": "Direct pas encore possible : nouvel essai",
+  "stream.status.courtMatchStopped": "Direct arrêté : maintenez Passer en direct",
   "stream.status.waitingDestination": "L'organisateur doit choisir une destination",
   "stream.status.refusedDestination": "Demandez à l'organisateur où diffuser",
   "stream.status.refusedCredit": "Aucun crédit : voyez avec l'organisateur",

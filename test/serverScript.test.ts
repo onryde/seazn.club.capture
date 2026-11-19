@@ -59,6 +59,7 @@ const EVERY_SAYING: readonly ServerSays[] = [
   { word: 'replaced' },
   { word: 'taken' },
   { word: 'code-ended' },
+  { word: 'app-outdated' },
 ];
 
 /** The words the server never says: the phone's own ends and refusals. */
@@ -76,14 +77,27 @@ const refused = EVERY_SAYING.filter((says) => NEVER_SAID.has(detail(says)));
 /** The schema a script's body answers to: a beat's answer, or a refusal's `{code, message}`. */
 function schemaOf(path: 'beat' | 'start', status: number): [Record<string, unknown>, string] {
   if (path === 'start') return [start, '/$defs/refusal'];
-  // capture-beat.v1 names no refusal shape: a beat's 401 is every route's `{code, message}` refusal.
-  return status === 200 ? [beat, '/$defs/answer'] : [descriptor, '/$defs/refusal'];
+  // capture-beat.v1 names its own refusal shape since web #1265 (2026-11-19), the 426 app_outdated among its words.
+  return status === 200 ? [beat, '/$defs/answer'] : [beat, '/$defs/refusal'];
 }
 
 describe('the server script (Task 27)', () => {
-  it('sweeps every ServerSays: 9 last ends, 6 refusals, 21 in all, 17 scripted and 4 refused', () => {
+  it('sweeps every ServerSays: 9 last ends, 6 refusals, 22 in all, 18 scripted and 4 refused', () => {
     expect([LAST_ENDS.length, REFUSALS.length]).toEqual([9, 6]);
-    expect([EVERY_SAYING.length, scripted.length, refused.length]).toEqual([21, 17, 4]);
+    expect([EVERY_SAYING.length, scripted.length, refused.length]).toEqual([22, 18, 4]);
+  });
+
+  // N46 (court device check, 2026-11-19, web #1265): a court claim from a build below the server's court minimum, in
+  // the beat contract's own words ("426 app_outdated").
+  it("scripts an outdated build as the beat contract's 426 app_outdated", () => {
+    const script = scriptFor({ word: 'app-outdated' });
+    expect(script).toEqual({
+      path: 'beat',
+      status: 426,
+      body: { code: 'app_outdated', message: 'scripted' },
+    });
+    const words = (beat as Defs).$defs.refusal!.description.match(/(\d{3}) app_outdated/);
+    expect(words?.[1]).toBe('426');
   });
 
   it.each(scripted.map((says) => [JSON.stringify(says), says] as const))(

@@ -93,6 +93,12 @@ enum class UnpairReason(override val wire: String) : Wire {
 
   /** R6 of the D3 findings design: the operator's Forget on the notification. */
   FORGOTTEN("forgotten"),
+
+  /**
+   * A court claim answered 426 `app_outdated` (court device check, 2026-11-19, web #1265): this build is below the server's
+   * court minimum, so it can never pair the code. The code itself has not ended: an updated app pairs it again.
+   */
+  APP_OUTDATED("app-outdated"),
 }
 
 /** What names a pairing to JS (plan A's `sameCode`, moved to the pairing): never the token. */
@@ -127,7 +133,13 @@ enum class AutoRefusal(override val wire: String) : Wire {
   NOT_ENTITLED("not_entitled"),
   DESTINATION_IN_USE("destination_in_use"),
   UNAVAILABLE("unavailable"),
-  COMPETITION_FROZEN("competition_frozen");
+  COMPETITION_FROZEN("competition_frozen"),
+
+  /**
+   * Court device check (2026-11-19, web #1265): the court's only match in play was stopped by hand (the desk's Stop, this
+   * court phone's Stop hold or a handover), so nothing starts it by itself; the desk's Go live or this phone's hold does.
+   */
+  MATCH_STOPPED("match_stopped");
 
   companion object {
     /** The answer's `autoRefusal`; anything but one of the contract's words, absent and null included, is no refusal. */

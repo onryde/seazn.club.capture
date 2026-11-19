@@ -286,6 +286,59 @@ class AnswerTableTest {
     assertEquals(UnpairReason.CODE_ENDED, idle(rig).unpaired?.reason)
   }
 
+  // 426 app_outdated (court device check, 2026-11-19, web #1265): a court claim from a build below the server's court
+  // minimum. The build can never pair that code, so it leaves the pairing with its own reason, which Home names.
+  @Test fun `426 on the claim while paired - Idle, unpaired app-outdated, the service released`() {
+    val rig = MachineRig().paired()
+    rig.hear(null, status = 426)
+    assertEquals(UnpairReason.APP_OUTDATED, idle(rig).unpaired?.reason)
+    assertEquals(1, rig.sent<Command.Release>().size)
+    assertEquals(listOf<Any?>(UnpairReason.APP_OUTDATED), rig.records("unpaired").map { it.field("reason") })
+  }
+
+  @Test fun `426 while Arming, a resume claim's answer - the same`() {
+    val rig = arming()
+    rig.hear(null, status = 426)
+    assertEquals(UnpairReason.APP_OUTDATED, idle(rig).unpaired?.reason)
+  }
+
+  @Test fun `a 426 from Armed on, where no claim goes, is counted and changes nothing else - the broadcast runs on`() {
+    val cases =
+      sweep(held.drop(1)) { name, rig ->
+        val before = beatDue(rig)
+        val failures = before.pairing!!.heartbeat.failures
+        rig.hear(null, status = 426)
+        assertEquals(column(before), column(rig.phase), name)
+        assertEquals(before.heldSid, rig.phase.heldSid, name)
+        assertEquals(failures + 1, rig.phase.pairing!!.heartbeat.failures, name)
+        assertTrue(rig.sent<Command.StopBroadcast>().isEmpty(), name)
+      }
+    assertEquals(3, cases)
+  }
+
+  @Test fun `after a 426 the same code paired again claims again, and the server's second 426 unpairs it again`() {
+    val rig = MachineRig().paired()
+    rig.hear(null, status = 426)
+    idle(rig)
+    rig.paired()
+    assertIs<Phase.Paired>(rig.phase)
+    val claim = org.json.JSONObject(rig.sent<Command.PostHeartbeat>().last().body)
+    assertEquals("new", claim.getString("claim"))
+    rig.hear(null, status = 426)
+    assertEquals(UnpairReason.APP_OUTDATED, idle(rig).unpaired?.reason)
+    assertEquals(2, rig.records("unpaired").size)
+  }
+
+  @Test fun `A17 a 426 keeps a held stopped record - the code has not ended, and the updated app delivers it`() {
+    val record = StoppedRecord.of(Configs.pairRequest().name, "sess_41", 1_790_000_000_000, null)
+    val rig = MachineRig()
+    rig.send(Input.Pair(Configs.pairRequest(), Configs.PHONE, record))
+    rig.send(Input.Network(true))
+    rig.hear(null, status = 426)
+    assertEquals(UnpairReason.APP_OUTDATED, idle(rig).unpaired?.reason)
+    assertTrue(rig.sent<Command.DeleteStopped>().isEmpty(), "${rig.sent<Command.DeleteStopped>()}")
+  }
+
   // a beat's 410, defensively
   @Test fun `a beat's 410 naming S - Paired, stopped, and S is ended first from connecting or on air`() {
     val stops = mapOf("Arming" to 0, "Armed" to 0, "Connecting" to 1, "on air" to 1)
