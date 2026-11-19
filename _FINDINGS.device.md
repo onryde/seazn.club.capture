@@ -809,3 +809,53 @@ the owner's call, review M1); a camera disabled by policy keeps the slate up and
 each 30 s, until Stop. Re-review 2: which stage the NE2211's busy failures come at, so whether they report an open
 (R2-M3); a Go live with the camera app open, then closed, ending the slate within 5 s (R2-I1); and an abandoned
 probe's open landing beside Stop's swap back to our camera (R2-M2), which Camera2 settles by its own eviction rules.
+
+### N46 — An outdated build's court claim read as a missing destination, and a stopped match could not be restarted or explained
+
+**Status:** found in the court device check (NE2211, dev build, staging, 2026-11-19); the server's half fixed on web #1265
+(merged at web main `1cec787a09`), the phone's on `fix/court-device-findings`; the device re-check is open
+**Where:** contracts at web `1cec787a09` (`capture-beat.v1.json`'s `$defs.refusal`, `autoRefusal`) · native core ·
+`ServerWord.kt` (`AppOutdated`) · `Pairings.kt` (`Verdicts.paired`, `held`) · `Pairing.kt` (`UnpairReason.APP_OUTDATED`,
+`AutoRefusal.MATCH_STOPPED`) · `Bodies.kt` (`ENDING`) · capture app · `statusKey.ts` (`pairedKey`, `AUTO_REFUSED`,
+`LINE_TIER`) · `engineSelectors.ts` (`selectHeard`) · `CodePanel.tsx`
+
+Three things seen with a court code on staging.
+
+**An outdated build looked like a lost destination.** A build older than the court stream claimed a court code and every
+beat was answered 404. Native counts a beat's 404 while paired and stays paired, so the phone held the pairing, its
+foreground service and its wake lock, and never heard a 2xx. With no answer, the waiting fields kept their defaults (no
+destination), and the strip said "Waiting for the organiser to pick a destination": an urgent line, about a destination
+nobody had read, asking the organiser for something that would not help. Web #1265 answers a court claim from a build
+below `COURT_MIN_APP_VERSION` with 426 `app_outdated` (503 `unavailable` while no minimum is set). The phone now reads it
+as its own word: a beat's 426 naming `app_outdated` (the X1 rule, `Bodies.ENDING`) is `ServerWord.AppOutdated`, and
+while paired or Arming it unpairs with `unpaired.reason: app-outdated`. JS forgets the code, goes Home and names it in
+the panel a scan of a code that needs a newer app already shows: "Update the app" / "This code needs a newer version of
+the app." A 426 is the answer to a claim, and from Armed on no claim goes, so there it is counted and the broadcast runs
+on. On the code check a 426 is no evidence (`NoEvidence`), and on the start it is the start's unknown refusal, as any
+unnamed 4xx there is.
+
+Chosen over staying paired with a strip line: a build below the minimum can never be answered otherwise, so a pairing
+kept for it would hold the service, the wake lock and a beat every minute for nothing, and a line on a screen the
+operator has walked away from says less than Home's panel, which stays until it is closed. The unpair forgets the code,
+so the next scan claims again and, if the build is still outdated, is told again.
+
+Separately, the strip no longer says the destination line before the server has answered at all. Native holds the
+waiting label "" until the first 2xx beat or code answer, and the contract's label is 1 to 200 characters, so an empty
+label is a pairing nobody has answered, whatever its beats fail on. Until one lands the line is "Pairing this phone…"
+(routine), on a court code and a fixture's alike; a refusal or a start in flight still says its own line first. There
+was no "not found" line to show instead: a 404 that names `not_a_stream_code` is the server's refusal of the code, and
+any other 404 is a page, not the server, so neither is something the operator can act on from the strip.
+
+**A stopped match could not be restarted.** The court's only match in play was stopped by hand (the desk, this court
+phone's Stop hold or a handover), and the server latched it: no automatic start, and the court phone's Go live hold did
+not start it either. Fixed on web #1265: the desk's Go live or the court phone's hold starts a latched match. Nothing on
+the phone changed for it.
+
+**A latched match gave no reason.** Nothing on the court phone said why the match did not start. Web #1265 adds `autoRefusal: "match_stopped"` to the court's waiting answer. Native reads it into `pairing.autoRefusal` (an
+unknown word is still no refusal), and the strip says "Stream stopped — hold Go live to restart", urgent, as the other
+refusals of a court's automatic start that need a person are. It is one line at 640 × 360 in all four languages (en
+283.9, es 284.7, fr 290.4, nl 294.1 dp of 298; `stripTextFit.test.ts`). It names the phone's own hold and not the desk,
+since the operator reading it holds the phone.
+
+**Open, for the device:** the 426 panel on a build below the minimum, once staging sets `COURT_MIN_APP_VERSION`; the
+stopped line after the court phone's own Stop and after the desk's, and the hold starting the latched match.
