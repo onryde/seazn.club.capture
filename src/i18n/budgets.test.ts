@@ -91,19 +91,21 @@ describe.each([
 
 // Court stream (spec 2026-11-14 §6.2): the lines a court phone says while it waits are in the status row's 48, with
 // the label cut as the line cuts it and a time with its zone. Named, so the row above can never match none of them. E2
-// (2026-11-17) adds the four that say why the server refused the court's automatic start.
+// (2026-11-17) adds the four that say why the server refused the court's automatic start, N46 (2026-11-19) the stopped
+// match's.
 describe.each([
   ['en', en],
   ['es', es],
   ['fr', fr],
   ['nl', nl],
 ] as const)('%s court waiting lines', (_lang, dictionary: Readonly<Record<string, string>>) => {
-  it('has the eight stream.status.court* keys, each within 48 characters filled with the widest values', () => {
+  it('has the nine stream.status.court* keys, each within 48 characters filled with the widest values', () => {
     const keys = Object.keys(dictionary).filter((key) => key.startsWith('stream.status.court'));
     expect(keys.sort()).toEqual([
       'stream.status.courtAutomaticOff',
       'stream.status.courtDestinationBusy',
       'stream.status.courtFrozen',
+      'stream.status.courtMatchStopped',
       'stream.status.courtNext',
       'stream.status.courtNextAt',
       'stream.status.courtNone',

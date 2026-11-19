@@ -5,7 +5,7 @@ import { encodeSavedCode, type SavedCode } from '@/domain/mode/savedCode';
 import type { PanelUnpairReason } from '@/hooks/useHome';
 import { STORE_KEYS } from '@/services/modeStore';
 import { HomeScreen } from '@/ui/screens/HomeScreen';
-import { savedStreamCode } from '../../../test/fixtures/savedStream';
+import { savedCourtCode, savedStreamCode } from '../../../test/fixtures/savedStream';
 import { captureRaw } from '../../../test/fixtures/wire';
 import { pairCode } from '../../../test/pairCode';
 import { renderWithPorts } from '../../../test/renderWithPorts';
@@ -63,6 +63,9 @@ const PANEL: Readonly<Record<PanelUnpairReason, readonly [title: string, body: s
     'Camera and microphone needed',
     'Allow the camera and microphone in Android Settings, then try again',
   ],
+  // N46 (court device check, 2026-11-19): the server refused this build's court claim (426 app_outdated). The words of
+  // a scanned code that needs a newer app, because that is what it is.
+  'app-outdated': ['Update the app', 'This code needs a newer version of the app.'],
 };
 const showsPanel = (reason: PanelUnpairReason) => {
   const [title, body] = PANEL[reason];
@@ -95,7 +98,7 @@ describe('Home after an unpair the operator did not ask for', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it.each(['code-ended', 'replaced', 'taken'] as const)(
+  it.each(['code-ended', 'replaced', 'taken', 'app-outdated'] as const)(
     'names why for %s, with no Continue card and the code forgotten',
     async (word) => {
       const app = await pairedOnStream();
@@ -108,6 +111,31 @@ describe('Home after an unpair the operator did not ask for', () => {
       expect(screen.queryByText(/^Paired ·/)).toBeNull();
     },
   );
+
+  // N46 (court device check, 2026-11-19): a court claim from a build below the server's court minimum. Before, the build
+  // stayed paired on beats answered 404 and said "Waiting for the organiser to pick a destination". Every claim gets the
+  // same answer until the app is updated, so the second scan of the same code says it again (a second call).
+  it('names an outdated build on a court code, forgets the code, and says it again for the next scan', async () => {
+    const court = savedCourtCode();
+    const app = await pairedOnStream(court);
+    act(() => app.engine.hear({ word: 'app-outdated' }));
+    await flush();
+    expect(app.nav.current()).toBe('home');
+    showsPanel('app-outdated');
+    expect(hasSaved(app)).toBe(false);
+    expect(screen.queryByText(/Court 2/)).toBeNull();
+    close();
+    await flush();
+    noPanel();
+    await scanFromHome(app, court.raw);
+    await flush(3_000);
+    expect(app.engine.getSnapshot().state.kind).toBe('paired');
+    act(() => app.engine.hear({ word: 'app-outdated' }));
+    await flush();
+    expect(app.nav.current()).toBe('home');
+    showsPanel('app-outdated');
+    expect(hasSaved(app)).toBe(false);
+  });
 
   // N33: Share record used to live only in Live Stream's Settings, which a replaced phone has no pairing to open. It is in
   // the app's Settings too, behind the gear in Home's corner (owner, 2026-11-02). The panel hides Home from screen

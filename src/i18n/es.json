@@ -104,6 +104,7 @@
   "stream.status.courtDestinationBusy": "Destino ocupado por otro partido",
   "stream.status.courtFrozen": "Emisión en pausa para esta competición",
   "stream.status.courtStartRetrying": "Aún no se puede emitir: reintentando",
+  "stream.status.courtMatchStopped": "Emisión detenida: mantén pulsado Emitir",
   "stream.status.waitingDestination": "Esperando a que el organizador elija destino",
   "stream.status.refusedDestination": "Pide al organizador que elija dónde emitir",
   "stream.status.refusedCredit": "Sin crédito: habla con el organizador",

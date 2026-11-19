@@ -171,6 +171,9 @@ const UNPAIRED: Readonly<Record<PanelUnpairReason, { title: MessageKey; body: Me
   replaced: { title: 'panel.replaced.title', body: 'panel.replaced.body' },
   taken: { title: 'panel.taken.title', body: 'panel.taken.body' },
   permissions: { title: 'panel.permissions.title', body: 'panel.permissions.body' },
+  // N46 (court device check, 2026-11-19): the server refused this build's court claim (426 app_outdated). It is what a
+  // scanned code that needs a newer app says, so it says the same.
+  'app-outdated': { title: 'panel.newerVersion.title', body: 'panel.newerVersion.body' },
 };
 
 /**

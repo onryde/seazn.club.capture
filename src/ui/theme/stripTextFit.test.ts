@@ -191,8 +191,8 @@ describe('the strip’s one message line, measured in every language (owner, 202
     expect(AT_804).toBe(462);
   });
 
-  it('measures 52 status strings and 5 captions in each of the four languages, and every glyph is in the font', () => {
-    // Anti-vacuity: the table is the whole copy, not a sample. 51 `stream.status.*` keys and Back's refusal; the
+  it('measures 53 status strings and 5 captions in each of the four languages, and every glyph is in the font', () => {
+    // Anti-vacuity: the table is the whole copy, not a sample. 52 `stream.status.*` keys and Back's refusal; the
     // captions are keep the app open, not charging, and heat's three (the spec's, which names What viewers see, and
     // "Phone hot · still live" and "Phone hot" with the view hidden: the owner's ruling, 2026-10-09).
     for (const [lang] of LANGUAGES) {
@@ -200,15 +200,15 @@ describe('the strip’s one message line, measured in every language (owner, 202
       expect(
         rows.filter((row) => row.kind === 'status'),
         lang,
-      ).toHaveLength(52);
+      ).toHaveLength(53);
       expect(
         rows.filter((row) => row.kind === 'caption'),
         lang,
       ).toHaveLength(5);
     }
-    expect(REALISTIC).toHaveLength(4 * 57);
+    expect(REALISTIC).toHaveLength(4 * 58);
     // The destination variants add two rows to the waiting line in each language.
-    expect(ROWS).toHaveLength(4 * 57 + 4 * 2);
+    expect(ROWS).toHaveLength(4 * 58 + 4 * 2);
     // A code point the font lacks is measured as its .notdef: the width would be wrong. None is missing.
     const missing = new Set<string>();
     for (const row of ROWS) {
@@ -283,24 +283,37 @@ describe('the strip’s one message line, measured in every language (owner, 202
     expect(widest('status').width).toBeLessThan(PHONE);
   });
 
-  // E2 (2026-11-17): the four lines that say why the server refused a court's automatic start are each ONE line at the
+  // E2 (2026-11-17): the five lines that say why the server refused a court's automatic start are each ONE line at the
   // owner's phone's 386 dp in all four languages, named here so the sweep above can never miss them. The widest, as
-  // measured, is the French destination one at 325.6.
+  // measured, is the French destination one at 325.6. The fifth, the stopped match, is N46's (2026-11-19).
   it('fits the court’s refused automatic start lines on ONE line at 386 dp in all four languages', () => {
     const keys = [
       'stream.status.courtRefusedDestination',
       'stream.status.courtDestinationBusy',
       'stream.status.courtFrozen',
       'stream.status.courtStartRetrying',
+      'stream.status.courtMatchStopped',
     ];
     const rows = REALISTIC.filter((row) => keys.includes(row.key));
-    expect(rows).toHaveLength(16);
+    expect(rows).toHaveLength(20);
     for (const row of rows) expect(row.width, name(row)).toBeLessThanOrEqual(PHONE);
     const widest = rows.reduce((a, b) => (b.width > a.width ? b : a));
     expect([name(widest), Math.round(widest.width * 10) / 10]).toEqual([
       'fr stream.status.courtRefusedDestination',
       325.6,
     ]);
+  });
+
+  // N46 (court device check, 2026-11-19): the stopped match's line is the one thing a court phone can say that asks for
+  // the hold, so it is ONE line even at 298 dp (640 × 360), in all four languages, and never on the ratchet above. As
+  // measured: en 283.9, es 284.7, fr 290.4, nl 294.1.
+  it('fits the stopped match’s line on ONE line at 298 dp (640 × 360) in all four languages', () => {
+    const rows = REALISTIC.filter((row) => row.key === 'stream.status.courtMatchStopped');
+    expect(rows.map((row) => row.lang)).toEqual(['en', 'es', 'fr', 'nl']);
+    expect(rows.map((row) => Math.round(row.width * 10) / 10)).toEqual([
+      283.9, 284.7, 290.4, 294.1,
+    ]);
+    for (const row of rows) expect(row.width, row.lang).toBeLessThanOrEqual(NARROW);
   });
 
   // Court stream (capture-start.v1's 409 no_match): the start's refusal refusal is ONE line at the owner's phone's 386 dp in all four languages, named

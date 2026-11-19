@@ -40,7 +40,10 @@ export type AutoRefusal =
   | 'not_entitled'
   | 'destination_in_use'
   | 'unavailable'
-  | 'competition_frozen';
+  | 'competition_frozen'
+  // Court device check (2026-11-19, web #1265): the court's only match was stopped by hand, so nothing starts it by
+  // itself; the desk's Go live or this phone's hold does.
+  | 'match_stopped';
 
 /** What the snapshot names the pairing by, and its waiting fields (amendment, The engine port). */
 export type PairingInfo = {
@@ -116,8 +119,11 @@ export type LastEnd =
 /**
  * Why native left a pairing the operator did not end in the app. `forgotten` is the operator's Forget on the
  * notification (R6 of the D3 findings design): native's own input, which JS hears only from the snapshot.
+ * `app-outdated` is a court claim the server refused because this build is below its court minimum (426
+ * `app_outdated`, court device check 2026-11-19, web #1265): the code has not ended, the app needs updating.
  */
-export type UnpairReason = 'code-ended' | 'replaced' | 'taken' | 'permissions' | 'forgotten';
+export type UnpairReason =
+  'code-ended' | 'replaced' | 'taken' | 'permissions' | 'forgotten' | 'app-outdated';
 
 export type Unpaired = {
   readonly reason: UnpairReason;

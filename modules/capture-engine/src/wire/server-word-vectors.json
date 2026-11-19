@@ -213,6 +213,7 @@
     { "source": "beat", "status": 410, "named": null, "word": "over", "ends": false },
     { "source": "beat", "status": 401, "named": "S", "word": "code-ended", "ends": false },
     { "source": "beat", "status": 404, "named": "S", "word": "not-found", "ends": false },
+    { "source": "beat", "status": 426, "named": null, "word": "app-outdated", "ends": false },
     { "source": "beat", "status": 429, "named": "S", "word": "no-evidence", "ends": false },
     { "source": "beat", "status": 500, "named": "S", "word": "no-evidence", "ends": false },
     { "source": "beat", "failed": true, "named": "S", "word": "no-evidence", "ends": false }

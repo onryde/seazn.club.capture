@@ -15,9 +15,12 @@ import { listFiles, OURS } from '../scripts/vendor-contracts.mjs';
  * and the commit are copied below BY HAND from apps/web/src/server/api-v1/__tests__/capture-contract.test.ts:51-67,
  * so a re-vendor cannot quietly move both sides at once. WEB_COMMIT is the commit actually vendored (plan D1, D-10).
  *
- * The commit is a74084cdec, web main's merge of PR #1247 (a court's refused automatic start on the phone, E2,
- * 2026-11-17): the waiting answer's optional `autoRefusal` word on the beat and the descriptor, omitted and never
- * null; six fixtures with it. Before it, c0577abb7, web main's merge of PR #1235 (court stream, spec 2026-11-14): the
+ * The commit is 1cec787a09, web main's merge of PR #1265 (the court device check of 2026-11-19): the beat's
+ * `$defs.refusal` with 426 `app_outdated` (a court claim from a build below the server's court minimum), the word on
+ * the shared refusal list of the descriptor, start and scoring-link contracts, and the waiting answer's `autoRefusal`
+ * word `match_stopped` on the beat and the descriptor; three fixtures. Before it, a74084cdec, web main's merge of PR
+ * #1247 (a court's refused automatic start on the phone, E2, 2026-11-17): the waiting answer's optional `autoRefusal`
+ * word on the beat and the descriptor, omitted and never null; six fixtures with it. Before it, c0577abb7, web main's merge of PR #1235 (court stream, spec 2026-11-14): the
  * descriptor's optional `court {name}`, the beat answer's optional `next {label, scheduledStart}`, the scoring link's
  * `ok.label`, the `no_match` refusal on scoring-link and start, and a court code's QR `exp`; ten fixtures with them. Before it,
  * a976b266c, web main with PR #1217 merged (a called match is the court's `now`; the candidate's `first_in_queue`).
@@ -31,14 +34,14 @@ import { listFiles, OURS } from '../scripts/vendor-contracts.mjs';
  *
  * relay-job.v1 sits beside them and is not the phone's: the script takes only the capture contracts.
  */
-const WEB_COMMIT = 'a74084cdec9a2679ac7601503cf1db2f8e160177';
+const WEB_COMMIT = '1cec787a097da970cff69641919adfa0214e2c4e';
 const WEB_PINS: Readonly<Record<string, string>> = {
   'capture-qr.v2.json': '0943072e30489dad04822cf266cc62d4e004e3a2ef46fe20e712a274ae272fbe',
-  'capture-descriptor.v1.json': '909ba262565857566bf49da0c3d547d876e4f5f8bbbc37fe9e921e448032108d',
-  'capture-beat.v1.json': '017ae3e398a07b4c24900ec06d5908acc72c16f0b8f239a9611159a7ac2447d0',
-  'capture-start.v1.json': '7fdccba89789c416b007440b32ba5bab5111d53598423eafd89672b156553a2c',
+  'capture-descriptor.v1.json': '308d58807d3b3754ccf5b400c18827d09ffb5dd0177aaed7d10b31b307c027f4',
+  'capture-beat.v1.json': '2909429a2dba925d18fdddc357c9a8e393d7c5ef25156fb7f13f375e8daa7e87',
+  'capture-start.v1.json': '46162c64e4b9e0da3f17a571103c3ba7e3e9e972997367c916bf7f6ea8e08778',
   'capture-scoring-link.v1.json':
-    '4ba43348d7b12fa776b2ff24f4dfd254342d38ddc62207f30156677291fbecae',
+    'daa81ed4f907545f0fb1a8265d11011fab3b90a52d880dda8e3839f7651b5032',
   'capture-record.v1.json': '213f766043b7682f198cc98da13e93995b6602e46533ecf60c78bf562aebd6f8',
   'capture-matchday-day.v1.json':
     '283a252050a42618752803baead43e18df6822a9e23588f80e04e5ebecd46332',
@@ -63,9 +66,9 @@ const vendored = JSON.parse(readFileSync(new URL('VENDORED.json', root), 'utf8')
 const onDisk = listFiles(fileURLToPath(root)).filter((path) => !OURS.includes(path));
 
 describe('the vendored contracts, pinned (plan D spec §3.1, R7)', () => {
-  it('pins 294 files: the ten schemas and 284 fixtures (moves only with a re-vendor)', () => {
+  it('pins 297 files: the ten schemas and 287 fixtures (moves only with a re-vendor)', () => {
     const pinned = Object.keys(vendored.files);
-    expect(pinned).toHaveLength(294);
+    expect(pinned).toHaveLength(297);
     expect(pinned.filter((path) => !path.includes('/'))).toHaveLength(10);
   });
 

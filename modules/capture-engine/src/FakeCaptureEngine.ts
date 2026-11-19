@@ -738,6 +738,9 @@ export function createFakeCaptureEngine(now: () => number = Date.now): FakeCaptu
       case 'code-ended':
         if (held && kind !== 'arming') return publish({ codeEndedPending: true });
         return isPaired || kind === 'arming' ? unpaired('code-ended') : undefined;
+      // N46: a 426 answers a claim, which goes while paired and while Arming; from Armed on it is counted, nothing more.
+      case 'app-outdated':
+        return isPaired || kind === 'arming' ? unpaired('app-outdated') : undefined;
     }
   };
 

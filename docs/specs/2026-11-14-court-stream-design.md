@@ -34,7 +34,7 @@ Start and stopped after its result, with the phone untouched all day.
 | O9 | A court link's destination must be a connected YouTube account (a broadcast per session); a plain stream key is not offered for courts, since YouTube may join back-to-back matches into one video | "all 3 Ok" (to the controller's rec) |
 | O10 | A tap always shows the court's **next** called match's scoring QR, streamed or not | "all 3 Ok" |
 | O12 | The notification's one-tap Forget is hidden on court pairings; Exit (which asks first) is the only way off a court | "yes" (2026-11-15, to the controller's rec) |
-| O13 | The server refuses a court code from an app build without court support, with a refusal old builds already show ("Not valid for streaming") | "yes" (2026-11-15, to the controller's rec) |
+| O13 | The server refuses a court code from an app build without court support, with a refusal old builds already show ("Not valid for streaming"). Revised 2026-11-19 (N46, web #1265): a claim beat from a build below `COURT_MIN_APP_VERSION` is answered 426 `app_outdated`; the phone unpairs with `app-outdated` and Home says "Update the app" (§6.2) | "yes" (2026-11-15, to the controller's rec) |
 | O11 | O2 supersedes the web Match Day design §8's court-idle card; that web spec is amended to match | "all 3 Ok" |
 
 ## 3. Goals, non-goals, anti-goals
@@ -157,7 +157,7 @@ the beats it already receives **(my call)**. A linked court nobody has scanned s
 an automatic go-live (`no_credit`, `not_entitled`, `no_destination`) show on that court row. A
 court phone shows them too: the waiting answer, beat and descriptor, carries the word as
 `autoRefusal` (one of six, web #1247), and the waiting line says it (§6.2; revised 2026-11-17,
-E2). A per-fixture code's phone still does not (as for per-fixture auto start today; revised at
+E2). A seventh, `match_stopped`, came with web #1265 (revised 2026-11-19, N46). A per-fixture code's phone still does not (as for per-fixture auto start today; revised at
 planning).
 
 ### 5.6 Scoring link (O7, O10)
@@ -188,10 +188,20 @@ Live Stream's paired·waiting viewfinder, on a court code:
   ruling, 2026-11-17). "Destination not ready — ask the organiser", "Destination busy
   with another match", "Streaming paused for this competition" (shortened from the proposal's
   57 characters to the status line's 48), "Can't start yet — retrying" (routine: the server
-  retries every 60 s), and the existing no-credit and not-included lines. An unknown word is none;
+  retries every 60 s), and the existing no-credit and not-included lines. Revised 2026-11-19 (N46,
+  web #1265): `match_stopped`, the court's only match stopped by hand (the desk, this phone's Stop
+  hold or a handover) and held until a person starts it, says "Stream stopped — hold Go live to
+  restart", urgent, since only the hold or the desk's Go live starts it. An unknown word is none;
 - *Tap to score* on the existing *Remote scoring* button (O8); the panel shows for 10 s as today.
 The camera half stays as today while waiting. While live on a court code, the strip's
 routine line shows "Next: C v D · 14:30" from the beat's `next`. Copy in en/es/fr/nl.
+
+Revised 2026-11-19 (N46, web #1265; O13): a build below the server's court minimum never reaches
+the waiting fields. Its claim beat is answered 426 `app_outdated`; native unpairs with
+`app-outdated` (while Paired or Arming; from Armed on it is counted and the broadcast runs on), and
+Home names it with the panel a code needing a newer app shows, "Update the app". Until the server
+has answered a pairing at all (native's label is still ""), the line is "Pairing this phone…",
+never the destination line.
 
 ### 6.3 Stop and Exit (O5)
 - **Stop hold, after going live, on a court code:** takes the `stoppedHere` path

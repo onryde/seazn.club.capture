@@ -22,6 +22,12 @@ sealed interface ServerWord {
 
   data object NotFound : ServerWord
 
+  /**
+   * 426 `app_outdated` (court device check, 2026-11-19, web #1265): a court claim from a build below the server's court
+   * minimum. The build can never pair that code, and every claim it sends gets the same answer until the app is updated.
+   */
+  data object AppOutdated : ServerWord
+
   /** Counted; nothing changes. */
   data object NoEvidence : ServerWord
 
@@ -44,6 +50,7 @@ sealed interface ServerWord {
       return when (response.status) {
         401 -> CodeEnded
         404 -> NotFound
+        426 -> AppOutdated
         // Beats are no longer answered 410 (2026-10-01); one is still read as the web ruled for any code call.
         410 -> Over(named, response.reply?.endReason)
         in 200..299 -> ofReply(response.reply)

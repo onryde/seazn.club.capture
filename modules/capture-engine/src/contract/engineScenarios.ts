@@ -339,4 +339,17 @@ export const ENGINE_SCENARIOS: readonly Scenario[] = [
       same(kind(kit), 'idle', 'after a second unpair');
     },
   },
+  {
+    // N46 (court device check, 2026-11-19, web #1265): a court claim from a build below the server's court minimum.
+    // Last, so the device probe's scene ids (each scenario's place in this list) do not move.
+    name: 'an outdated build: a 426 app_outdated answer unpairs to idle, naming the code and the reason',
+    needsServer: true,
+    onPhone: false,
+    run: async (kit) => {
+      await kit.send(KIT_CODE_A);
+      await kit.say({ word: 'app-outdated' });
+      same(kind(kit), 'idle', 'after app-outdated');
+      same(kit.snapshot().unpaired, { reason: 'app-outdated', ...nameOf(KIT_CODE_A) }, 'unpaired');
+    },
+  },
 ];

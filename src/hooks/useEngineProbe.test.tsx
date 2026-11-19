@@ -110,11 +110,12 @@ describe('the device probe', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  // PV34: fourteen scenarios in the tree (Task 27's thirteen and this task's
-  // unpair), three of them on the phone, so the probe skips eleven.
+  // PV34: fifteen scenarios in the tree (Task 27's thirteen, this task's unpair
+  // and N46's outdated build, last), three of them on the phone, so the probe
+  // skips twelve.
   it('counts the scenarios it runs and skips (PV12: zero is a failure)', () => {
     const onPhone = ENGINE_SCENARIOS.filter((scenario) => scenario.onPhone);
-    expect([ENGINE_SCENARIOS.length, onPhone.length]).toEqual([14, 3]);
+    expect([ENGINE_SCENARIOS.length, onPhone.length]).toEqual([15, 3]);
     // Their places in the tree, which each line names: the two pairs first, the unpair last.
     expect(ENGINE_SCENARIOS.flatMap((scenario, at) => (scenario.onPhone ? [at] : []))).toEqual([
       0, 1, 13,
@@ -128,7 +129,7 @@ describe('the device probe', () => {
     await flush();
     expect(hook.result.current?.state).toBe('passed');
     expect(probeLines(fakes)).toEqual([
-      ['probe.skip', { count: 11 }],
+      ['probe.skip', { count: 12 }],
       ['probe.pass', { scene: 0 }],
       ['probe.pass', { scene: 1 }],
       ['probe.pass', { scene: 13 }],
@@ -147,7 +148,7 @@ describe('the device probe', () => {
     run(hook);
     await flush();
     expect(probeLines(fakes)).toEqual([
-      ['probe.skip', { count: 11 }],
+      ['probe.skip', { count: 12 }],
       ['probe.fail', { scene: 0, check: 3, reason: 'mismatch' }],
     ]);
     // Review C5 I-1: the failed scene's pairing is given back, so no made-up code stays paired.
@@ -182,7 +183,7 @@ describe('the device probe', () => {
     await flush(40);
     expect(hook.result.current?.state).toBe('failed');
     expect(probeLines(fakes)).toEqual([
-      ['probe.skip', { count: 11 }],
+      ['probe.skip', { count: 12 }],
       ['probe.fail', { scene: 0, check: 3, reason: 'mismatch' }],
     ]);
     expect(fakes.engine.getSnapshot().state.kind).toBe('paired');
@@ -261,11 +262,11 @@ describe('the device probe', () => {
     const { fakes, hook } = probeOn({ ports: { nativeEngine: neverSettles() } });
     run(hook);
     await flush(PROBE_WAIT_MS - 20);
-    expect(probeLines(fakes)).toEqual([['probe.skip', { count: 11 }]]);
+    expect(probeLines(fakes)).toEqual([['probe.skip', { count: 12 }]]);
     expect(hook.result.current?.state).toBe('running');
     await flush(20);
     expect(probeLines(fakes)).toEqual([
-      ['probe.skip', { count: 11 }],
+      ['probe.skip', { count: 12 }],
       ['probe.fail', { scene: 0, reason: 'no-ack' }],
     ]);
     await flush(PROBE_WAIT_MS - 40);
@@ -282,7 +283,7 @@ describe('the device probe', () => {
     // I-1: the cleanup's unpair ends the pairing the permission dialog held.
     expect(fakes.engine.getSnapshot().state.kind).toBe('idle');
     expect(probeLines(fakes)).toEqual([
-      ['probe.skip', { count: 11 }],
+      ['probe.skip', { count: 12 }],
       ['probe.fail', { scene: 0, reason: 'stuck-pairing' }],
     ]);
     expect(hook.result.current?.state).toBe('failed');
@@ -297,7 +298,7 @@ describe('the device probe', () => {
     await flush(PROBE_WAIT_MS + 100);
     // Review C5 m-3: a scene that cannot leave clean has not passed.
     expect(probeLines(fakes)).toEqual([
-      ['probe.skip', { count: 11 }],
+      ['probe.skip', { count: 12 }],
       ['probe.fail', { scene: 0, reason: 'not-idle' }],
     ]);
   });
@@ -327,7 +328,7 @@ describe('the device probe', () => {
     run(hook);
     await flush();
     expect(probeLines(fakes)).toEqual([
-      ['probe.skip', { count: 11 }],
+      ['probe.skip', { count: 12 }],
       ['probe.pass', { scene: 0 }],
       ['probe.pass', { scene: 1 }],
       // Reads: Paired after the pair (1); Idle, its name and its unpair (2, 3, 4).
@@ -376,7 +377,7 @@ describe('the device probe', () => {
     const first = ENGINE_SCENARIOS.findIndex((scenario) => scenario.onPhone);
     const written = forwarded.map((entry) => [entry.event, entry.fields]);
     expect(written).toHaveLength(2);
-    expect(written[0]).toEqual(['probe.skip', { count: 11 }]);
+    expect(written[0]).toEqual(['probe.skip', { count: 12 }]);
     expect(written[1]?.[0]).toBe('probe.fail');
     const failed = written[1]?.[1] as Record<string, unknown>;
     expect(Object.keys(failed)).toEqual(['scene', 'check', 'reason']);

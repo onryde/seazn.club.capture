@@ -396,6 +396,30 @@ describe('the paired phase', () => {
     expect(snapshot().unpaired?.reason).toBe('code-ended');
   });
 
+  // N46 (court device check, 2026-11-19, web #1265): a 426 answers a claim, which goes while paired and while Arming, as
+  // native's answer table has it (AnswerTableTest); from Armed on no claim goes, so a 426 there is counted, nothing more.
+  it('unpairs on an outdated build’s 426 while paired and while arming, and not on air', () => {
+    pair();
+    engine.hear({ word: 'app-outdated' });
+    expect(state()).toEqual({ kind: 'idle' });
+    expect(snapshot().unpaired).toEqual({
+      reason: 'app-outdated',
+      code: 'ka0000000001',
+      slot: 1,
+      tokenTag: TAG_A,
+    });
+    engine.scene('arming-retrying');
+    expect(state().kind).toBe('arming');
+    engine.hear({ word: 'app-outdated' });
+    expect(state()).toEqual({ kind: 'idle' });
+    expect(snapshot().unpaired?.reason).toBe('app-outdated');
+    onAirLive();
+    const live = state();
+    engine.hear({ word: 'app-outdated' });
+    expect(state()).toEqual(live);
+    expect(snapshot().unpaired).toBeNull();
+  });
+
   it('echoes setAutomatic in the pairing, and ignores it with none', () => {
     engine.send({ kind: 'setAutomatic', on: false });
     expect(snapshot().pairing).toBeNull();

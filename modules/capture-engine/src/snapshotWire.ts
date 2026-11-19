@@ -62,7 +62,14 @@ export const WIRE_VOCABULARY = {
     'hold-window-expired',
     'stopped',
   ]),
-  unpairReason: new Set(['code-ended', 'replaced', 'taken', 'permissions', 'forgotten']),
+  unpairReason: new Set([
+    'code-ended',
+    'replaced',
+    'taken',
+    'permissions',
+    'forgotten',
+    'app-outdated',
+  ]),
   delivery: new Set(['ok', 'stalled', 'unknown']),
   shed: new Set(['viewer-feed', 'preview-framerate', 'encode']),
   heartbeatResult: new Set(['ok', 'failed', 'session-over']),
@@ -77,6 +84,7 @@ export const WIRE_VOCABULARY = {
     'destination_in_use',
     'unavailable',
     'competition_frozen',
+    'match_stopped',
   ]),
 } as const;
 

@@ -77,5 +77,7 @@ export function scriptFor(says: ServerSays): Script {
       return { path: 'beat', status: 200, body: { state: says.word } };
     case 'code-ended':
       return { path: 'beat', status: 401, body: { code: 'code_ended', message: 'scripted' } };
+    case 'app-outdated':
+      return { path: 'beat', status: 426, body: { code: 'app_outdated', message: 'scripted' } };
   }
 }
